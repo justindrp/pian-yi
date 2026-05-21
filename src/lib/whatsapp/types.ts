@@ -3,6 +3,8 @@ export interface WhatsAppMessage {
   from: string;
   type: string;
   text?: string;
+  imageId?: string;
+  imageCaption?: string;
   timestamp: string;
 }
 
@@ -20,6 +22,7 @@ export interface WhatsAppWebhookPayload {
           type: string;
           timestamp: string;
           text?: { body: string };
+          image?: { id: string; caption?: string; mime_type?: string };
         }>;
         statuses?: unknown[];
       };
@@ -38,6 +41,8 @@ export function parseMessage(
     from: message.from,
     type: message.type,
     text: message.text?.body,
+    imageId: message.image?.id,
+    imageCaption: message.image?.caption,
     timestamp: message.timestamp,
   };
 }

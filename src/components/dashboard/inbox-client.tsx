@@ -218,36 +218,47 @@ export default function InboxClient() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === "user" ? "justify-start" : "justify-end"}`}
-              >
+            {messages.map((msg) => {
+              const isUser = msg.role === "user";
+              const msgWithExtras = msg as Conversation & { intent?: string | null; message_type?: string | null };
+              return (
                 <div
-                  className={`max-w-xs px-3 py-2 rounded-xl text-sm ${
-                    msg.role === "user"
-                      ? "bg-gray-100 text-gray-800"
-                      : "bg-orange-500 text-white"
-                  }`}
+                  key={msg.id}
+                  className={`flex ${isUser ? "justify-start" : "justify-end"}`}
                 >
-                  <p>{msg.content}</p>
-                  <div className="flex items-center gap-1 mt-1 opacity-60">
-                    <span className="text-[10px]">
-                      {msg.created_at ? formatDateTime(msg.created_at) : ""}
-                    </span>
-                    {msg.model_used && (
-                      <span className="text-[10px] px-1 bg-black/10 rounded">
-                        {msg.model_used === "sonnet-4-6"
-                          ? "S"
-                          : msg.model_used === "haiku-4-5"
-                            ? "H"
-                            : "👤"}
-                      </span>
+                  <div
+                    className={`max-w-xs px-3 py-2 rounded-xl text-sm ${
+                      isUser
+                        ? "bg-gray-100 text-gray-800"
+                        : "bg-orange-500 text-white"
+                    }`}
+                  >
+                    {msgWithExtras.message_type === "image" ? (
+                      <div className="text-xs italic opacity-70">[Image]</div>
+                    ) : (
+                      <p>{msg.content}</p>
                     )}
+                    <div className="flex items-center gap-1 mt-1 opacity-60 flex-wrap">
+                      <span className="text-[10px]">
+                        {msg.created_at ? formatDateTime(msg.created_at) : ""}
+                      </span>
+                      {msg.model_used && (
+                        <span className="text-[10px] px-1 bg-black/10 rounded">
+                          {msg.model_used === "sonnet-4-6"
+                            ? "S"
+                            : msg.model_used === "haiku-4-5"
+                              ? "H"
+                              : "👤"}
+                        </span>
+                      )}
+                      {isUser && msgWithExtras.intent && msgWithExtras.intent !== "other" && (
+                        <IntentBadge intent={msgWithExtras.intent} />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={bottomRef} />
           </div>
 
@@ -280,5 +291,19 @@ export default function InboxClient() {
         </div>
       )}
     </div>
+  );
+}
+
+function IntentBadge({ intent }: { intent: string }) {
+  const colors: Record<string, string> = {
+    faq: "bg-blue-100 text-blue-600",
+    ordering: "bg-green-100 text-green-700",
+    complaint: "bg-red-100 text-red-600",
+    payment: "bg-purple-100 text-purple-700",
+  };
+  return (
+    <span className={`text-[9px] px-1 rounded ${colors[intent] ?? "bg-gray-200 text-gray-600"}`}>
+      {intent}
+    </span>
   );
 }

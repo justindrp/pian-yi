@@ -29,6 +29,8 @@ export async function saveMessage(params: {
   modelUsed?: string;
   inputTokens?: number;
   outputTokens?: number;
+  intent?: string;
+  messageType?: string;
 }): Promise<void> {
   const db = createAdminClient();
   await db.from("conversations").insert({
@@ -39,5 +41,7 @@ export async function saveMessage(params: {
     model_used: params.modelUsed ?? null,
     input_tokens: params.inputTokens ?? null,
     output_tokens: params.outputTokens ?? null,
+    intent: params.intent ?? null,
+    message_type: params.messageType ?? "text",
   });
 }

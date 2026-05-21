@@ -4,6 +4,7 @@ interface CacheData {
   settings: Record<string, string>;
   pricingTiers: Record<number, number>;
   templates: Record<string, string>;
+  activeInstructions: string[];
   loadedAt: number;
 }
 
@@ -13,11 +14,16 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 async function load(): Promise<CacheData> {
   const db = createAdminClient();
 
-  const [settingsRes, pricingRes, templatesRes] = await Promise.all([
-    db.from("settings").select("key, value"),
-    db.from("pricing_tiers").select("portions, price_per_portion"),
-    db.from("message_templates").select("key, template"),
-  ]);
+  const [settingsRes, pricingRes, templatesRes, instructionsRes] =
+    await Promise.all([
+      db.from("settings").select("key, value"),
+      db.from("pricing_tiers").select("portions, price_per_portion"),
+      db.from("message_templates").select("key, template"),
+      db
+        .from("chatbot_instructions")
+        .select("instruction")
+        .eq("is_active", true),
+    ]);
 
   const settings: Record<string, string> = {};
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;
@@ -29,7 +35,17 @@ async function load(): Promise<CacheData> {
   const templates: Record<string, string> = {};
   for (const row of templatesRes.data ?? []) templates[row.key] = row.template;
 
-  return { settings, pricingTiers, templates, loadedAt: Date.now() };
+  const activeInstructions = (instructionsRes.data ?? []).map(
+    (r) => r.instruction,
+  );
+
+  return {
+    settings,
+    pricingTiers,
+    templates,
+    activeInstructions,
+    loadedAt: Date.now(),
+  };
 }
 
 async function getCache(): Promise<CacheData> {
@@ -76,6 +92,11 @@ export async function getAllPricingTiers(): Promise<Record<number, number>> {
 export async function getAllTemplates(): Promise<Record<string, string>> {
   const c = await getCache();
   return c.templates;
+}
+
+export async function getActiveInstructions(): Promise<string[]> {
+  const c = await getCache();
+  return c.activeInstructions;
 }
 
 export function invalidateCache(): void {

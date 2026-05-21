@@ -24,9 +24,18 @@ export default function CustomersClient() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", address: "", area: "" });
+  const [editForm, setEditForm] = useState({ name: "", address: "", area: "", subcontractor_id: "" });
   const queryClient = useQueryClient();
   const supabase = createClient();
+
+  const { data: subcontractors } = useQuery({
+    queryKey: ["subcontractors"],
+    queryFn: async () => {
+      const res = await fetch("/api/subcontractors");
+      const json = await res.json() as { ok: boolean; data: Array<{ id: string; name: string; is_active: boolean }> };
+      return (json.data ?? []).filter((s) => s.is_active);
+    },
+  });
 
   // Debounce search
   useEffect(() => {
@@ -68,6 +77,7 @@ export default function CustomersClient() {
       name: string;
       address: string;
       area: string;
+      subcontractor_id: string;
     }) => {
       if (!selected) return;
       const { error } = await supabase
@@ -76,6 +86,7 @@ export default function CustomersClient() {
           name: form.name,
           address: form.address,
           area: form.area,
+          subcontractor_id: form.subcontractor_id || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", selected.id);
@@ -93,6 +104,7 @@ export default function CustomersClient() {
       name: customer.name ?? "",
       address: customer.address ?? "",
       area: customer.area ?? "",
+      subcontractor_id: (customer as Customer & { subcontractor_id?: string | null }).subcontractor_id ?? "",
     });
   }
 
@@ -291,6 +303,28 @@ export default function CustomersClient() {
                     <option key={a} value={a}>
                       {a}
                     </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="customer-subcontractor"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Assigned Subcontractor
+                </label>
+                <select
+                  id="customer-subcontractor"
+                  value={editForm.subcontractor_id}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, subcontractor_id: e.target.value })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">— None —</option>
+                  {(subcontractors ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </div>

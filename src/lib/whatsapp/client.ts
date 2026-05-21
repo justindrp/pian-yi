@@ -21,6 +21,41 @@ export async function sendTextMessage(to: string, text: string): Promise<void> {
   );
 }
 
+export async function sendImageMessage(
+  to: string,
+  imageUrl: string,
+  caption: string,
+): Promise<void> {
+  await axios.post(
+    `${BASE_URL}/messages`,
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "image",
+      image: { link: imageUrl, caption },
+    },
+    { headers: headers() },
+  );
+}
+
+export async function downloadMedia(mediaId: string): Promise<Buffer> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const version = process.env.WHATSAPP_API_VERSION;
+  // First get the media URL
+  const metaRes = await axios.get(
+    `https://graph.facebook.com/${version}/${mediaId}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const mediaUrl = (metaRes.data as { url: string }).url;
+  // Then download the binary
+  const dlRes = await axios.get(mediaUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+    responseType: "arraybuffer",
+  });
+  return Buffer.from(dlRes.data as ArrayBuffer);
+}
+
 export async function sendTypingIndicator(to: string): Promise<void> {
   await axios
     .post(

@@ -7,7 +7,12 @@ const navItems = [
   { href: "/dashboard", label: "Home" },
   { href: "/inbox", label: "Inbox" },
   { href: "/customers", label: "Customers" },
+  { href: "/orders", label: "Orders" },
+  { href: "/deliveries", label: "Deliveries" },
   { href: "/payments", label: "Payments" },
+  { href: "/subcontractors", label: "Subcontractors" },
+  { href: "/chatbot-training", label: "Chatbot Training" },
+  { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Settings" },
 ];
 

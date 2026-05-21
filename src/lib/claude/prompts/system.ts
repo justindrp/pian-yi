@@ -1,4 +1,8 @@
-import { getAllPricingTiers, getSetting } from "@/lib/cache/settings";
+import {
+  getActiveInstructions,
+  getAllPricingTiers,
+  getSetting,
+} from "@/lib/cache/settings";
 
 export async function buildSystemPrompt(params: {
   casual: boolean;
@@ -23,7 +27,10 @@ export async function buildSystemPrompt(params: {
     getSetting("escalation_keywords"),
   ]);
 
-  const pricingTiers = await getAllPricingTiers();
+  const [pricingTiers, activeInstructions] = await Promise.all([
+    getAllPricingTiers(),
+    getActiveInstructions(),
+  ]);
   const pricingLines = Object.entries(pricingTiers)
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(
@@ -112,5 +119,9 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 - Customer state: ${params.customerState}
 - Customer name (if known): ${params.customerName ?? "unknown"}
 - Today: ${now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-- Order deadline tonight: ${deadlineTime}`;
+- Order deadline tonight: ${deadlineTime}${
+    activeInstructions.length > 0
+      ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
+      : ""
+  }`;
 }

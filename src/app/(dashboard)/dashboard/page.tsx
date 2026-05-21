@@ -10,14 +10,15 @@ async function getMetrics() {
   const todayEnd = new Date();
   todayEnd.setHours(23, 59, 59, 999);
 
-  const [activeRes, deliveriesRes, pendingRes, revenueRes] = await Promise.all([
+  const today = todayStart.toISOString().split("T")[0];
+
+  const [activeRes, deliveriesRes, pendingRes, revenueRes, pendingProofsRes, lapsedRes] = await Promise.all([
     db.from("orders").select("id", { count: "exact" }).eq("status", "active"),
     db
-      .from("orders")
+      .from("daily_deliveries")
       .select("id", { count: "exact" })
-      .eq("status", "active")
-      .gte("start_date", todayStart.toISOString().split("T")[0])
-      .lte("start_date", todayEnd.toISOString().split("T")[0]),
+      .eq("delivery_date", today)
+      .neq("status", "skipped"),
     db
       .from("orders")
       .select("id", { count: "exact" })
@@ -27,6 +28,14 @@ async function getMetrics() {
       .select("total_price")
       .gte("paid_at", todayStart.toISOString())
       .lte("paid_at", todayEnd.toISOString()),
+    db
+      .from("delivery_proofs")
+      .select("id", { count: "exact" })
+      .eq("status", "needs_review"),
+    db
+      .from("customer_state")
+      .select("id", { count: "exact" })
+      .eq("state", "lapsed"),
   ]);
 
   const revenue = (revenueRes.data ?? []).reduce(
@@ -39,6 +48,8 @@ async function getMetrics() {
     deliveriesToday: deliveriesRes.count ?? 0,
     pendingPayments: pendingRes.count ?? 0,
     revenueToday: revenue,
+    pendingProofs: pendingProofsRes.count ?? 0,
+    lapsedCustomers: lapsedRes.count ?? 0,
   };
 }
 
@@ -66,7 +77,7 @@ export default async function HomePage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <StatCard label="Active Customers" value={metrics.activeCustomers} />
         <StatCard label="Deliveries Today" value={metrics.deliveriesToday} />
         <StatCard
@@ -77,6 +88,16 @@ export default async function HomePage() {
         <StatCard
           label="Revenue Today"
           value={formatIDR(metrics.revenueToday)}
+        />
+        <StatCard
+          label="Pending Delivery Photos"
+          value={metrics.pendingProofs}
+          highlight={metrics.pendingProofs > 0}
+        />
+        <StatCard
+          label="Lapsed Customers"
+          value={metrics.lapsedCustomers}
+          highlight={metrics.lapsedCustomers > 0}
         />
       </div>
 

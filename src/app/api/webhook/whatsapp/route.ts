@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { loadHistory, saveMessage } from "@/lib/claude/conversation";
+import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import {
@@ -17,7 +18,7 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
-import { sendTextMessage } from "@/lib/whatsapp/client";
+import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
 import {
   parseMessage,
   type WhatsAppWebhookPayload,
@@ -69,6 +70,27 @@ async function processWebhookAsync(
   if (existing) return;
 
   await db.from("processed_messages").insert({ message_id: message.messageId });
+
+  // Check if sender is a subcontractor admin
+  const { data: subcontractor } = await db
+    .from("subcontractors")
+    .select("id, name")
+    .or(`admin_phone.eq.${message.from},admin_phone_2.eq.${message.from}`)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (subcontractor) {
+    await handleSubcontractorMessage(
+      message,
+      subcontractor.id,
+      subcontractor.name,
+    );
+    await db
+      .from("processed_messages")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("message_id", message.messageId);
+    return;
+  }
 
   // Kill switch
   const chatbotEnabled = await getSetting("chatbot_enabled");
@@ -133,11 +155,13 @@ async function processWebhookAsync(
   if (flags?.is_blacklisted) return;
 
   if (flags?.escalated_to_human) {
+    const escalatedIntent = await classifyIntent(text).catch(() => "other");
     await saveMessage({
       customerId,
       role: "user",
       content: text,
       messageId: message.messageId,
+      intent: escalatedIntent,
     });
     await sendPushToAllAdmins(
       "New message from escalated customer",
@@ -185,7 +209,7 @@ async function processWebhookAsync(
   }
 
   // Haiku classification
-  await classifyIntent(text).catch(() => "other");
+  const intent = await classifyIntent(text).catch(() => "other");
 
   // Load history
   const history = await loadHistory(customerId);
@@ -313,6 +337,7 @@ async function processWebhookAsync(
     role: "user",
     content: text,
     messageId: message.messageId,
+    intent,
   });
 
   if (replyText) {
@@ -362,6 +387,66 @@ async function processWebhookAsync(
     .from("processed_messages")
     .update({ processed_at: new Date().toISOString() })
     .eq("message_id", message.messageId);
+}
+
+async function handleSubcontractorMessage(
+  message: import("@/lib/whatsapp/types").WhatsAppMessage,
+  subcontractorId: string,
+  subcontractorName: string,
+): Promise<void> {
+  const db = createAdminClient();
+
+  if (message.type === "image" && message.imageId) {
+    // Download from WhatsApp
+    let imageBuffer: Buffer;
+    try {
+      imageBuffer = await downloadMedia(message.imageId);
+    } catch (err) {
+      console.error("[webhook] failed to download media:", (err as Error).message);
+      return;
+    }
+
+    // Upload to Supabase Storage
+    const today = new Date().toISOString().slice(0, 10);
+    const storagePath = `${subcontractorId}/${today}/${message.messageId}.jpg`;
+    const { error: uploadErr } = await db.storage
+      .from("delivery-proofs")
+      .upload(storagePath, imageBuffer, { contentType: "image/jpeg", upsert: false });
+
+    if (uploadErr) {
+      console.error("[webhook] storage upload failed:", uploadErr.message);
+      return;
+    }
+
+    const { data: urlData } = db.storage
+      .from("delivery-proofs")
+      .getPublicUrl(storagePath);
+
+    // Create delivery_proofs row
+    const { data: proof } = await db
+      .from("delivery_proofs")
+      .insert({
+        sender_phone: message.from,
+        subcontractor_id: subcontractorId,
+        whatsapp_message_id: message.messageId,
+        caption: message.imageCaption ?? null,
+        image_url: urlData.publicUrl,
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    if (proof) {
+      matchDeliveryPhoto(proof.id).catch(console.error);
+    }
+  } else if (message.type === "text" && message.text) {
+    await sendPushToAllAdmins(
+      `Message from ${subcontractorName}`,
+      message.text.slice(0, 120),
+      "/deliveries",
+      "medium",
+    );
+  }
 }
 
 async function handleToolUse(

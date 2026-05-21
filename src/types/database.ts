@@ -60,6 +60,36 @@ export type Database = {
         }
         Relationships: []
       }
+      chatbot_instructions: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          instruction: string
+          is_active: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          instruction: string
+          is_active?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          instruction?: string
+          is_active?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           content: string
@@ -67,7 +97,9 @@ export type Database = {
           customer_id: string | null
           id: string
           input_tokens: number | null
+          intent: string | null
           message_id: string | null
+          message_type: string | null
           model_used: string | null
           output_tokens: number | null
           role: string
@@ -78,7 +110,9 @@ export type Database = {
           customer_id?: string | null
           id?: string
           input_tokens?: number | null
+          intent?: string | null
           message_id?: string | null
+          message_type?: string | null
           model_used?: string | null
           output_tokens?: number | null
           role: string
@@ -89,7 +123,9 @@ export type Database = {
           customer_id?: string | null
           id?: string
           input_tokens?: number | null
+          intent?: string | null
           message_id?: string | null
+          message_type?: string | null
           model_used?: string | null
           output_tokens?: number | null
           role?: string
@@ -183,16 +219,22 @@ export type Database = {
       customer_state: {
         Row: {
           customer_id: string
+          reactivation_count: number | null
+          reactivation_sent_at: string | null
           state: string
           updated_at: string | null
         }
         Insert: {
           customer_id: string
+          reactivation_count?: number | null
+          reactivation_sent_at?: string | null
           state?: string
           updated_at?: string | null
         }
         Update: {
           customer_id?: string
+          reactivation_count?: number | null
+          reactivation_sent_at?: string | null
           state?: string
           updated_at?: string | null
         }
@@ -217,6 +259,7 @@ export type Database = {
           meal_time_preference: string | null
           name: string | null
           phone_number: string
+          subcontractor_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -229,6 +272,7 @@ export type Database = {
           meal_time_preference?: string | null
           name?: string | null
           phone_number: string
+          subcontractor_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -241,9 +285,171 @@ export type Database = {
           meal_time_preference?: string | null
           name?: string | null
           phone_number?: string
+          subcontractor_id?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_deliveries: {
+        Row: {
+          created_at: string | null
+          customer_id: string | null
+          delivery_date: string
+          delivery_proof_id: string | null
+          feedback_message: string | null
+          feedback_sentiment: string | null
+          id: string
+          meal_type: string
+          notes: string | null
+          order_id: string | null
+          portions: number
+          status: string | null
+          subcontractor_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_id?: string | null
+          delivery_date: string
+          delivery_proof_id?: string | null
+          feedback_message?: string | null
+          feedback_sentiment?: string | null
+          id?: string
+          meal_type: string
+          notes?: string | null
+          order_id?: string | null
+          portions: number
+          status?: string | null
+          subcontractor_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_id?: string | null
+          delivery_date?: string
+          delivery_proof_id?: string | null
+          feedback_message?: string | null
+          feedback_sentiment?: string | null
+          id?: string
+          meal_type?: string
+          notes?: string | null
+          order_id?: string | null
+          portions?: number
+          status?: string | null
+          subcontractor_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_deliveries_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deliveries_delivery_proof_id_fkey"
+            columns: ["delivery_proof_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_proofs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deliveries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_deliveries_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_proofs: {
+        Row: {
+          caption: string | null
+          id: string
+          image_url: string | null
+          match_confidence: number | null
+          match_method: string | null
+          matched_customer_id: string | null
+          matched_delivery_id: string | null
+          received_at: string | null
+          sender_phone: string | null
+          sent_by: string | null
+          sent_to_customer_at: string | null
+          status: string | null
+          subcontractor_id: string | null
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          caption?: string | null
+          id?: string
+          image_url?: string | null
+          match_confidence?: number | null
+          match_method?: string | null
+          matched_customer_id?: string | null
+          matched_delivery_id?: string | null
+          received_at?: string | null
+          sender_phone?: string | null
+          sent_by?: string | null
+          sent_to_customer_at?: string | null
+          status?: string | null
+          subcontractor_id?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          caption?: string | null
+          id?: string
+          image_url?: string | null
+          match_confidence?: number | null
+          match_method?: string | null
+          matched_customer_id?: string | null
+          matched_delivery_id?: string | null
+          received_at?: string | null
+          sender_phone?: string | null
+          sent_by?: string | null
+          sent_to_customer_at?: string | null
+          status?: string | null
+          subcontractor_id?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_proofs_matched_customer_id_fkey"
+            columns: ["matched_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_proofs_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_delivery_proofs_matched_delivery"
+            columns: ["matched_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "daily_deliveries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       edit_log: {
         Row: {
@@ -298,6 +504,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          abandoned_recovery_sent_at: string | null
           area: string
           cancellation_reason: string | null
           cancelled_at: string | null
@@ -307,6 +514,7 @@ export type Database = {
           custom_schedule: Json | null
           customer_id: string | null
           delivery_address: string
+          followup_sent_at: string | null
           id: string
           meal_time_preference: string
           package_size: number
@@ -324,6 +532,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          abandoned_recovery_sent_at?: string | null
           area: string
           cancellation_reason?: string | null
           cancelled_at?: string | null
@@ -333,6 +542,7 @@ export type Database = {
           custom_schedule?: Json | null
           customer_id?: string | null
           delivery_address: string
+          followup_sent_at?: string | null
           id?: string
           meal_time_preference: string
           package_size: number
@@ -350,6 +560,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          abandoned_recovery_sent_at?: string | null
           area?: string
           cancellation_reason?: string | null
           cancelled_at?: string | null
@@ -359,6 +570,7 @@ export type Database = {
           custom_schedule?: Json | null
           customer_id?: string | null
           delivery_address?: string
+          followup_sent_at?: string | null
           id?: string
           meal_time_preference?: string
           package_size?: number
@@ -475,6 +687,83 @@ export type Database = {
           updated_at?: string | null
           updated_by?: string | null
           value?: string
+        }
+        Relationships: []
+      }
+      subcontractor_off_days: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          off_date: string
+          reason: string | null
+          subcontractor_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          off_date: string
+          reason?: string | null
+          subcontractor_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          off_date?: string
+          reason?: string | null
+          subcontractor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontractor_off_days_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subcontractors: {
+        Row: {
+          admin_phone: string | null
+          admin_phone_2: string | null
+          created_at: string | null
+          delivery_areas: Json | null
+          id: string
+          is_active: boolean | null
+          late_delivery_count: number | null
+          name: string
+          notes: string | null
+          total_delivery_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          admin_phone?: string | null
+          admin_phone_2?: string | null
+          created_at?: string | null
+          delivery_areas?: Json | null
+          id?: string
+          is_active?: boolean | null
+          late_delivery_count?: number | null
+          name: string
+          notes?: string | null
+          total_delivery_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          admin_phone?: string | null
+          admin_phone_2?: string | null
+          created_at?: string | null
+          delivery_areas?: Json | null
+          id?: string
+          is_active?: boolean | null
+          late_delivery_count?: number | null
+          name?: string
+          notes?: string | null
+          total_delivery_count?: number | null
+          updated_at?: string | null
         }
         Relationships: []
       }
