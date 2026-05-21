@@ -4,7 +4,7 @@ import QueryProvider from "@/components/shared/query-provider";
 import { createClient } from "@/lib/supabase/server";
 
 const navItems = [
-  { href: "/", label: "Home" },
+  { href: "/dashboard", label: "Home" },
   { href: "/inbox", label: "Inbox" },
   { href: "/customers", label: "Customers" },
   { href: "/payments", label: "Payments" },
