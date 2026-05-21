@@ -67,7 +67,11 @@ export default function InboxClient() {
         .select("escalated_to_human")
         .eq("customer_id", customerId)
         .single();
-      setFlags(flagData);
+      setFlags(
+        flagData
+          ? { escalated_to_human: flagData.escalated_to_human ?? false }
+          : null,
+      );
     },
     [supabase],
   );
@@ -229,7 +233,7 @@ export default function InboxClient() {
                   <p>{msg.content}</p>
                   <div className="flex items-center gap-1 mt-1 opacity-60">
                     <span className="text-[10px]">
-                      {formatDateTime(msg.created_at)}
+                      {msg.created_at ? formatDateTime(msg.created_at) : ""}
                     </span>
                     {msg.model_used && (
                       <span className="text-[10px] px-1 bg-black/10 rounded">

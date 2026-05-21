@@ -173,7 +173,7 @@ export default function CustomersClient() {
                         <StateBadge state={state} />
                       </td>
                       <td className="px-4 py-3 text-gray-400 text-xs">
-                        {formatDate(c.created_at)}
+                        {c.created_at ? formatDate(c.created_at) : "—"}
                       </td>
                     </tr>
                   );

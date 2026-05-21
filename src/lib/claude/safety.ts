@@ -44,7 +44,9 @@ export async function checkRateLimit(
   if (!row) return { allowed: true };
 
   const today = new Date().toDateString();
-  const lastReset = new Date(row.last_reset_at).toDateString();
+  const lastReset = row.last_reset_at
+    ? new Date(row.last_reset_at).toDateString()
+    : null;
 
   if (today !== lastReset) {
     await db
@@ -59,18 +61,18 @@ export async function checkRateLimit(
     return { allowed: true };
   }
 
-  if (row.daily_message_count >= 20)
+  if ((row.daily_message_count ?? 0) >= 20)
     return { allowed: false, reason: "daily_limit" };
-  if (row.minute_message_count >= 5)
+  if ((row.minute_message_count ?? 0) >= 5)
     return { allowed: false, reason: "minute_limit" };
-  if (row.daily_token_count >= 100_000)
+  if ((row.daily_token_count ?? 0) >= 100_000)
     return { allowed: false, reason: "token_limit" };
 
   await db
     .from("customer_rate_limits")
     .update({
-      daily_message_count: row.daily_message_count + 1,
-      minute_message_count: row.minute_message_count + 1,
+      daily_message_count: (row.daily_message_count ?? 0) + 1,
+      minute_message_count: (row.minute_message_count ?? 0) + 1,
       last_message_at: new Date().toISOString(),
     })
     .eq("customer_id", customerId);
@@ -93,7 +95,7 @@ export async function updateTokenCount(
 
   await db
     .from("customer_rate_limits")
-    .update({ daily_token_count: row.daily_token_count + tokens })
+    .update({ daily_token_count: (row.daily_token_count ?? 0) + tokens })
     .eq("customer_id", customerId);
 }
 
