@@ -19,7 +19,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import {
-  getPhoneNumberId,
   parseMessage,
   type WhatsAppWebhookPayload,
 } from "@/lib/whatsapp/types";
@@ -70,10 +69,6 @@ async function processWebhookAsync(
   if (existing) return;
 
   await db.from("processed_messages").insert({ message_id: message.messageId });
-
-  // Skip own messages
-  const ownPhoneId = getPhoneNumberId(payload);
-  if (ownPhoneId === process.env.WHATSAPP_PHONE_NUMBER_ID) return;
 
   // Kill switch
   const chatbotEnabled = await getSetting("chatbot_enabled");
