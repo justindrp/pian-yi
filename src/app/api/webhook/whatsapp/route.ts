@@ -273,7 +273,8 @@ async function processWebhookAsync(
       tools,
     });
     recordSuccess();
-  } catch (_err) {
+  } catch (err) {
+    console.error("[webhook] Claude API error:", err);
     await recordFailure();
     const tmpl = await getTemplate("chatbot_unavailable");
     await sendTextMessage(message.from, tmpl);
