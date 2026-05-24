@@ -27,6 +27,8 @@ export default function InboxClient() {
   );
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
+  // Ref so the realtime callback always sees the latest value without re-subscribing
+  const selectedCustomerIdRef = useRef<string | null>(null);
 
   const loadThreads = useCallback(async () => {
     const { data } = await supabase
@@ -76,6 +78,12 @@ export default function InboxClient() {
     [supabase],
   );
 
+  // Keep the ref in sync with state
+  useEffect(() => {
+    selectedCustomerIdRef.current = selectedCustomerId;
+  }, [selectedCustomerId]);
+
+  // Set up realtime channel once — never torn down when thread selection changes
   useEffect(() => {
     void loadThreads();
 
@@ -86,7 +94,8 @@ export default function InboxClient() {
         { event: "INSERT", schema: "public", table: "conversations" },
         () => {
           void loadThreads();
-          if (selectedCustomerId) void loadMessages(selectedCustomerId);
+          const current = selectedCustomerIdRef.current;
+          if (current) void loadMessages(current);
         },
       )
       .subscribe();
@@ -94,7 +103,7 @@ export default function InboxClient() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [selectedCustomerId, loadMessages, loadThreads, supabase]);
+  }, [loadThreads, loadMessages, supabase]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on message change only
   useEffect(() => {
