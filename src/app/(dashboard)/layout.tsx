@@ -36,7 +36,7 @@ export default async function DashboardLayout({
       <MobileNav
         navItems={navItems}
         userEmail={user.email}
-        version={process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? "local"}
+        version={`v${process.env.npm_package_version ?? "?"}`}
       />
       <div className="min-h-screen bg-gray-50 flex">
         {/* Sidebar — desktop only */}
@@ -68,7 +68,7 @@ export default async function DashboardLayout({
               </button>
             </form>
             <p className="text-[10px] text-gray-300 px-3 pt-2 font-mono">
-              {process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? "local"}
+              v{process.env.npm_package_version ?? "?"}
             </p>
           </div>
         </aside>
