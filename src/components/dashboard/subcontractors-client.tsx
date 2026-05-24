@@ -23,7 +23,7 @@ interface Subcontractor {
   subcontractor_off_days: OffDay[];
 }
 
-const AREAS = ["BSD", "Gading Serpong", "Alam Sutera", "Bintaro", "Graha Raya"];
+const AREAS = ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Bintaro", "Graha Raya"];
 
 async function fetchSubcontractors(): Promise<Subcontractor[]> {
   const res = await fetch("/api/subcontractors");

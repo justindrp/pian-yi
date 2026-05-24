@@ -12,7 +12,8 @@ type CustomerFlags = Database["public"]["Tables"]["customer_flags"]["Row"];
 
 const PAGE_SIZE = 20;
 const DELIVERY_AREAS = [
-  "BSD",
+  "BSD Baru",
+  "BSD Lama",
   "Gading Serpong",
   "Alam Sutera",
   "Bintaro",

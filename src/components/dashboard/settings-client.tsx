@@ -110,8 +110,8 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
           <tbody className="divide-y divide-gray-50">
             {rows.map((r) => (
               <tr key={r.portions}>
-                <td className="px-4 py-3">{r.portions} porsi</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 text-gray-900">{r.portions} porsi</td>
+                <td className="px-4 py-3 text-gray-900">
                   {editPortions === r.portions ? (
                     <input type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="border border-gray-200 rounded px-2 py-1 text-sm w-28" />
                   ) : (
@@ -153,7 +153,7 @@ function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> 
   const [form, setForm] = useState(() => Object.fromEntries(DELIVERY_KEYS.map((k) => [k, settingsMap[k] ?? ""])));
   const [confirm, setConfirm] = useState(false);
   const save = useSettingsMutation();
-  const AREAS = ["BSD", "Gading Serpong", "Alam Sutera", "Bintaro", "Graha Raya"];
+  const AREAS = ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Bintaro", "Graha Raya"];
   const selectedAreas: string[] = (() => { try { return JSON.parse(form.delivery_areas); } catch { return []; } })();
 
   return (
