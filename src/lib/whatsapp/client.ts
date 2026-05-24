@@ -56,25 +56,15 @@ export async function downloadMedia(mediaId: string): Promise<Buffer> {
   return Buffer.from(dlRes.data as ArrayBuffer);
 }
 
-export async function sendTypingIndicator(to: string, messageId: string): Promise<void> {
-  // Mark the incoming message as read (shows blue double-ticks to customer)
-  await axios
-    .post(
-      `${BASE_URL}/messages`,
-      { messaging_product: "whatsapp", status: "read", message_id: messageId },
-      { headers: headers() },
-    )
-    .catch(() => {});
-
-  // Show typing bubble ("...")
+export async function sendTypingIndicator(_to: string, messageId: string): Promise<void> {
+  // Mark as read and show typing indicator in one request (per Meta API docs)
   await axios
     .post(
       `${BASE_URL}/messages`,
       {
         messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to,
-        type: "typing_indicator",
+        status: "read",
+        message_id: messageId,
         typing_indicator: { type: "text" },
       },
       { headers: headers() },
