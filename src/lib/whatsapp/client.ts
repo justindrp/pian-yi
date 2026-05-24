@@ -74,7 +74,8 @@ export async function sendTypingIndicator(to: string, messageId: string): Promis
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to,
-        type: "typing",
+        type: "typing_indicator",
+        typing_indicator: { type: "text" },
       },
       { headers: headers() },
     )
