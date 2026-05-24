@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import MobileNav from "@/components/shared/mobile-nav";
 import QueryProvider from "@/components/shared/query-provider";
 import ServiceWorkerRegistrar from "@/components/shared/service-worker-registrar";
 import { createClient } from "@/lib/supabase/server";
@@ -32,9 +33,10 @@ export default async function DashboardLayout({
   return (
     <QueryProvider>
       <ServiceWorkerRegistrar />
+      <MobileNav navItems={navItems} userEmail={user.email} />
       <div className="min-h-screen bg-gray-50 flex">
-        {/* Sidebar */}
-        <aside className="w-56 bg-white border-r border-gray-100 flex flex-col">
+        {/* Sidebar — desktop only */}
+        <aside className="hidden md:flex w-56 bg-white border-r border-gray-100 flex-col">
           <div className="px-5 py-5 border-b border-gray-100">
             <p className="font-semibold text-gray-900 text-sm">
               Pian Yi Catering
@@ -65,8 +67,8 @@ export default async function DashboardLayout({
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto">
-          <div className="max-w-6xl mx-auto p-6">{children}</div>
+        <main className="flex-1 overflow-auto min-h-screen">
+          <div className="max-w-6xl mx-auto p-4 md:p-6">{children}</div>
         </main>
       </div>
     </QueryProvider>
