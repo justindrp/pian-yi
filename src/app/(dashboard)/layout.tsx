@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { version } from "../../../package.json";
 import MobileNav from "@/components/shared/mobile-nav";
 import QueryProvider from "@/components/shared/query-provider";
 import ServiceWorkerRegistrar from "@/components/shared/service-worker-registrar";
@@ -36,7 +37,7 @@ export default async function DashboardLayout({
       <MobileNav
         navItems={navItems}
         userEmail={user.email}
-        version={`v${process.env.npm_package_version ?? "?"}`}
+        version={`v${version}`}
       />
       <div className="min-h-screen bg-gray-50 flex">
         {/* Sidebar — desktop only */}
@@ -68,7 +69,7 @@ export default async function DashboardLayout({
               </button>
             </form>
             <p className="text-[10px] text-gray-300 px-3 pt-2 font-mono">
-              v{process.env.npm_package_version ?? "?"}
+              v{version}
             </p>
           </div>
         </aside>
