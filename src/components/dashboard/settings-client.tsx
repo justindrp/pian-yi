@@ -54,6 +54,7 @@ export default function SettingsClient() {
       <ChatbotSection settingsMap={settingsMap} />
       <AutomationSection settingsMap={settingsMap} />
       <EscalationSection settingsMap={settingsMap} />
+      <WeeklyMenuSection settingsMap={settingsMap} />
       <TemplatesSection rows={data.templates} />
       <AdminsSection rows={data.admins} />
     </div>
@@ -322,6 +323,37 @@ function TemplatesSection({ rows }: { rows: TemplateRow[] }) {
           </div>
         </div>
       )}
+    </Section>
+  );
+}
+
+// --- Weekly Menu ---
+function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string> }) {
+  const [menu, setMenu] = useState(settingsMap.weekly_menu ?? "");
+  const [confirm, setConfirm] = useState(false);
+  const save = useSettingsMutation();
+
+  return (
+    <Section title="Weekly Menu">
+      <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
+        <p className="text-xs text-gray-400">
+          Paste this week's menu here. The chatbot will share it when customers ask. Leave blank to direct customers to Instagram instead.
+        </p>
+        <textarea
+          rows={6}
+          value={menu}
+          onChange={(e) => { setMenu(e.target.value); setConfirm(false); }}
+          placeholder={"Senin: Ayam bakar, tempe orek, tumis kangkung\nSelasa: Ikan goreng, tahu balado, sayur asem\n..."}
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+        />
+        <ConfirmSaveButton
+          label="Update weekly menu?"
+          confirm={confirm}
+          setConfirm={setConfirm}
+          loading={save.isPending}
+          onConfirm={() => save.mutate([{ key: "weekly_menu", value: menu }])}
+        />
+      </div>
     </Section>
   );
 }

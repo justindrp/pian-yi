@@ -190,6 +190,15 @@ async function processWebhookAsync(
     return;
   }
 
+  // Notify admins of every incoming message
+  const customerName = customer?.name ?? message.from;
+  await sendPushToAllAdmins(
+    `New message from ${customerName}`,
+    text.slice(0, 100),
+    "/inbox",
+    "low",
+  );
+
   // Prompt injection
   if (detectInjection(text)) {
     const tmpl = await getTemplate("chatbot_unavailable");

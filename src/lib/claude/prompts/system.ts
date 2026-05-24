@@ -17,6 +17,7 @@ export async function buildSystemPrompt(params: {
     bankAccountNumber,
     bankAccountName,
     escalationKeywords,
+    weeklyMenu,
   ] = await Promise.all([
     getSetting("business_name"),
     getSetting("delivery_areas"),
@@ -25,6 +26,7 @@ export async function buildSystemPrompt(params: {
     getSetting("bank_account_number"),
     getSetting("bank_account_name"),
     getSetting("escalation_keywords"),
+    getSetting("weekly_menu"),
   ]);
 
   const [pricingTiers, activeInstructions] = await Promise.all([
@@ -72,7 +74,7 @@ Always respond in Indonesian. Use "kak" as honorific. Keep replies under 200 wor
 - Every portion includes: nasi + 3 lauk (no sayur, no sambal)
 - Free delivery (ongkir gratis)
 - Halal
-- Menu rotates daily — direct customers to Instagram ${instagramHandle} for the weekly menu
+- Menu rotates daily. ${weeklyMenu ? `This week's menu:\n${weeklyMenu}` : `Direct customers to Instagram ${instagramHandle} for the weekly menu`}
 - Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})
 - Order deadline: 8pm the day before delivery
 
