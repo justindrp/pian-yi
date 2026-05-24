@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import QueryProvider from "@/components/shared/query-provider";
+import ServiceWorkerRegistrar from "@/components/shared/service-worker-registrar";
 import { createClient } from "@/lib/supabase/server";
 
 const navItems = [
@@ -30,6 +31,7 @@ export default async function DashboardLayout({
 
   return (
     <QueryProvider>
+      <ServiceWorkerRegistrar />
       <div className="min-h-screen bg-gray-50 flex">
         {/* Sidebar */}
         <aside className="w-56 bg-white border-r border-gray-100 flex flex-col">
