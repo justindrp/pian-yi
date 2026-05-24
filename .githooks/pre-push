@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+
+MSG=$(git log -1 --format="%s")
+
+# Skip for merge commits, chore commits, or amend-only pushes
+if echo "$MSG" | grep -qE '^(chore:|Merge )'; then
+  exit 0
+fi
+
+# Determine bump type from commit message
+if echo "$MSG" | grep -qE '^feat(\(.+\))?:'; then
+  BUMP="minor"
+else
+  BUMP="patch"
+fi
+
+# Bump version in package.json without creating a git tag
+node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const [major, minor, patch] = pkg.version.split('.').map(Number);
+  pkg.version = '$BUMP' === 'minor'
+    ? \`\${major}.\${minor + 1}.0\`
+    : \`\${major}.\${minor}.\${patch + 1}\`;
+  fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+  console.log('Version bumped to ' + pkg.version);
+"
+
+# Amend the current commit to include the version bump
+git add package.json
+git commit --amend --no-edit --no-verify -q
