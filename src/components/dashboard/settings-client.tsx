@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface SettingRow { key: string; value: string; description?: string | null }
 interface PricingRow { portions: number; price_per_portion: number }
@@ -452,7 +452,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function ConfirmSaveButton({ onConfirm, confirm, setConfirm, loading, success }: { onConfirm: () => void; confirm: boolean; setConfirm: (v: boolean) => void; loading: boolean; success?: boolean }) {
-  if (success) {
+  const [showSaved, setShowSaved] = useState(false);
+
+  useEffect(() => {
+    if (success) {
+      setShowSaved(true);
+      setConfirm(false);
+      const t = setTimeout(() => setShowSaved(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [success, setConfirm]);
+
+  if (showSaved) {
     return <span className="text-sm text-green-600 font-medium">Saved!</span>;
   }
   return confirm ? (
