@@ -360,26 +360,83 @@ function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string
 
 // --- Admins ---
 function AdminsSection({ rows }: { rows: AdminRow[] }) {
+  const qc = useQueryClient();
+  const [newEmail, setNewEmail] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const add = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await fetch("/api/settings/admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Failed");
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setNewEmail(""); setError(""); },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await fetch("/api/settings/admins", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Failed");
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setConfirmRemove(null); },
+    onError: (e: Error) => setError(e.message),
+  });
+
   return (
     <Section title="Admin Users">
-      <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
-            <tr>
-              <th className="px-4 py-3 text-left">Email</th>
-              <th className="px-4 py-3 text-left">Added</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {rows.map((a) => (
-              <tr key={a.email}>
-                <td className="px-4 py-3 text-gray-900">{a.email}</td>
-                <td className="px-4 py-3 text-gray-400 text-xs">{new Date(a.created_at).toLocaleDateString("id-ID")}</td>
+      <div className="space-y-3">
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-3 text-left">Email</th>
+                <th className="px-4 py-3 text-left">Added</th>
+                <th className="px-4 py-3 w-16" />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map((a) => (
+                <tr key={a.email}>
+                  <td className="px-4 py-3 text-gray-900">{a.email}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{new Date(a.created_at).toLocaleDateString("id-ID")}</td>
+                  <td className="px-4 py-3">
+                    <button type="button" onClick={() => setConfirmRemove(a.email)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => { setNewEmail(e.target.value); setError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && newEmail.trim()) add.mutate(newEmail.trim()); }}
+            placeholder="newadmin@example.com"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          />
+          <button type="button" onClick={() => { if (newEmail.trim()) add.mutate(newEmail.trim()); }} disabled={add.isPending} className="px-4 py-2 bg-gray-800 text-white text-sm rounded-lg disabled:opacity-40">
+            {add.isPending ? "Adding..." : "Add admin"}
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-500">{error}</p>}
       </div>
+
+      {confirmRemove && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-96 space-y-3">
+            <p className="font-medium">Remove <span className="text-red-600">{confirmRemove}</span> as admin?</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => remove.mutate(confirmRemove)} disabled={remove.isPending} className="flex-1 py-2 bg-red-600 text-white text-sm rounded-lg disabled:opacity-40">{remove.isPending ? "Removing..." : "Ya, remove"}</button>
+              <button type="button" onClick={() => setConfirmRemove(null)} className="flex-1 py-2 border text-sm rounded-lg">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Section>
   );
 }
