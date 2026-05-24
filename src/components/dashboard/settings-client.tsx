@@ -76,7 +76,7 @@ function BusinessSection({ settingsMap }: { settingsMap: Record<string, string> 
             <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
           </div>
         ))}
-        <ConfirmSaveButton label="Simpan info bisnis?" onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} />
+        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
       </div>
     </Section>
   );
@@ -174,7 +174,7 @@ function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> 
           <label className="block text-xs text-gray-500 mb-1">Order deadline hour (WIB)</label>
           <input type="number" min={0} max={23} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form.order_deadline_hour ?? ""} onChange={(e) => setForm((f) => ({ ...f, order_deadline_hour: e.target.value }))} />
         </div>
-        <ConfirmSaveButton label="Simpan delivery settings?" onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} />
+        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
       </div>
     </Section>
   );
@@ -210,7 +210,7 @@ function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }
             <input type="number" step="0.01" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-32" value={form[key] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
           </div>
         ))}
-        <ConfirmSaveButton label="Simpan chatbot settings?" onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} />
+        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
       </div>
     </Section>
   );
@@ -238,7 +238,7 @@ function AutomationSection({ settingsMap }: { settingsMap: Record<string, string
             <input type="number" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
           </div>
         ))}
-        <ConfirmSaveButton label="Simpan automation settings?" onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} />
+        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
       </div>
     </Section>
   );
@@ -266,7 +266,7 @@ function EscalationSection({ settingsMap }: { settingsMap: Record<string, string
           <input value={newKw} onChange={(e) => setNewKw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && newKw.trim()) { setKeywords((k) => [...k, newKw.trim()]); setNewKw(""); } }} placeholder="Add keyword..." className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
           <button type="button" onClick={() => { if (newKw.trim()) { setKeywords((k) => [...k, newKw.trim()]); setNewKw(""); } }} className="px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg">Add</button>
         </div>
-        <ConfirmSaveButton label="Simpan escalation keywords?" onConfirm={() => save.mutate({ escalation_keywords: JSON.stringify(keywords) })} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} />
+        <ConfirmSaveButton onConfirm={() => save.mutate({ escalation_keywords: JSON.stringify(keywords) })} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
       </div>
     </Section>
   );
@@ -347,10 +347,10 @@ function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string
           className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
         />
         <ConfirmSaveButton
-          label="Update weekly menu?"
           confirm={confirm}
           setConfirm={setConfirm}
           loading={save.isPending}
+          success={save.isSuccess}
           onConfirm={() => save.mutate({ weekly_menu: menu })}
         />
       </div>
@@ -451,12 +451,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ConfirmSaveButton({ label, onConfirm, confirm, setConfirm, loading }: { label: string; onConfirm: () => void; confirm: boolean; setConfirm: (v: boolean) => void; loading: boolean }) {
+function ConfirmSaveButton({ onConfirm, confirm, setConfirm, loading, success }: { onConfirm: () => void; confirm: boolean; setConfirm: (v: boolean) => void; loading: boolean; success?: boolean }) {
+  if (success) {
+    return <span className="text-sm text-green-600 font-medium">Saved!</span>;
+  }
   return confirm ? (
     <div className="flex gap-2 items-center">
-      <span className="text-sm text-gray-600">{label}</span>
-      <button type="button" onClick={onConfirm} disabled={loading} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40">{loading ? "Saving..." : "Ya, simpan"}</button>
-      <button type="button" onClick={() => setConfirm(false)} className="px-3 py-1.5 border text-xs rounded-lg">Batal</button>
+      <span className="text-sm text-gray-600">Save changes?</span>
+      <button type="button" onClick={onConfirm} disabled={loading} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40">{loading ? "Saving..." : "Confirm"}</button>
+      <button type="button" onClick={() => setConfirm(false)} className="px-3 py-1.5 border text-xs rounded-lg">Cancel</button>
     </div>
   ) : (
     <button type="button" onClick={() => setConfirm(true)} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">Save changes</button>
