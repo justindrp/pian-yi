@@ -11,9 +11,10 @@ interface NavItem {
 interface MobileNavProps {
   navItems: NavItem[];
   userEmail: string | undefined;
+  version: string;
 }
 
-export default function MobileNav({ navItems, userEmail }: MobileNavProps) {
+export default function MobileNav({ navItems, userEmail, version }: MobileNavProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -84,6 +85,7 @@ export default function MobileNav({ navItems, userEmail }: MobileNavProps) {
               Sign out
             </button>
           </form>
+          <p className="text-[10px] text-gray-300 px-3 pt-2 font-mono">{version}</p>
         </div>
       </div>
     </>

@@ -33,7 +33,11 @@ export default async function DashboardLayout({
   return (
     <QueryProvider>
       <ServiceWorkerRegistrar />
-      <MobileNav navItems={navItems} userEmail={user.email} />
+      <MobileNav
+        navItems={navItems}
+        userEmail={user.email}
+        version={process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? "local"}
+      />
       <div className="min-h-screen bg-gray-50 flex">
         {/* Sidebar — desktop only */}
         <aside className="hidden md:flex w-56 bg-white border-r border-gray-100 flex-col">
@@ -63,6 +67,9 @@ export default async function DashboardLayout({
                 Sign out
               </button>
             </form>
+            <p className="text-[10px] text-gray-300 px-3 pt-2 font-mono">
+              {process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? "local"}
+            </p>
           </div>
         </aside>
 

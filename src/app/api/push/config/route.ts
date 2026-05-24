@@ -6,7 +6,15 @@ export async function GET(): Promise<Response> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
 
-  return NextResponse.json({ vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "" });
+  const { count } = await supabase
+    .from("push_subscriptions")
+    .select("*", { count: "exact", head: true })
+    .eq("user_email", user.email ?? "");
+
+  return NextResponse.json({
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",
+    hasSubscription: (count ?? 0) > 0,
+  });
 }
 
 export const dynamic = "force-dynamic";

@@ -13,12 +13,13 @@ export default function PushSubscribeButton() {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     setIsIOS(ios);
 
-    if ("serviceWorker" in navigator && "PushManager" in window) {
-      navigator.serviceWorker.ready.then(async (reg) => {
-        const sub = await reg.pushManager.getSubscription();
-        setSubscribed(!!sub);
-      });
-    }
+    // Use server as source of truth — browser may have a subscription the DB doesn't know about
+    fetch("/api/push/config")
+      .then((r) => r.json())
+      .then((data: { hasSubscription?: boolean }) => {
+        setSubscribed(data.hasSubscription === true);
+      })
+      .catch(() => {});
   }, []);
 
   function isStandalone() {
