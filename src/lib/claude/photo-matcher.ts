@@ -182,6 +182,15 @@ export async function sendDeliveryPhotoToCustomer(
 
   if (!proof?.image_url) return;
 
+  const storagePath = proof.image_url.split("/delivery-proofs/")[1];
+  if (!storagePath) return;
+
+  const { data: signedData } = await db.storage
+    .from("delivery-proofs")
+    .createSignedUrl(storagePath, 600); // 10 min — enough for WhatsApp to fetch
+
+  if (!signedData?.signedUrl) return;
+
   const caption = `Halo ${customerName}, pesanan ${mealType} hari ini sudah sampai ya 🍱 Selamat menikmati! 😊`;
-  await sendImageMessage(phone, proof.image_url, caption);
+  await sendImageMessage(phone, signedData.signedUrl, caption);
 }
