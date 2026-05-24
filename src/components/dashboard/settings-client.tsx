@@ -343,7 +343,7 @@ function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string
           rows={6}
           value={menu}
           onChange={(e) => { setMenu(e.target.value); setConfirm(false); }}
-          placeholder={"Senin: Ayam bakar, tempe orek, tumis kangkung\nSelasa: Ikan goreng, tahu balado, sayur asem\n..."}
+          placeholder={"SENIN\nLunch: Ayam bakar, tempe orek, tumis kangkung\nDinner: Ikan goreng, tahu balado, sayur asem\n\nSELASA\nLunch: ...\nDinner: ..."}
           className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
         />
         <ConfirmSaveButton
