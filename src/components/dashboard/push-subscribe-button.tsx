@@ -19,8 +19,16 @@ export default function PushSubscribeButton() {
     }
   }, []);
 
+  function isStandalone() {
+    return (
+      ("standalone" in navigator && (navigator as { standalone?: boolean }).standalone === true) ||
+      window.matchMedia("(display-mode: standalone)").matches
+    );
+  }
+
   async function subscribe() {
-    if (isIOS) {
+    // iOS supports push only when installed as PWA (standalone mode)
+    if (isIOS && !isStandalone()) {
       setShowIOSGuide(true);
       return;
     }
