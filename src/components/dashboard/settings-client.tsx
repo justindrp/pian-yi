@@ -88,6 +88,8 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
   const [editPortions, setEditPortions] = useState<number | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [confirm, setConfirm] = useState(false);
+  const [adjustAmount, setAdjustAmount] = useState("1000");
+  const [adjustConfirm, setAdjustConfirm] = useState(false);
 
   const save = useMutation({
     mutationFn: async ({ portions, price_per_portion }: { portions: number; price_per_portion: number }) => {
@@ -95,6 +97,15 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setEditPortions(null); setConfirm(false); },
   });
+
+  const bulkAdjust = useMutation({
+    mutationFn: async (adjust: number) => {
+      await fetch("/api/settings/pricing", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adjust }) });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setAdjustConfirm(false); },
+  });
+
+  const adjustNum = Number(adjustAmount);
 
   return (
     <Section title="Pricing Tiers">
@@ -133,13 +144,54 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
           </tbody>
         </table>
       </div>
+
+      {/* Bulk adjust */}
+      <div className="flex items-center gap-2 mt-3">
+        <span className="text-sm text-gray-500">Adjust all tiers by</span>
+        <div className="flex">
+          <button type="button" onClick={() => setAdjustAmount((v) => String(-Math.abs(Number(v))))} className={`px-2 py-1 text-xs border rounded-l-lg ${adjustNum < 0 ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>−</button>
+          <button type="button" onClick={() => setAdjustAmount((v) => String(Math.abs(Number(v))))} className={`px-2 py-1 text-xs border-y border-r rounded-r-lg ${adjustNum >= 0 ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>+</button>
+        </div>
+        <input
+          type="number"
+          value={Math.abs(adjustNum) || ""}
+          onChange={(e) => setAdjustAmount(adjustNum < 0 ? String(-Math.abs(Number(e.target.value))) : e.target.value)}
+          className="border border-gray-200 rounded px-2 py-1 text-sm w-24"
+          placeholder="1000"
+          min={0}
+        />
+        <button
+          type="button"
+          onClick={() => setAdjustConfirm(true)}
+          disabled={!adjustNum}
+          className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40"
+        >
+          Apply to all
+        </button>
+      </div>
+
       {confirm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <p className="font-medium">Perubahan harga hanya berlaku untuk pesanan baru. Pesanan yang sudah ada tidak terpengaruh. Lanjutkan?</p>
+            <p className="font-medium">Price changes only apply to new orders. Existing orders are not affected. Continue?</p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => save.mutate({ portions: editPortions!, price_per_portion: Number(editPrice) })} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">Ya, simpan</button>
-              <button type="button" onClick={() => setConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Batal</button>
+              <button type="button" onClick={() => save.mutate({ portions: editPortions!, price_per_portion: Number(editPrice) })} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">{save.isPending ? "Saving..." : "Confirm"}</button>
+              <button type="button" onClick={() => setConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adjustConfirm && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-96 space-y-3">
+            <p className="font-medium">
+              {adjustNum > 0 ? "Increase" : "Decrease"} all tiers by Rp {Math.abs(adjustNum).toLocaleString("id-ID")}?
+            </p>
+            <p className="text-sm text-gray-500">Price changes only apply to new orders. Existing orders are not affected.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => bulkAdjust.mutate(adjustNum)} disabled={bulkAdjust.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">{bulkAdjust.isPending ? "Saving..." : "Confirm"}</button>
+              <button type="button" onClick={() => setAdjustConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Cancel</button>
             </div>
           </div>
         </div>
