@@ -351,7 +351,7 @@ function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string
           confirm={confirm}
           setConfirm={setConfirm}
           loading={save.isPending}
-          onConfirm={() => save.mutate([{ key: "weekly_menu", value: menu }])}
+          onConfirm={() => save.mutate({ weekly_menu: menu })}
         />
       </div>
     </Section>
