@@ -61,6 +61,19 @@ export async function checkRateLimit(
     return { allowed: true };
   }
 
+  // Reset per-minute counter if last message was more than 60s ago
+  const lastMessageAt = row.last_message_at
+    ? new Date(row.last_message_at).getTime()
+    : 0;
+  const minuteExpired = Date.now() - lastMessageAt > 60_000;
+  if (minuteExpired && (row.minute_message_count ?? 0) > 0) {
+    await db
+      .from("customer_rate_limits")
+      .update({ minute_message_count: 0 })
+      .eq("customer_id", customerId);
+    row.minute_message_count = 0;
+  }
+
   if ((row.daily_message_count ?? 0) >= 20)
     return { allowed: false, reason: "daily_limit" };
   if ((row.minute_message_count ?? 0) >= 5)
