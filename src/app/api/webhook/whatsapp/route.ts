@@ -18,7 +18,7 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
-import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
+import { downloadMedia, sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
 import {
   parseMessage,
   type WhatsAppWebhookPayload,
@@ -376,7 +376,7 @@ async function processWebhookAsync(
     // State machine stays simple for Phase 1
   }
 
-  // Send reply with typing delay
+  // Send reply with typing indicator + delay
   if (replyText) {
     const base =
       Number.parseFloat(await getSetting("typing_delay_base_seconds")) || 3;
@@ -387,6 +387,7 @@ async function processWebhookAsync(
       Number.parseFloat(await getSetting("typing_delay_max_seconds")) || 12;
     const delay = calcTypingDelay(replyText.length, base, perChar, max);
 
+    await sendTypingIndicator(message.from, message.messageId);
     await sleep(delay);
     await sendTextMessage(message.from, replyText);
   }
