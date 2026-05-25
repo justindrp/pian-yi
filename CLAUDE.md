@@ -74,10 +74,11 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 - Stored in `pricing_tiers` table, never hardcoded
 - Existing orders lock in `price_per_portion` at order creation time
 - Tiers: 1=30k, 2=29k, 5=28k, 10=27k, 20=26k, 40=25k, 80=24k (current values)
+- Bulk adjust supported: `PATCH /api/settings/pricing` with `{ adjust: number }` increments all tiers at once
 
 ### Delivery
 
-- Areas: BSD, Gading Serpong, Alam Sutera, Bintaro, Graha Raya (stored in `settings`)
+- Areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, Bintaro, Graha Raya (stored in `settings`)
 - Order deadline: 8pm the day before delivery
 - After 8pm cutoff, orders schedule for day after tomorrow
 - Annie can manually override deadline with warning popup
@@ -112,7 +113,7 @@ When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur kam
 
 1. **Anthropic console budget cap** — $100/month hard limit, configured outside this codebase
 2. **API key hygiene** — keys only in `.env` and Railway env vars, never committed
-3. **Per-customer rate limits** — 20 bot replies/day, 5 bot replies/minute, 100,000 tokens/day per customer
+3. **Per-customer rate limits** — 20 bot replies/day, 7 bot replies/minute, 100,000 tokens/day per customer
 4. **Token budget per request** — max 20 messages from history, max 4000 input tokens, max 1000 output tokens, max 3000 token system prompt
 5. **Loop prevention** — idempotency, circuit breaker (stop calling Claude for 5min if 5 errors in 60s), echo detection (don't send duplicate replies), retry budget (max 3 retries per message)
 6. **Prompt injection defense** — system prompt forbids long/repetitive responses, hard `max_tokens` cap, pattern detection before calling Claude
@@ -186,6 +187,7 @@ pian-yi/
 │   │       │   └── lapsed-customers/route.ts
 │   │       └── push/
 │   │           └── subscribe/route.ts
+│   ├── proxy.ts (Supabase SSR session refresh — Next.js 16 "proxy" convention, replaces middleware.ts)
 │   ├── lib/
 │   │   ├── supabase/
 │   │   │   ├── client.ts (browser)
@@ -258,6 +260,7 @@ Standard commands (always use these spellings):
 - Webhook URL after deploy: `https://[railway-app].up.railway.app/api/webhook/whatsapp`
 - Cron jobs configured via Railway's cron feature, hitting `/api/cron/*` endpoints with `CRON_SECRET` header verification
 - Repo created and managed via GitHub CLI
+- `next.config.ts` sets `serverActions.allowedOrigins: ["*.up.railway.app", "*.railway.app"]` — required to prevent Railway's reverse proxy from triggering Next.js CSRF rejection
 
 ## Things to never do
 
@@ -272,3 +275,9 @@ Standard commands (always use these spellings):
 - Never delete from `processed_messages`, `edit_log`, or `conversation_logs` tables
 - Never disable RLS on Supabase tables in production
 - Never deploy this project to Vercel — Railway only (Vercel CLI/MCP is installed for other purposes)
+- Never create `middleware.ts` — Next.js 16 uses `proxy.ts` with `export function proxy()` (or default export)
+
+## Known issues / tech debt
+
+- `/api/auth/check-admin` accepts the email from the request body without verifying the caller's session — allows unauthenticated admin email enumeration via 200 vs 403 response. Fix: extract email from a verified Supabase session instead.
+- `subcontractors-client.tsx` and `supabase/seed.sql` still reference the old `"BSD"` delivery area string (not yet split into BSD Baru / BSD Lama).
