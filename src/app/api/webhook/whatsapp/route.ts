@@ -100,26 +100,7 @@ async function processWebhookAsync(
     return;
   }
 
-  // Non-text messages
-  let text: string;
-  if (message.type === "location") {
-    const parts = [message.locationName, message.locationAddress].filter(Boolean);
-    let zoneNote = "";
-    const { locationLat: lat, locationLng: lng } = message;
-    if (lat !== undefined && lng !== undefined) {
-      const inBsd = lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
-      if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
-    }
-    text = `[Lokasi dibagikan: ${parts.join(", ")}${zoneNote}]`;
-  } else if (message.type !== "text") {
-    const tmpl = await getTemplate("text_only");
-    await sendTextMessage(message.from, tmpl);
-    return;
-  } else {
-    text = message.text ?? "";
-  }
-
-  // Upsert customer
+  // Upsert customer (must happen before message-type routing so we can check state)
   const { data: customer } = await db
     .from("customers")
     .upsert(
@@ -155,7 +136,7 @@ async function processWebhookAsync(
       ),
   ]);
 
-  // Check escalated_to_human
+  // Check flags
   const { data: flags } = await db
     .from("customer_flags")
     .select("escalated_to_human, is_blacklisted")
@@ -165,17 +146,24 @@ async function processWebhookAsync(
   if (flags?.is_blacklisted) return;
 
   if (flags?.escalated_to_human) {
-    const escalatedIntent = await classifyIntent(text).catch(() => "other");
+    const escalatedText =
+      message.type === "text"
+        ? (message.text ?? "")
+        : message.type === "image"
+          ? "[Image]"
+          : `[${message.type}]`;
+    const escalatedIntent = await classifyIntent(escalatedText).catch(() => "other");
     await saveMessage({
       customerId,
       role: "user",
-      content: text,
+      content: escalatedText,
       messageId: message.messageId,
       intent: escalatedIntent,
+      messageType: message.type === "image" ? "image" : "text",
     });
     await sendPushToAllAdmins(
       "New message from escalated customer",
-      `${message.from}: ${text.slice(0, 80)}`,
+      `${message.from}: ${escalatedText.slice(0, 80)}`,
       "/inbox",
       "medium",
     );
@@ -184,6 +172,47 @@ async function processWebhookAsync(
       .update({ processed_at: new Date().toISOString() })
       .eq("message_id", message.messageId);
     return;
+  }
+
+  // Payment proof: capture image when customer is awaiting payment
+  if (message.type === "image" && message.imageId) {
+    const { data: stateRow } = await db
+      .from("customer_state")
+      .select("state")
+      .eq("customer_id", customerId)
+      .single();
+
+    if (stateRow?.state === "awaiting_payment") {
+      await handlePaymentProofImage(message, customerId, customer.name, message.from);
+      await db
+        .from("processed_messages")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("message_id", message.messageId);
+      return;
+    }
+
+    const tmpl = await getTemplate("text_only");
+    await sendTextMessage(message.from, tmpl);
+    return;
+  }
+
+  // Non-text messages
+  let text: string;
+  if (message.type === "location") {
+    const parts = [message.locationName, message.locationAddress].filter(Boolean);
+    let zoneNote = "";
+    const { locationLat: lat, locationLng: lng } = message;
+    if (lat !== undefined && lng !== undefined) {
+      const inBsd = lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
+      if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
+    }
+    text = `[Lokasi dibagikan: ${parts.join(", ")}${zoneNote}]`;
+  } else if (message.type !== "text") {
+    const tmpl = await getTemplate("text_only");
+    await sendTextMessage(message.from, tmpl);
+    return;
+  } else {
+    text = message.text ?? "";
   }
 
   // Rate limit check
@@ -467,6 +496,66 @@ async function handleSubcontractorMessage(
       "medium",
     );
   }
+}
+
+async function handlePaymentProofImage(
+  message: import("@/lib/whatsapp/types").WhatsAppMessage,
+  customerId: string,
+  customerName: string | null,
+  phone: string,
+): Promise<void> {
+  const db = createAdminClient();
+
+  let imageUrl: string | null = null;
+  if (message.imageId) {
+    try {
+      const imageBuffer = await downloadMedia(message.imageId);
+      const today = new Date().toISOString().slice(0, 10);
+      const storagePath = `${customerId}/${today}/${message.messageId}.jpg`;
+      const { error: uploadErr } = await db.storage
+        .from("payment-proofs")
+        .upload(storagePath, imageBuffer, { contentType: "image/jpeg", upsert: false });
+      if (!uploadErr) {
+        const { data: urlData } = db.storage.from("payment-proofs").getPublicUrl(storagePath);
+        imageUrl = urlData.publicUrl;
+      } else {
+        console.error("[webhook] payment proof upload failed:", uploadErr.message);
+      }
+    } catch (err) {
+      console.error("[webhook] payment proof download failed:", (err as Error).message);
+    }
+  }
+
+  await db
+    .from("orders")
+    .update({ status: "payment_proof_received", payment_proof_url: imageUrl })
+    .eq("customer_id", customerId)
+    .eq("status", "pending_payment");
+
+  await db
+    .from("customer_state")
+    .update({ state: "payment_proof_received", updated_at: new Date().toISOString() })
+    .eq("customer_id", customerId);
+
+  await saveMessage({
+    customerId,
+    role: "user",
+    content: "[Bukti pembayaran dikirim]",
+    messageId: message.messageId,
+    messageType: "image",
+  });
+
+  const confirmMsg =
+    "Terima kasih kak! Bukti pembayaran sudah kami terima ya. Pesananmu akan segera kami aktifkan 🎉";
+  await saveMessage({ customerId, role: "assistant", content: confirmMsg, modelUsed: "human" });
+  await sendTextMessage(phone, confirmMsg);
+
+  await sendPushToAllAdmins(
+    `Bukti bayar diterima — ${customerName ?? phone}`,
+    "Cek halaman Payments untuk konfirmasi",
+    "/payments",
+    "medium",
+  );
 }
 
 async function handleToolUse(

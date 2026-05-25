@@ -520,6 +520,7 @@ export type Database = {
           package_size: number
           paid_at: string | null
           pause_until: string | null
+          payment_proof_url: string | null
           portions_dinner: number | null
           portions_lunch: number | null
           portions_per_delivery: number
@@ -548,6 +549,7 @@ export type Database = {
           package_size: number
           paid_at?: string | null
           pause_until?: string | null
+          payment_proof_url?: string | null
           portions_dinner?: number | null
           portions_lunch?: number | null
           portions_per_delivery: number
@@ -576,6 +578,7 @@ export type Database = {
           package_size?: number
           paid_at?: string | null
           pause_until?: string | null
+          payment_proof_url?: string | null
           portions_dinner?: number | null
           portions_lunch?: number | null
           portions_per_delivery?: number
