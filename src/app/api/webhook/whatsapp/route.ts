@@ -296,6 +296,7 @@ async function processWebhookAsync(
           portions_lunch: { type: "number" },
           portions_dinner: { type: "number" },
           address: { type: "string" },
+          maps_link: { type: "string", description: "Google Maps link provided by the customer" },
           area: { type: "string", enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera"] },
           meal_time_preference: { type: "string" },
           custom_schedule: { type: "object" },
@@ -309,6 +310,7 @@ async function processWebhookAsync(
           "package_size",
           "portions_per_delivery",
           "address",
+          "maps_link",
           "area",
           "meal_time_preference",
           "start_date",
@@ -580,6 +582,7 @@ async function handleToolUse(
       portions_lunch?: number;
       portions_dinner?: number;
       address: string;
+      maps_link: string;
       area: string;
       meal_time_preference: string;
       custom_schedule?: Record<string, unknown>;
@@ -606,6 +609,7 @@ async function handleToolUse(
       portions_dinner: input.portions_dinner ?? 0,
       portions_remaining: input.package_size,
       delivery_address: input.address,
+      maps_link: input.maps_link,
       area: input.area,
       meal_time_preference: input.meal_time_preference,
       custom_schedule: (input.custom_schedule ?? null) as

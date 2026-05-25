@@ -516,6 +516,7 @@ export type Database = {
           delivery_address: string
           followup_sent_at: string | null
           id: string
+          maps_link: string | null
           meal_time_preference: string
           package_size: number
           paid_at: string | null
@@ -545,6 +546,7 @@ export type Database = {
           delivery_address: string
           followup_sent_at?: string | null
           id?: string
+          maps_link?: string | null
           meal_time_preference: string
           package_size: number
           paid_at?: string | null
@@ -574,6 +576,7 @@ export type Database = {
           delivery_address?: string
           followup_sent_at?: string | null
           id?: string
+          maps_link?: string | null
           meal_time_preference?: string
           package_size?: number
           paid_at?: string | null
