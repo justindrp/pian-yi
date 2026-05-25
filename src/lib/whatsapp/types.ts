@@ -5,6 +5,8 @@ export interface WhatsAppMessage {
   text?: string;
   imageId?: string;
   imageCaption?: string;
+  locationName?: string;
+  locationAddress?: string;
   timestamp: string;
 }
 
@@ -23,6 +25,7 @@ export interface WhatsAppWebhookPayload {
           timestamp: string;
           text?: { body: string };
           image?: { id: string; caption?: string; mime_type?: string };
+          location?: { latitude: number; longitude: number; name?: string; address?: string };
         }>;
         statuses?: unknown[];
       };
@@ -43,6 +46,8 @@ export function parseMessage(
     text: message.text?.body,
     imageId: message.image?.id,
     imageCaption: message.image?.caption,
+    locationName: message.location?.name,
+    locationAddress: message.location?.address,
     timestamp: message.timestamp,
   };
 }

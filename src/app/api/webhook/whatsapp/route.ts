@@ -101,13 +101,17 @@ async function processWebhookAsync(
   }
 
   // Non-text messages
-  if (message.type !== "text") {
+  let text: string;
+  if (message.type === "location") {
+    const parts = [message.locationName, message.locationAddress].filter(Boolean);
+    text = `[Lokasi dibagikan: ${parts.join(", ")}]`;
+  } else if (message.type !== "text") {
     const tmpl = await getTemplate("text_only");
     await sendTextMessage(message.from, tmpl);
     return;
+  } else {
+    text = message.text ?? "";
   }
-
-  const text = message.text ?? "";
 
   // Upsert customer
   const { data: customer } = await db
