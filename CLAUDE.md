@@ -78,7 +78,7 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 
 ### Delivery
 
-- Areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, Bintaro, Graha Raya (stored in `settings`)
+- Areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera (stored in `settings`; Bintaro and Graha Raya deactivated)
 - Order deadline: 8pm the day before delivery
 - After 8pm cutoff, orders schedule for day after tomorrow
 - Annie can manually override deadline with warning popup
