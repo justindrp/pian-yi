@@ -336,7 +336,7 @@ async function processWebhookAsync(
     {
       name: "show_menu",
       description:
-        "Sends the weekly menu image to the customer. Call this when customer asks to see the menu. Satisfies Gate #1 (Menu seen).",
+        "Sends the weekly menu image to the customer. Only call this if the customer has NOT yet confirmed they have seen the menu — i.e. Gate #1 is not yet cleared. Do NOT call this if the customer already said 'sudah lihat' or equivalent. Calling this satisfies Gate #1.",
       input_schema: { type: "object", properties: {} },
     },
   ];
