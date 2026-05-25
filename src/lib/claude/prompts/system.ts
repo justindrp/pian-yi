@@ -8,6 +8,7 @@ export async function buildSystemPrompt(params: {
   casual: boolean;
   customerState: string;
   customerName: string | null;
+  detectedMapsLink: string | null;
 }): Promise<string> {
   const [
     businessName,
@@ -135,7 +136,7 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 - Customer state: ${params.customerState}
 - Customer name (if known): ${params.customerName ?? "unknown"}
 - Today: ${now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-- Order deadline tonight: ${deadlineTime}${
+- Order deadline tonight: ${deadlineTime}${params.detectedMapsLink ? `\n- **Gate #3 maps link: ALREADY PROVIDED** — customer shared this link earlier: ${params.detectedMapsLink}. Do NOT ask for the Maps link again.` : ""}${
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""

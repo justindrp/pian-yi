@@ -274,11 +274,26 @@ async function processWebhookAsync(
   const casualProb = Number.parseFloat(casualProbRaw) || 0.5;
   const casual = Math.random() < casualProb;
 
+  // Detect Maps link in current message or history so we can inject it explicitly
+  const mapsLinkRegex = /https?:\/\/(?:maps\.app\.goo\.gl|maps\.google\.com\/maps|goo\.gl\/maps)\S*/;
+  let detectedMapsLink: string | null = text.match(mapsLinkRegex)?.[0] ?? null;
+  if (!detectedMapsLink) {
+    for (const msg of history) {
+      if (msg.role !== "user") continue;
+      const msgText = Array.isArray(msg.content)
+        ? msg.content.map((b) => (typeof b === "object" && "text" in b ? b.text : "")).join(" ")
+        : String(msg.content);
+      const found = msgText.match(mapsLinkRegex)?.[0];
+      if (found) { detectedMapsLink = found; break; }
+    }
+  }
+
   // Build system prompt
   const systemPrompt = await buildSystemPrompt({
     casual,
     customerState: stateRow?.state ?? "new",
     customerName: customer.name,
+    detectedMapsLink,
   });
 
   // Tool definitions
