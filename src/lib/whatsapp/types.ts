@@ -7,6 +7,8 @@ export interface WhatsAppMessage {
   imageCaption?: string;
   locationName?: string;
   locationAddress?: string;
+  locationLat?: number;
+  locationLng?: number;
   timestamp: string;
 }
 
@@ -48,6 +50,8 @@ export function parseMessage(
     imageCaption: message.image?.caption,
     locationName: message.location?.name,
     locationAddress: message.location?.address,
+    locationLat: message.location?.latitude,
+    locationLng: message.location?.longitude,
     timestamp: message.timestamp,
   };
 }

@@ -104,7 +104,13 @@ async function processWebhookAsync(
   let text: string;
   if (message.type === "location") {
     const parts = [message.locationName, message.locationAddress].filter(Boolean);
-    text = `[Lokasi dibagikan: ${parts.join(", ")}]`;
+    let zoneNote = "";
+    const { locationLat: lat, locationLng: lng } = message;
+    if (lat !== undefined && lng !== undefined) {
+      const inBsd = lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
+      if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
+    }
+    text = `[Lokasi dibagikan: ${parts.join(", ")}${zoneNote}]`;
   } else if (message.type !== "text") {
     const tmpl = await getTemplate("text_only");
     await sendTextMessage(message.from, tmpl);
@@ -261,7 +267,7 @@ async function processWebhookAsync(
           portions_lunch: { type: "number" },
           portions_dinner: { type: "number" },
           address: { type: "string" },
-          area: { type: "string" },
+          area: { type: "string", enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera"] },
           meal_time_preference: { type: "string" },
           custom_schedule: { type: "object" },
           start_date: {
