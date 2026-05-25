@@ -18,7 +18,7 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
-import { downloadMedia, sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
+import { downloadMedia, sendImageMessage, sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
 import {
   parseMessage,
   type WhatsAppWebhookPayload,
@@ -329,6 +329,12 @@ async function processWebhookAsync(
       name: "mark_payment_proof_received",
       description:
         "Called when customer indicates they have sent payment proof.",
+      input_schema: { type: "object", properties: {} },
+    },
+    {
+      name: "show_menu",
+      description:
+        "Sends the weekly menu image to the customer. Call this when customer asks to see the menu. Satisfies Gate #1 (Menu seen).",
       input_schema: { type: "object", properties: {} },
     },
   ];
@@ -653,6 +659,11 @@ async function handleToolUse(
       "/payments",
       "medium",
     );
+  } else if (tool.name === "show_menu") {
+    const menuImageUrl = await getSetting("weekly_menu_image_url");
+    if (menuImageUrl) {
+      await sendImageMessage(phone, menuImageUrl, "Menu minggu ini 🍱");
+    }
   }
 }
 
