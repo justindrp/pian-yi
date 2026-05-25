@@ -219,6 +219,7 @@ export type Database = {
       customer_state: {
         Row: {
           customer_id: string
+          menu_shown: boolean
           reactivation_count: number | null
           reactivation_sent_at: string | null
           state: string
@@ -226,6 +227,7 @@ export type Database = {
         }
         Insert: {
           customer_id: string
+          menu_shown?: boolean
           reactivation_count?: number | null
           reactivation_sent_at?: string | null
           state?: string
@@ -233,6 +235,7 @@ export type Database = {
         }
         Update: {
           customer_id?: string
+          menu_shown?: boolean
           reactivation_count?: number | null
           reactivation_sent_at?: string | null
           state?: string

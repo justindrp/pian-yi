@@ -265,7 +265,7 @@ async function processWebhookAsync(
   // Customer state
   const { data: stateRow } = await db
     .from("customer_state")
-    .select("state")
+    .select("state, menu_shown")
     .eq("customer_id", customerId)
     .single();
 
@@ -288,12 +288,25 @@ async function processWebhookAsync(
     }
   }
 
+  // Send menu proactively if not yet shown — deterministic, not Claude's decision
+  const menuImageUrl = await getSetting("weekly_menu_image_url");
+  let menuShown = stateRow?.menu_shown ?? false;
+  if (!menuShown && menuImageUrl) {
+    await sendImageMessage(message.from, menuImageUrl, "Menu minggu ini 🍱");
+    await db
+      .from("customer_state")
+      .update({ menu_shown: true })
+      .eq("customer_id", customerId);
+    menuShown = true;
+  }
+
   // Build system prompt
   const systemPrompt = await buildSystemPrompt({
     casual,
     customerState: stateRow?.state ?? "new",
     customerName: customer.name,
     detectedMapsLink,
+    menuShown,
   });
 
   // Tool definitions
@@ -346,12 +359,6 @@ async function processWebhookAsync(
       name: "mark_payment_proof_received",
       description:
         "Called when customer indicates they have sent payment proof.",
-      input_schema: { type: "object", properties: {} },
-    },
-    {
-      name: "show_menu",
-      description:
-        "Sends the weekly menu image to the customer. Only call this if the customer has NOT yet confirmed they have seen the menu — i.e. Gate #1 is not yet cleared. Do NOT call this if the customer already said 'sudah lihat' or equivalent. Calling this satisfies Gate #1.",
       input_schema: { type: "object", properties: {} },
     },
   ];
@@ -678,11 +685,6 @@ async function handleToolUse(
       "/payments",
       "medium",
     );
-  } else if (tool.name === "show_menu") {
-    const menuImageUrl = await getSetting("weekly_menu_image_url");
-    if (menuImageUrl) {
-      await sendImageMessage(phone, menuImageUrl, "Menu minggu ini 🍱");
-    }
   }
 }
 

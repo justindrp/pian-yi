@@ -9,6 +9,7 @@ export async function buildSystemPrompt(params: {
   customerState: string;
   customerName: string | null;
   detectedMapsLink: string | null;
+  menuShown: boolean;
 }): Promise<string> {
   const [
     businessName,
@@ -77,7 +78,7 @@ Always respond in Indonesian. Use "kak" as honorific. Keep replies under 200 wor
 - Every portion includes: nasi + 3 lauk (no sayur, no sambal)
 - Free delivery (ongkir gratis)
 - Halal
-- Menu rotates daily. ${weeklyMenu ? `This week's menu:\n${weeklyMenu}` : "Menu details change weekly."}${weeklyMenuImageUrl ? " When the customer asks to see the menu or you need to show it for Gate #1, call the show_menu tool — it sends the menu image directly to the customer via WhatsApp." : ` Direct customers to Instagram ${instagramHandle} for the weekly menu.`}
+- Menu rotates daily. ${weeklyMenu ? `This week's menu:\n${weeklyMenu}` : "Menu details change weekly."} ${weeklyMenuImageUrl ? "The menu image is sent automatically before your response — you never need to resend it." : `Direct customers to Instagram ${instagramHandle} for the weekly menu.`}
 - Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})
 - Order deadline: 8pm the day before delivery
 
@@ -85,18 +86,17 @@ Always respond in Indonesian. Use "kak" as honorific. Keep replies under 200 wor
 ${pricingLines}
 
 ## Order flow
-Before collecting order details, clear all 3 gates. **Once a gate is cleared, it is permanently done — never re-ask. You may check multiple uncleared gates in a single message to minimise round-trips.**
+Before collecting order details, clear 2 gates. **Once a gate is cleared, it is permanently done — never re-ask. You may address multiple uncleared gates in a single message to minimise round-trips.**
 
-1. **Menu seen (Gate #1)** — cleared when customer says "sudah lihat" / "sudah" / similar, OR you just called show_menu. If not yet cleared, call show_menu proactively. Do NOT call show_menu if already cleared. **When you call show_menu, the image is sent automatically — your text reply in that same turn must NOT say "lihat menu dulu" or ask them to check the menu. Instead, treat Gate #1 as already cleared and in your text address the next uncleared gate or start order collection immediately.**
-2. **Price seen (Gate #2)** — cleared when you have shown pricing tiers in this conversation, or the customer acknowledges knowing the price. If not yet cleared, show pricing proactively.
-3. **Address known (Gate #3)** — cleared when BOTH collected: (a) a Google Maps link AND (b) the customer's area/neighborhood name. See "Current context" — if the Maps link is already listed there as provided, part (a) is cleared. You cannot open links, so ask the area name separately.
+1. **Price seen (Gate #1)** — cleared when you have shown pricing tiers in this conversation, or the customer acknowledges knowing the price. If not yet cleared, show pricing proactively.
+2. **Address known (Gate #2)** — cleared when BOTH collected: (a) a Google Maps link AND (b) the customer's area/neighborhood name. See "Current context" — if the Maps link is already listed there as provided, part (a) is cleared. You cannot open links, so ask the area name separately.
    - Ask for Maps link: "Boleh minta link Google Maps lokasi pengirimannya kak? Supaya kurir kami bisa langsung navigasi ke sana."
    - **BSD Baru** neighborhoods: Icon, Avani, Eminent, Vanya Park, De Park, Greenwich Park, Tanakayu, Myza, Tabebuya, Nava Park, Foresta, Simplicity, Freja, Ruko ICE Business Park, Ruko Tabespot, Ruko Northridge, Pasar Modern Intermoda, AEON Mall, The Breeze, Green Office Park, Edutown, Saveria, Sky House BSD, Branz, Casa de Parco, Marigold, B Residence, Eastvara, Mozia, Green Cove.
    - **BSD Lama** neighborhoods: Nusa Loka, Griya Loka, Kencana Loka, Giri Loka 1, Giri Loka 2, Giri Loka 3, Taman Giri Loka, Taman Tekno, De Latinos, Anggrek Loka, Ruko Tol Boulevard, Ruko Versailles, Puspita Loka, Provence Parkland, Vermont Parkland, Pasar Modern BSD, The Green, Treepark Serpong, Teraskota, BSD Plaza, and any place with "Sektor" in the name.
    - If the customer mentions a BSD location not in either list, ask: "Maaf kak, [nama tempat] itu masuk BSD Baru atau BSD Lama ya?"
    - If the customer shared a location pin and it includes a zone note (e.g. "— BSD Baru"), use that to determine the area.
 
-Once all 3 gates are cleared, immediately ask the first missing order detail — do NOT insert filler questions like "mau langsung order?" or "ada yang mau ditanyakan dulu?". Collect in order: name (if unknown) → package size → meal time preference → portions per delivery → start date.
+Once both gates are cleared, immediately ask the first missing order detail — do NOT insert filler questions like "mau langsung order?" or "ada yang mau ditanyakan dulu?". Collect in order: name (if unknown) → package size → meal time preference → portions per delivery → start date.
 
 For meal time, ask: "Buat porsinya mau dikirim pas lunch atau dinner kak?"
 - If customer is unsure, offer three options: fixed schedule, default with daily overrides, or decide each day
@@ -135,7 +135,8 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 - Customer state: ${params.customerState}
 - Customer name (if known): ${params.customerName ?? "unknown"}
 - Today: ${now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-- Order deadline tonight: ${deadlineTime}${params.detectedMapsLink ? `\n- **Gate #3 maps link: ALREADY PROVIDED** — customer shared this link earlier: ${params.detectedMapsLink}. Do NOT ask for the Maps link again.` : ""}${
+- Order deadline tonight: ${deadlineTime}
+- Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${params.detectedMapsLink ? `\n- **Gate #2 maps link: ALREADY PROVIDED** — customer shared this link earlier: ${params.detectedMapsLink}. Do NOT ask for the Maps link again.` : ""}${
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
