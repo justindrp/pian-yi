@@ -25,6 +25,7 @@ export default function InboxClient() {
   const [flags, setFlags] = useState<{ escalated_to_human: boolean } | null>(
     null,
   );
+  const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
   // Ref so the realtime callback always sees the latest value without re-subscribing
@@ -112,6 +113,7 @@ export default function InboxClient() {
 
   async function selectThread(customerId: string) {
     setSelectedCustomerId(customerId);
+    setMobileView("chat");
     await loadMessages(customerId);
   }
 
@@ -166,7 +168,7 @@ export default function InboxClient() {
   return (
     <div className="flex h-[calc(100vh-7rem)] bg-white rounded-xl border border-gray-100 overflow-hidden">
       {/* Thread list */}
-      <div className="w-72 border-r border-gray-100 overflow-y-auto">
+      <div className={`w-full md:w-72 flex-shrink-0 border-r border-gray-100 overflow-y-auto ${mobileView === "chat" ? "hidden md:block" : "block"}`}>
         <div className="p-4 border-b border-gray-100">
           <h1 className="text-sm font-semibold text-gray-900">Inbox</h1>
         </div>
@@ -200,17 +202,27 @@ export default function InboxClient() {
 
       {/* Conversation detail */}
       {selectedThread ? (
-        <div className="flex-1 flex flex-col">
+        <div className={`flex-1 flex flex-col min-w-0 ${mobileView === "list" ? "hidden md:flex" : "flex"}`}>
           {/* Header */}
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-900">
-                {selectedThread.customer.name ??
-                  selectedThread.customer.phone_number}
-              </p>
-              <p className="text-xs text-gray-400">
-                {maskPhone(selectedThread.customer.phone_number)}
-              </p>
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileView("list")}
+                className="md:hidden text-gray-500 text-lg leading-none pr-1"
+                aria-label="Back to list"
+              >
+                ‹
+              </button>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">
+                  {selectedThread.customer.name ??
+                    selectedThread.customer.phone_number}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {maskPhone(selectedThread.customer.phone_number)}
+                </p>
+              </div>
             </div>
             <button
               type="button"
@@ -295,7 +307,7 @@ export default function InboxClient() {
           )}
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
+        <div className="hidden md:flex flex-1 items-center justify-center text-sm text-gray-400">
           Select a conversation
         </div>
       )}
