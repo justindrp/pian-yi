@@ -76,7 +76,7 @@ export async function checkRateLimit(
 
   if ((row.daily_message_count ?? 0) >= 20)
     return { allowed: false, reason: "daily_limit" };
-  if ((row.minute_message_count ?? 0) >= 5)
+  if ((row.minute_message_count ?? 0) >= 7)
     return { allowed: false, reason: "minute_limit" };
   if ((row.daily_token_count ?? 0) >= 100_000)
     return { allowed: false, reason: "token_limit" };
