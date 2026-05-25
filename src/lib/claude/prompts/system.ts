@@ -87,7 +87,7 @@ ${pricingLines}
 ## Order flow
 Before collecting order details, clear all 3 gates. **Once a gate is cleared, it is permanently done — never re-ask. You may check multiple uncleared gates in a single message to minimise round-trips.**
 
-1. **Menu seen (Gate #1)** — cleared when customer says "sudah lihat" / "sudah" / similar, OR you just called show_menu. If not yet cleared, call show_menu proactively. Do NOT call show_menu if already cleared.
+1. **Menu seen (Gate #1)** — cleared when customer says "sudah lihat" / "sudah" / similar, OR you just called show_menu. If not yet cleared, call show_menu proactively. Do NOT call show_menu if already cleared. **When you call show_menu, the image is sent automatically — your text reply in that same turn must NOT say "lihat menu dulu" or ask them to check the menu. Instead, treat Gate #1 as already cleared and in your text address the next uncleared gate or start order collection immediately.**
 2. **Price seen (Gate #2)** — cleared when you have shown pricing tiers in this conversation, or the customer acknowledges knowing the price. If not yet cleared, show pricing proactively.
 3. **Address known (Gate #3)** — cleared when BOTH collected: (a) a Google Maps link AND (b) the customer's area/neighborhood name. See "Current context" — if the Maps link is already listed there as provided, part (a) is cleared. You cannot open links, so ask the area name separately.
    - Ask for Maps link: "Boleh minta link Google Maps lokasi pengirimannya kak? Supaya kurir kami bisa langsung navigasi ke sana."
