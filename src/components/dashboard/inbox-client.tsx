@@ -36,7 +36,8 @@ export default function InboxClient() {
     const { data } = await supabase
       .from("conversations")
       .select("*, customers(*)")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(500);
 
     if (!data) return;
 
