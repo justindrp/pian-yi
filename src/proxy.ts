@@ -26,7 +26,17 @@ export async function proxy(request: NextRequest) {
   );
 
   // Refresh session if expired — required for Supabase SSR
-  await supabase.auth.getUser();
+  // Timeout prevents a hung Supabase auth call from blocking every request for 125s
+  try {
+    await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("proxy auth timeout")), 5000),
+      ),
+    ]);
+  } catch {
+    // ignore — let the route handler decide what to do with no session
+  }
 
   return supabaseResponse;
 }
