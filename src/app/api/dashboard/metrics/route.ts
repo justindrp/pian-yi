@@ -18,6 +18,16 @@ export async function GET(): Promise<Response> {
   todayEnd.setHours(23, 59, 59, 999);
   const today = todayStart.toISOString().split("T")[0];
 
+  const timings: Record<string, number> = {};
+  async function timed<T>(label: string, p: PromiseLike<T>): Promise<T> {
+    const start = Date.now();
+    try {
+      return await p;
+    } finally {
+      timings[label] = Date.now() - start;
+    }
+  }
+
   const [
     activeRes,
     deliveriesRes,
@@ -27,31 +37,51 @@ export async function GET(): Promise<Response> {
     lapsedRes,
     chatbotRes,
   ] = await Promise.all([
-    db.from("orders").select("id", { count: "exact", head: true }).eq("status", "active"),
-    db
-      .from("daily_deliveries")
-      .select("id", { count: "exact", head: true })
-      .eq("delivery_date", today)
-      .neq("status", "skipped"),
-    db
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["pending_payment", "payment_proof_received"]),
-    db
-      .from("orders")
-      .select("total_price")
-      .gte("paid_at", todayStart.toISOString())
-      .lte("paid_at", todayEnd.toISOString()),
-    db
-      .from("delivery_proofs")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "needs_review"),
-    db
-      .from("customer_state")
-      .select("id", { count: "exact", head: true })
-      .eq("state", "lapsed"),
-    db.from("settings").select("value").eq("key", "chatbot_enabled").single(),
+    timed("active", db.from("orders").select("id", { count: "exact", head: true }).eq("status", "active")),
+    timed(
+      "deliveries",
+      db
+        .from("daily_deliveries")
+        .select("id", { count: "exact", head: true })
+        .eq("delivery_date", today)
+        .neq("status", "skipped"),
+    ),
+    timed(
+      "pending",
+      db
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["pending_payment", "payment_proof_received"]),
+    ),
+    timed(
+      "revenue",
+      db
+        .from("orders")
+        .select("total_price")
+        .gte("paid_at", todayStart.toISOString())
+        .lte("paid_at", todayEnd.toISOString()),
+    ),
+    timed(
+      "proofs",
+      db
+        .from("delivery_proofs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "needs_review"),
+    ),
+    timed(
+      "lapsed",
+      db
+        .from("customer_state")
+        .select("id", { count: "exact", head: true })
+        .eq("state", "lapsed"),
+    ),
+    timed(
+      "chatbot",
+      db.from("settings").select("value").eq("key", "chatbot_enabled").single(),
+    ),
   ]);
+
+  console.log("[dashboard/metrics] timings (ms):", timings);
 
   const revenueToday = (revenueRes.data ?? []).reduce(
     (sum, o) => sum + (o.total_price ?? 0),
