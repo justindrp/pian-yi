@@ -107,21 +107,36 @@ export default function InboxClient() {
   useEffect(() => {
     void loadThreads();
 
+    const refresh = () => {
+      void loadThreads();
+      const current = selectedCustomerIdRef.current;
+      if (current) void loadMessages(current);
+    };
+
     const channel = supabase
       .channel("conversations-realtime")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "conversations" },
-        () => {
-          void loadThreads();
-          const current = selectedCustomerIdRef.current;
-          if (current) void loadMessages(current);
-        },
+        refresh,
       )
       .subscribe();
 
+    // Polling fallback — Railway's reverse proxy occasionally drops the
+    // realtime websocket; this guarantees new messages appear within 10s
+    // even if the socket is dead.
+    const pollInterval = setInterval(refresh, 10_000);
+
+    // Refresh immediately when the tab regains focus
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       void supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [loadThreads, loadMessages, supabase]);
 
