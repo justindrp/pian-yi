@@ -300,7 +300,7 @@ async function processWebhookAsync(
 
     if (welcomeText) await sendTextMessage(message.from, welcomeText);
     if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
-    if (menuDapur1Url) await sendImageMessage(message.from, menuDapur1Url, "Menu Dapur 1 (Yuk Makan)");
+    if (menuDapur1Url) await sendImageMessage(message.from, menuDapur1Url, "Menu Dapur 1");
     if (menuDapur2Url) await sendImageMessage(message.from, menuDapur2Url, "Menu Dapur 2");
 
     await db
@@ -308,6 +308,21 @@ async function processWebhookAsync(
       .update({ menu_shown: true })
       .eq("customer_id", customerId);
     menuShown = true;
+
+    // Welcome sequence already greets the customer; skip Claude reply to avoid
+    // a redundant second hello. Save the incoming message and mark processed.
+    await saveMessage({
+      customerId,
+      role: "user",
+      content: text,
+      messageId: message.messageId,
+      intent,
+    });
+    await db
+      .from("processed_messages")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("message_id", message.messageId);
+    return;
   }
 
   // Build system prompt
