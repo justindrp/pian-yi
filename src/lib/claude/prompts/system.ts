@@ -88,6 +88,10 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 ## Pricing (per portion)
 ${pricingLines}
 
+Pricing tiers apply to the **total weekly portions** (portions per delivery × days per week), not per individual delivery. Example: 1 portion/day × 6 days = 6 total portions → 29.000/porsi tier.
+
+When a customer asks "seminggu berapa" or asks for a weekly estimate without specifying how many days: **always ask first** — "Seminggu-nya berapa hari kak? Senin-Jumat (5 hari) atau Senin-Sabtu (6 hari)?" — before calculating anything. Do not assume a day count.
+
 ## Order flow
 Before collecting order details, clear 2 gates. **Once a gate is cleared, it is permanently done — never re-ask. You may address multiple uncleared gates in a single message to minimise round-trips.**
 
