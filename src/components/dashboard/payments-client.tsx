@@ -60,13 +60,11 @@ export default function PaymentsClient() {
 
   const markPaidMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      const res = await fetch("/api/orders", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: orderId, status: "active" }),
-      });
-      const json = (await res.json()) as { ok: boolean; error?: string };
-      if (!json.ok) throw new Error(json.error ?? "Failed to mark as paid");
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: "active", paid_at: new Date().toISOString() })
+        .eq("id", orderId);
+      if (error) throw error;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -81,17 +79,11 @@ export default function PaymentsClient() {
       orderId: string;
       reason: string;
     }) => {
-      const res = await fetch("/api/orders", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: orderId,
-          status: "pending_payment",
-          cancellation_reason: reason,
-        }),
-      });
-      const json = (await res.json()) as { ok: boolean; error?: string };
-      if (!json.ok) throw new Error(json.error ?? "Failed to reject");
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: "pending_payment", cancellation_reason: reason })
+        .eq("id", orderId);
+      if (error) throw error;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
