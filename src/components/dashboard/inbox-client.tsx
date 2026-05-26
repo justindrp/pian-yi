@@ -27,6 +27,8 @@ export default function InboxClient() {
     null,
   );
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
   // Ref so the realtime callback always sees the latest value without re-subscribing
@@ -147,6 +149,28 @@ export default function InboxClient() {
     setFlags({ ...flags, escalated_to_human: newVal });
   }
 
+  async function deleteCustomer() {
+    if (!selectedCustomerId) return;
+    setDeleting(true);
+    const res = await fetch(`/api/customers/${selectedCustomerId}`, {
+      method: "DELETE",
+    });
+    setDeleting(false);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      alert(`Delete failed: ${body?.error ?? res.statusText}`);
+      return;
+    }
+    setDeleteConfirmOpen(false);
+    setSelectedCustomerId(null);
+    setMessages([]);
+    setFlags(null);
+    setMobileView("list");
+    await loadThreads();
+  }
+
   async function sendManualReply() {
     if (!selectedCustomerId || !manualReply.trim()) return;
     setSending(true);
@@ -251,17 +275,28 @@ export default function InboxClient() {
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={toggleEscalation}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                flags?.escalated_to_human
-                  ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-                  : "bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
-              }`}
-            >
-              {flags?.escalated_to_human ? "Resume bot" : "Take over"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleEscalation}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  flags?.escalated_to_human
+                    ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                    : "bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+                }`}
+              >
+                {flags?.escalated_to_human ? "Resume bot" : "Take over"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(true)}
+                aria-label="Delete customer"
+                title="Delete customer and chat history"
+                className="text-xs px-2 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
           </div>
 
           {/* Messages */}
@@ -336,6 +371,43 @@ export default function InboxClient() {
       ) : (
         <div className="hidden md:flex flex-1 items-center justify-center text-sm text-gray-400">
           Select a conversation
+        </div>
+      )}
+
+      {deleteConfirmOpen && selectedThread && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5">
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">
+              Delete customer?
+            </h2>
+            <p className="text-xs text-gray-600 mb-4">
+              This will permanently delete{" "}
+              <span className="font-medium text-gray-900">
+                {selectedThread.customer.name ??
+                  selectedThread.customer.phone_number}
+              </span>
+              , along with all their chat history, orders, and scheduled
+              deliveries. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleting}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={deleteCustomer}
+                disabled={deleting}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Delete permanently"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
