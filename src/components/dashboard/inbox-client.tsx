@@ -205,7 +205,7 @@ export default function InboxClient() {
               </span>
               <div className="flex items-center gap-1">
                 <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${thread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
-                  {thread.menuShown ? "menu ✓" : "menu"}
+                  {thread.menuShown ? "images ✓" : "no images"}
                 </span>
                 {thread.unread && (
                   <span className="w-2 h-2 bg-orange-500 rounded-full" />
@@ -243,7 +243,7 @@ export default function InboxClient() {
                       selectedThread.customer.phone_number}
                   </p>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${selectedThread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                    {selectedThread.menuShown ? "menu sent ✓" : "menu not sent"}
+                    {selectedThread.menuShown ? "menu images sent ✓" : "menu images not sent"}
                   </span>
                 </div>
                 <p className="text-xs text-gray-400">

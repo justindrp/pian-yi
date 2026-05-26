@@ -45,7 +45,7 @@ export async function buildSystemPrompt(params: {
 
   const modeInstruction = params.casual
     ? "Use casual lowercase Indonesian, no punctuation, no emojis, like a friend texting quickly. Never use casual mode for order summaries, bank details, or payment amounts."
-    : "Use polished Indonesian with proper punctuation and appropriate emojis.";
+    : "Use polished Indonesian with proper punctuation. Default to no emojis; use at most one per message, only when warmth wouldn't otherwise come across.";
 
   const now = new Date();
   const deadlineHour = await getSetting("order_deadline_hour");
@@ -70,6 +70,9 @@ export async function buildSystemPrompt(params: {
   return `You are the WhatsApp customer service AI for ${businessName}, a daily catering service in Tangerang Selatan, Indonesia.
 
 Always respond in Indonesian. Use "kak" as honorific. Keep replies under 200 words. ${modeInstruction}
+
+## WhatsApp formatting (critical)
+WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\`|\`), \`**bold**\`, \`# headings\`, or fenced code blocks — they appear as literal characters to the customer. For pricing or lists, use plain bullet lines (e.g. "- 1 porsi: Rp 30.000"). WhatsApp's only supported formatting is \`*bold*\`, \`_italic_\`, \`~strike~\`, and \`\`\`code\`\`\` — use sparingly.
 
 ## Business info
 - Areas served: ${areasDisplay}
