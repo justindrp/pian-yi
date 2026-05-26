@@ -85,11 +85,11 @@ export default function OrdersClient() {
                     <div className="font-medium text-gray-900">{o.customers?.name ?? "Unknown"}</div>
                     <div className="text-xs text-gray-400">{o.customers?.phone_number}</div>
                   </td>
-                  <td className="px-4 py-3">{o.package_size} porsi</td>
-                  <td className="px-4 py-3">{o.portions_remaining}</td>
-                  <td className="px-4 py-3">Rp {o.total_price.toLocaleString("id-ID")}</td>
-                  <td className="px-4 py-3">{o.area}</td>
-                  <td className="px-4 py-3">{o.start_date}</td>
+                  <td className="px-4 py-3 text-gray-900">{o.package_size} porsi</td>
+                  <td className="px-4 py-3 text-gray-900">{o.portions_remaining}</td>
+                  <td className="px-4 py-3 text-gray-900">Rp {o.total_price.toLocaleString("id-ID")}</td>
+                  <td className="px-4 py-3 text-gray-900">{o.area}</td>
+                  <td className="px-4 py-3 text-gray-900">{o.start_date}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[o.status] ?? "bg-gray-100 text-gray-500"}`}>
                       {STATUS_LABELS[o.status] ?? o.status}

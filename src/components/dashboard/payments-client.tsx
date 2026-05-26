@@ -60,11 +60,13 @@ export default function PaymentsClient() {
 
   const markPaidMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      const { error } = await supabase
-        .from("orders")
-        .update({ status: "active", paid_at: new Date().toISOString() })
-        .eq("id", orderId);
-      if (error) throw error;
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, action: "mark_paid" }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Failed");
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -155,12 +157,12 @@ export default function PaymentsClient() {
                           order.customers?.phone_number ??
                           "Unknown"}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-900 mt-0.5">
                         {order.package_size} porsi ·{" "}
                         {formatIDR(order.total_price)}
                       </p>
                       {order.confirmed_at && (
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-gray-900 mt-1">
                           Proof received {formatDateTime(order.confirmed_at)}
                         </p>
                       )}
@@ -261,13 +263,13 @@ export default function PaymentsClient() {
                             order.customers?.phone_number ??
                             "Unknown"}
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="text-xs text-gray-900 mt-0.5">
                           {order.package_size} porsi ·{" "}
                           {formatIDR(order.total_price)}
                         </p>
                       </div>
                       {order.confirmed_at && (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-gray-900">
                           {formatDateTime(order.confirmed_at)}
                         </p>
                       )}
@@ -303,13 +305,13 @@ export default function PaymentsClient() {
                           order.customers?.phone_number ??
                           "Unknown"}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-900 mt-0.5">
                         {order.package_size} porsi ·{" "}
                         {formatIDR(order.total_price)}
                       </p>
                     </div>
                     {order.paid_at && (
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-900">
                         {formatDateTime(order.paid_at)}
                       </p>
                     )}

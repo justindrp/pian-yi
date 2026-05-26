@@ -59,12 +59,22 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
 
   // Send WhatsApp confirmation
-  const customer = order.customers as { name: string | null; phone_number: string } | null;
+  const rawCustomer = order.customers;
+  const customer = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer) as {
+    name: string | null;
+    phone_number: string;
+  } | null;
+  console.log("[mark_paid] customer:", JSON.stringify(customer), "customer_id:", order.customer_id);
   if (customer?.phone_number && order.customer_id) {
     const firstName = (customer.name ?? "").split(" ")[0] || "kak";
     const msg = `Halo kak ${firstName}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉`;
-    await saveMessage({ customerId: order.customer_id, role: "assistant", content: msg });
-    await sendTextMessage(customer.phone_number, msg);
+    try {
+      await saveMessage({ customerId: order.customer_id, role: "assistant", content: msg });
+      await sendTextMessage(customer.phone_number, msg);
+      console.log("[mark_paid] WhatsApp sent to", customer.phone_number);
+    } catch (err) {
+      console.error("[mark_paid] WhatsApp send failed:", err);
+    }
   }
 
   return NextResponse.json({ ok: true });
