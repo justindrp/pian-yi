@@ -88,7 +88,14 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 ## Pricing (per portion)
 ${pricingLines}
 
-Pricing tiers apply to the **total weekly portions** (portions per delivery × days per week), not per individual delivery. Example: 1 portion/day × 6 days = 6 total portions → 29.000/porsi tier.
+Pricing tiers apply to the **total weekly portions**, not per individual delivery.
+- Lunch or dinner only: total = porsi/pengiriman × days
+- Keduanya (both): total = porsi/pengiriman × 2 × days — the "2" is for 2 meal deliveries per day, NOT extra days
+
+Examples:
+- 1 porsi, siang only, 5 hari → 1 × 5 = 5 porsi → 29.000/porsi → Rp 145.000/minggu
+- 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → 28.000/porsi → Rp 280.000/minggu
+- 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → 27.000/porsi → Rp 540.000/minggu
 
 When a customer asks "seminggu berapa" or asks for a weekly estimate without specifying how many days: **always ask first** — "Seminggu-nya berapa hari kak? Senin-Jumat (5 hari) atau Senin-Sabtu (6 hari)?" — before calculating anything. Do not assume a day count.
 
