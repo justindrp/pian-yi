@@ -35,7 +35,7 @@ export default function InboxClient() {
   const loadThreads = useCallback(async () => {
     const { data } = await supabase
       .from("conversations")
-      .select("*, customers(*, customer_state(menu_shown))")
+      .select("*, customers(*)")
       .order("created_at", { ascending: false });
 
     if (!data) return;
@@ -47,14 +47,26 @@ export default function InboxClient() {
       const customerId = row.customer_id;
       if (!customerId || seen.has(customerId)) continue;
       seen.add(customerId);
-      const customerData = row.customers as unknown as Customer & { customer_state?: { menu_shown: boolean }[] };
-      const menuShown = customerData?.customer_state?.[0]?.menu_shown ?? false;
       grouped.push({
-        customer: customerData,
+        customer: row.customers as unknown as Customer,
         lastMessage: row,
         unread: row.role === "user",
-        menuShown,
+        menuShown: false,
       });
+    }
+
+    if (grouped.length > 0) {
+      const customerIds = grouped.map((t) => t.customer.id);
+      const { data: stateData } = await supabase
+        .from("customer_state")
+        .select("customer_id, menu_shown")
+        .in("customer_id", customerIds);
+      const menuShownMap = new Map(
+        (stateData ?? []).map((s) => [s.customer_id, s.menu_shown ?? false]),
+      );
+      for (const thread of grouped) {
+        thread.menuShown = menuShownMap.get(thread.customer.id) ?? false;
+      }
     }
 
     setThreads(grouped);
