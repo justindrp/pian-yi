@@ -684,6 +684,17 @@ async function handleToolUse(
         updated_at: new Date().toISOString(),
       })
       .eq("customer_id", customerId);
+
+    // Send payment details
+    const [bankName, bankAccountNumber, bankAccountName] = await Promise.all([
+      getSetting("bank_name"),
+      getSetting("bank_account_number"),
+      getSetting("bank_account_name"),
+    ]);
+    const displayName = input.customer_name.split(" ")[0];
+    const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
+    await saveMessage({ customerId, role: "assistant", content: paymentMsg, modelUsed: "sonnet-4-6" });
+    await sendTextMessage(phone, paymentMsg);
   } else if (tool.name === "escalate_to_human") {
     const input = tool.input as { reason: string };
     await db
