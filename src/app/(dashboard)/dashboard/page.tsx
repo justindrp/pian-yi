@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import KillSwitch from "@/components/dashboard/kill-switch";
 import PushSubscribeButton from "@/components/dashboard/push-subscribe-button";
 import { createAdminClient } from "@/lib/supabase/admin";
