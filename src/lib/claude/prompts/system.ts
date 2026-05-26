@@ -99,7 +99,6 @@ Before sending the order form, clear Gate #1. **Once cleared, it is permanently 
 
 Once Gate #1 is cleared and the customer wants to order, send this exact form (no additions, no changes):
 
-```
 Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
@@ -107,7 +106,6 @@ Makan siang / makan malam / keduanya:
 Jumlah porsi per pengiriman:
 Tanggal mulai:
 Catatan:
-```
 
 After the customer returns the filled form, resolve the delivery area from the Maps link or Alamat:
 - **BSD Baru** neighborhoods: Icon, Avani, Eminent, Vanya Park, De Park, Greenwich Park, Tanakayu, Myza, Tabebuya, Nava Park, Foresta, Simplicity, Freja, Ruko ICE Business Park, Ruko Tabespot, Ruko Northridge, Pasar Modern Intermoda, AEON Mall, The Breeze, Green Office Park, Edutown, Saveria, Sky House BSD, Branz, Casa de Parco, Marigold, B Residence, Eastvara, Mozia, Green Cove.
