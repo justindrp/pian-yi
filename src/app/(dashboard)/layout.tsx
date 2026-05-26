@@ -28,18 +28,11 @@ export default async function DashboardLayout({
 }) {
   const supabase = await createClient();
 
-  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"];
-  try {
-    const result = await Promise.race([
-      supabase.auth.getUser(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Auth timeout")), 8000),
-      ),
-    ]);
-    user = result.data.user;
-  } catch {
-    redirect("/login");
-  }
+  // getSession() reads the JWT from the cookie locally — no network call, no hang.
+  // getUser() would validate against Supabase Auth server on every request, which
+  // can hang for 125s when the auth server is slow or unreachable.
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   if (!user) redirect("/login");
 
