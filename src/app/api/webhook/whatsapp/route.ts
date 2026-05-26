@@ -601,7 +601,7 @@ async function handlePaymentProofImage(
   });
 
   const confirmMsg =
-    "Terima kasih kak! Bukti pembayaran sudah kami terima ya. Pesananmu akan segera kami aktifkan 🎉";
+    "Terima kasih kak! Bukti pembayaran sudah kami terima ya. Kami akan segera memverifikasi pembayaranmu dan menghubungimu kembali.";
   await saveMessage({ customerId, role: "assistant", content: confirmMsg, modelUsed: "human" });
   await sendTextMessage(phone, confirmMsg);
 
