@@ -12,6 +12,7 @@ interface Thread {
   customer: Customer;
   lastMessage: Conversation;
   unread: boolean;
+  menuShown: boolean;
 }
 
 export default function InboxClient() {
@@ -34,7 +35,7 @@ export default function InboxClient() {
   const loadThreads = useCallback(async () => {
     const { data } = await supabase
       .from("conversations")
-      .select("*, customers(*)")
+      .select("*, customers(*, customer_state(menu_shown))")
       .order("created_at", { ascending: false });
 
     if (!data) return;
@@ -46,10 +47,13 @@ export default function InboxClient() {
       const customerId = row.customer_id;
       if (!customerId || seen.has(customerId)) continue;
       seen.add(customerId);
+      const customerData = row.customers as unknown as Customer & { customer_state?: { menu_shown: boolean }[] };
+      const menuShown = customerData?.customer_state?.[0]?.menu_shown ?? false;
       grouped.push({
-        customer: row.customers as unknown as Customer,
+        customer: customerData,
         lastMessage: row,
         unread: row.role === "user",
+        menuShown,
       });
     }
 
@@ -186,9 +190,14 @@ export default function InboxClient() {
                 {thread.customer.name ??
                   maskPhone(thread.customer.phone_number)}
               </span>
-              {thread.unread && (
-                <span className="w-2 h-2 bg-orange-500 rounded-full" />
-              )}
+              <div className="flex items-center gap-1">
+                <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${thread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+                  {thread.menuShown ? "menu ✓" : "menu"}
+                </span>
+                {thread.unread && (
+                  <span className="w-2 h-2 bg-orange-500 rounded-full" />
+                )}
+              </div>
             </div>
             <p className="text-xs text-gray-400 truncate">
               {thread.lastMessage.content.slice(0, 60)}
@@ -215,10 +224,15 @@ export default function InboxClient() {
                 ‹
               </button>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900">
-                  {selectedThread.customer.name ??
-                    selectedThread.customer.phone_number}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-gray-900">
+                    {selectedThread.customer.name ??
+                      selectedThread.customer.phone_number}
+                  </p>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${selectedThread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    {selectedThread.menuShown ? "menu sent ✓" : "menu not sent"}
+                  </span>
+                </div>
                 <p className="text-xs text-gray-400">
                   {maskPhone(selectedThread.customer.phone_number)}
                 </p>
