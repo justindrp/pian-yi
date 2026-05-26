@@ -20,7 +20,6 @@ export async function buildSystemPrompt(params: {
     bankAccountName,
     escalationKeywords,
     weeklyMenu,
-    weeklyMenuImageUrl,
   ] = await Promise.all([
     getSetting("business_name"),
     getSetting("delivery_areas"),
@@ -30,7 +29,6 @@ export async function buildSystemPrompt(params: {
     getSetting("bank_account_name"),
     getSetting("escalation_keywords"),
     getSetting("weekly_menu"),
-    getSetting("weekly_menu_image_url"),
   ]);
 
   const [pricingTiers, activeInstructions] = await Promise.all([
@@ -78,7 +76,9 @@ Always respond in Indonesian. Use "kak" as honorific. Keep replies under 200 wor
 - Every portion includes: nasi + 3 lauk (no sayur, no sambal)
 - Free delivery (ongkir gratis)
 - Halal
-- Menu rotates daily. ${weeklyMenu ? `This week's menu:\n${weeklyMenu}` : "Menu details change weekly."} ${weeklyMenuImageUrl ? "The menu image is sent automatically before your response — you never need to resend it." : `Direct customers to Instagram ${instagramHandle} for the weekly menu.`}
+- Menu rotates daily. ${weeklyMenu ? `This week's menu:\n${weeklyMenu}` : "Menu details change weekly."}
+  - We have 2 kitchens (Dapur 1 and Dapur 2) with different weekly menus — menu and price list images are sent automatically to new customers, never resend them
+  - When referring to kitchens always say "dapur kami" — never mention subcontractor or kitchen names
 - Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})
 - Order deadline: 8pm the day before delivery
 

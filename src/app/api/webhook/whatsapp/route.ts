@@ -288,11 +288,21 @@ async function processWebhookAsync(
     }
   }
 
-  // Send menu proactively if not yet shown — deterministic, not Claude's decision
-  const menuImageUrl = await getSetting("weekly_menu_image_url");
+  // Send welcome sequence on first contact — deterministic, not Claude's decision
   let menuShown = stateRow?.menu_shown ?? false;
-  if (!menuShown && menuImageUrl) {
-    await sendImageMessage(message.from, menuImageUrl, "Menu minggu ini 🍱");
+  if (!menuShown) {
+    const [welcomeText, menuDapur1Url, menuDapur2Url, priceListUrl] = await Promise.all([
+      getSetting("welcome_message"),
+      getSetting("weekly_menu_image_url"),
+      getSetting("weekly_menu_image_url_dapur2"),
+      getSetting("price_list_image_url"),
+    ]);
+
+    if (welcomeText) await sendTextMessage(message.from, welcomeText);
+    if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
+    if (menuDapur1Url) await sendImageMessage(message.from, menuDapur1Url, "Menu Dapur 1 (Yuk Makan)");
+    if (menuDapur2Url) await sendImageMessage(message.from, menuDapur2Url, "Menu Dapur 2");
+
     await db
       .from("customer_state")
       .update({ menu_shown: true })
