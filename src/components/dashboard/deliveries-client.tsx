@@ -189,11 +189,11 @@ export default function DeliveriesClient() {
           <div className="flex gap-4 mb-4">
             <div className="bg-white border border-gray-100 rounded-lg px-4 py-3 text-sm">
               <div className="text-gray-500 text-xs">Total Lunch</div>
-              <div className="font-semibold">{lunchRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
+              <div className="font-semibold text-gray-900">{lunchRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
             </div>
             <div className="bg-white border border-gray-100 rounded-lg px-4 py-3 text-sm">
               <div className="text-gray-500 text-xs">Total Dinner</div>
-              <div className="font-semibold">{dinnerRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
+              <div className="font-semibold text-gray-900">{dinnerRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
             </div>
             <div className="flex gap-2 ml-auto">
               <button type="button" onClick={() => generate.mutate()} disabled={generate.isPending} className="px-4 py-2 border border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40">
@@ -343,7 +343,7 @@ export default function DeliveriesClient() {
       {showConfirm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-4">
-            <h2 className="font-semibold">Simpan pengiriman untuk {date}?</h2>
+            <h2 className="font-semibold text-gray-900">Simpan pengiriman untuk {date}?</h2>
             <p className="text-sm text-gray-500">Ini akan mengurangi kuota pelanggan.</p>
             <div className="flex gap-2">
               <button type="button" onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">{save.isPending ? "Saving..." : "Simpan"}</button>

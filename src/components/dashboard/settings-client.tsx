@@ -173,7 +173,7 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
       {confirm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <p className="font-medium">Price changes only apply to new orders. Existing orders are not affected. Continue?</p>
+            <p className="font-medium text-gray-900">Price changes only apply to new orders. Existing orders are not affected. Continue?</p>
             <div className="flex gap-2">
               <button type="button" onClick={() => save.mutate({ portions: editPortions!, price_per_portion: Number(editPrice) })} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">{save.isPending ? "Saving..." : "Confirm"}</button>
               <button type="button" onClick={() => setConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Cancel</button>
@@ -185,7 +185,7 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
       {adjustConfirm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <p className="font-medium">
+            <p className="font-medium text-gray-900">
               {adjustNum > 0 ? "Increase" : "Decrease"} all tiers by Rp {Math.abs(adjustNum).toLocaleString("id-ID")}?
             </p>
             <p className="text-sm text-gray-500">Price changes only apply to new orders. Existing orders are not affected.</p>
@@ -367,7 +367,7 @@ function TemplatesSection({ rows }: { rows: TemplateRow[] }) {
       {confirm && editing && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <p className="font-medium">Simpan template {editing}?</p>
+            <p className="font-medium text-gray-900">Simpan template {editing}?</p>
             <div className="flex gap-2">
               <button type="button" onClick={() => save.mutate({ key: editing, template: editText })} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">Save</button>
               <button type="button" onClick={() => setConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Batal</button>

@@ -221,7 +221,7 @@ export default function SubcontractorsClient() {
       {showAdd && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <h2 className="font-semibold">Add Subcontractor</h2>
+            <h2 className="font-semibold text-gray-900">Add Subcontractor</h2>
             {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
               <div key={field}>
                 <label className="block text-xs text-gray-500 mb-1 capitalize">{field.replace(/_/g, " ")}</label>
