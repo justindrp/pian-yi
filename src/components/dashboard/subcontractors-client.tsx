@@ -3,6 +3,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+function parseDapurNumber(nickname: string | null | undefined): number | null {
+  if (!nickname) return null;
+  const m = nickname.match(/^Dapur\s+(\d+)$/i);
+  return m ? Number(m[1]) : null;
+}
+
+function DapurStepper({ value, onChange }: { value: number | null; onChange: (n: number | null) => void }) {
+  const n = value ?? 0;
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={() => onChange(Math.max(1, n - 1))} disabled={n <= 1} className="w-7 h-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 text-sm font-medium">−</button>
+      <span className="w-16 text-center text-sm text-gray-900">{n > 0 ? `Dapur ${n}` : <span className="text-gray-400">—</span>}</span>
+      <button type="button" onClick={() => onChange(n + 1)} className="w-7 h-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium">+</button>
+      {n > 0 && <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-600 ml-1">Clear</button>}
+    </div>
+  );
+}
+
 interface OffDay {
   id: string;
   off_date: string;
@@ -39,7 +57,9 @@ export default function SubcontractorsClient() {
   const [selected, setSelected] = useState<Subcontractor | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Subcontractor>>({});
-  const [addForm, setAddForm] = useState({ name: "", customer_nickname: "", admin_phone: "", admin_phone_2: "", delivery_areas: [] as string[], notes: "" });
+  const [editDapurNum, setEditDapurNum] = useState<number | null>(null);
+  const [addForm, setAddForm] = useState({ name: "", admin_phone: "", admin_phone_2: "", delivery_areas: [] as string[], notes: "" });
+  const [addDapurNum, setAddDapurNum] = useState<number | null>(null);
   const [offDayForm, setOffDayForm] = useState({ off_date: "", reason: "" });
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
@@ -52,9 +72,10 @@ export default function SubcontractorsClient() {
 
   const addSub = useMutation({
     mutationFn: async () => {
-      await fetch("/api/subcontractors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(addForm) });
+      const body = { ...addForm, customer_nickname: addDapurNum ? `Dapur ${addDapurNum}` : null };
+      await fetch("/api/subcontractors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subcontractors"] }); setShowAdd(false); setAddForm({ name: "", customer_nickname: "", admin_phone: "", admin_phone_2: "", delivery_areas: [], notes: "" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subcontractors"] }); setShowAdd(false); setAddForm({ name: "", admin_phone: "", admin_phone_2: "", delivery_areas: [], notes: "" }); setAddDapurNum(null); },
   });
 
   const addOffDay = useMutation({
@@ -102,7 +123,7 @@ export default function SubcontractorsClient() {
                   ? Math.round(((s.total_delivery_count - s.late_delivery_count) / s.total_delivery_count) * 100)
                   : null;
                 return (
-                  <tr key={s.id} onClick={() => { setSelected(s); setEditForm(s); }} className="cursor-pointer hover:bg-gray-50">
+                  <tr key={s.id} onClick={() => { setSelected(s); setEditForm(s); setEditDapurNum(parseDapurNumber(s.customer_nickname)); }} className="cursor-pointer hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
                     <td className="px-4 py-3 text-gray-900">{s.customer_nickname ?? <span className="text-gray-400">—</span>}</td>
                     <td className="px-4 py-3 text-gray-500">{(s.delivery_areas ?? []).join(", ")}</td>
@@ -131,9 +152,9 @@ export default function SubcontractorsClient() {
 
           {/* Edit form */}
           <div className="space-y-3">
-            {(["name", "customer_nickname", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
+            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
               <div key={field}>
-                <label className="block text-xs text-gray-500 mb-1 capitalize">{field === "customer_nickname" ? "Nickname (shown to customers)" : field.replace(/_/g, " ")}</label>
+                <label className="block text-xs text-gray-500 mb-1 capitalize">{field.replace(/_/g, " ")}</label>
                 <input
                   className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
                   value={(editForm[field] as string) ?? ""}
@@ -141,6 +162,10 @@ export default function SubcontractorsClient() {
                 />
               </div>
             ))}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Dapur number (shown to customers)</label>
+              <DapurStepper value={editDapurNum} onChange={setEditDapurNum} />
+            </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Delivery areas</label>
               <div className="flex flex-wrap gap-1">
@@ -161,7 +186,7 @@ export default function SubcontractorsClient() {
             </div>
             <button
               type="button"
-              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editForm.customer_nickname, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes })}
+              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editDapurNum ? `Dapur ${editDapurNum}` : null, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes })}
               className="w-full py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
             >
               Save changes
@@ -225,12 +250,16 @@ export default function SubcontractorsClient() {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
             <h2 className="font-semibold text-gray-900">Add Subcontractor</h2>
-            {(["name", "customer_nickname", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
+            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
               <div key={field}>
-                <label className="block text-xs text-gray-500 mb-1 capitalize">{field === "customer_nickname" ? "Nickname (shown to customers)" : field.replace(/_/g, " ")}</label>
+                <label className="block text-xs text-gray-500 mb-1 capitalize">{field.replace(/_/g, " ")}</label>
                 <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={addForm[field] ?? ""} onChange={(e) => setAddForm((f) => ({ ...f, [field]: e.target.value }))} />
               </div>
             ))}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Dapur number (shown to customers)</label>
+              <DapurStepper value={addDapurNum} onChange={setAddDapurNum} />
+            </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Delivery areas</label>
               <div className="flex flex-wrap gap-1">
