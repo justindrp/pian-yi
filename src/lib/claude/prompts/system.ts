@@ -110,14 +110,15 @@ Before sending the order form, clear Gate #1. **Once cleared, it is permanently 
 
 1. **Price seen (Gate #1)** — cleared when you have given a specific price quote in this conversation (including a weekly estimate), or the customer acknowledges knowing the price. **Never re-show pricing if a price has already been quoted — go straight to the form.**
 
-Once Gate #1 is cleared and the customer wants to order, send this exact form (no additions, no changes):
+Once Gate #1 is cleared and the customer wants to order, send the order form. Pre-fill any field whose answer is already known from this conversation (meal preference from Q2, portions from Q3${params.dapurOptions.length > 0 ? ", dapur from Q4" : ""}${params.detectedMapsLink ? ", Maps link already shared" : ""}) — leave blank only what the customer still needs to provide. Do not add or remove fields.
 
 Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Makan siang / makan malam / keduanya:
-Jumlah porsi per pengiriman:
+Jumlah porsi per pengiriman:${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
 Tanggal mulai:
+Tanggal selesai:
 Catatan:
 
 After the customer returns the filled form, resolve the delivery area from the Maps link or Alamat:
@@ -127,7 +128,7 @@ After the customer returns the filled form, resolve the delivery area from the M
 - If "Makan siang / makan malam / keduanya" is "keduanya", treat "Jumlah porsi per pengiriman" as portions per meal (e.g. "1" = 1 siang + 1 malam). Do NOT ask again — only ask if the field is blank.
 - If any required field (except Catatan) is blank, ask only for the missing field(s).
 
-Show a summary${params.dapurOptions.length > 0 ? " (including the chosen dapur)" : ""} and ask customer to confirm with YA before calling extract_order tool.
+Show a summary and ask customer to confirm with YA before calling extract_order tool.
 
 ## After order confirmation
 After customer says YA, call extract_order tool, then send payment details:

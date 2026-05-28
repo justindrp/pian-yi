@@ -517,6 +517,7 @@ export type Database = {
           custom_schedule: Json | null
           customer_id: string | null
           delivery_address: string
+          end_date: string | null
           followup_sent_at: string | null
           id: string
           maps_link: string | null
@@ -548,6 +549,7 @@ export type Database = {
           custom_schedule?: Json | null
           customer_id?: string | null
           delivery_address: string
+          end_date?: string | null
           followup_sent_at?: string | null
           id?: string
           maps_link?: string | null
@@ -579,6 +581,7 @@ export type Database = {
           custom_schedule?: Json | null
           customer_id?: string | null
           delivery_address?: string
+          end_date?: string | null
           followup_sent_at?: string | null
           id?: string
           maps_link?: string | null

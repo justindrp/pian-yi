@@ -368,6 +368,10 @@ async function processWebhookAsync(
             type: "string",
             description: "ISO date string YYYY-MM-DD",
           },
+          end_date: {
+            type: "string",
+            description: "ISO date string YYYY-MM-DD — the customer's requested last delivery date",
+          },
           subcontractor_id: {
             type: "string",
             description: "UUID of the chosen dapur (from the dapur ID mapping in the system prompt)",
@@ -382,6 +386,7 @@ async function processWebhookAsync(
           "area",
           "meal_time_preference",
           "start_date",
+          "end_date",
           ...(dapurOptions.length > 0 ? ["subcontractor_id"] : []),
         ],
       },
@@ -650,6 +655,7 @@ async function handleToolUse(
       meal_time_preference: string;
       custom_schedule?: Record<string, unknown>;
       start_date: string;
+      end_date: string;
       subcontractor_id?: string;
     };
 
@@ -680,6 +686,7 @@ async function handleToolUse(
         | import("@/types/database").Json
         | null,
       start_date: input.start_date,
+      end_date: input.end_date,
       subcontractor_id: input.subcontractor_id ?? null,
       status: "pending_payment",
       confirmed_at: new Date().toISOString(),
