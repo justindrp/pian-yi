@@ -325,15 +325,33 @@ async function processWebhookAsync(
     return;
   }
 
-  // Load active dapurs for order form
-  const { data: activeSubs } = await db
-    .from("subcontractors")
-    .select("id, customer_nickname")
-    .eq("is_active", true)
-    .not("customer_nickname", "is", null);
+  // Load active dapurs and active order quota in parallel
+  const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
+    db
+      .from("subcontractors")
+      .select("id, customer_nickname")
+      .eq("is_active", true)
+      .not("customer_nickname", "is", null),
+    db
+      .from("orders")
+      .select("id, portions_remaining, package_size, meal_time_preference")
+      .eq("customer_id", customerId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   const dapurOptions = (activeSubs ?? [])
     .filter((s): s is { id: string; customer_nickname: string } => s.customer_nickname !== null)
     .map((s) => ({ id: s.id, nickname: s.customer_nickname }));
+  const activeOrder = activeOrderRow
+    ? {
+        id: activeOrderRow.id,
+        portionsRemaining: activeOrderRow.portions_remaining,
+        packageSize: activeOrderRow.package_size,
+        mealTimePreference: activeOrderRow.meal_time_preference,
+      }
+    : null;
 
   // Build system prompt
   const systemPrompt = await buildSystemPrompt({
@@ -343,6 +361,7 @@ async function processWebhookAsync(
     detectedMapsLink,
     menuShown,
     dapurOptions,
+    activeOrder,
   });
 
   // Tool definitions
@@ -384,11 +403,32 @@ async function processWebhookAsync(
           "address",
           "maps_link",
           "area",
-          "meal_time_preference",
-          "start_date",
-          "end_date",
           ...(dapurOptions.length > 0 ? ["subcontractor_id"] : []),
         ],
+      },
+    },
+    {
+      name: "record_daily_order",
+      description:
+        "Called when a customer with an active quota-based order requests a delivery for the next day. Inserts the daily delivery and decrements their quota. Only call this for customers who already have an active order with portions_remaining > 0.",
+      input_schema: {
+        type: "object",
+        properties: {
+          delivery_date: {
+            type: "string",
+            description: "ISO date string YYYY-MM-DD — the requested delivery date (tomorrow unless customer specifies otherwise)",
+          },
+          meal_type: {
+            type: "string",
+            enum: ["lunch", "dinner", "both"],
+          },
+          portions: {
+            type: "number",
+            description: "Total portions to deduct from quota (e.g. 2 for 1-portion keduanya order — 1 lunch + 1 dinner)",
+          },
+          notes: { type: "string" },
+        },
+        required: ["delivery_date", "meal_type", "portions"],
       },
     },
     {
@@ -652,10 +692,10 @@ async function handleToolUse(
       address: string;
       maps_link: string;
       area: string;
-      meal_time_preference: string;
+      meal_time_preference?: string;
       custom_schedule?: Record<string, unknown>;
-      start_date: string;
-      end_date: string;
+      start_date?: string;
+      end_date?: string;
       subcontractor_id?: string;
     };
 
@@ -681,12 +721,12 @@ async function handleToolUse(
       delivery_address: input.address,
       maps_link: input.maps_link,
       area: input.area,
-      meal_time_preference: input.meal_time_preference,
+      meal_time_preference: input.meal_time_preference ?? "per_day_decision",
       custom_schedule: (input.custom_schedule ?? null) as
         | import("@/types/database").Json
         | null,
-      start_date: input.start_date,
-      end_date: input.end_date,
+      start_date: (input.start_date ?? null) as string,
+      end_date: input.end_date ?? null,
       subcontractor_id: input.subcontractor_id ?? null,
       status: "pending_payment",
       confirmed_at: new Date().toISOString(),
@@ -720,6 +760,55 @@ async function handleToolUse(
     const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
     await saveMessage({ customerId, role: "assistant", content: paymentMsg, modelUsed: "sonnet-4-6" });
     await sendTextMessage(phone, paymentMsg);
+  } else if (tool.name === "record_daily_order") {
+    const input = tool.input as {
+      delivery_date: string;
+      meal_type: "lunch" | "dinner" | "both";
+      portions: number;
+      notes?: string;
+    };
+
+    const { data: order } = await db
+      .from("orders")
+      .select("id, portions_remaining, subcontractor_id")
+      .eq("customer_id", customerId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!order) {
+      console.error("[webhook] record_daily_order: no active order for customer", customerId);
+      return;
+    }
+
+    if (order.portions_remaining <= 0) {
+      console.warn("[webhook] record_daily_order: quota exhausted for order", order.id);
+      return;
+    }
+
+    await db.from("daily_deliveries").insert({
+      order_id: order.id,
+      customer_id: customerId,
+      delivery_date: input.delivery_date,
+      meal_type: input.meal_type,
+      portions: input.portions,
+      subcontractor_id: order.subcontractor_id,
+      status: "scheduled",
+      notes: input.notes ?? null,
+    });
+
+    await db
+      .from("orders")
+      .update({ portions_remaining: Math.max(0, order.portions_remaining - input.portions) })
+      .eq("id", order.id);
+
+    await sendPushToAllAdmins(
+      `Order harian — ${customerName ?? phone}`,
+      `${input.delivery_date} ${input.meal_type} × ${input.portions} porsi`,
+      "/deliveries",
+      "low",
+    );
   } else if (tool.name === "escalate_to_human") {
     const input = tool.input as { reason: string };
     await db

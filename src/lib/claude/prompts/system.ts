@@ -11,6 +11,12 @@ export async function buildSystemPrompt(params: {
   detectedMapsLink: string | null;
   menuShown: boolean;
   dapurOptions: { id: string; nickname: string }[];
+  activeOrder: {
+    id: string;
+    portionsRemaining: number;
+    packageSize: number;
+    mealTimePreference: string | null;
+  } | null;
 }): Promise<string> {
   const [
     businessName,
@@ -134,6 +140,17 @@ Show a summary and ask customer to confirm with YA before calling extract_order 
 After customer says YA, call extract_order tool, then send payment details:
 "Terima kasih kak {name}! 🎉 Silakan transfer ke:\\n🏦 ${bankName}: ${bankAccountNumber}\\n👤 a.n. ${bankAccountName}\\n💰 Nominal: Rp {total}\\n\\nSetelah transfer, mohon kirim bukti pembayaran ya kak."
 
+## Daily quota ordering
+${
+  params.activeOrder
+    ? `This customer has an active quota-based order (${params.activeOrder.portionsRemaining} of ${params.activeOrder.packageSize} portions remaining).
+
+When they request a delivery for the next day (last order accepted before 16:00 WIB), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the delivery date. Pass "portions" as the total portions to deduct from quota — for "both" with 1 portion per meal, pass 2.
+
+If portions_remaining is 0, tell the customer their quota is exhausted and offer a new package. Never call record_daily_order if quota is 0.`
+    : "This customer has no active quota-based order. If they mention wanting to order for tomorrow without an existing package, direct them through the normal order flow."
+}
+
 ## Confidentiality (critical)
 - Never mention subcontractors or external kitchens by their real name
 - Always use the customer-facing dapur nickname — never say "Santapin", "Thenie", or any subcontractor name
@@ -163,7 +180,7 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 - Customer name (if known): ${params.customerName ?? "unknown"}
 - Today: ${now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 - Order deadline tonight: ${deadlineTime}
-- Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
+- Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${params.activeOrder ? `\n- Active order quota: ${params.activeOrder.portionsRemaining} / ${params.activeOrder.packageSize} portions remaining` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
