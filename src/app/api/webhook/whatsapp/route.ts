@@ -351,7 +351,7 @@ async function processWebhookAsync(
           address: { type: "string" },
           maps_link: { type: "string", description: "Google Maps link provided by the customer" },
           area: { type: "string", enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera"] },
-          meal_time_preference: { type: "string" },
+          meal_time_preference: { type: "string", enum: ["lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule"] },
           custom_schedule: { type: "object" },
           start_date: {
             type: "string",

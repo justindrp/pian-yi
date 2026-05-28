@@ -64,8 +64,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const pref = order.meal_time_preference;
 
-    const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "default_lunch" || pref === "per_day_decision";
-    const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "default_dinner" || pref === "per_day_decision";
+    const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_lunch" || pref === "per_day_decision";
+    const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_dinner" || pref === "per_day_decision";
 
     if (isLunch && !order.customer_id) continue;
 

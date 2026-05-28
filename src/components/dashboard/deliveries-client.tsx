@@ -38,8 +38,11 @@ function tomorrow() {
   return d.toISOString().slice(0, 10);
 }
 
-function isPastDeadline() {
-  return new Date().getHours() >= 20;
+function isPastDeadline(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  // Deadline is the day before the delivery date at 8pm local time
+  const deadline = new Date(y, m - 1, d - 1, 20, 0, 0);
+  return new Date() > deadline;
 }
 
 function buildSubcontractorSummary(rows: DeliveryRow[], subs: Sub[], subId: string, date: string): string {
@@ -176,7 +179,7 @@ export default function DeliveriesClient() {
 
       {tab === "sheet" && (
         <div>
-          {isPastDeadline() && (
+          {isPastDeadline(date) && (
             <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
               ⚠️ Deadline sudah lewat. Perubahan ini harus dikomunikasikan langsung ke subcontractor.
             </div>
@@ -193,7 +196,7 @@ export default function DeliveriesClient() {
               <div className="font-semibold">{dinnerRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
             </div>
             <div className="flex gap-2 ml-auto">
-              <button type="button" onClick={() => generate.mutate()} disabled={generate.isPending} className="px-4 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40">
+              <button type="button" onClick={() => generate.mutate()} disabled={generate.isPending} className="px-4 py-2 border border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40">
                 {generate.isPending ? "Generating..." : "Generate"}
               </button>
               <button type="button" onClick={() => setShowConfirm(true)} disabled={rows.length === 0} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40">Save</button>
