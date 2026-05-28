@@ -533,6 +533,7 @@ export type Database = {
           reminder_sent_at: string | null
           start_date: string
           status: string
+          subcontractor_id: string | null
           total_price: number
           updated_at: string | null
         }
@@ -563,6 +564,7 @@ export type Database = {
           reminder_sent_at?: string | null
           start_date: string
           status?: string
+          subcontractor_id?: string | null
           total_price: number
           updated_at?: string | null
         }
@@ -593,6 +595,7 @@ export type Database = {
           reminder_sent_at?: string | null
           start_date?: string
           status?: string
+          subcontractor_id?: string | null
           total_price?: number
           updated_at?: string | null
         }
@@ -602,6 +605,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
             referencedColumns: ["id"]
           },
         ]
@@ -739,6 +749,7 @@ export type Database = {
           admin_phone: string | null
           admin_phone_2: string | null
           created_at: string | null
+          customer_nickname: string | null
           delivery_areas: Json | null
           id: string
           is_active: boolean | null
@@ -752,6 +763,7 @@ export type Database = {
           admin_phone?: string | null
           admin_phone_2?: string | null
           created_at?: string | null
+          customer_nickname?: string | null
           delivery_areas?: Json | null
           id?: string
           is_active?: boolean | null
@@ -765,6 +777,7 @@ export type Database = {
           admin_phone?: string | null
           admin_phone_2?: string | null
           created_at?: string | null
+          customer_nickname?: string | null
           delivery_areas?: Json | null
           id?: string
           is_active?: boolean | null

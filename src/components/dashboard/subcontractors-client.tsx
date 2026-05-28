@@ -12,6 +12,7 @@ interface OffDay {
 interface Subcontractor {
   id: string;
   name: string;
+  customer_nickname: string | null;
   admin_phone: string | null;
   admin_phone_2: string | null;
   delivery_areas: string[] | null;
@@ -38,7 +39,7 @@ export default function SubcontractorsClient() {
   const [selected, setSelected] = useState<Subcontractor | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Subcontractor>>({});
-  const [addForm, setAddForm] = useState({ name: "", admin_phone: "", admin_phone_2: "", delivery_areas: [] as string[], notes: "" });
+  const [addForm, setAddForm] = useState({ name: "", customer_nickname: "", admin_phone: "", admin_phone_2: "", delivery_areas: [] as string[], notes: "" });
   const [offDayForm, setOffDayForm] = useState({ off_date: "", reason: "" });
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
@@ -53,7 +54,7 @@ export default function SubcontractorsClient() {
     mutationFn: async () => {
       await fetch("/api/subcontractors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(addForm) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subcontractors"] }); setShowAdd(false); setAddForm({ name: "", admin_phone: "", admin_phone_2: "", delivery_areas: [], notes: "" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subcontractors"] }); setShowAdd(false); setAddForm({ name: "", customer_nickname: "", admin_phone: "", admin_phone_2: "", delivery_areas: [], notes: "" }); },
   });
 
   const addOffDay = useMutation({
@@ -88,6 +89,7 @@ export default function SubcontractorsClient() {
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3 text-left">Name</th>
+                <th className="px-4 py-3 text-left">Nickname (Dapur)</th>
                 <th className="px-4 py-3 text-left">Areas</th>
                 <th className="px-4 py-3 text-left">Admin Phone</th>
                 <th className="px-4 py-3 text-left">On-time rate</th>
@@ -102,6 +104,7 @@ export default function SubcontractorsClient() {
                 return (
                   <tr key={s.id} onClick={() => { setSelected(s); setEditForm(s); }} className="cursor-pointer hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
+                    <td className="px-4 py-3 text-gray-900">{s.customer_nickname ?? <span className="text-gray-400">—</span>}</td>
                     <td className="px-4 py-3 text-gray-500">{(s.delivery_areas ?? []).join(", ")}</td>
                     <td className="px-4 py-3 text-gray-500">{s.admin_phone ?? "—"}</td>
                     <td className="px-4 py-3 text-gray-500">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</td>
@@ -128,9 +131,9 @@ export default function SubcontractorsClient() {
 
           {/* Edit form */}
           <div className="space-y-3">
-            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
+            {(["name", "customer_nickname", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
               <div key={field}>
-                <label className="block text-xs text-gray-500 mb-1 capitalize">{field.replace(/_/g, " ")}</label>
+                <label className="block text-xs text-gray-500 mb-1 capitalize">{field === "customer_nickname" ? "Nickname (shown to customers)" : field.replace(/_/g, " ")}</label>
                 <input
                   className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
                   value={(editForm[field] as string) ?? ""}
@@ -158,7 +161,7 @@ export default function SubcontractorsClient() {
             </div>
             <button
               type="button"
-              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes })}
+              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editForm.customer_nickname, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes })}
               className="w-full py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
             >
               Save changes
@@ -222,9 +225,9 @@ export default function SubcontractorsClient() {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
             <h2 className="font-semibold text-gray-900">Add Subcontractor</h2>
-            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
+            {(["name", "customer_nickname", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
               <div key={field}>
-                <label className="block text-xs text-gray-500 mb-1 capitalize">{field.replace(/_/g, " ")}</label>
+                <label className="block text-xs text-gray-500 mb-1 capitalize">{field === "customer_nickname" ? "Nickname (shown to customers)" : field.replace(/_/g, " ")}</label>
                 <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={addForm[field] ?? ""} onChange={(e) => setAddForm((f) => ({ ...f, [field]: e.target.value }))} />
               </div>
             ))}

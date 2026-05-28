@@ -325,6 +325,16 @@ async function processWebhookAsync(
     return;
   }
 
+  // Load active dapurs for order form
+  const { data: activeSubs } = await db
+    .from("subcontractors")
+    .select("id, customer_nickname")
+    .eq("is_active", true)
+    .not("customer_nickname", "is", null);
+  const dapurOptions = (activeSubs ?? [])
+    .filter((s): s is { id: string; customer_nickname: string } => s.customer_nickname !== null)
+    .map((s) => ({ id: s.id, nickname: s.customer_nickname }));
+
   // Build system prompt
   const systemPrompt = await buildSystemPrompt({
     casual,
@@ -332,6 +342,7 @@ async function processWebhookAsync(
     customerName: customer.name,
     detectedMapsLink,
     menuShown,
+    dapurOptions,
   });
 
   // Tool definitions
@@ -357,6 +368,10 @@ async function processWebhookAsync(
             type: "string",
             description: "ISO date string YYYY-MM-DD",
           },
+          subcontractor_id: {
+            type: "string",
+            description: "UUID of the chosen dapur (from the dapur ID mapping in the system prompt)",
+          },
         },
         required: [
           "customer_name",
@@ -367,6 +382,7 @@ async function processWebhookAsync(
           "area",
           "meal_time_preference",
           "start_date",
+          ...(dapurOptions.length > 0 ? ["subcontractor_id"] : []),
         ],
       },
     },
@@ -634,6 +650,7 @@ async function handleToolUse(
       meal_time_preference: string;
       custom_schedule?: Record<string, unknown>;
       start_date: string;
+      subcontractor_id?: string;
     };
 
     // Look up price
@@ -663,6 +680,7 @@ async function handleToolUse(
         | import("@/types/database").Json
         | null,
       start_date: input.start_date,
+      subcontractor_id: input.subcontractor_id ?? null,
       status: "pending_payment",
       confirmed_at: new Date().toISOString(),
     });

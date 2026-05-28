@@ -13,6 +13,7 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json() as {
     name?: string;
+    customer_nickname?: string;
     admin_phone?: string;
     admin_phone_2?: string;
     delivery_areas?: string[];

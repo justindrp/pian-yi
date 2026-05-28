@@ -24,6 +24,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const body = await req.json() as {
     name: string;
+    customer_nickname?: string;
     admin_phone?: string;
     admin_phone_2?: string;
     delivery_areas?: string[];
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("subcontractors")
     .insert({
       name: body.name,
+      customer_nickname: body.customer_nickname ?? null,
       admin_phone: body.admin_phone ?? null,
       admin_phone_2: body.admin_phone_2 ?? null,
       delivery_areas: body.delivery_areas ?? [],

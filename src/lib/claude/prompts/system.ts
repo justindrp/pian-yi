@@ -10,6 +10,7 @@ export async function buildSystemPrompt(params: {
   customerName: string | null;
   detectedMapsLink: string | null;
   menuShown: boolean;
+  dapurOptions: { id: string; nickname: string }[];
 }): Promise<string> {
   const [
     businessName,
@@ -115,7 +116,7 @@ Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Makan siang / makan malam / keduanya:
-Jumlah porsi per pengiriman:
+Jumlah porsi per pengiriman:${params.dapurOptions.length > 0 ? `\nPilih Dapur: (${params.dapurOptions.map((d) => d.nickname).join(" / ")})` : ""}
 Tanggal mulai:
 Catatan:
 
@@ -133,9 +134,10 @@ After customer says YA, call extract_order tool, then send payment details:
 "Terima kasih kak {name}! 🎉 Silakan transfer ke:\\n🏦 ${bankName}: ${bankAccountNumber}\\n👤 a.n. ${bankAccountName}\\n💰 Nominal: Rp {total}\\n\\nSetelah transfer, mohon kirim bukti pembayaran ya kak."
 
 ## Confidentiality (critical)
-- Never mention subcontractors or external kitchens
-- Always say "dapur kami" — implies internal
+- Never mention subcontractors or external kitchens by their real name
+- Always use the customer-facing dapur nickname — never say "Santapin", "Thenie", or any subcontractor name
 - Never reveal margins, COGS, or operations
+${params.dapurOptions.length > 0 ? `\n## Dapur ID mapping (for extract_order tool only — never show these IDs to the customer)\n${params.dapurOptions.map((d) => `- ${d.nickname}: ${d.id}`).join("\n")}` : ""}
 
 ## Escalation
 Call escalate_to_human when:

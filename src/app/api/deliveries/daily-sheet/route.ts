@@ -34,11 +34,12 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
 
-  // Load active orders
+  // Load active orders that have started by the target date
   const { data: orders } = await db
     .from("orders")
-    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, pause_until, customers(name, phone_number, area, subcontractor_id)")
-    .eq("status", "active");
+    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, pause_until, subcontractor_id, customers(name, phone_number, area, subcontractor_id)")
+    .eq("status", "active")
+    .lte("start_date", date);
 
   if (!orders) return NextResponse.json({ ok: true, data: [] });
 
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   for (const order of orders) {
     const customer = order.customers as { name: string | null; phone_number: string; area: string; subcontractor_id: string | null } | null;
     if (!customer) continue;
+    const subcontractorId = (order as unknown as { subcontractor_id: string | null }).subcontractor_id ?? customer.subcontractor_id;
 
     // Skip paused
     if (order.pause_until && new Date(order.pause_until) >= targetDate) continue;
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         order_id: order.id,
         meal_type: "lunch",
         portions: (order.portions_lunch ?? 0) > 0 ? (order.portions_lunch ?? 0) : order.portions_per_delivery,
-        subcontractor_id: customer.subcontractor_id,
+        subcontractor_id: subcontractorId,
         status: "scheduled",
       });
     }
@@ -88,7 +90,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         order_id: order.id,
         meal_type: "dinner",
         portions: (order.portions_dinner ?? 0) > 0 ? (order.portions_dinner ?? 0) : order.portions_per_delivery,
-        subcontractor_id: customer.subcontractor_id,
+        subcontractor_id: subcontractorId,
         status: "scheduled",
       });
     }
