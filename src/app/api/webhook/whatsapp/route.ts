@@ -334,7 +334,7 @@ async function processWebhookAsync(
       .not("customer_nickname", "is", null),
     db
       .from("orders")
-      .select("id, portions_remaining, package_size, meal_time_preference")
+      .select("id, portions_remaining, package_size, portions_per_delivery, meal_time_preference")
       .eq("customer_id", customerId)
       .eq("status", "active")
       .order("created_at", { ascending: false })
@@ -349,6 +349,7 @@ async function processWebhookAsync(
         id: activeOrderRow.id,
         portionsRemaining: activeOrderRow.portions_remaining,
         packageSize: activeOrderRow.package_size,
+        portionsPerDelivery: activeOrderRow.portions_per_delivery,
         mealTimePreference: activeOrderRow.meal_time_preference,
       }
     : null;

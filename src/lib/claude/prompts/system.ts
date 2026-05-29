@@ -15,6 +15,7 @@ export async function buildSystemPrompt(params: {
     id: string;
     portionsRemaining: number;
     packageSize: number;
+    portionsPerDelivery: number;
     mealTimePreference: string | null;
   } | null;
 }): Promise<string> {
@@ -55,8 +56,12 @@ export async function buildSystemPrompt(params: {
     : "Use polished Indonesian with proper punctuation. Default to no emojis; use at most one per message, only when warmth wouldn't otherwise come across.";
 
   const now = new Date();
-  const deadlineHour = await getSetting("order_deadline_hour");
+  const [deadlineHour, dailyDeadlineHour] = await Promise.all([
+    getSetting("order_deadline_hour"),
+    getSetting("order_deadline_daily_hour"),
+  ]);
   const deadlineTime = `${deadlineHour}:00 WIB`;
+  const dailyDeadlineTime = `${dailyDeadlineHour}:00 WIB`;
 
   const areasDisplay = (() => {
     try {
@@ -87,7 +92,7 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Free delivery (ongkir gratis)
 - Halal
 - Menu rotates daily. ${weeklyMenu ? `This week's menu:\n${weeklyMenu}` : "Menu details change weekly."}
-  - We have 2 kitchens (Dapur 1 and Dapur 2) with different weekly menus — menu and price list images are sent automatically to new customers, never resend them
+  - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different weekly menus — menu and price list images are sent automatically to new customers, never resend them
   - When referring to kitchens always say "dapur kami" — never mention subcontractor or kitchen names
 - Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})
 - Order deadline: 8pm the day before delivery
@@ -143,11 +148,17 @@ After customer says YA, call extract_order tool, then send payment details:
 ## Daily quota ordering
 ${
   params.activeOrder
-    ? `This customer has an active quota-based order (${params.activeOrder.portionsRemaining} of ${params.activeOrder.packageSize} portions remaining).
+    ? `This customer has an active quota-based order (${params.activeOrder.portionsRemaining} of ${params.activeOrder.packageSize} portions remaining, ${params.activeOrder.portionsPerDelivery} porsi per meal).
 
-When they request a delivery for the next day (last order accepted before 16:00 WIB), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the delivery date. Pass "portions" as the total portions to deduct from quota — for "both" with 1 portion per meal, pass 2.
+When they request a delivery for the next day (last order accepted before ${dailyDeadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the delivery date. Pass "portions" as the total portions to deduct from quota.
 
-If portions_remaining is 0, tell the customer their quota is exhausted and offer a new package. Never call record_daily_order if quota is 0.`
+Portion deduction rules:
+- siang or malam only: deduct ${params.activeOrder.portionsPerDelivery} portion(s)
+- keduanya: deduct ${params.activeOrder.portionsPerDelivery * 2} portions (${params.activeOrder.portionsPerDelivery} per meal × 2)
+
+Insufficient quota: if the customer requests keduanya but portions_remaining < ${params.activeOrder.portionsPerDelivery * 2}, explain they only have ${params.activeOrder.portionsRemaining} portion(s) left — enough for ${params.activeOrder.portionsRemaining >= params.activeOrder.portionsPerDelivery ? "one meal (siang or malam, not both)" : "nothing — quota is exhausted"}. Never call record_daily_order if it would overdraft.
+
+${params.activeOrder.portionsRemaining <= 0 ? `Quota exhausted: offer the same package again — "Mau lanjut paket yang sama lagi kak? ${params.activeOrder.packageSize} porsi ${params.activeOrder.mealTimePreference === "lunch_only" ? "makan siang" : params.activeOrder.mealTimePreference === "dinner_only" ? "makan malam" : params.activeOrder.mealTimePreference === "both_fixed" || params.activeOrder.mealTimePreference === "per_day_decision" ? "keduanya" : ""}." If they say yes, go straight to the order form (skip re-asking Q1–Q4 since preferences are already known). Only re-ask if they want to change something.` : ""}`
     : "This customer has no active quota-based order. If they mention wanting to order for tomorrow without an existing package, direct them through the normal order flow."
 }
 
