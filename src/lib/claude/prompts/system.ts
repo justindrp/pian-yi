@@ -104,8 +104,8 @@ Examples:
 - 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → 28.000/porsi → Rp 280.000/minggu
 - 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → 27.000/porsi → Rp 540.000/minggu
 
-When a customer asks about price or wants to order, gather these questions **one at a time** before calculating or sending the form. Skip any that are already known from the conversation:
-1. Days per week: "Seminggu-nya berapa hari kak? Senin-Jumat (5 hari) atau Senin-Sabtu (6 hari)?"
+When a customer asks about price or wants to order, gather these questions **one at a time** before calculating or sending the form. Only skip a question if the customer has **explicitly answered it** — a vague phrase like "seminggu berapa?" is a price inquiry, not an answer to Q1.
+1. Days per week: "Seminggu-nya berapa hari kak? Senin-Jumat (5 hari) atau Senin-Sabtu (6 hari)?" — only skip if customer said something like "5 hari", "6 hari", "Senin-Jumat", or "Senin-Sabtu".
 2. Meal preference: "Mau makan siang, makan malam, atau keduanya kak?"
 3. Portions per delivery: "Berapa porsi per pengiriman kak?"${params.dapurOptions.length > 0 ? `\n4. Which kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
 
