@@ -380,6 +380,60 @@ function TemplatesSection({ rows }: { rows: TemplateRow[] }) {
 }
 
 // --- Weekly Menu ---
+const MENU_IMAGE_KEYS: { key: string; label: string }[] = [
+  { key: "weekly_menu_image_url", label: "Menu image (Dapur 1)" },
+  { key: "weekly_menu_image_url_dapur2", label: "Menu image (Dapur 2)" },
+  { key: "price_list_image_url", label: "Price list image" },
+];
+
+function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: string; label: string; currentUrl: string }) {
+  const qc = useQueryClient();
+  const [uploading, setUploading] = useState(false);
+  const [uploaded, setUploaded] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    setUploaded(false);
+    const form = new FormData();
+    form.append("file", file);
+    form.append("key", settingKey);
+    const res = await fetch("/api/settings/menu-image", { method: "POST", body: form });
+    const json = await res.json() as { ok: boolean; error?: string };
+    setUploading(false);
+    if (json.ok) {
+      setUploaded(true);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setTimeout(() => setUploaded(false), 3000);
+    } else {
+      setError(json.error ?? "Upload failed");
+    }
+    e.target.value = "";
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs text-gray-500">{label}</label>
+      {currentUrl && (
+        <a href={currentUrl} target="_blank" rel="noreferrer">
+          <img src={currentUrl} alt={label} className="h-24 w-auto rounded-lg border border-gray-200 object-cover" />
+        </a>
+      )}
+      <div className="flex items-center gap-2">
+        <label className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}>
+          {uploading ? "Uploading..." : currentUrl ? "Replace" : "Upload"}
+          <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+        </label>
+        {uploaded && <span className="text-xs text-green-600">Saved!</span>}
+        {error && <span className="text-xs text-red-500">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
 function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string> }) {
   const [menu, setMenu] = useState(settingsMap.weekly_menu ?? "");
   const [confirm, setConfirm] = useState(false);
@@ -387,24 +441,33 @@ function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string
 
   return (
     <Section title="Weekly Menu">
-      <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
-        <p className="text-xs text-gray-400">
-          Paste this week's menu here. The chatbot will share it when customers ask. Leave blank to direct customers to Instagram instead.
-        </p>
-        <textarea
-          rows={6}
-          value={menu}
-          onChange={(e) => { setMenu(e.target.value); setConfirm(false); }}
-          placeholder={"SENIN\nLunch: Ayam bakar, tempe orek, tumis kangkung\nDinner: Ikan goreng, tahu balado, sayur asem\n\nSELASA\nLunch: ...\nDinner: ..."}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-        />
-        <ConfirmSaveButton
-          confirm={confirm}
-          setConfirm={setConfirm}
-          loading={save.isPending}
-          success={save.isSuccess}
-          onConfirm={() => save.mutate({ weekly_menu: menu })}
-        />
+      <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-5">
+        <div className="space-y-4">
+          <p className="text-xs text-gray-400">Images are sent to new customers automatically on first contact.</p>
+          {MENU_IMAGE_KEYS.map(({ key, label }) => (
+            <MenuImageUploader key={key} settingKey={key} label={label} currentUrl={settingsMap[key] ?? ""} />
+          ))}
+        </div>
+        <hr className="border-gray-100" />
+        <div className="space-y-2">
+          <p className="text-xs text-gray-400">
+            Chatbot menu text — used when customers ask about the menu. Leave blank if you prefer to direct them to Instagram.
+          </p>
+          <textarea
+            rows={6}
+            value={menu}
+            onChange={(e) => { setMenu(e.target.value); setConfirm(false); }}
+            placeholder={"SENIN\nLunch: Ayam bakar, tempe orek, tumis kangkung\nDinner: Ikan goreng, tahu balado, sayur asem\n\nSELASA\nLunch: ...\nDinner: ..."}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+          />
+          <ConfirmSaveButton
+            confirm={confirm}
+            setConfirm={setConfirm}
+            loading={save.isPending}
+            success={save.isSuccess}
+            onConfirm={() => save.mutate({ weekly_menu: menu })}
+          />
+        </div>
       </div>
     </Section>
   );
