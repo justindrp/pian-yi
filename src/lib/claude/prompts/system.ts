@@ -131,12 +131,12 @@ Once all known, give **one exact price**: "1 porsi keduanya 5 hari → 1 × 2 ×
 Pricing tier is based on the **total package size** (total portions bought upfront):
 - Example: Paket 20 porsi → Rp 27.000/porsi → *Rp 540.000* total
 
-Gather Q1–Q${params.dapurOptions.length > 0 ? "4" : "3"} one at a time:
-1. Meal preference: "Mau makan siang, makan malam, atau keduanya kak?"
-2. Portions per delivery: "Berapa porsi per pengiriman kak?"
-3. Package size: "Mau beli paket berapa porsi kak? Misalnya 10, 20, atau 40 porsi."${params.dapurOptions.length > 0 ? `\n4. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+Gather Q1${params.dapurOptions.length > 0 ? "–Q2" : ""} one at a time:
+1. Package size: "Mau beli paket berapa porsi kak? Misalnya 10, 20, atau 40 porsi."${params.dapurOptions.length > 0 ? `\n2. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
 
-Once all known, give **one exact price**: "Paket 20 porsi, 1 porsi/pengiriman keduanya → 20 × Rp 27.000/porsi = *Rp 540.000*". Never say "tergantung" or show multiple scenarios.
+Once package size is known, give **one exact price**: "Paket 20 porsi → 20 × Rp 27.000/porsi = *Rp 540.000*". Never say "tergantung" or show multiple scenarios.
+
+Do NOT ask meal preference or portions per delivery before the form — bebas customers decide siang/malam each day; those details go in the order form.
 
 ---
 
