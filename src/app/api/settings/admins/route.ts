@@ -16,6 +16,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   const { error } = await db.from("admin_users").insert({ email: normalized, name });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
 
+  // Create the Supabase Auth account so OTP login works (signups are disabled)
+  await db.auth.admin.createUser({ email: normalized, email_confirm: true });
+
   await db.from("edit_log").insert({
     entity_type: "admin_users",
     entity_id: email,
@@ -38,6 +41,11 @@ export async function DELETE(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
   const { error } = await db.from("admin_users").delete().eq("email", email);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+
+  // Remove the Supabase Auth account too
+  const { data: { users } } = await db.auth.admin.listUsers({ perPage: 1000 });
+  const authUser = users.find((u) => u.email === email.toLowerCase().trim());
+  if (authUser) await db.auth.admin.deleteUser(authUser.id);
 
   await db.from("edit_log").insert({
     entity_type: "admin_users",
