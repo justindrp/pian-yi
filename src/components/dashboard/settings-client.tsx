@@ -149,13 +149,13 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
       <div className="flex items-center gap-2 mt-3">
         <span className="text-sm text-gray-500">Adjust all tiers by</span>
         <div className="flex">
-          <button type="button" onClick={() => setAdjustAmount((v) => String(-Math.abs(Number(v))))} className={`px-2 py-1 text-xs border rounded-l-lg ${adjustNum < 0 ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>−</button>
-          <button type="button" onClick={() => setAdjustAmount((v) => String(Math.abs(Number(v))))} className={`px-2 py-1 text-xs border-y border-r rounded-r-lg ${adjustNum >= 0 ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>+</button>
+          <button type="button" onClick={() => { setAdjustAmount((v) => String(Number(v) - 1000)); setAdjustConfirm(false); }} className="px-2 py-1 text-xs border rounded-l-lg border-gray-200 text-gray-500 hover:bg-gray-50">−</button>
+          <button type="button" onClick={() => { setAdjustAmount((v) => String(Number(v) + 1000)); setAdjustConfirm(false); }} className="px-2 py-1 text-xs border-y border-r rounded-r-lg border-gray-200 text-gray-500 hover:bg-gray-50">+</button>
         </div>
         <input
           type="number"
-          value={Math.abs(adjustNum) || ""}
-          onChange={(e) => setAdjustAmount(adjustNum < 0 ? String(-Math.abs(Number(e.target.value))) : e.target.value)}
+          value={adjustAmount}
+          onChange={(e) => { setAdjustAmount(e.target.value); setAdjustConfirm(false); }}
           className="border border-gray-200 rounded px-2 py-1 text-sm w-24"
           placeholder="1000"
           min={0}
