@@ -56,10 +56,11 @@ export async function GET(): Promise<Response> {
     timed(
       "revenue",
       db
-        .from("orders")
-        .select("total_price")
-        .gte("paid_at", todayStart.toISOString())
-        .lte("paid_at", todayEnd.toISOString()),
+        .from("journal_lines")
+        .select("credit, account:accounts!inner(code), journal:journals!inner(date, source_type)")
+        .eq("account.code", "4001")
+        .eq("journal.date", today)
+        .eq("journal.source_type", "delivery"),
     ),
     timed(
       "proofs",
@@ -84,7 +85,7 @@ export async function GET(): Promise<Response> {
   console.log("[dashboard/metrics] timings (ms):", timings);
 
   const revenueToday = (revenueRes.data ?? []).reduce(
-    (sum, o) => sum + (o.total_price ?? 0),
+    (sum, o) => sum + (o.credit ?? 0),
     0,
   );
 

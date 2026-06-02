@@ -17,6 +17,7 @@ const navItems = [
   { href: "/payments", label: "Payments" },
   { href: "/subcontractors", label: "Subcontractors" },
   { href: "/chatbot-training", label: "Chatbot Training" },
+  { href: "/accounting", label: "Accounting" },
   { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Settings" },
   { href: "/broadcasts", label: "Broadcasts" },

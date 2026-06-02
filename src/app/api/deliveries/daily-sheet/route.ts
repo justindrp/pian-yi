@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { createJournalEntry } from "@/lib/accounting/journal";
 import { getSetting } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -131,7 +132,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
   for (const row of body.rows) {
     const status = row.skip ? "skipped" : "scheduled";
-    await db.from("daily_deliveries").upsert(
+    const { data: upserted } = await db.from("daily_deliveries").upsert(
       {
         delivery_date: body.date,
         customer_id: row.customer_id,
@@ -144,13 +145,13 @@ export async function PUT(req: NextRequest): Promise<Response> {
         updated_at: new Date().toISOString(),
       },
       { onConflict: "delivery_date,customer_id,meal_type" },
-    );
+    ).select("id").single();
 
-    // Deduct portions_remaining for non-skipped rows
+    // Deduct portions_remaining and recognize revenue for non-skipped rows
     if (!row.skip) {
       const { data: ord } = await db
         .from("orders")
-        .select("portions_remaining")
+        .select("portions_remaining, price_per_portion")
         .eq("id", row.order_id)
         .single();
       if (ord && ord.portions_remaining !== null) {
@@ -158,6 +159,21 @@ export async function PUT(req: NextRequest): Promise<Response> {
           .from("orders")
           .update({ portions_remaining: Math.max(0, ord.portions_remaining - row.portions) })
           .eq("id", row.order_id);
+      }
+
+      // Journal: Dr Uang Muka Pelanggan / Cr Pendapatan Jasa Catering
+      if (upserted?.id && ord?.price_per_portion) {
+        const amount = row.portions * ord.price_per_portion;
+        createJournalEntry({
+          description: `Pengakuan pendapatan pengiriman ${body.date} ${row.meal_type}`,
+          date: body.date,
+          sourceType: "delivery",
+          sourceId: upserted.id,
+          lines: [
+            { accountCode: "2100", debit: amount, credit: 0 },
+            { accountCode: "4001", debit: 0, credit: amount },
+          ],
+        }).catch((err) => console.error("[delivery] journal error:", err));
       }
     }
   }

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { saveMessage } from "@/lib/claude/conversation";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { createJournalEntry } from "@/lib/accounting/journal";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -44,7 +45,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   // Fetch order + customer in one query
   const { data: order, error: fetchErr } = await db
     .from("orders")
-    .select("id, customer_id, customers(name, phone_number)")
+    .select("id, customer_id, total_price, customers(name, phone_number)")
     .eq("id", body.id)
     .single();
   if (fetchErr || !order)
@@ -57,6 +58,19 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .eq("id", body.id);
   if (updateErr)
     return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+
+  // Journal: Dr Bank BCA / Cr Uang Muka Pelanggan (full order value)
+  const today = new Date().toISOString().slice(0, 10);
+  createJournalEntry({
+    description: `Penerimaan pembayaran pesanan`,
+    date: today,
+    sourceType: "order_payment",
+    sourceId: body.id,
+    lines: [
+      { accountCode: "1002", debit: order.total_price ?? 0, credit: 0 },
+      { accountCode: "2100", debit: 0, credit: order.total_price ?? 0 },
+    ],
+  }).catch((err) => console.error("[mark_paid] journal error:", err));
 
   // Send WhatsApp confirmation
   const rawCustomer = order.customers;

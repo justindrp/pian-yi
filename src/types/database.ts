@@ -39,6 +39,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          category: string
+          code: string
+          created_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          normal_balance: string
+          type: string
+        }
+        Insert: {
+          category: string
+          code: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          normal_balance: string
+          type: string
+        }
+        Update: {
+          category?: string
+          code?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          normal_balance?: string
+          type?: string
+        }
+        Relationships: []
+      }
       admin_users: {
         Row: {
           created_at: string | null
@@ -565,6 +598,90 @@ export type Database = {
         }
         Relationships: []
       }
+      journal_lines: {
+        Row: {
+          account_id: string
+          credit: number
+          debit: number
+          id: string
+          journal_id: string
+        }
+        Insert: {
+          account_id: string
+          credit?: number
+          debit?: number
+          id?: string
+          journal_id: string
+        }
+        Update: {
+          account_id?: string
+          credit?: number
+          debit?: number
+          id?: string
+          journal_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_lines_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_lines_journal_id_fkey"
+            columns: ["journal_id"]
+            isOneToOne: false
+            referencedRelation: "journals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journal_sequences: {
+        Row: {
+          last_seq: number
+          year: number
+        }
+        Insert: {
+          last_seq?: number
+          year: number
+        }
+        Update: {
+          last_seq?: number
+          year?: number
+        }
+        Relationships: []
+      }
+      journals: {
+        Row: {
+          created_at: string | null
+          date: string
+          description: string
+          id: string
+          reference: string
+          source_id: string | null
+          source_type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date: string
+          description: string
+          id?: string
+          reference: string
+          source_id?: string | null
+          source_type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          description?: string
+          id?: string
+          reference?: string
+          source_id?: string | null
+          source_type?: string | null
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           description: string | null
@@ -878,7 +995,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      next_journal_reference: { Args: { p_year: number }; Returns: string }
     }
     Enums: {
       [_ in never]: never
