@@ -19,6 +19,7 @@ const navItems = [
   { href: "/chatbot-training", label: "Chatbot Training" },
   { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Settings" },
+  { href: "/broadcasts", label: "Broadcasts" },
   { href: "/guide", label: "Panduan" },
 ];
 

@@ -60,6 +60,87 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_recipients: {
+        Row: {
+          broadcast_id: string
+          customer_id: string
+          error: string | null
+          id: string
+          personalized_message: string
+          phone_number: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          broadcast_id: string
+          customer_id: string
+          error?: string | null
+          id?: string
+          personalized_message: string
+          phone_number: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          broadcast_id?: string
+          customer_id?: string
+          error?: string | null
+          id?: string
+          personalized_message?: string
+          phone_number?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_recipients_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_recipients_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcasts: {
+        Row: {
+          created_at: string
+          created_by: string
+          filter: Json
+          id: string
+          instruction: string
+          message_template: string
+          recipient_count: number
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          filter?: Json
+          id?: string
+          instruction: string
+          message_template: string
+          recipient_count?: number
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          filter?: Json
+          id?: string
+          instruction?: string
+          message_template?: string
+          recipient_count?: number
+          status?: string
+        }
+        Relationships: []
+      }
       chatbot_instructions: {
         Row: {
           created_at: string | null
