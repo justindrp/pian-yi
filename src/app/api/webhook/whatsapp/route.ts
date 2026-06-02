@@ -740,6 +740,7 @@ async function handleToolUse(
         name: input.customer_name,
         address: input.address,
         area: input.area,
+        ...(input.subcontractor_id ? { subcontractor_id: input.subcontractor_id } : {}),
       })
       .eq("id", customerId);
 
