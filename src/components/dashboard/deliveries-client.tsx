@@ -116,11 +116,9 @@ export default function DeliveriesClient() {
 
   const generate = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/deliveries/daily-sheet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date }) });
-      return (await res.json() as { ok: boolean; data: DeliveryRow[] }).data;
+      await fetch("/api/deliveries/daily-sheet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date }) });
     },
-    onSuccess: (data) => {
-      setRows(data.map((r) => ({ ...r, skip: false })));
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["daily-sheet", date] });
     },
   });
