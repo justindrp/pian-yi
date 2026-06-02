@@ -14,6 +14,9 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
 
+  const sinceDate = since.slice(0, 10);
+  const prevSinceDate = prevSince.slice(0, 10);
+
   const [
     ordersRes,
     prevOrdersRes,
@@ -23,15 +26,29 @@ export async function GET(req: NextRequest): Promise<Response> {
     subcontractorsRes,
     conversationsRes,
     escalationsRes,
+    revenueRes,
+    prevRevenueRes,
   ] = await Promise.all([
     db.from("orders").select("total_price, portions_per_delivery, package_size, created_at, status").gte("created_at", since),
     db.from("orders").select("total_price, package_size").gte("created_at", prevSince).lt("created_at", since),
     db.from("customers").select("id, created_at, area"),
     db.from("customers").select("id").gte("created_at", since),
-    db.from("daily_deliveries").select("delivery_date, subcontractor_id, status, meal_type, portions").gte("delivery_date", since.slice(0, 10)),
+    db.from("daily_deliveries").select("delivery_date, subcontractor_id, status, meal_type, portions").gte("delivery_date", sinceDate),
     db.from("subcontractors").select("id, name, late_delivery_count, total_delivery_count"),
     db.from("conversations").select("role, input_tokens, output_tokens, model_used, created_at").gte("created_at", since),
     db.from("customer_flags").select("escalated_to_human").eq("escalated_to_human", true),
+    // Recognized revenue: credits on account 4001 from delivery journals
+    db.from("journal_lines")
+      .select("credit, account:accounts!inner(code), journal:journals!inner(date, source_type)")
+      .eq("account.code", "4001")
+      .eq("journal.source_type", "delivery")
+      .gte("journal.date", sinceDate),
+    db.from("journal_lines")
+      .select("credit, account:accounts!inner(code), journal:journals!inner(date, source_type)")
+      .eq("account.code", "4001")
+      .eq("journal.source_type", "delivery")
+      .gte("journal.date", prevSinceDate)
+      .lt("journal.date", sinceDate),
   ]);
 
   const orders = ordersRes.data ?? [];
@@ -41,9 +58,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   const subcontractors = subcontractorsRes.data ?? [];
   const conversations = conversationsRes.data ?? [];
 
-  // Revenue
-  const revenue = orders.filter(o => o.status !== "cancelled_unpaid").reduce((sum, o) => sum + (o.total_price ?? 0), 0);
-  const prevRevenue = prevOrders.reduce((sum, o) => sum + (o.total_price ?? 0), 0);
+  // Recognized revenue from journal lines (account 4001 credits on delivery journals)
+  const revenue = (revenueRes.data ?? []).reduce((sum, r) => sum + (r.credit ?? 0), 0);
+  const prevRevenue = (prevRevenueRes.data ?? []).reduce((sum, r) => sum + (r.credit ?? 0), 0);
   const cogs = deliveries.reduce((sum, d) => sum + (d.portions ?? 0) * 19500, 0);
   const grossProfit = revenue - cogs;
 
