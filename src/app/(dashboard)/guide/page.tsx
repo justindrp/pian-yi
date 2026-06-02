@@ -63,13 +63,15 @@ export default function GuidePage() {
       {/* DELIVERIES */}
       <Section title="Pengiriman Harian">
         <Steps items={[
-          'Buka halaman Deliveries.',
-          'Pilih tanggal pengiriman yang ingin dilihat (default: hari ini).',
-          'Daftar pengiriman menampilkan nama pelanggan, alamat, porsi, dan waktu makan.',
-          'Centang pengiriman yang sudah selesai dikirim.',
-          'Jika ada masalah pengiriman (dapur libur, dll), catat di kolom catatan.',
+          'Setiap hari pukul 17.00, lembar pengiriman besok dibuat otomatis dari pesanan aktif.',
+          'Buka halaman Deliveries — daftar pengiriman sudah tersedia tanpa perlu klik tombol apapun.',
+          'Pilih tanggal jika ingin melihat hari lain.',
+          'Periksa porsi dan subkontraktor untuk setiap pelanggan, edit jika perlu.',
+          'Jika ada pelanggan yang skip hari itu, hilangkan centangnya.',
+          'Klik Save untuk menyimpan — ini juga mengurangi kuota pelanggan.',
+          'Jika ada pesanan baru masuk setelah pukul 17.00, klik Refresh untuk memperbarui daftar.',
         ]} />
-        <Note>Lembar pengiriman bisa dibuka dari ponsel — pastikan tanda centang disimpan sebelum menutup halaman.</Note>
+        <Note>Lembar pengiriman bisa dibuka dari ponsel — pastikan selalu klik Save sebelum menutup halaman.</Note>
       </Section>
 
       {/* SETTINGS */}
