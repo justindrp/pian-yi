@@ -28,6 +28,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     escalationsRes,
     revenueRes,
     prevRevenueRes,
+    cogsRes,
   ] = await Promise.all([
     db.from("orders").select("total_price, portions_per_delivery, package_size, created_at, status").gte("created_at", since),
     db.from("orders").select("total_price, package_size").gte("created_at", prevSince).lt("created_at", since),
@@ -49,6 +50,12 @@ export async function GET(req: NextRequest): Promise<Response> {
       .eq("journal.source_type", "delivery")
       .gte("journal.date", prevSinceDate)
       .lt("journal.date", sinceDate),
+    // COGS: debits on account 5001 from delivery_cogs journals
+    db.from("journal_lines")
+      .select("debit, account:accounts!inner(code), journal:journals!inner(date, source_type)")
+      .eq("account.code", "5001")
+      .eq("journal.source_type", "delivery_cogs")
+      .gte("journal.date", sinceDate),
   ]);
 
   const orders = ordersRes.data ?? [];
@@ -58,10 +65,10 @@ export async function GET(req: NextRequest): Promise<Response> {
   const subcontractors = subcontractorsRes.data ?? [];
   const conversations = conversationsRes.data ?? [];
 
-  // Recognized revenue from journal lines (account 4001 credits on delivery journals)
+  // Recognized revenue and COGS from journal lines
   const revenue = (revenueRes.data ?? []).reduce((sum, r) => sum + (r.credit ?? 0), 0);
   const prevRevenue = (prevRevenueRes.data ?? []).reduce((sum, r) => sum + (r.credit ?? 0), 0);
-  const cogs = deliveries.reduce((sum, d) => sum + (d.portions ?? 0) * 19500, 0);
+  const cogs = (cogsRes.data ?? []).reduce((sum, r) => sum + (r.debit ?? 0), 0);
   const grossProfit = revenue - cogs;
 
   // Portions

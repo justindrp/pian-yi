@@ -706,6 +706,7 @@ export type Database = {
       orders: {
         Row: {
           abandoned_recovery_sent_at: string | null
+          addon_cost_per_portion: number
           area: string
           cancellation_reason: string | null
           cancelled_at: string | null
@@ -738,6 +739,7 @@ export type Database = {
         }
         Insert: {
           abandoned_recovery_sent_at?: string | null
+          addon_cost_per_portion?: number
           area: string
           cancellation_reason?: string | null
           cancelled_at?: string | null
@@ -770,6 +772,7 @@ export type Database = {
         }
         Update: {
           abandoned_recovery_sent_at?: string | null
+          addon_cost_per_portion?: number
           area?: string
           cancellation_reason?: string | null
           cancelled_at?: string | null
@@ -949,6 +952,7 @@ export type Database = {
         Row: {
           admin_phone: string | null
           admin_phone_2: string | null
+          cost_per_portion: number
           created_at: string | null
           customer_nickname: string | null
           delivery_areas: Json | null
@@ -963,6 +967,7 @@ export type Database = {
         Insert: {
           admin_phone?: string | null
           admin_phone_2?: string | null
+          cost_per_portion?: number
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null
@@ -977,6 +982,7 @@ export type Database = {
         Update: {
           admin_phone?: string | null
           admin_phone_2?: string | null
+          cost_per_portion?: number
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null

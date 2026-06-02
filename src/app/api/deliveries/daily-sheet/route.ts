@@ -130,6 +130,14 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
 
+  // Pre-fetch subcontractor costs to avoid N+1 queries in the loop
+  const { data: subcontractors } = await db
+    .from("subcontractors")
+    .select("id, cost_per_portion");
+  const subCostMap = new Map<string, number>(
+    (subcontractors ?? []).map((s) => [s.id, s.cost_per_portion ?? 0]),
+  );
+
   for (const row of body.rows) {
     const status = row.skip ? "skipped" : "scheduled";
     const { data: upserted } = await db.from("daily_deliveries").upsert(
@@ -147,11 +155,11 @@ export async function PUT(req: NextRequest): Promise<Response> {
       { onConflict: "delivery_date,customer_id,meal_type" },
     ).select("id").single();
 
-    // Deduct portions_remaining and recognize revenue for non-skipped rows
+    // Deduct portions_remaining and record journals for non-skipped rows
     if (!row.skip) {
       const { data: ord } = await db
         .from("orders")
-        .select("portions_remaining, price_per_portion")
+        .select("portions_remaining, price_per_portion, addon_cost_per_portion")
         .eq("id", row.order_id)
         .single();
       if (ord && ord.portions_remaining !== null) {
@@ -161,19 +169,38 @@ export async function PUT(req: NextRequest): Promise<Response> {
           .eq("id", row.order_id);
       }
 
-      // Journal: Dr Uang Muka Pelanggan / Cr Pendapatan Jasa Catering
-      if (upserted?.id && ord?.price_per_portion) {
-        const amount = row.portions * ord.price_per_portion;
-        createJournalEntry({
-          description: `Pengakuan pendapatan pengiriman ${body.date} ${row.meal_type}`,
-          date: body.date,
-          sourceType: "delivery",
-          sourceId: upserted.id,
-          lines: [
-            { accountCode: "2100", debit: amount, credit: 0 },
-            { accountCode: "4001", debit: 0, credit: amount },
-          ],
-        }).catch((err) => console.error("[delivery] journal error:", err));
+      if (upserted?.id) {
+        // Revenue recognition: Dr Unearned Revenue / Cr Catering Revenue
+        if (ord?.price_per_portion) {
+          const revenueAmount = row.portions * ord.price_per_portion;
+          createJournalEntry({
+            description: `Revenue recognition ${body.date} ${row.meal_type}`,
+            date: body.date,
+            sourceType: "delivery",
+            sourceId: upserted.id,
+            lines: [
+              { accountCode: "2100", debit: revenueAmount, credit: 0 },
+              { accountCode: "4001", debit: 0, credit: revenueAmount },
+            ],
+          }).catch((err) => console.error("[delivery] revenue journal error:", err));
+        }
+
+        // COGS: Dr Subcontractor Cost / Cr Accounts Payable
+        const subCost = row.subcontractor_id ? (subCostMap.get(row.subcontractor_id) ?? 0) : 0;
+        const addonCost = ord?.addon_cost_per_portion ?? 0;
+        const cogsAmount = row.portions * (subCost + addonCost);
+        if (cogsAmount > 0) {
+          createJournalEntry({
+            description: `COGS ${body.date} ${row.meal_type}`,
+            date: body.date,
+            sourceType: "delivery_cogs",
+            sourceId: upserted.id,
+            lines: [
+              { accountCode: "5001", debit: cogsAmount, credit: 0 },
+              { accountCode: "2001", debit: 0, credit: cogsAmount },
+            ],
+          }).catch((err) => console.error("[delivery] cogs journal error:", err));
+        }
       }
     }
   }

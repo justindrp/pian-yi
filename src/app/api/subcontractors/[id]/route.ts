@@ -13,18 +13,29 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json() as {
     name?: string;
-    customer_nickname?: string;
+    customer_nickname?: string | null;
     admin_phone?: string;
     admin_phone_2?: string;
     delivery_areas?: string[];
     notes?: string;
     is_active?: boolean;
+    cost_per_portion?: number;
   };
+
+  const allowed: Record<string, unknown> = {};
+  if (body.name !== undefined) allowed.name = body.name;
+  if (body.customer_nickname !== undefined) allowed.customer_nickname = body.customer_nickname;
+  if (body.admin_phone !== undefined) allowed.admin_phone = body.admin_phone;
+  if (body.admin_phone_2 !== undefined) allowed.admin_phone_2 = body.admin_phone_2;
+  if (body.delivery_areas !== undefined) allowed.delivery_areas = body.delivery_areas;
+  if (body.notes !== undefined) allowed.notes = body.notes;
+  if (body.is_active !== undefined) allowed.is_active = body.is_active;
+  if (body.cost_per_portion !== undefined) allowed.cost_per_portion = body.cost_per_portion;
 
   const db = createAdminClient();
   const { data, error } = await db
     .from("subcontractors")
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update({ ...allowed, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
     .single();

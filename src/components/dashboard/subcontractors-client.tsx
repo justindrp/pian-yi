@@ -36,6 +36,7 @@ interface Subcontractor {
   delivery_areas: string[] | null;
   notes: string | null;
   is_active: boolean;
+  cost_per_portion: number;
   late_delivery_count: number;
   total_delivery_count: number;
   created_at: string;
@@ -167,6 +168,15 @@ export default function SubcontractorsClient() {
               <DapurStepper value={editDapurNum} onChange={setEditDapurNum} />
             </div>
             <div>
+              <label className="block text-xs text-gray-500 mb-1">Cost per portion (Rp)</label>
+              <input
+                type="number"
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                value={editForm.cost_per_portion ?? 0}
+                onChange={(e) => setEditForm((f) => ({ ...f, cost_per_portion: Number(e.target.value) }))}
+              />
+            </div>
+            <div>
               <label className="block text-xs text-gray-500 mb-1">Delivery areas</label>
               <div className="flex flex-wrap gap-1">
                 {AREAS.map((a) => (
@@ -186,7 +196,7 @@ export default function SubcontractorsClient() {
             </div>
             <button
               type="button"
-              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editDapurNum ? `Dapur ${editDapurNum}` : null, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes })}
+              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editDapurNum ? `Dapur ${editDapurNum}` : null, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes, cost_per_portion: editForm.cost_per_portion })}
               className="w-full py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
             >
               Save changes
