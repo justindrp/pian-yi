@@ -11,7 +11,7 @@ export async function GET(): Promise<Response> {
   const { data, error } = await db
     .from("subcontractors")
     .select("*, subcontractor_off_days(off_date, reason, id)")
-    .order("name");
+    .order("nickname");
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, data });
