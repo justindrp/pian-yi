@@ -197,7 +197,7 @@ export default function DeliveriesClient() {
             </div>
             <div className="flex gap-2 ml-auto">
               <button type="button" onClick={() => generate.mutate()} disabled={generate.isPending} className="px-4 py-2 border border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40">
-                {generate.isPending ? "Generating..." : "Generate"}
+                {generate.isPending ? "Refreshing..." : "Refresh"}
               </button>
               <button type="button" onClick={() => setShowConfirm(true)} disabled={rows.length === 0} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40">Save</button>
             </div>
@@ -206,7 +206,7 @@ export default function DeliveriesClient() {
           {sheetLoading ? (
             <div className="text-gray-400 text-sm">Loading...</div>
           ) : rows.length === 0 ? (
-            <div className="text-gray-400 text-sm text-center py-12">No deliveries. Click Generate to pre-populate from active orders.</div>
+            <div className="text-gray-400 text-sm text-center py-12">No deliveries for this date. Click Refresh to load from active orders.</div>
           ) : (
             <div className="grid grid-cols-2 gap-4">
               {(["lunch", "dinner"] as const).map((meal) => {
