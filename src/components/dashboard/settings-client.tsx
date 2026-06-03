@@ -381,8 +381,6 @@ function TemplatesSection({ rows }: { rows: TemplateRow[] }) {
 
 // --- Weekly Menu ---
 const MENU_IMAGE_KEYS: { key: string; label: string }[] = [
-  { key: "weekly_menu_image_url", label: "Menu image (Dapur 1)" },
-  { key: "weekly_menu_image_url_dapur2", label: "Menu image (Dapur 2)" },
   { key: "price_list_image_url", label: "Price list image" },
 ];
 
@@ -435,39 +433,13 @@ function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: stri
 }
 
 function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string> }) {
-  const [menu, setMenu] = useState(settingsMap.weekly_menu ?? "");
-  const [confirm, setConfirm] = useState(false);
-  const save = useSettingsMutation();
-
   return (
-    <Section title="Weekly Menu">
-      <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-5">
-        <div className="space-y-4">
-          <p className="text-xs text-gray-400">Images are sent to new customers automatically on first contact.</p>
-          {MENU_IMAGE_KEYS.map(({ key, label }) => (
-            <MenuImageUploader key={key} settingKey={key} label={label} currentUrl={settingsMap[key] ?? ""} />
-          ))}
-        </div>
-        <hr className="border-gray-100" />
-        <div className="space-y-2">
-          <p className="text-xs text-gray-400">
-            Chatbot menu text — used when customers ask about the menu. Leave blank if you prefer to direct them to Instagram.
-          </p>
-          <textarea
-            rows={6}
-            value={menu}
-            onChange={(e) => { setMenu(e.target.value); setConfirm(false); }}
-            placeholder={"SENIN\nLunch: Ayam bakar, tempe orek, tumis kangkung\nDinner: Ikan goreng, tahu balado, sayur asem\n\nSELASA\nLunch: ...\nDinner: ..."}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-          />
-          <ConfirmSaveButton
-            confirm={confirm}
-            setConfirm={setConfirm}
-            loading={save.isPending}
-            success={save.isSuccess}
-            onConfirm={() => save.mutate({ weekly_menu: menu })}
-          />
-        </div>
+    <Section title="Price List">
+      <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-4">
+        <p className="text-xs text-gray-400">Sent to new customers automatically on first contact. Menu images are managed per subcontractor.</p>
+        {MENU_IMAGE_KEYS.map(({ key, label }) => (
+          <MenuImageUploader key={key} settingKey={key} label={label} currentUrl={settingsMap[key] ?? ""} />
+        ))}
       </div>
     </Section>
   );

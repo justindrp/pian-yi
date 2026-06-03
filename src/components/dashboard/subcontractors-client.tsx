@@ -37,10 +37,44 @@ interface Subcontractor {
   notes: string | null;
   is_active: boolean;
   cost_per_portion: number;
+  menu_image_url: string | null;
+  menu_text: string | null;
   late_delivery_count: number;
   total_delivery_count: number;
   created_at: string;
   subcontractor_off_days: OffDay[];
+}
+
+function SubMenuImageUploader({ subId, currentUrl, onSuccess }: { subId: string; currentUrl: string | null; onSuccess: (url: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploaded, setUploaded] = useState(false);
+  const [error, setError] = useState("");
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setError(""); setUploaded(false);
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/subcontractors/${subId}/menu-image`, { method: "POST", body: form });
+    const json = await res.json() as { ok: boolean; url?: string; error?: string };
+    setUploading(false);
+    if (json.ok && json.url) { setUploaded(true); onSuccess(json.url); setTimeout(() => setUploaded(false), 3000); }
+    else setError(json.error ?? "Upload failed");
+    e.target.value = "";
+  }
+  return (
+    <div className="space-y-2">
+      {currentUrl && <a href={currentUrl} target="_blank" rel="noreferrer"><img src={currentUrl} alt="Menu" className="h-24 w-auto rounded-lg border border-gray-200 object-cover" /></a>}
+      <div className="flex items-center gap-2">
+        <label className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}>
+          {uploading ? "Uploading..." : currentUrl ? "Replace" : "Upload"}
+          <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+        </label>
+        {uploaded && <span className="text-xs text-green-600">Saved!</span>}
+        {error && <span className="text-xs text-red-500">{error}</span>}
+      </div>
+    </div>
+  );
 }
 
 const AREAS = ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Bintaro", "Graha Raya"];
@@ -194,9 +228,27 @@ export default function SubcontractorsClient() {
                 ))}
               </div>
             </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Menu image</label>
+              <SubMenuImageUploader
+                subId={selected.id}
+                currentUrl={editForm.menu_image_url ?? null}
+                onSuccess={(url) => { setEditForm((f) => ({ ...f, menu_image_url: url })); qc.invalidateQueries({ queryKey: ["subcontractors"] }); }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Menu text (chatbot)</label>
+              <textarea
+                rows={5}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-mono"
+                value={(editForm.menu_text as string) ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, menu_text: e.target.value }))}
+                placeholder={"SENIN\nAyam bakar, tempe orek, tumis kangkung\n\nSELASA\n..."}
+              />
+            </div>
             <button
               type="button"
-              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editDapurNum ? `Dapur ${editDapurNum}` : null, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes, cost_per_portion: editForm.cost_per_portion })}
+              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editDapurNum ? `Dapur ${editDapurNum}` : null, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes, cost_per_portion: editForm.cost_per_portion, menu_text: editForm.menu_text as string | null })}
               className="w-full py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
             >
               Save changes

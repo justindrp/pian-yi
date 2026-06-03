@@ -320,17 +320,17 @@ async function processWebhookAsync(
   // Send welcome sequence on first contact — deterministic, not Claude's decision
   let menuShown = stateRow?.menu_shown ?? false;
   if (!menuShown) {
-    const [welcomeText, menuDapur1Url, menuDapur2Url, priceListUrl] = await Promise.all([
+    const [welcomeText, priceListUrl, { data: welcomeSubs }] = await Promise.all([
       getSetting("welcome_message"),
-      getSetting("weekly_menu_image_url"),
-      getSetting("weekly_menu_image_url_dapur2"),
       getSetting("price_list_image_url"),
+      db.from("subcontractors").select("customer_nickname, menu_image_url").eq("is_active", true).not("menu_image_url", "is", null),
     ]);
 
     if (welcomeText) await sendTextMessage(message.from, welcomeText);
     if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
-    if (menuDapur1Url) await sendImageMessage(message.from, menuDapur1Url, "Menu Dapur 1");
-    if (menuDapur2Url) await sendImageMessage(message.from, menuDapur2Url, "Menu Dapur 2");
+    for (const sub of welcomeSubs ?? []) {
+      if (sub.menu_image_url) await sendImageMessage(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
+    }
 
     await db
       .from("customer_state")
@@ -358,7 +358,7 @@ async function processWebhookAsync(
   const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
     db
       .from("subcontractors")
-      .select("id, customer_nickname")
+      .select("id, customer_nickname, menu_image_url, menu_text")
       .eq("is_active", true)
       .not("customer_nickname", "is", null),
     db
@@ -371,24 +371,15 @@ async function processWebhookAsync(
       .maybeSingle(),
   ]);
   const rawSubs = (activeSubs ?? []).filter(
-    (s): s is { id: string; customer_nickname: string } => s.customer_nickname !== null,
+    (s): s is { id: string; customer_nickname: string; menu_image_url: string | null; menu_text: string | null } => s.customer_nickname !== null,
   );
   // Only offer a dapur if its menu image has been uploaded
-  const dapurMenuKey = (nickname: string) => {
-    const m = nickname.match(/^Dapur\s+(\d+)$/i);
-    if (!m) return null;
-    const n = Number(m[1]);
-    return n === 1 ? "weekly_menu_image_url" : `weekly_menu_image_url_dapur${n}`;
-  };
-  const menuUrls = await Promise.all(
-    rawSubs.map((s) => {
-      const key = dapurMenuKey(s.customer_nickname);
-      return key ? getSetting(key) : Promise.resolve(null);
-    }),
-  );
   const dapurOptions = rawSubs
-    .filter((_, i) => !!menuUrls[i])
+    .filter((s) => !!s.menu_image_url)
     .map((s) => ({ id: s.id, nickname: s.customer_nickname }));
+  const dapurMenuTexts = rawSubs
+    .filter((s) => !!s.menu_image_url && !!s.menu_text)
+    .map((s) => ({ nickname: s.customer_nickname, menuText: s.menu_text as string }));
   const activeOrder = activeOrderRow
     ? {
         id: activeOrderRow.id,
@@ -407,6 +398,7 @@ async function processWebhookAsync(
     detectedMapsLink,
     menuShown,
     dapurOptions,
+    dapurMenuTexts,
     activeOrder,
   });
 

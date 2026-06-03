@@ -11,6 +11,7 @@ export async function buildSystemPrompt(params: {
   detectedMapsLink: string | null;
   menuShown: boolean;
   dapurOptions: { id: string; nickname: string }[];
+  dapurMenuTexts: { nickname: string; menuText: string }[];
   activeOrder: {
     id: string;
     portionsRemaining: number;
@@ -27,7 +28,6 @@ export async function buildSystemPrompt(params: {
     bankAccountNumber,
     bankAccountName,
     escalationKeywords,
-    weeklyMenu,
   ] = await Promise.all([
     getSetting("business_name"),
     getSetting("delivery_areas"),
@@ -36,7 +36,6 @@ export async function buildSystemPrompt(params: {
     getSetting("bank_account_number"),
     getSetting("bank_account_name"),
     getSetting("escalation_keywords"),
-    getSetting("weekly_menu"),
   ]);
 
   const [pricingTiers, activeInstructions] = await Promise.all([
@@ -91,7 +90,7 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Every portion includes: nasi + 3 lauk (no sayur, no sambal)
 - Free delivery (ongkir gratis)
 - Halal
-- Menu rotates daily. ${weeklyMenu ? `This week's menu:\n${weeklyMenu}` : "Menu details change weekly."}
+- Menu rotates daily. ${params.dapurMenuTexts.length > 0 ? `Menu per dapur:\n${params.dapurMenuTexts.map((d) => `${d.nickname}:\n${d.menuText}`).join("\n\n")}` : "Menu details change weekly."}
   - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different weekly menus — menu and price list images are sent automatically to new customers, never resend them
   - When referring to kitchens always say "dapur kami" — never mention subcontractor or kitchen names
 - Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})

@@ -220,6 +220,89 @@ pian-yi/
     └── seed.ts (initial settings/templates seed)
 ```
 
+## API Routes
+
+Quick reference: which file handles which feature.
+
+### Webhook (WhatsApp chatbot)
+- `GET /api/webhook/whatsapp` — Meta webhook verification (hub.challenge handshake)
+- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. Also handles welcome sequence (sends menu images from subcontractor rows).
+
+### Auth
+- `POST /api/auth/check-admin` — Check if email exists in `admin_users`. ⚠️ Known issue: no session verification, allows unauthenticated email enumeration.
+- `POST /api/auth/signout` — Sign out + redirect to `/login`
+
+### Dashboard
+- `GET /api/dashboard/metrics` — All KPI metrics in one call (active orders, revenue, deliveries, etc.)
+
+### Orders
+- `GET /api/orders` — List orders, optional `?status=` filter
+- `POST /api/orders` — Admin creates a new order
+- `PATCH /api/orders` — Update order status or fields
+
+### Customers
+- `DELETE /api/customers/[id]` — Delete customer: detaches payment proofs, removes conversation state and rate limit records
+
+### Deliveries
+- `GET /api/deliveries/daily-sheet` — Fetch delivery rows for a given date
+- `POST /api/deliveries/daily-sheet` — Create daily delivery rows for a date
+- `GET /api/deliveries/proofs` — List payment proof photos with signed URLs
+- `POST /api/deliveries/proofs` — Upload proof photo; triggers Haiku photo matching against expected orders
+
+### Inbox (admin-guided bot responses)
+- `POST /api/inbox/bot-reply` — Admin provides a concise answer → Haiku polishes it → bot sends polished message to customer → clears `pending_bot_response` flag
+
+### Settings
+- `GET /api/settings` — All settings + pricing tiers + message templates + admin list
+- `PATCH /api/settings` — Update a single settings key (e.g. `{ key: "order_deadline_hour", value: "20" }`)
+- `POST /api/settings/admins` — Add admin user + create Supabase Auth account
+- `POST /api/settings/menu-image` — Upload price list image (`price_list_image_url` only; dapur menu images are managed per subcontractor)
+- `PATCH /api/settings/pricing` — Update a single pricing tier, or bulk-adjust all tiers with `{ adjust: number }`
+- `PATCH /api/settings/templates` — Update a message template by key
+
+### Subcontractors
+- `GET /api/subcontractors` — List all subcontractors with off days
+- `POST /api/subcontractors` — Create a new subcontractor
+- `PATCH /api/subcontractors/[id]` — Update allowlisted fields (name, nickname, phone, areas, notes, cost, menu_text, etc.)
+- `POST /api/subcontractors/[id]/menu-image` — Upload menu image to `menu-images` bucket → save URL to subcontractor row
+- `POST /api/subcontractors/off-days` — Add an off day for a subcontractor
+- `DELETE /api/subcontractors/off-days` — Remove an off day
+
+### Chatbot training
+- `POST /api/training-chat` — Annie chats with Sonnet to craft system instructions; auto-saves on `[SAVE_INSTRUCTION]` marker in response
+
+### Broadcasts
+- `GET /api/broadcasts` — List broadcasts with recipient counts
+- `POST /api/broadcasts/preview` — Haiku parses natural-language instruction → returns filter criteria + personalized message previews
+- `POST /api/broadcasts/send` — Send personalized WhatsApp messages to filtered customers
+
+### Reports
+- `GET /api/reports` — Revenue, orders, customers, churn analytics for N days
+
+### Accounting
+- `GET /api/accounting` — Paginated journal entries with optional date range filter
+
+### WhatsApp (manual send)
+- `POST /api/whatsapp/send` — Admin sends a manual text message from the dashboard UI
+
+### Push notifications
+- `GET /api/push/config` — VAPID public key + current subscription status
+- `POST /api/push/subscribe` — Save a push subscription for this browser
+- `POST /api/push/test` — Send a test push notification to this browser
+
+### Health
+- `GET /api/health` — Liveness probe (returns 200 OK)
+
+### Cron (all require `CRON_SECRET` header)
+- `GET /api/cron/abandoned-recovery` — Re-message customers stuck in ordering state with no completed order
+- `POST /api/cron/cancel-unpaid` — Cancel orders that remain unpaid after N hours; notify customer
+- `POST /api/cron/daily-summary` — Push notification with yesterday's metrics (runs at 9am)
+- `GET /api/cron/generate-deliveries` — Pre-create `daily_deliveries` rows for tomorrow
+- `GET /api/cron/lapsed-customers` — Detect customers who haven't ordered recently; send re-engagement message
+- `GET /api/cron/post-delivery-followup` — Send satisfaction follow-up WhatsApp message after delivery
+- `GET /api/cron/renewal-reminders` — Warn quota customers whose balance is running low
+- `POST /api/cron/send-reminders` — Send payment reminder to customers with unpaid orders
+
 ## Coding conventions
 
 - TypeScript strict mode on

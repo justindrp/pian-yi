@@ -20,6 +20,7 @@ export async function PATCH(
     notes?: string;
     is_active?: boolean;
     cost_per_portion?: number;
+    menu_text?: string | null;
   };
 
   const allowed: Record<string, unknown> = {};
@@ -31,6 +32,7 @@ export async function PATCH(
   if (body.notes !== undefined) allowed.notes = body.notes;
   if (body.is_active !== undefined) allowed.is_active = body.is_active;
   if (body.cost_per_portion !== undefined) allowed.cost_per_portion = body.cost_per_portion;
+  if (body.menu_text !== undefined) allowed.menu_text = body.menu_text;
 
   const db = createAdminClient();
   const { data, error } = await db
