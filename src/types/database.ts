@@ -374,46 +374,49 @@ export type Database = {
       customers: {
         Row: {
           address: string | null
+          address_type: string | null
           area: string | null
           created_at: string | null
           custom_schedule: Json | null
           delivery_phone: string | null
-          district: string | null
           google_maps_link: string | null
           id: string
           meal_time_preference: string | null
           name: string | null
           phone_number: string
+          sub_area: string | null
           subcontractor_id: string | null
           updated_at: string | null
         }
         Insert: {
           address?: string | null
+          address_type?: string | null
           area?: string | null
           created_at?: string | null
           custom_schedule?: Json | null
           delivery_phone?: string | null
-          district?: string | null
           google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
           phone_number: string
+          sub_area?: string | null
           subcontractor_id?: string | null
           updated_at?: string | null
         }
         Update: {
           address?: string | null
+          address_type?: string | null
           area?: string | null
           created_at?: string | null
           custom_schedule?: Json | null
           delivery_phone?: string | null
-          district?: string | null
           google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
           phone_number?: string
+          sub_area?: string | null
           subcontractor_id?: string | null
           updated_at?: string | null
         }

@@ -164,7 +164,8 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | name | text | Full name (filled in when they place an order) |
 | address | text | Delivery address |
 | area | text | Delivery zone (e.g. "BSD Baru", "Gading Serpong") |
-| district | text | Sub-area within the delivery zone (e.g. "Nusa Loka", "Grand Serpong") |
+| sub_area | text | Sub-location within the area: district name for houses, apartment name for apartments, building name for offices |
+| address_type | text | "house", "apartment", or "office" — classified by Sonnet at order time |
 | google_maps_link | text | Google Maps URL for the delivery address |
 | delivery_phone | text | Alternative phone number for delivery if different |
 | meal_time_preference | text | Default meal preference (e.g. "lunch_only", "both_fixed") |

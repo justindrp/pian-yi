@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { loadHistory, saveMessage } from "@/lib/claude/conversation";
+import { classifyAddress } from "@/lib/claude/classify-address";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
@@ -420,7 +421,8 @@ async function processWebhookAsync(
           portions_dinner: { type: "number" },
           address: { type: "string" },
           maps_link: { type: "string", description: "Google Maps link provided by the customer" },
-          area: { type: "string", enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera"] },
+          area: { type: "string", enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Karawaci"] },
+          sub_area: { type: "string", description: "Sub-location within the area: district name for houses, apartment name for apartments, building name for offices" },
           meal_time_preference: { type: "string", enum: ["lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule"] },
           custom_schedule: { type: "object" },
           start_date: {
@@ -744,6 +746,7 @@ async function handleToolUse(
       address: string;
       maps_link: string;
       area: string;
+      sub_area?: string;
       meal_time_preference?: string;
       custom_schedule?: Record<string, unknown>;
       start_date?: string;
@@ -786,13 +789,17 @@ async function handleToolUse(
       confirmed_at: new Date().toISOString(),
     });
 
-    // Update customer name and address
+    // Classify address type then update customer record
+    const addressType = await classifyAddress(input.address);
     await db
       .from("customers")
       .update({
         name: input.customer_name,
         address: input.address,
         area: input.area,
+        sub_area: input.sub_area ?? null,
+        address_type: addressType,
+        ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
         ...(input.subcontractor_id ? { subcontractor_id: input.subcontractor_id } : {}),
       })
       .eq("id", customerId);
