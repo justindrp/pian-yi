@@ -358,7 +358,7 @@ async function processWebhookAsync(
   const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
     db
       .from("subcontractors")
-      .select("id, customer_nickname, menu_image_url, menu_text")
+      .select("id, customer_nickname, menu_image_url, menu_text, delivery_areas")
       .eq("is_active", true)
       .not("customer_nickname", "is", null),
     db
@@ -371,7 +371,7 @@ async function processWebhookAsync(
       .maybeSingle(),
   ]);
   const rawSubs = (activeSubs ?? []).filter(
-    (s): s is { id: string; customer_nickname: string; menu_image_url: string | null; menu_text: string | null } => s.customer_nickname !== null,
+    (s): s is { id: string; customer_nickname: string; menu_image_url: string | null; menu_text: string | null; delivery_areas: string[] | null } => s.customer_nickname !== null,
   );
   // Only offer a dapur if its menu image has been uploaded
   const dapurOptions = rawSubs
@@ -380,6 +380,7 @@ async function processWebhookAsync(
   const dapurMenuTexts = rawSubs
     .filter((s) => !!s.menu_image_url && !!s.menu_text)
     .map((s) => ({ nickname: s.customer_nickname, menuText: s.menu_text as string }));
+  const servedAreas = [...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? []))].sort();
   const activeOrder = activeOrderRow
     ? {
         id: activeOrderRow.id,
@@ -399,6 +400,7 @@ async function processWebhookAsync(
     menuShown,
     dapurOptions,
     dapurMenuTexts,
+    servedAreas,
     activeOrder,
   });
 

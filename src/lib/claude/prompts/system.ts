@@ -12,6 +12,7 @@ export async function buildSystemPrompt(params: {
   menuShown: boolean;
   dapurOptions: { id: string; nickname: string }[];
   dapurMenuTexts: { nickname: string; menuText: string }[];
+  servedAreas: string[];
   activeOrder: {
     id: string;
     portionsRemaining: number;
@@ -22,7 +23,6 @@ export async function buildSystemPrompt(params: {
 }): Promise<string> {
   const [
     businessName,
-    deliveryAreas,
     instagramHandle,
     bankName,
     bankAccountNumber,
@@ -30,7 +30,6 @@ export async function buildSystemPrompt(params: {
     escalationKeywords,
   ] = await Promise.all([
     getSetting("business_name"),
-    getSetting("delivery_areas"),
     getSetting("instagram_handle"),
     getSetting("bank_name"),
     getSetting("bank_account_number"),
@@ -62,13 +61,7 @@ export async function buildSystemPrompt(params: {
   const deadlineTime = `${deadlineHour}:00 WIB`;
   const dailyDeadlineTime = `${dailyDeadlineHour}:00 WIB`;
 
-  const areasDisplay = (() => {
-    try {
-      return (JSON.parse(deliveryAreas) as string[]).join(", ");
-    } catch {
-      return deliveryAreas;
-    }
-  })();
+  const areasDisplay = params.servedAreas.join(", ");
 
   const escalationList = (() => {
     try {
