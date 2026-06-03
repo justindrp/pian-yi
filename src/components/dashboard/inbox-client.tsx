@@ -22,10 +22,14 @@ export default function InboxClient() {
   );
   const [messages, setMessages] = useState<Conversation[]>([]);
   const [manualReply, setManualReply] = useState("");
+  const [botReply, setBotReply] = useState("");
   const [sending, setSending] = useState(false);
-  const [flags, setFlags] = useState<{ escalated_to_human: boolean } | null>(
-    null,
-  );
+  const [sendingBotReply, setSendingBotReply] = useState(false);
+  const [flags, setFlags] = useState<{
+    escalated_to_human: boolean;
+    pending_bot_response: boolean;
+    pending_bot_question: string | null;
+  } | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -86,12 +90,16 @@ export default function InboxClient() {
 
       const { data: flagData } = await supabase
         .from("customer_flags")
-        .select("escalated_to_human")
+        .select("escalated_to_human, pending_bot_response, pending_bot_question")
         .eq("customer_id", customerId)
         .single();
       setFlags(
         flagData
-          ? { escalated_to_human: flagData.escalated_to_human ?? false }
+          ? {
+              escalated_to_human: flagData.escalated_to_human ?? false,
+              pending_bot_response: flagData.pending_bot_response ?? false,
+              pending_bot_question: flagData.pending_bot_question ?? null,
+            }
           : null,
       );
     },
@@ -162,6 +170,25 @@ export default function InboxClient() {
       })
       .eq("customer_id", selectedCustomerId);
     setFlags({ ...flags, escalated_to_human: newVal });
+  }
+
+  async function sendBotReply() {
+    if (!selectedCustomerId || !botReply.trim()) return;
+    setSendingBotReply(true);
+    const res = await fetch("/api/inbox/bot-reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId, admin_answer: botReply.trim() }),
+    });
+    setSendingBotReply(false);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      alert(`Failed to send: ${body?.error ?? res.statusText}`);
+      return;
+    }
+    setBotReply("");
+    if (flags) setFlags({ ...flags, pending_bot_response: false, pending_bot_question: null });
+    await loadMessages(selectedCustomerId);
   }
 
   async function deleteCustomer() {
@@ -359,6 +386,38 @@ export default function InboxClient() {
             })}
             <div ref={bottomRef} />
           </div>
+
+          {/* Bot-help reply panel */}
+          {flags?.pending_bot_response && !flags.escalated_to_human && (
+            <div className="px-4 py-3 border-t border-amber-200 bg-amber-50 space-y-2">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-600 text-sm mt-0.5">⏳</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-amber-800">Bot is waiting for your answer</p>
+                  {flags.pending_bot_question && (
+                    <p className="text-xs text-amber-700 mt-0.5 italic">"{flags.pending_bot_question}"</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={botReply}
+                  onChange={(e) => setBotReply(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendBotReply()}
+                  placeholder="Type your answer (AI will polish it)..."
+                  className="flex-1 px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={sendBotReply}
+                  disabled={sendingBotReply || !botReply.trim()}
+                  className="px-4 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                >
+                  {sendingBotReply ? "Sending..." : "Send"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Manual reply */}
           {flags?.escalated_to_human && (

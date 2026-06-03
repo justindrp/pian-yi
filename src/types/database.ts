@@ -263,6 +263,8 @@ export type Database = {
           is_blacklisted: boolean | null
           is_suspicious: boolean | null
           needs_human_review: boolean | null
+          pending_bot_question: string | null
+          pending_bot_response: boolean
           vip_status: boolean | null
         }
         Insert: {
@@ -273,6 +275,8 @@ export type Database = {
           is_blacklisted?: boolean | null
           is_suspicious?: boolean | null
           needs_human_review?: boolean | null
+          pending_bot_question?: string | null
+          pending_bot_response?: boolean
           vip_status?: boolean | null
         }
         Update: {
@@ -283,6 +287,8 @@ export type Database = {
           is_blacklisted?: boolean | null
           is_suspicious?: boolean | null
           needs_human_review?: boolean | null
+          pending_bot_question?: string | null
+          pending_bot_response?: boolean
           vip_status?: boolean | null
         }
         Relationships: [

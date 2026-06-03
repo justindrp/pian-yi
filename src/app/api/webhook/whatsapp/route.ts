@@ -139,7 +139,7 @@ async function processWebhookAsync(
   // Check flags
   const { data: flags } = await db
     .from("customer_flags")
-    .select("escalated_to_human, is_blacklisted")
+    .select("escalated_to_human, is_blacklisted, pending_bot_response, pending_bot_question")
     .eq("customer_id", customerId)
     .single();
 
@@ -164,6 +164,35 @@ async function processWebhookAsync(
     await sendPushToAllAdmins(
       "New message from escalated customer",
       `${message.from}: ${escalatedText.slice(0, 80)}`,
+      "/inbox",
+      "medium",
+    );
+    await db
+      .from("processed_messages")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("message_id", message.messageId);
+    return;
+  }
+
+  if (flags?.pending_bot_response) {
+    const pendingText =
+      message.type === "text"
+        ? (message.text ?? "")
+        : message.type === "image"
+          ? "[Image]"
+          : `[${message.type}]`;
+    const pendingIntent = await classifyIntent(pendingText).catch(() => "other");
+    await saveMessage({
+      customerId,
+      role: "user",
+      content: pendingText,
+      messageId: message.messageId,
+      intent: pendingIntent,
+      messageType: message.type === "image" ? "image" : "text",
+    });
+    await sendPushToAllAdmins(
+      "New message (awaiting bot reply)",
+      `${message.from}: ${pendingText.slice(0, 80)}`,
       "/inbox",
       "medium",
     );
@@ -449,9 +478,21 @@ async function processWebhookAsync(
       },
     },
     {
+      name: "ask_admin_for_help",
+      description:
+        "Called when the bot is uncertain about the answer. Pauses the bot, asks Annie for input, then the bot will send a polished version of Annie's answer to the customer. Use this by default for uncertainty. Do NOT use escalate_to_human unless the customer needs a human to take over entirely.",
+      input_schema: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "The customer's question or the situation the bot is unsure about" },
+        },
+        required: ["question"],
+      },
+    },
+    {
       name: "escalate_to_human",
       description:
-        "Called when the conversation should be handed off to Annie.",
+        "Called when the conversation must be fully handed off to Annie — use only for complaints, refund requests, or clearly frustrated customers.",
       input_schema: {
         type: "object",
         properties: { reason: { type: "string" } },
@@ -826,6 +867,21 @@ async function handleToolUse(
       `${input.delivery_date} ${input.meal_type} × ${input.portions} porsi`,
       "/deliveries",
       "low",
+    );
+  } else if (tool.name === "ask_admin_for_help") {
+    const input = tool.input as { question: string };
+    await db
+      .from("customer_flags")
+      .update({ pending_bot_response: true, pending_bot_question: input.question })
+      .eq("customer_id", customerId);
+
+    await sendTextMessage(phone, "Mohon tunggu sebentar kak, kami sedang cek dulu ya 🙏");
+
+    await sendPushToAllAdmins(
+      `Butuh jawaban — ${customerName ?? phone}`,
+      input.question.slice(0, 120),
+      "/inbox",
+      "high",
     );
   } else if (tool.name === "escalate_to_human") {
     const input = tool.input as { reason: string };
