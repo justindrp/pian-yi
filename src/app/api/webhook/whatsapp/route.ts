@@ -341,8 +341,24 @@ async function processWebhookAsync(
       .limit(1)
       .maybeSingle(),
   ]);
-  const dapurOptions = (activeSubs ?? [])
-    .filter((s): s is { id: string; customer_nickname: string } => s.customer_nickname !== null)
+  const rawSubs = (activeSubs ?? []).filter(
+    (s): s is { id: string; customer_nickname: string } => s.customer_nickname !== null,
+  );
+  // Only offer a dapur if its menu image has been uploaded
+  const dapurMenuKey = (nickname: string) => {
+    const m = nickname.match(/^Dapur\s+(\d+)$/i);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return n === 1 ? "weekly_menu_image_url" : `weekly_menu_image_url_dapur${n}`;
+  };
+  const menuUrls = await Promise.all(
+    rawSubs.map((s) => {
+      const key = dapurMenuKey(s.customer_nickname);
+      return key ? getSetting(key) : Promise.resolve(null);
+    }),
+  );
+  const dapurOptions = rawSubs
+    .filter((_, i) => !!menuUrls[i])
     .map((s) => ({ id: s.id, nickname: s.customer_nickname }));
   const activeOrder = activeOrderRow
     ? {
