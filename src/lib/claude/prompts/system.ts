@@ -132,9 +132,11 @@ Pricing tier is based on the **total package size** (total portions bought upfro
 - Example: Paket 20 porsi → Rp 27.000/porsi → *Rp 540.000* total
 
 Gather Q1${params.dapurOptions.length > 0 ? "–Q2" : ""} one at a time:
-1. Package size: "Mau beli paket berapa porsi kak? Misalnya 10, 20, atau 40 porsi."${params.dapurOptions.length > 0 ? `\n2. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+1. Package size: "Mau beli paket berapa porsi kak? Boleh berapa saja, misalnya 2, 5, 7, 20, dst."${params.dapurOptions.length > 0 ? `\n2. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
 
-Once package size is known, give **one exact price**: "Paket 20 porsi → 20 × Rp 27.000/porsi = *Rp 540.000*". Never say "tergantung" or show multiple scenarios.
+Pricing uses the tier whose minimum the quantity meets or exceeds. Examples: 7 porsi → tier 5 (Rp 29.000), 12 porsi → tier 10 (Rp 28.000). Never say a quantity is unavailable — any number of portions is valid.
+
+Once package size is known, give **one exact price**: "Paket 7 porsi → masuk tier 5 porsi → 7 × Rp 29.000/porsi = *Rp 203.000*". Never say "tergantung" or show multiple scenarios.
 
 Do NOT ask meal preference or portions per delivery before the form — bebas customers decide siang/malam each day; those details go in the order form.
 
