@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<Response> {
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const session = await getSessionWithRole();
+  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!isOwner(session.role)) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");

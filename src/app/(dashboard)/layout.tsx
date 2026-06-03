@@ -6,22 +6,22 @@ import { version } from "../../../package.json";
 import MobileNav from "@/components/shared/mobile-nav";
 import QueryProvider from "@/components/shared/query-provider";
 import ServiceWorkerRegistrar from "@/components/shared/service-worker-registrar";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
 
-const navItems = [
-  { href: "/dashboard", label: "Home" },
-  { href: "/inbox", label: "Inbox" },
-  { href: "/customers", label: "Customers" },
-  { href: "/orders", label: "Orders" },
-  { href: "/deliveries", label: "Deliveries" },
-  { href: "/payments", label: "Payments" },
-  { href: "/subcontractors", label: "Subcontractors" },
-  { href: "/chatbot-training", label: "Chatbot Training" },
-  { href: "/accounting", label: "Accounting" },
-  { href: "/reports", label: "Reports" },
-  { href: "/settings", label: "Settings" },
-  { href: "/broadcasts", label: "Broadcasts" },
-  { href: "/guide", label: "Panduan" },
+const allNavItems = [
+  { href: "/dashboard", label: "Home", ownerOnly: false },
+  { href: "/inbox", label: "Inbox", ownerOnly: false },
+  { href: "/customers", label: "Customers", ownerOnly: false },
+  { href: "/orders", label: "Orders", ownerOnly: false },
+  { href: "/deliveries", label: "Deliveries", ownerOnly: false },
+  { href: "/payments", label: "Payments", ownerOnly: false },
+  { href: "/subcontractors", label: "Subcontractors", ownerOnly: false },
+  { href: "/chatbot-training", label: "Chatbot Training", ownerOnly: false },
+  { href: "/accounting", label: "Accounting", ownerOnly: true },
+  { href: "/reports", label: "Reports", ownerOnly: false },
+  { href: "/settings", label: "Settings", ownerOnly: false },
+  { href: "/broadcasts", label: "Broadcasts", ownerOnly: false },
+  { href: "/guide", label: "Panduan", ownerOnly: false },
 ];
 
 export default async function DashboardLayout({
@@ -29,22 +29,19 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
+  const session = await getSessionWithRole();
+  if (!session) redirect("/login");
 
-  // getSession() reads the JWT from the cookie locally — no network call, no hang.
-  // getUser() would validate against Supabase Auth server on every request, which
-  // can hang for 125s when the auth server is slow or unreachable.
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
-
-  if (!user) redirect("/login");
+  const navItems = allNavItems
+    .filter((item) => !item.ownerOnly || session.role === "owner")
+    .map(({ href, label }) => ({ href, label }));
 
   return (
     <QueryProvider>
       <ServiceWorkerRegistrar />
       <MobileNav
         navItems={navItems}
-        userEmail={user.email}
+        userEmail={session.email}
         version={`v${version}`}
       />
       <div className="min-h-screen bg-gray-50 flex">
@@ -54,7 +51,7 @@ export default async function DashboardLayout({
             <p className="font-semibold text-gray-900 text-sm">
               Pian Yi Catering
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">{user.email}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{session.email}</p>
           </div>
           <nav className="flex-1 p-3">
             {navItems.map((item) => (
