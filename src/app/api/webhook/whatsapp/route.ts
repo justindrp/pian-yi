@@ -757,11 +757,13 @@ async function handleToolUse(
       subcontractor_id?: string;
     };
 
-    // Look up price
+    // Look up price: find the highest tier whose minimum is <= package_size
     const { data: tier } = await db
       .from("pricing_tiers")
       .select("price_per_portion")
-      .eq("portions", input.package_size)
+      .lte("portions", input.package_size)
+      .order("portions", { ascending: false })
+      .limit(1)
       .single();
 
     const pricePerPortion = tier?.price_per_portion ?? 0;
