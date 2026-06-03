@@ -965,6 +965,8 @@ export type Database = {
           id: string
           is_active: boolean | null
           late_delivery_count: number | null
+          menu_image_url: string | null
+          menu_text: string | null
           name: string
           notes: string | null
           total_delivery_count: number | null
@@ -980,6 +982,8 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           late_delivery_count?: number | null
+          menu_image_url?: string | null
+          menu_text?: string | null
           name: string
           notes?: string | null
           total_delivery_count?: number | null
@@ -995,6 +999,8 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           late_delivery_count?: number | null
+          menu_image_url?: string | null
+          menu_text?: string | null
           name?: string
           notes?: string | null
           total_delivery_count?: number | null
