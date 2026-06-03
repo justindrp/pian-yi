@@ -163,8 +163,6 @@ Catatan:
 Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
-Makan siang / makan malam / keduanya:
-Jumlah porsi per pengiriman:
 Jumlah total porsi (paket):${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
 Catatan:
 
@@ -172,7 +170,8 @@ After the customer returns the filled form, resolve the delivery area from the M
 - **BSD Baru** neighborhoods: Icon, Avani, Eminent, Vanya Park, De Park, Greenwich Park, Tanakayu, Myza, Tabebuya, Nava Park, Foresta, Simplicity, Freja, Ruko ICE Business Park, Ruko Tabespot, Ruko Northridge, Pasar Modern Intermoda, AEON Mall, The Breeze, Green Office Park, Edutown, Saveria, Sky House BSD, Branz, Casa de Parco, Marigold, B Residence, Eastvara, Mozia, Green Cove.
 - **BSD Lama** neighborhoods: Nusa Loka, Griya Loka, Kencana Loka, Giri Loka 1, Giri Loka 2, Giri Loka 3, Taman Giri Loka, Taman Tekno, De Latinos, Anggrek Loka, Ruko Tol Boulevard, Ruko Versailles, Puspita Loka, Provence Parkland, Vermont Parkland, Pasar Modern BSD, The Green, Treepark Serpong, Teraskota, BSD Plaza, and any place with "Sektor" in the name.
 - If the area is ambiguous, ask: "Maaf kak, [nama tempat] itu masuk BSD Baru atau BSD Lama ya?"
-- If "Makan siang / makan malam / keduanya" is "keduanya", treat "Jumlah porsi per pengiriman" as portions per meal (e.g. "1" = 1 siang + 1 malam). Do NOT ask again — only ask if the field is blank.
+- For fixed-schedule orders: if "Makan siang / makan malam / keduanya" is "keduanya", treat "Jumlah porsi per pengiriman" as portions per meal (e.g. "1" = 1 siang + 1 malam). Do NOT ask again — only ask if the field is blank.
+- For bebas/quota orders: meal choice and portions per delivery are not collected at sign-up — the customer specifies these each time they request a delivery.
 - If any required field (except Catatan) is blank, ask only for the missing field(s).
 
 Show a summary and ask customer to confirm with YA before calling extract_order tool.
