@@ -378,6 +378,8 @@ export type Database = {
           created_at: string | null
           custom_schedule: Json | null
           delivery_phone: string | null
+          district: string | null
+          google_maps_link: string | null
           id: string
           meal_time_preference: string | null
           name: string | null
@@ -391,6 +393,8 @@ export type Database = {
           created_at?: string | null
           custom_schedule?: Json | null
           delivery_phone?: string | null
+          district?: string | null
+          google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
@@ -404,6 +408,8 @@ export type Database = {
           created_at?: string | null
           custom_schedule?: Json | null
           delivery_phone?: string | null
+          district?: string | null
+          google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
