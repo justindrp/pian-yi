@@ -73,7 +73,7 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 
 - Stored in `pricing_tiers` table, never hardcoded
 - Existing orders lock in `price_per_portion` at order creation time
-- Tiers: 1=30k, 2=29k, 5=28k, 10=27k, 20=26k, 40=25k, 80=24k (current values)
+- Tiers: 1=31k, 2=30k, 5=29k, 10=28k, 20=27k, 40=26k, 80=25k (current values)
 - Bulk adjust supported: `PATCH /api/settings/pricing` with `{ adjust: number }` increments all tiers at once
 
 ### Delivery
