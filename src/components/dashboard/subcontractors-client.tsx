@@ -77,7 +77,7 @@ function SubMenuImageUploader({ subId, currentUrl, onSuccess }: { subId: string;
   );
 }
 
-const AREAS = ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Bintaro", "Graha Raya"];
+const AREAS = ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Karawaci", "Bintaro", "Graha Raya"];
 
 async function fetchSubcontractors(): Promise<Subcontractor[]> {
   const res = await fetch("/api/subcontractors");
