@@ -843,14 +843,33 @@ async function handleToolUse(
       notes?: string;
     };
 
-    const { data: order } = await db
+    // Prefer the order whose meal_time_preference matches the requested meal type.
+    // Falls back to newest active order for customers with a single combined order.
+    const mealPrefs: Record<"lunch" | "dinner" | "both", string[]> = {
+      lunch: ["lunch_only", "both_fixed", "per_day_decision", "default_lunch", "custom_schedule"],
+      dinner: ["dinner_only", "both_fixed", "per_day_decision", "default_dinner", "custom_schedule"],
+      both: ["lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule"],
+    };
+    const { data: matchedOrder } = await db
       .from("orders")
       .select("id, portions_remaining, subcontractor_id")
       .eq("customer_id", customerId)
       .eq("status", "active")
+      .in("meal_time_preference", mealPrefs[input.meal_type])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    const { data: fallbackOrder } = matchedOrder
+      ? { data: null }
+      : await db
+          .from("orders")
+          .select("id, portions_remaining, subcontractor_id")
+          .eq("customer_id", customerId)
+          .eq("status", "active")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+    const order = matchedOrder ?? fallbackOrder;
 
     if (!order) {
       console.error("[webhook] record_daily_order: no active order for customer", customerId);
