@@ -169,6 +169,18 @@ export async function PUT(req: NextRequest): Promise<Response> {
           .eq("id", row.order_id);
       }
 
+      const { data: custQuota } = await db
+        .from("customers")
+        .select("portions_remaining")
+        .eq("id", row.customer_id)
+        .single();
+      if (custQuota) {
+        await db
+          .from("customers")
+          .update({ portions_remaining: Math.max(0, custQuota.portions_remaining - row.portions) })
+          .eq("id", row.customer_id);
+      }
+
       if (upserted?.id) {
         // Revenue recognition: Dr Unearned Revenue / Cr Catering Revenue
         if (ord?.price_per_portion) {

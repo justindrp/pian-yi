@@ -140,6 +140,12 @@ export default function CustomersClient() {
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
                 Area
               </th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">
+                Remaining
+              </th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">
+                Avg Price
+              </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
                 State
               </th>
@@ -152,7 +158,7 @@ export default function CustomersClient() {
             {isLoading
               ? (["a", "b", "c", "d", "e"] as const).map((rowId) => (
                   <tr key={rowId} className="border-b border-gray-50">
-                    {(["a", "b", "c", "d", "e"] as const).map((colId) => (
+                    {(["a", "b", "c", "d", "e", "f", "g"] as const).map((colId) => (
                       <td key={colId} className="px-4 py-3">
                         <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
                       </td>
@@ -181,6 +187,14 @@ export default function CustomersClient() {
                       </td>
                       <td className="px-4 py-3 text-gray-500">
                         {c.area ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                        {c.portions_remaining > 0 ? c.portions_remaining : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-500 text-xs">
+                        {c.avg_price_per_portion > 0
+                          ? `Rp ${c.avg_price_per_portion.toLocaleString("id-ID")}`
+                          : "—"}
                       </td>
                       <td className="px-4 py-3">
                         <StateBadge state={state} />

@@ -376,6 +376,7 @@ export type Database = {
           address: string | null
           address_type: string | null
           area: string | null
+          avg_price_per_portion: number
           created_at: string | null
           custom_schedule: Json | null
           delivery_phone: string | null
@@ -384,6 +385,7 @@ export type Database = {
           meal_time_preference: string | null
           name: string | null
           phone_number: string
+          portions_remaining: number
           sub_area: string | null
           subcontractor_id: string | null
           updated_at: string | null
@@ -392,6 +394,7 @@ export type Database = {
           address?: string | null
           address_type?: string | null
           area?: string | null
+          avg_price_per_portion?: number
           created_at?: string | null
           custom_schedule?: Json | null
           delivery_phone?: string | null
@@ -400,6 +403,7 @@ export type Database = {
           meal_time_preference?: string | null
           name?: string | null
           phone_number: string
+          portions_remaining?: number
           sub_area?: string | null
           subcontractor_id?: string | null
           updated_at?: string | null
@@ -408,6 +412,7 @@ export type Database = {
           address?: string | null
           address_type?: string | null
           area?: string | null
+          avg_price_per_portion?: number
           created_at?: string | null
           custom_schedule?: Json | null
           delivery_phone?: string | null
@@ -416,6 +421,7 @@ export type Database = {
           meal_time_preference?: string | null
           name?: string | null
           phone_number?: string
+          portions_remaining?: number
           sub_area?: string | null
           subcontractor_id?: string | null
           updated_at?: string | null

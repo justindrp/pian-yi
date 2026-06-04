@@ -171,6 +171,8 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | meal_time_preference | text | Default meal preference (e.g. "lunch_only", "both_fixed") |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen serves this customer |
+| portions_remaining | integer | Total quota balance across all active orders — decremented with each delivery |
+| avg_price_per_portion | integer | Weighted average cost per portion across all active orders (WAC method) |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 

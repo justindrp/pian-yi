@@ -789,6 +789,17 @@ async function handleToolUse(
       confirmed_at: new Date().toISOString(),
     });
 
+    // Fetch current quota for WAC recalculation
+    const { data: existingCustomer } = await db
+      .from("customers")
+      .select("portions_remaining, avg_price_per_portion")
+      .eq("id", customerId)
+      .single();
+    const oldRemaining = existingCustomer?.portions_remaining ?? 0;
+    const oldAvg = existingCustomer?.avg_price_per_portion ?? 0;
+    const newRemaining = oldRemaining + input.package_size;
+    const newAvg = Math.round((oldRemaining * oldAvg + input.package_size * pricePerPortion) / newRemaining);
+
     // Classify address type then update customer record
     const addressType = await classifyAddress(input.address);
     await db
@@ -799,6 +810,8 @@ async function handleToolUse(
         area: input.area,
         sub_area: input.sub_area ?? null,
         address_type: addressType,
+        portions_remaining: newRemaining,
+        avg_price_per_portion: newAvg,
         ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
         ...(input.subcontractor_id ? { subcontractor_id: input.subcontractor_id } : {}),
       })
@@ -864,6 +877,18 @@ async function handleToolUse(
       .from("orders")
       .update({ portions_remaining: Math.max(0, order.portions_remaining - input.portions) })
       .eq("id", order.id);
+
+    const { data: custQuota } = await db
+      .from("customers")
+      .select("portions_remaining")
+      .eq("id", customerId)
+      .single();
+    if (custQuota) {
+      await db
+        .from("customers")
+        .update({ portions_remaining: Math.max(0, custQuota.portions_remaining - input.portions) })
+        .eq("id", customerId);
+    }
 
     await sendPushToAllAdmins(
       `Order harian — ${customerName ?? phone}`,
