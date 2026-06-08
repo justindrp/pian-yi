@@ -2,14 +2,15 @@
  * One-time import script: reads CUSTOMERS + ORDER_HARIAN CSVs exported from Google Sheets
  * and upserts into Supabase.
  *
- * Usage:
+ * Usage (Google Sheets — sheet must be "anyone with link can view"):
+ *   pnpm tsx scripts/import-customers-orders.ts \
+ *     --customers="https://docs.google.com/spreadsheets/d/ID/edit#gid=0" \
+ *     --orders="https://docs.google.com/spreadsheets/d/ID/edit#gid=1234567890"
+ *
+ * Usage (local CSV files):
  *   pnpm tsx scripts/import-customers-orders.ts \
  *     --customers=scripts/import-data/customers.csv \
  *     --orders=scripts/import-data/orders.csv
- *
- * CSV files: File → Download → CSV from each Google Sheets tab.
- * CUSTOMERS tab → customers.csv
- * ORDER_HARIAN tab → orders.csv
  */
 
 import { parse } from "csv-parse/sync";
@@ -95,10 +96,33 @@ interface OrderRow {
   subcontractor: string;
 }
 
-// ─── Parse CSV helpers ──────────────────────────────────────────────────────
+// ─── CSV loading (file path or Google Sheets URL) ───────────────────────────
 
-function parseCsv(filePath: string): Record<string, string>[] {
-  const content = readFileSync(filePath, "utf-8");
+// Converts a Google Sheets share URL to a CSV export URL.
+// Input:  https://docs.google.com/spreadsheets/d/ID/edit#gid=GID
+// Output: https://docs.google.com/spreadsheets/d/ID/export?format=csv&gid=GID
+function toSheetsCsvUrl(url: string): string {
+  const idMatch = url.match(/\/spreadsheets\/d\/([^/]+)/);
+  const gidMatch = url.match(/[#&?]gid=(\d+)/);
+  if (!idMatch) throw new Error(`Cannot parse spreadsheet ID from URL: ${url}`);
+  const id = idMatch[1];
+  const gid = gidMatch ? gidMatch[1] : "0";
+  return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+}
+
+async function loadCsvContent(source: string): Promise<string> {
+  if (source.startsWith("https://docs.google.com/spreadsheets/")) {
+    const csvUrl = toSheetsCsvUrl(source);
+    console.log(`  Fetching sheet: ${csvUrl}`);
+    const res = await fetch(csvUrl);
+    if (!res.ok) throw new Error(`Failed to fetch sheet (${res.status}): ${res.statusText}`);
+    return res.text();
+  }
+  return readFileSync(source, "utf-8");
+}
+
+async function parseCsv(source: string): Promise<Record<string, string>[]> {
+  const content = await loadCsvContent(source);
   return parse(content, {
     columns: true,
     skip_empty_lines: true,
@@ -207,8 +231,8 @@ async function main() {
   }
 
   // ── Parse CSVs ───────────────────────────────────────────────────────────
-  const rawCustomers = parseCsv(customersCsvPath).map(normalizeCustomerRow).filter(Boolean) as CustomerRow[];
-  const rawOrders = parseCsv(ordersCsvPath).map(normalizeOrderRow).filter(Boolean) as OrderRow[];
+  const rawCustomers = (await parseCsv(customersCsvPath)).map(normalizeCustomerRow).filter(Boolean) as CustomerRow[];
+  const rawOrders = (await parseCsv(ordersCsvPath)).map(normalizeOrderRow).filter(Boolean) as OrderRow[];
 
   console.log(`Parsed ${rawCustomers.length} customer rows, ${rawOrders.length} order rows`);
 
