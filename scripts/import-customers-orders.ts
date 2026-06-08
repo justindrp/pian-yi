@@ -123,13 +123,42 @@ async function loadCsvContent(source: string): Promise<string> {
 
 async function parseCsv(source: string): Promise<Record<string, string>[]> {
   const content = await loadCsvContent(source);
-  return parse(content, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-    relax_quotes: true,
+
+  // Parse as raw arrays first to handle sheets with side-by-side summary tables
+  // that reuse the same column headers (e.g. a second "Nama" column).
+  const rawRows = parse(content, {
+    skip_empty_lines: false,
     relax_column_count: true,
-  }) as Record<string, string>[];
+    relax_quotes: true,
+    trim: true,
+  }) as string[][];
+
+  if (rawRows.length === 0) return [];
+
+  // Find the column count of the primary (left) table:
+  // stop at the first duplicate non-empty header.
+  const headers = rawRows[0];
+  const seen = new Set<string>();
+  let colCount = headers.length;
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i].trim().toLowerCase();
+    if (!h) continue;
+    if (seen.has(h)) { colCount = i; break; }
+    seen.add(h);
+  }
+
+  // Build records using only the primary table's columns
+  const colNames = headers.slice(0, colCount);
+  return rawRows
+    .slice(1)
+    .filter((row) => row.some((cell) => cell.trim() !== ""))
+    .map((row) => {
+      const record: Record<string, string> = {};
+      for (let i = 0; i < colCount; i++) {
+        record[colNames[i]] = row[i] ?? "";
+      }
+      return record;
+    });
 }
 
 function normalizeCustomerRow(raw: Record<string, string>): CustomerRow | null {
@@ -209,9 +238,12 @@ function parseDate(raw: string): string | null {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  const args = Object.fromEntries(
-    process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")),
-  );
+  const args: Record<string, string> = {};
+  for (const a of process.argv.slice(2)) {
+    const cleaned = a.replace(/^--/, "");
+    const idx = cleaned.indexOf("=");
+    if (idx !== -1) args[cleaned.slice(0, idx)] = cleaned.slice(idx + 1);
+  }
   const customersCsvPath = args.customers;
   const ordersCsvPath = args.orders;
 
