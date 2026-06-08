@@ -188,7 +188,7 @@ function normalizeCustomerRow(raw: Record<string, string>): CustomerRow | null {
     sisaKuota: get(["sisa kuota", "sisa"]),
     hargaPerKuota: get(["harga per kuota", "harga"]),
     total: get(["total"]),
-    phoneNumber: get(["phone", "telepon", "wa", "whatsapp", "no. hp", "no hp"]),
+    phoneNumber: get(["phone", "telpon", "telepon", "wa", "whatsapp", "no. hp", "no hp"]),
   };
 }
 
@@ -262,6 +262,14 @@ async function main() {
     return subByName.get(name.trim().toLowerCase()) ?? null;
   }
 
+  function normalizePhone(raw: string): string {
+    const digits = raw.replace(/[\s\-().+]/g, "");
+    if (!digits || digits.length < 8) return "";
+    if (digits.startsWith("62")) return `+${digits}`;
+    if (digits.startsWith("0")) return `+62${digits.slice(1)}`;
+    return `+62${digits}`;
+  }
+
   // ── Parse CSVs ───────────────────────────────────────────────────────────
   const rawCustomers = (await parseCsv(customersCsvPath)).map(normalizeCustomerRow).filter(Boolean) as CustomerRow[];
   const rawOrders = (await parseCsv(ordersCsvPath)).map(normalizeOrderRow).filter(Boolean) as OrderRow[];
@@ -291,8 +299,9 @@ async function main() {
     const baseName = parseName(rows[0].nama).base;
     const slug = slugify(baseName);
 
-    // Phone: use first non-empty phone in the group, else placeholder
-    const phone = rows.map((r) => r.phoneNumber ?? "").find((p) => p.trim() !== "") ?? `IMPORT_${slug}`;
+    // Phone: normalize and use first valid phone in the group, else placeholder
+    const rawPhone = rows.map((r) => r.phoneNumber ?? "").find((p) => p.trim() !== "") ?? "";
+    const phone = normalizePhone(rawPhone) || `IMPORT_${slug}`;
 
     // Calculate WAC across all rows in this group
     let totalPortions = 0;
