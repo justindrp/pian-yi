@@ -53,6 +53,7 @@ export default function CustomersClient() {
       let q = supabase
         .from("customers")
         .select("*, customer_state(*), customer_flags(*)", { count: "exact" })
+        .order("customer_number", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
@@ -131,6 +132,9 @@ export default function CustomersClient() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-10">
+                #
+              </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
                 Name
               </th>
@@ -158,7 +162,7 @@ export default function CustomersClient() {
             {isLoading
               ? (["a", "b", "c", "d", "e"] as const).map((rowId) => (
                   <tr key={rowId} className="border-b border-gray-50">
-                    {(["a", "b", "c", "d", "e", "f", "g"] as const).map((colId) => (
+                    {(["a", "b", "c", "d", "e", "f", "g", "h"] as const).map((colId) => (
                       <td key={colId} className="px-4 py-3">
                         <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
                       </td>
@@ -179,6 +183,9 @@ export default function CustomersClient() {
                       }
                       className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
                     >
+                      <td className="px-4 py-3 text-gray-400 text-xs tabular-nums">
+                        {c.customer_number ?? "—"}
+                      </td>
                       <td className="px-4 py-3 text-gray-900">
                         {c.name ?? "—"}
                       </td>
