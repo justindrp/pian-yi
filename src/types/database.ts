@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -379,6 +380,7 @@ export type Database = {
           avg_price_per_portion: number
           created_at: string | null
           custom_schedule: Json | null
+          customer_number: number | null
           delivery_phone: string | null
           google_maps_link: string | null
           id: string
@@ -397,6 +399,7 @@ export type Database = {
           avg_price_per_portion?: number
           created_at?: string | null
           custom_schedule?: Json | null
+          customer_number?: number | null
           delivery_phone?: string | null
           google_maps_link?: string | null
           id?: string
@@ -415,6 +418,7 @@ export type Database = {
           avg_price_per_portion?: number
           created_at?: string | null
           custom_schedule?: Json | null
+          customer_number?: number | null
           delivery_phone?: string | null
           google_maps_link?: string | null
           id?: string
@@ -1164,3 +1168,5 @@ export const Constants = {
     Enums: {},
   },
 } as const
+A new version of Supabase CLI is available: v2.105.0 (currently installed v)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

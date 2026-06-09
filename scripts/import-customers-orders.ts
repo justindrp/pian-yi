@@ -247,8 +247,8 @@ async function main() {
   const customersCsvPath = args.customers;
   const ordersCsvPath = args.orders;
 
-  if (!customersCsvPath || !ordersCsvPath) {
-    console.error("Usage: pnpm tsx scripts/import-customers-orders.ts --customers=<path> --orders=<path>");
+  if (!customersCsvPath) {
+    console.error("Usage: pnpm tsx scripts/import-customers-orders.ts --customers=<path> [--orders=<path>]");
     process.exit(1);
   }
 
@@ -272,7 +272,9 @@ async function main() {
 
   // ── Parse CSVs ───────────────────────────────────────────────────────────
   const rawCustomers = (await parseCsv(customersCsvPath)).map(normalizeCustomerRow).filter(Boolean) as CustomerRow[];
-  const rawOrders = (await parseCsv(ordersCsvPath)).map(normalizeOrderRow).filter(Boolean) as OrderRow[];
+  const rawOrders = ordersCsvPath
+    ? ((await parseCsv(ordersCsvPath)).map(normalizeOrderRow).filter(Boolean) as OrderRow[])
+    : [];
 
   console.log(`Parsed ${rawCustomers.length} customer rows, ${rawOrders.length} order rows`);
 
@@ -329,6 +331,7 @@ async function main() {
           subcontractor_id: resolveSubcontractor(rows[0].subcontractor),
           portions_remaining: totalPortions,
           avg_price_per_portion: avgPrice,
+          customer_number: Number.parseInt(rows[0].no) || null,
         },
         { onConflict: "phone_number" },
       )
