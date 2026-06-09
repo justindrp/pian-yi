@@ -125,6 +125,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
       subcontractor_id: string | null;
       notes: string | null;
       skip: boolean;
+      cancel?: boolean;
     }[];
   };
 
@@ -139,6 +140,56 @@ export async function PUT(req: NextRequest): Promise<Response> {
   );
 
   for (const row of body.rows) {
+    // Cancellation path: reverse quota deduction if already processed
+    if (row.cancel) {
+      const { data: existing } = await db
+        .from("daily_deliveries")
+        .select("id, quota_deducted, portions, order_id")
+        .eq("delivery_date", body.date)
+        .eq("customer_id", row.customer_id)
+        .eq("meal_type", row.meal_type)
+        .single();
+
+      if (existing?.quota_deducted) {
+        const { data: cust } = await db
+          .from("customers")
+          .select("portions_remaining")
+          .eq("id", row.customer_id)
+          .single();
+        if (cust) {
+          await db
+            .from("customers")
+            .update({ portions_remaining: cust.portions_remaining + existing.portions })
+            .eq("id", row.customer_id);
+        }
+
+        if (existing.order_id) {
+          const { data: ord } = await db
+            .from("orders")
+            .select("portions_remaining")
+            .eq("id", existing.order_id)
+            .single();
+          if (ord && ord.portions_remaining !== null) {
+            await db
+              .from("orders")
+              .update({ portions_remaining: ord.portions_remaining + existing.portions })
+              .eq("id", existing.order_id);
+          }
+        }
+
+        await db
+          .from("daily_deliveries")
+          .update({ status: "cancelled", quota_deducted: false, updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+      } else if (existing) {
+        await db
+          .from("daily_deliveries")
+          .update({ status: "cancelled", updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+      }
+      continue;
+    }
+
     const status = row.skip ? "skipped" : "scheduled";
     const { data: upserted } = await db.from("daily_deliveries").upsert(
       {
@@ -155,64 +206,44 @@ export async function PUT(req: NextRequest): Promise<Response> {
       { onConflict: "delivery_date,customer_id,meal_type" },
     ).select("id").single();
 
-    // Deduct portions_remaining and record journals for non-skipped rows
-    if (!row.skip) {
+    // Record journals for non-skipped rows (quota deduction handled by nightly cron)
+    if (!row.skip && upserted?.id) {
       const { data: ord } = await db
         .from("orders")
-        .select("portions_remaining, price_per_portion, addon_cost_per_portion")
+        .select("price_per_portion, addon_cost_per_portion")
         .eq("id", row.order_id)
         .single();
-      if (ord && ord.portions_remaining !== null) {
-        await db
-          .from("orders")
-          .update({ portions_remaining: Math.max(0, ord.portions_remaining - row.portions) })
-          .eq("id", row.order_id);
+
+      // Revenue recognition: Dr Unearned Revenue / Cr Catering Revenue
+      if (ord?.price_per_portion) {
+        const revenueAmount = row.portions * ord.price_per_portion;
+        createJournalEntry({
+          description: `Revenue recognition ${body.date} ${row.meal_type}`,
+          date: body.date,
+          sourceType: "delivery",
+          sourceId: upserted.id,
+          lines: [
+            { accountCode: "2100", debit: revenueAmount, credit: 0 },
+            { accountCode: "4001", debit: 0, credit: revenueAmount },
+          ],
+        }).catch((err) => console.error("[delivery] revenue journal error:", err));
       }
 
-      const { data: custQuota } = await db
-        .from("customers")
-        .select("portions_remaining")
-        .eq("id", row.customer_id)
-        .single();
-      if (custQuota) {
-        await db
-          .from("customers")
-          .update({ portions_remaining: Math.max(0, custQuota.portions_remaining - row.portions) })
-          .eq("id", row.customer_id);
-      }
-
-      if (upserted?.id) {
-        // Revenue recognition: Dr Unearned Revenue / Cr Catering Revenue
-        if (ord?.price_per_portion) {
-          const revenueAmount = row.portions * ord.price_per_portion;
-          createJournalEntry({
-            description: `Revenue recognition ${body.date} ${row.meal_type}`,
-            date: body.date,
-            sourceType: "delivery",
-            sourceId: upserted.id,
-            lines: [
-              { accountCode: "2100", debit: revenueAmount, credit: 0 },
-              { accountCode: "4001", debit: 0, credit: revenueAmount },
-            ],
-          }).catch((err) => console.error("[delivery] revenue journal error:", err));
-        }
-
-        // COGS: Dr Subcontractor Cost / Cr Accounts Payable
-        const subCost = row.subcontractor_id ? (subCostMap.get(row.subcontractor_id) ?? 0) : 0;
-        const addonCost = ord?.addon_cost_per_portion ?? 0;
-        const cogsAmount = row.portions * (subCost + addonCost);
-        if (cogsAmount > 0) {
-          createJournalEntry({
-            description: `COGS ${body.date} ${row.meal_type}`,
-            date: body.date,
-            sourceType: "delivery_cogs",
-            sourceId: upserted.id,
-            lines: [
-              { accountCode: "5001", debit: cogsAmount, credit: 0 },
-              { accountCode: "2001", debit: 0, credit: cogsAmount },
-            ],
-          }).catch((err) => console.error("[delivery] cogs journal error:", err));
-        }
+      // COGS: Dr Subcontractor Cost / Cr Accounts Payable
+      const subCost = row.subcontractor_id ? (subCostMap.get(row.subcontractor_id) ?? 0) : 0;
+      const addonCost = ord?.addon_cost_per_portion ?? 0;
+      const cogsAmount = row.portions * (subCost + addonCost);
+      if (cogsAmount > 0) {
+        createJournalEntry({
+          description: `COGS ${body.date} ${row.meal_type}`,
+          date: body.date,
+          sourceType: "delivery_cogs",
+          sourceId: upserted.id,
+          lines: [
+            { accountCode: "5001", debit: cogsAmount, credit: 0 },
+            { accountCode: "2001", debit: 0, credit: cogsAmount },
+          ],
+        }).catch((err) => console.error("[delivery] cogs journal error:", err));
       }
     }
   }

@@ -1,4 +1,3 @@
-Initialising login role...
 export type Json =
   | string
   | number
@@ -453,6 +452,7 @@ export type Database = {
           notes: string | null
           order_id: string | null
           portions: number
+          quota_deducted: boolean
           status: string | null
           subcontractor_id: string | null
           updated_at: string | null
@@ -469,6 +469,7 @@ export type Database = {
           notes?: string | null
           order_id?: string | null
           portions: number
+          quota_deducted?: boolean
           status?: string | null
           subcontractor_id?: string | null
           updated_at?: string | null
@@ -485,6 +486,7 @@ export type Database = {
           notes?: string | null
           order_id?: string | null
           portions?: number
+          quota_deducted?: boolean
           status?: string | null
           subcontractor_id?: string | null
           updated_at?: string | null
@@ -1168,5 +1170,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-A new version of Supabase CLI is available: v2.105.0 (currently installed v)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
