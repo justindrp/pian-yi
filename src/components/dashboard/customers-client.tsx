@@ -25,7 +25,7 @@ export default function CustomersClient() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", address: "", area: "", subcontractor_id: "" });
+  const [editForm, setEditForm] = useState({ phone_number: "", name: "", address: "", area: "", subcontractor_id: "" });
   const queryClient = useQueryClient();
   const supabase = createClient();
 
@@ -76,6 +76,7 @@ export default function CustomersClient() {
 
   const saveMutation = useMutation({
     mutationFn: async (form: {
+      phone_number: string;
       name: string;
       address: string;
       area: string;
@@ -85,6 +86,7 @@ export default function CustomersClient() {
       const { error } = await supabase
         .from("customers")
         .update({
+          phone_number: form.phone_number,
           name: form.name,
           address: form.address,
           area: form.area,
@@ -103,6 +105,7 @@ export default function CustomersClient() {
   function openDetail(customer: Customer) {
     setSelected(customer);
     setEditForm({
+      phone_number: customer.phone_number ?? "",
       name: customer.name ?? "",
       address: customer.address ?? "",
       area: customer.area ?? "",
@@ -272,8 +275,20 @@ export default function CustomersClient() {
 
             <div className="p-5 space-y-4">
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">Phone</p>
-                <p className="text-sm text-gray-900">{selected.phone_number}</p>
+                <label
+                  htmlFor="customer-phone"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Phone
+                </label>
+                <input
+                  id="customer-phone"
+                  value={editForm.phone_number}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, phone_number: e.target.value })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
               </div>
 
               <div>
