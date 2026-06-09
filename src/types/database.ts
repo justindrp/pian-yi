@@ -381,6 +381,8 @@ export type Database = {
           custom_schedule: Json | null
           customer_number: number | null
           delivery_phone: string | null
+          delivery_position: number | null
+          delivery_route: number | null
           google_maps_link: string | null
           id: string
           meal_time_preference: string | null
@@ -400,6 +402,8 @@ export type Database = {
           custom_schedule?: Json | null
           customer_number?: number | null
           delivery_phone?: string | null
+          delivery_position?: number | null
+          delivery_route?: number | null
           google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
@@ -419,6 +423,8 @@ export type Database = {
           custom_schedule?: Json | null
           customer_number?: number | null
           delivery_phone?: string | null
+          delivery_position?: number | null
+          delivery_route?: number | null
           google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
