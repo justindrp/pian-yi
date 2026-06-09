@@ -10,7 +10,7 @@ type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type CustomerState = Database["public"]["Tables"]["customer_state"]["Row"];
 type CustomerFlags = Database["public"]["Tables"]["customer_flags"]["Row"];
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 200;
 const DELIVERY_AREAS = [
   "BSD Baru",
   "BSD Lama",
@@ -25,7 +25,7 @@ export default function CustomersClient() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
-  const [editForm, setEditForm] = useState({ phone_number: "", name: "", address: "", area: "", subcontractor_id: "" });
+  const [editForm, setEditForm] = useState({ phone_number: "", name: "", address: "", area: "", sub_area: "", subcontractor_id: "" });
   const queryClient = useQueryClient();
   const supabase = createClient();
 
@@ -80,6 +80,7 @@ export default function CustomersClient() {
       name: string;
       address: string;
       area: string;
+      sub_area: string;
       subcontractor_id: string;
     }) => {
       if (!selected) return;
@@ -90,6 +91,7 @@ export default function CustomersClient() {
           name: form.name,
           address: form.address,
           area: form.area,
+          sub_area: form.sub_area || null,
           subcontractor_id: form.subcontractor_id || null,
           updated_at: new Date().toISOString(),
         })
@@ -109,6 +111,7 @@ export default function CustomersClient() {
       name: customer.name ?? "",
       address: customer.address ?? "",
       area: customer.area ?? "",
+      sub_area: customer.sub_area ?? "",
       subcontractor_id: (customer as Customer & { subcontractor_id?: string | null }).subcontractor_id ?? "",
     });
   }
@@ -348,6 +351,24 @@ export default function CustomersClient() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="customer-sub-area"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Sub Area
+                </label>
+                <input
+                  id="customer-sub-area"
+                  value={editForm.sub_area}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, sub_area: e.target.value })
+                  }
+                  placeholder="e.g. Binus, Pacific Garden"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
               </div>
 
               <div>
