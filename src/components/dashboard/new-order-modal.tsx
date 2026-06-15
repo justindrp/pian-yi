@@ -122,12 +122,14 @@ export default function NewOrderModal({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const filteredCustomers = customerSearch.length >= 1
-    ? customers.filter((c) =>
+  const filteredCustomers = customers
+    .filter(
+      (c) =>
+        customerSearch.length === 0 ||
         (c.name ?? "").toLowerCase().includes(customerSearch.toLowerCase()) ||
-        c.phone_number.includes(customerSearch)
-      ).slice(0, 10)
-    : [];
+        c.phone_number.includes(customerSearch),
+    )
+    .slice(0, 10);
 
   function selectCustomer(c: Customer) {
     setSelectedCustomer(c);
