@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import NewOrderModal from "./new-order-modal";
 
 interface Order {
   id: string;
@@ -39,6 +40,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("active");
+  const [showNewOrder, setShowNewOrder] = useState(false);
+  const qc = useQueryClient();
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ["orders", statusFilter],
@@ -51,9 +54,22 @@ export default function OrdersClient() {
 
   return (
     <div>
+      {showNewOrder && (
+        <NewOrderModal
+          onClose={() => setShowNewOrder(false)}
+          onSuccess={() => qc.invalidateQueries({ queryKey: ["orders"] })}
+        />
+      )}
       <div className="flex items-center gap-4 mb-4">
         <h1 className="text-xl font-semibold text-gray-900">Orders</h1>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm ml-auto">
+        <button
+          type="button"
+          onClick={() => setShowNewOrder(true)}
+          className="ml-auto px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+        >
+          + Order Baru
+        </button>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
           <option value="active">Active</option>
           <option value="pending_payment">Pending Payment</option>
           <option value="payment_proof_received">Proof Received</option>

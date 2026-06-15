@@ -29,6 +29,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("orders")
     .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, pause_until, subcontractor_id, customers(name, phone_number, area, subcontractor_id)")
     .eq("status", "active")
+    .eq("order_type", "recurring")
     .lte("start_date", date);
 
   if (!orders?.length) return NextResponse.json({ ok: true, generated: 0, date });

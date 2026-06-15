@@ -753,7 +753,8 @@ export type Database = {
           followup_sent_at: string | null
           id: string
           maps_link: string | null
-          meal_time_preference: string
+          meal_time_preference: string | null
+          order_type: string
           package_size: number
           paid_at: string | null
           pause_until: string | null
@@ -786,7 +787,8 @@ export type Database = {
           followup_sent_at?: string | null
           id?: string
           maps_link?: string | null
-          meal_time_preference: string
+          meal_time_preference?: string | null
+          order_type?: string
           package_size: number
           paid_at?: string | null
           pause_until?: string | null
@@ -819,7 +821,8 @@ export type Database = {
           followup_sent_at?: string | null
           id?: string
           maps_link?: string | null
-          meal_time_preference?: string
+          meal_time_preference?: string | null
+          order_type?: string
           package_size?: number
           paid_at?: string | null
           pause_until?: string | null
