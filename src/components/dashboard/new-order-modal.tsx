@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Customer {
   id: string;
@@ -70,6 +70,9 @@ export default function NewOrderModal({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerComboRef = useRef<HTMLDivElement>(null);
 
   // Common fields
   const [pricePerPortion, setPricePerPortion] = useState("28000");
@@ -99,6 +102,16 @@ export default function NewOrderModal({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (customerComboRef.current && !customerComboRef.current.contains(e.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     Promise.all([
       fetch("/api/customers").then((r) => r.json()),
       fetch("/api/subcontractors").then((r) => r.json()),
@@ -112,6 +125,8 @@ export default function NewOrderModal({
 
   function selectCustomer(c: Customer) {
     setSelectedCustomer(c);
+    setCustomerSearch(c.name ?? c.phone_number);
+    setShowCustomerDropdown(false);
     setDeliveryAddress(c.address ?? "");
     setArea(c.area ?? "");
     setSubcontractorId(c.subcontractor_id ?? "");
@@ -213,23 +228,53 @@ export default function NewOrderModal({
           </div>
 
           {/* Step 0: Customer */}
-          <div className="mb-5">
+          <div className="mb-5" ref={customerComboRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</label>
-            <select
-              value={selectedCustomer?.id ?? ""}
-              onChange={(e) => {
-                const c = customers.find((x) => x.id === e.target.value) ?? null;
-                if (c) selectCustomer(c);
-              }}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-            >
-              <option value="">Pilih pelanggan...</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name ?? c.phone_number} · {c.area}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                value={customerSearch}
+                placeholder="Cari nama atau nomor..."
+                onChange={(e) => {
+                  setCustomerSearch(e.target.value);
+                  setSelectedCustomer(null);
+                  setShowCustomerDropdown(true);
+                }}
+                onFocus={() => setShowCustomerDropdown(true)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              />
+              {showCustomerDropdown && (
+                <ul className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                  {(customerSearch.trim() === ""
+                    ? customers
+                    : customers.filter((c) => {
+                        const q = customerSearch.toLowerCase();
+                        return (
+                          (c.name ?? "").toLowerCase().includes(q) ||
+                          c.phone_number.includes(q)
+                        );
+                      })
+                  ).map((c) => (
+                    <li
+                      key={c.id}
+                      onMouseDown={(e) => { e.preventDefault(); selectCustomer(c); }}
+                      className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"
+                    >
+                      <span className="text-gray-900">{c.name ?? c.phone_number}</span>
+                      <span className="text-gray-400 text-xs">{c.area}</span>
+                    </li>
+                  ))}
+                  {customers.length > 0 &&
+                    customerSearch.trim() !== "" &&
+                    customers.filter((c) => {
+                      const q = customerSearch.toLowerCase();
+                      return (c.name ?? "").toLowerCase().includes(q) || c.phone_number.includes(q);
+                    }).length === 0 && (
+                      <li className="px-3 py-2 text-sm text-gray-400">Tidak ditemukan</li>
+                    )}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
 
