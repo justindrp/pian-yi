@@ -173,6 +173,8 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | subcontractor_id | uuid | FK → subcontractors — which kitchen serves this customer |
 | portions_remaining | integer | Total quota balance across all active orders — decremented with each delivery |
 | avg_price_per_portion | integer | Weighted average cost per portion across all active orders (WAC method) |
+| delivery_route | smallint | Route number (1 = Alam Sutera/BSD Lama, 2 = Gading Serpong/BSD Baru) |
+| delivery_position | integer | Zero-based sort order within the route for the daily delivery sheet |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 
@@ -303,6 +305,7 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 | id | uuid | Primary key |
 | customer_id | uuid | FK → customers |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen fulfills this order |
+| order_type | text | "recurring" (cron auto-generates daily rows) or "scheduled" (daily rows inserted at order creation) — default "recurring" |
 | status | text | "pending_payment", "payment_proof_received", "active", "paused", "completed", "cancelled_unpaid", "cancelled_by_customer", "cancelled_by_admin", "refunded" |
 | package_size | integer | Total portions bought (e.g. 20) |
 | portions_per_delivery | integer | Portions per meal per delivery (e.g. 1 or 2) |
@@ -312,7 +315,7 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 | price_per_portion | integer | Locked-in price in IDR at order time |
 | total_price | integer | Total amount due in IDR |
 | addon_cost_per_portion | integer | Extra cost per portion if applicable |
-| meal_time_preference | text | "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" |
+| meal_time_preference | text | Nullable. "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" — null for scheduled orders |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | delivery_address | text | Street address |
 | maps_link | text | Google Maps link |
