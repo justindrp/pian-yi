@@ -227,16 +227,18 @@ export default function NewOrderModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-gray-900">Order Baru</h2>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-        </div>
+      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col">
+        {/* Non-scrolling header: title + customer combobox (must stay outside overflow container) */}
+        <div className="px-6 pt-6 pb-0">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-semibold text-gray-900">Order Baru</h2>
+            <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
 
-        {/* Step 0: Customer */}
-        <div className="mb-5">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</label>
-          <div className="relative" ref={searchRef}>
+          {/* Step 0: Customer */}
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</label>
+            <div className="relative" ref={searchRef}>
             <input
               type="text"
               value={customerSearch}
@@ -266,7 +268,11 @@ export default function NewOrderModal({
               </div>
             )}
           </div>
+          </div>
         </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 pb-4">
 
         {/* Step 1: Order type */}
         <div className="mb-5">
@@ -529,6 +535,9 @@ export default function NewOrderModal({
           </>
         )}
 
+        </div>{/* end scrollable body */}
+
+        <div className="px-6 pb-6">
         {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
 
         <div className="flex gap-3 justify-end pt-2 border-t">
@@ -554,6 +563,7 @@ export default function NewOrderModal({
             </button>
           )}
         </div>
+        </div>{/* end footer */}
       </div>
     </div>
   );
