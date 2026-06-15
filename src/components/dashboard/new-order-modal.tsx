@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Customer {
   id: string;
@@ -69,10 +69,7 @@ export default function NewOrderModal({
   // Customer search
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([]);
-  const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
 
   // Common fields
   const [pricePerPortion, setPricePerPortion] = useState("28000");
@@ -111,30 +108,8 @@ export default function NewOrderModal({
     });
   }, []);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const filteredCustomers = customers
-    .filter(
-      (c) =>
-        customerSearch.length === 0 ||
-        (c.name ?? "").toLowerCase().includes(customerSearch.toLowerCase()) ||
-        c.phone_number.includes(customerSearch),
-    )
-    .slice(0, 10);
-
   function selectCustomer(c: Customer) {
     setSelectedCustomer(c);
-    setCustomerSearch(c.name ?? c.phone_number);
-    setShowDropdown(false);
     setDeliveryAddress(c.delivery_address ?? "");
     setArea(c.area ?? "");
     setSubcontractorId(c.subcontractor_id ?? "");
@@ -238,36 +213,21 @@ export default function NewOrderModal({
           {/* Step 0: Customer */}
           <div className="mb-5">
             <label className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</label>
-            <div className="relative" ref={searchRef}>
-            <input
-              type="text"
-              value={customerSearch}
+            <select
+              value={selectedCustomer?.id ?? ""}
               onChange={(e) => {
-                setCustomerSearch(e.target.value);
-                setShowDropdown(true);
-                if (selectedCustomer?.name !== e.target.value) setSelectedCustomer(null);
+                const c = customers.find((x) => x.id === e.target.value) ?? null;
+                if (c) selectCustomer(c);
               }}
-              onFocus={() => setShowDropdown(true)}
-              placeholder="Cari nama atau nomor HP..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            />
-            {showDropdown && filteredCustomers.length > 0 && (
-              <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                {filteredCustomers.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
-                    onClick={() => selectCustomer(c)}
-                  >
-                    <span className="font-medium text-gray-900">{c.name ?? "-"}</span>
-                    <span className="text-gray-400 ml-2">{c.phone_number}</span>
-                    {c.area && <span className="text-gray-400 ml-2">· {c.area}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              <option value="">Pilih pelanggan...</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name ?? c.phone_number} · {c.area}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
