@@ -13,7 +13,7 @@ export async function GET(): Promise<Response> {
   const db = createAdminClient();
   const { data, error } = await db
     .from("customers")
-    .select("id, name, phone_number, area, sub_area, delivery_address, subcontractor_id")
+    .select("id, name, phone_number, area, sub_area, address, subcontractor_id")
     .order("name");
 
   if (error)

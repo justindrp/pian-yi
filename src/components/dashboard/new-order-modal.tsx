@@ -8,7 +8,7 @@ interface Customer {
   phone_number: string;
   area: string | null;
   sub_area: string | null;
-  delivery_address: string | null;
+  address: string | null;
   subcontractor_id: string | null;
 }
 
@@ -112,7 +112,7 @@ export default function NewOrderModal({
 
   function selectCustomer(c: Customer) {
     setSelectedCustomer(c);
-    setDeliveryAddress(c.delivery_address ?? "");
+    setDeliveryAddress(c.address ?? "");
     setArea(c.area ?? "");
     setSubcontractorId(c.subcontractor_id ?? "");
   }
