@@ -103,9 +103,11 @@ export default function NewOrderModal({
       fetch("/api/customers").then((r) => r.json()),
       fetch("/api/subcontractors").then((r) => r.json()),
     ]).then(([cRes, sRes]) => {
-      if (cRes.ok) setCustomers(cRes.data);
-      if (sRes.ok) setSubcontractors(sRes.data);
-    });
+      if (cRes.ok) setCustomers(cRes.data ?? []);
+      else console.error("[NewOrderModal] customers fetch error:", cRes);
+      if (sRes.ok) setSubcontractors(sRes.data ?? []);
+      else console.error("[NewOrderModal] subcontractors fetch error:", sRes);
+    }).catch((err) => console.error("[NewOrderModal] fetch failed:", err));
   }, []);
 
   function selectCustomer(c: Customer) {
