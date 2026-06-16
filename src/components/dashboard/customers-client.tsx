@@ -25,7 +25,18 @@ export default function CustomersClient() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
-  const [editForm, setEditForm] = useState({ phone_number: "", name: "", address: "", area: "", sub_area: "", subcontractor_id: "" });
+  const [editForm, setEditForm] = useState({
+    phone_number: "",
+    name: "",
+    address: "",
+    area: "",
+    sub_area: "",
+    subcontractor_id: "",
+    address_type: "",
+    delivery_phone: "",
+    google_maps_link: "",
+    meal_time_preference: "",
+  });
   const queryClient = useQueryClient();
   const supabase = createClient();
 
@@ -82,6 +93,10 @@ export default function CustomersClient() {
       area: string;
       sub_area: string;
       subcontractor_id: string;
+      address_type: string;
+      delivery_phone: string;
+      google_maps_link: string;
+      meal_time_preference: string;
     }) => {
       if (!selected) return;
       const { error } = await supabase
@@ -93,6 +108,10 @@ export default function CustomersClient() {
           area: form.area,
           sub_area: form.sub_area || null,
           subcontractor_id: form.subcontractor_id || null,
+          address_type: form.address_type || null,
+          delivery_phone: form.delivery_phone || null,
+          google_maps_link: form.google_maps_link || null,
+          meal_time_preference: form.meal_time_preference || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", selected.id);
@@ -113,6 +132,10 @@ export default function CustomersClient() {
       area: customer.area ?? "",
       sub_area: customer.sub_area ?? "",
       subcontractor_id: (customer as Customer & { subcontractor_id?: string | null }).subcontractor_id ?? "",
+      address_type: customer.address_type ?? "",
+      delivery_phone: customer.delivery_phone ?? "",
+      google_maps_link: customer.google_maps_link ?? "",
+      meal_time_preference: customer.meal_time_preference ?? "",
     });
   }
 
@@ -390,6 +413,86 @@ export default function CustomersClient() {
                   {(subcontractors ?? []).map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="customer-address-type"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Address Type
+                </label>
+                <input
+                  id="customer-address-type"
+                  value={editForm.address_type}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, address_type: e.target.value })
+                  }
+                  placeholder="e.g. Rumah, Apartment, Kantor"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="customer-delivery-phone"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Delivery Phone
+                </label>
+                <input
+                  id="customer-delivery-phone"
+                  value={editForm.delivery_phone}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, delivery_phone: e.target.value })
+                  }
+                  placeholder="Alternative phone for delivery"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="customer-maps-link"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Google Maps Link
+                </label>
+                <input
+                  id="customer-maps-link"
+                  value={editForm.google_maps_link}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, google_maps_link: e.target.value })
+                  }
+                  placeholder="https://maps.app.goo.gl/..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="customer-meal-time"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Meal Time Preference
+                </label>
+                <select
+                  id="customer-meal-time"
+                  value={editForm.meal_time_preference}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, meal_time_preference: e.target.value })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">— Not set —</option>
+                  <option value="lunch_only">Lunch only</option>
+                  <option value="dinner_only">Dinner only</option>
+                  <option value="both_fixed">Both (fixed)</option>
+                  <option value="per_day_decision">Per-day decision</option>
+                  <option value="default_lunch">Default lunch</option>
+                  <option value="default_dinner">Default dinner</option>
+                  <option value="custom_schedule">Custom schedule</option>
                 </select>
               </div>
 
