@@ -11,7 +11,7 @@ A WhatsApp-based ordering system for Pian Yi Catering, a daily catering business
 Two end users:
 
 - **Customers** — interact only via WhatsApp with an AI chatbot powered by Claude Sonnet 4.6
-- **Admins** (Justin and Annie) — interact via a PWA dashboard for operations
+- **Admins** (Justin, Annie, Agnes) — interact via a PWA dashboard for operations; Justin and Annie are `owner` role, Agnes is `admin` role (see "User roles" section)
 
 ## Tech stack
 
@@ -76,9 +76,18 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 - Tiers: 1=31k, 2=30k, 5=29k, 10=28k, 20=27k, 40=26k, 80=25k (current values)
 - Bulk adjust supported: `PATCH /api/settings/pricing` with `{ adjust: number }` increments all tiers at once
 
+### Order sizes (S / M)
+
+- Every order has a `size` column (`text`, default `'s'`, constraint `IN ('s', 'm')`) added in migration 043
+- **S** = standard tier price, no surcharge
+- **M** = standard tier price + Rp 2,000/portion — baked into `price_per_portion` at order creation time (webhook and admin modal both apply the surcharge before inserting)
+- The surcharge is stored, never derived; editing `size` on a historical order does NOT recalculate `price_per_portion` or `total_price`
+- Chatbot asks the size question after gathering portions (Q4 for fixed-schedule, Q2 for bebas); default is S if customer doesn't specify
+- Admin can change `size` on any order via the inline select in the Orders table — calls `PATCH /api/orders` with `{ action: "update_size", id, size }`, updates only the `size` column
+
 ### Delivery
 
-- Areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera (stored in `settings`; Bintaro and Graha Raya deactivated)
+- Areas: derived dynamically from active subcontractors' `delivery_areas` column — not stored in `settings`. Current active areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, Karawaci. Bintaro and Graha Raya are served by no active subcontractor.
 - Order deadline: 8pm the day before delivery
 - After 8pm cutoff, orders schedule for day after tomorrow
 - Annie can manually override deadline with warning popup
@@ -108,6 +117,15 @@ When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur kam
 - Every incoming WhatsApp `message_id` is checked against `processed_messages` table before processing
 - If exists, ignore and return 200
 - If new, insert into `processed_messages` first, then process
+
+### User roles
+
+Two roles, stored in `admin_users.role`:
+
+- `owner` — full access to all dashboard pages and APIs (Justin: drpramadyo@gmail.com, Annie: angelaoctaviani196@gmail.com)
+- `admin` — full access except Accounting page/API (Agnes: agnesiaagatha2006@gmail.com)
+
+New admins default to `admin` role. Role is enforced at two layers: nav item hidden in layout, and server-side redirect / HTTP 403 on the page and API route. Role helper: `src/lib/supabase/get-role.ts` exports `getSessionWithRole()` and `isOwner(role)`.
 
 ## AI cost controls (9 layers)
 
@@ -192,7 +210,8 @@ pian-yi/
 │   │   ├── supabase/
 │   │   │   ├── client.ts (browser)
 │   │   │   ├── server.ts (server)
-│   │   │   └── admin.ts (service role, server-only)
+│   │   │   ├── admin.ts (service role, server-only)
+│   │   │   └── get-role.ts (getSessionWithRole + isOwner helpers)
 │   │   ├── claude/
 │   │   │   ├── client.ts
 │   │   │   ├── conversation.ts (history management, token budget)
@@ -237,11 +256,13 @@ Quick reference: which file handles which feature.
 
 ### Orders
 - `GET /api/orders` — List orders, optional `?status=` filter
-- `POST /api/orders` — Admin creates a new order
-- `PATCH /api/orders` — Update order status or fields
+- `POST /api/orders` — Admin creates a new order; accepts `size` (`"s"` | `"m"`, default `"s"`)
+- `PATCH /api/orders` — Requires `{ id, action }`. Actions: `"mark_paid"` (sets status → active, records conversion); `"update_size"` (updates `size` column only, never recalculates price)
 
 ### Customers
 - `DELETE /api/customers/[id]` — Delete customer: detaches payment proofs, removes conversation state and rate limit records
+
+Conversion tracking columns on `customers` (migration 042): `ad_creative` (e.g. `"C4"`, auto-detected from first WhatsApp message), `first_message`, `converted_at` (set on first `mark_paid`), `package`, `total_portions`, `total_payment`, `promo_used` (manual), `converted_to_subscription` (boolean), `notes`. All editable via the customer detail panel.
 
 ### Deliveries
 - `GET /api/deliveries/daily-sheet` — Fetch delivery rows for a given date
@@ -278,6 +299,7 @@ Quick reference: which file handles which feature.
 
 ### Reports
 - `GET /api/reports` — Revenue, orders, customers, churn analytics for N days
+- `GET /api/reports/conversions` — Meta Ads conversion tracking: summary stats (total, this month, revenue, top creative, organic), per-creative breakdown, paginated conversion log. Supports `?startDate=`, `?endDate=`, `?page=`, `?export=true` (returns all rows for CSV download)
 
 ### Accounting
 - `GET /api/accounting` — Paginated journal entries with optional date range filter
@@ -363,4 +385,4 @@ Standard commands (always use these spellings):
 ## Known issues / tech debt
 
 - `/api/auth/check-admin` accepts the email from the request body without verifying the caller's session — allows unauthenticated admin email enumeration via 200 vs 403 response. Fix: extract email from a verified Supabase session instead.
-- `subcontractors-client.tsx` and `supabase/seed.sql` still reference the old `"BSD"` delivery area string (not yet split into BSD Baru / BSD Lama).
+- `supabase/seed.sql` may still reference the old `"BSD"` delivery area string (not yet split into BSD Baru / BSD Lama); `subcontractors-client.tsx` was updated when Karawaci was added.
