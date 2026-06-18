@@ -65,7 +65,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     customerState: body.hasActiveOrder ? "active" : "new",
     customerName: null,
     detectedMapsLink: null,
-    menuShown: true,
+    menuShown: false,
     dapurOptions,
     dapurMenuTexts,
     servedAreas,
