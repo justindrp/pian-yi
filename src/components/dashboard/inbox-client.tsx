@@ -242,28 +242,19 @@ export default function InboxClient() {
     };
     setMessages((prev) => [...prev, optimistic]);
 
-    const { error } = await supabase.from("conversations").insert({
-      customer_id: selectedCustomerId,
-      role: "assistant",
-      content: text,
-      model_used: "human",
+    const res = await fetch("/api/inbox/manual-reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId, text }),
     });
 
-    if (error) {
-      alert(`Failed to save message: ${error.message}`);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      alert(`Failed to send: ${body?.error ?? res.statusText}`);
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setSending(false);
       return;
     }
-
-    await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: thread.customer.phone_number,
-        text,
-      }),
-    });
 
     await loadMessages(selectedCustomerId);
     setSending(false);

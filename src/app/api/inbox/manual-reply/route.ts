@@ -1,0 +1,54 @@
+import { type NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { sendTextMessage } from "@/lib/whatsapp/client";
+
+export async function POST(req: NextRequest): Promise<Response> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await req.json()) as { customer_id: string; text: string };
+  const { customer_id, text } = body;
+
+  if (!customer_id || !text?.trim()) {
+    return NextResponse.json({ ok: false, error: "customer_id and text required" }, { status: 400 });
+  }
+
+  const db = createAdminClient();
+
+  const { data: customer, error: custErr } = await db
+    .from("customers")
+    .select("phone_number")
+    .eq("id", customer_id)
+    .single();
+
+  if (custErr || !customer) {
+    return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
+  }
+
+  const { data: row, error: insertErr } = await db
+    .from("conversations")
+    .insert({
+      customer_id,
+      role: "assistant",
+      content: text.trim(),
+      model_used: "human",
+    })
+    .select()
+    .single();
+
+  if (insertErr) {
+    return NextResponse.json({ ok: false, error: insertErr.message }, { status: 500 });
+  }
+
+  await sendTextMessage(customer.phone_number, text.trim());
+
+  return NextResponse.json({ ok: true, row });
+}
+
+export const dynamic = "force-dynamic";
