@@ -237,17 +237,19 @@ function ChatbotSimulator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: newApiMessages, hasActiveOrder }),
       });
-      return { text, newApiMessages, data: await res.json() as { ok: boolean; reply: string; toolCalled: { name: string; input: unknown } | null } };
+      return { newApiMessages, data: await res.json() as { ok: boolean; reply: string; toolCalled: { name: string; input: unknown } | null } };
     },
-    onSuccess: ({ text, newApiMessages, data }) => {
-      const newItems: SimItem[] = [...items, { kind: "user", text }];
-      if (data.reply) newItems.push({ kind: "bot", text: data.reply });
-      if (data.toolCalled) newItems.push({ kind: "tool", name: data.toolCalled.name, input: data.toolCalled.input });
+    onSuccess: ({ newApiMessages, data }) => {
+      setItems((prev) => {
+        const next = [...prev];
+        if (data.reply) next.push({ kind: "bot", text: data.reply });
+        if (data.toolCalled) next.push({ kind: "tool", name: data.toolCalled.name, input: data.toolCalled.input });
+        return next;
+      });
 
       const updatedApiMessages = [...newApiMessages];
       if (data.reply) updatedApiMessages.push({ role: "assistant", content: data.reply });
 
-      setItems(newItems);
       setApiMessages(updatedApiMessages);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     },
@@ -255,8 +257,11 @@ function ChatbotSimulator() {
 
   function handleSend() {
     if (!input.trim() || send.isPending) return;
-    send.mutate(input.trim());
+    const text = input.trim();
+    setItems((prev) => [...prev, { kind: "user", text }]);
     setInput("");
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    send.mutate(text);
   }
 
   function handleReset() {
