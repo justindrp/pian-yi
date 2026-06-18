@@ -23,7 +23,7 @@ async function fetchInstructions(): Promise<Instruction[]> {
 }
 
 export default function ChatbotTrainingClient() {
-  const [tab, setTab] = useState<"chat" | "list">("chat");
+  const [tab, setTab] = useState<"chat" | "list" | "simulator">("chat");
 
   return (
     <div>
@@ -32,10 +32,11 @@ export default function ChatbotTrainingClient() {
         <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
           <button type="button" onClick={() => setTab("chat")} className={`px-4 py-1.5 ${tab === "chat" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Conversational</button>
           <button type="button" onClick={() => setTab("list")} className={`px-4 py-1.5 ${tab === "list" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Instructions</button>
+          <button type="button" onClick={() => setTab("simulator")} className={`px-4 py-1.5 ${tab === "simulator" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Simulator</button>
         </div>
       </div>
 
-      {tab === "chat" ? <TrainingChat /> : <InstructionList />}
+      {tab === "chat" ? <TrainingChat /> : tab === "list" ? <InstructionList /> : <ChatbotSimulator />}
     </div>
   );
 }
@@ -204,6 +205,152 @@ function InstructionList() {
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+type SimItem =
+  | { kind: "user"; text: string }
+  | { kind: "bot"; text: string }
+  | { kind: "tool"; name: string; input: unknown };
+
+const TOOL_LABELS: Record<string, string> = {
+  extract_order: "Bot would create an order",
+  record_daily_order: "Bot would record a daily delivery",
+  ask_admin_for_help: "Bot would ask Annie for help",
+  escalate_to_human: "Bot would escalate to Annie",
+  mark_payment_proof_received: "Bot would mark payment proof received",
+};
+
+function ChatbotSimulator() {
+  const [items, setItems] = useState<SimItem[]>([]);
+  const [apiMessages, setApiMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [input, setInput] = useState("");
+  const [hasActiveOrder, setHasActiveOrder] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const send = useMutation({
+    mutationFn: async (text: string) => {
+      const newApiMessages = [...apiMessages, { role: "user" as const, content: text }];
+      const res = await fetch("/api/chatbot-simulator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newApiMessages, hasActiveOrder }),
+      });
+      return { text, newApiMessages, data: await res.json() as { ok: boolean; reply: string; toolCalled: { name: string; input: unknown } | null } };
+    },
+    onSuccess: ({ text, newApiMessages, data }) => {
+      const newItems: SimItem[] = [...items, { kind: "user", text }];
+      if (data.reply) newItems.push({ kind: "bot", text: data.reply });
+      if (data.toolCalled) newItems.push({ kind: "tool", name: data.toolCalled.name, input: data.toolCalled.input });
+
+      const updatedApiMessages = [...newApiMessages];
+      if (data.reply) updatedApiMessages.push({ role: "assistant", content: data.reply });
+
+      setItems(newItems);
+      setApiMessages(updatedApiMessages);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    },
+  });
+
+  function handleSend() {
+    if (!input.trim() || send.isPending) return;
+    send.mutate(input.trim());
+    setInput("");
+  }
+
+  function handleReset() {
+    setItems([]);
+    setApiMessages([]);
+    setInput("");
+  }
+
+  return (
+    <div className="flex flex-col" style={{ height: "calc(100vh - 200px)" }}>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <span>Scenario:</span>
+          <button
+            type="button"
+            onClick={() => { setHasActiveOrder(false); handleReset(); }}
+            className={`px-3 py-1 rounded-full border text-xs transition-colors ${!hasActiveOrder ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 hover:bg-gray-50"}`}
+          >
+            New customer
+          </button>
+          <button
+            type="button"
+            onClick={() => { setHasActiveOrder(true); handleReset(); }}
+            className={`px-3 py-1 rounded-full border text-xs transition-colors ${hasActiveOrder ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 hover:bg-gray-50"}`}
+          >
+            Active order (30 of 50 portions left)
+          </button>
+        </div>
+        <button type="button" onClick={handleReset} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-3 py-1 border border-gray-200 rounded-lg">
+          Reset
+        </button>
+      </div>
+
+      <div className="flex-1 flex flex-col bg-[#e5ddd5] rounded-xl overflow-hidden border border-gray-200">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {items.length === 0 && (
+            <div className="text-center text-sm text-gray-500 pt-12">
+              Type a message as if you're a customer. The bot will respond using the real system prompt and active instructions.
+            </div>
+          )}
+          {items.map((item, i) => {
+            if (item.kind === "user") {
+              return (
+                <div key={i} className="flex justify-end">
+                  <div className="max-w-xs sm:max-w-md px-3 py-2 rounded-lg bg-[#dcf8c6] text-gray-900 text-sm whitespace-pre-wrap shadow-sm">
+                    {item.text}
+                  </div>
+                </div>
+              );
+            }
+            if (item.kind === "bot") {
+              return (
+                <div key={i} className="flex justify-start">
+                  <div className="max-w-xs sm:max-w-md px-3 py-2 rounded-lg bg-white text-gray-900 text-sm whitespace-pre-wrap shadow-sm">
+                    {item.text}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={i} className="flex justify-center">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 max-w-sm w-full">
+                  <div className="font-medium mb-1">{TOOL_LABELS[item.name] ?? item.name}</div>
+                  <pre className="text-amber-700 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(item.input, null, 2)}</pre>
+                </div>
+              </div>
+            );
+          })}
+          {send.isPending && (
+            <div className="flex justify-start">
+              <div className="bg-white px-3 py-2 rounded-lg text-gray-400 text-sm shadow-sm">...</div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="bg-[#f0f0f0] px-3 py-2 flex gap-2 border-t border-gray-200">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder="Type as a customer..."
+            className="flex-1 bg-white border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-gray-400"
+          />
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!input.trim() || send.isPending}
+            className="px-4 py-2 bg-[#128c7e] text-white text-sm rounded-full disabled:opacity-40 hover:bg-[#0e7064]"
+          >
+            Send
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
