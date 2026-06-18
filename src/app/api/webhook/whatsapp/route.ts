@@ -108,12 +108,24 @@ async function processWebhookAsync(
       { phone_number: message.from, updated_at: new Date().toISOString() },
       { onConflict: "phone_number" },
     )
-    .select("id, name")
+    .select("id, name, first_message")
     .single();
 
   if (!customer) return;
 
   const customerId = customer.id;
+
+  // Capture first message and detect ad creative tag on very first contact
+  if (!customer.first_message && message.text) {
+    const tag = message.text.match(/\[C(\d+)\]/i)?.[1];
+    await db
+      .from("customers")
+      .update({
+        first_message: message.text,
+        ad_creative: tag ? `C${tag}` : null,
+      })
+      .eq("id", customerId);
+  }
 
   // Upsert companion rows
   await Promise.all([

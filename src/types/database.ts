@@ -373,66 +373,93 @@ export type Database = {
       }
       customers: {
         Row: {
+          ad_creative: string | null
           address: string | null
           address_type: string | null
           area: string | null
           avg_price_per_portion: number
+          converted_at: string | null
+          converted_to_subscription: boolean
           created_at: string | null
           custom_schedule: Json | null
           customer_number: number | null
           delivery_phone: string | null
           delivery_position: number | null
           delivery_route: number | null
+          first_message: string | null
           google_maps_link: string | null
           id: string
           meal_time_preference: string | null
           name: string | null
+          notes: string | null
+          package: string | null
           phone_number: string
           portions_remaining: number
+          promo_used: string | null
           sub_area: string | null
           subcontractor_id: string | null
+          total_payment: number | null
+          total_portions: number | null
           updated_at: string | null
         }
         Insert: {
+          ad_creative?: string | null
           address?: string | null
           address_type?: string | null
           area?: string | null
           avg_price_per_portion?: number
+          converted_at?: string | null
+          converted_to_subscription?: boolean
           created_at?: string | null
           custom_schedule?: Json | null
           customer_number?: number | null
           delivery_phone?: string | null
           delivery_position?: number | null
           delivery_route?: number | null
+          first_message?: string | null
           google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
+          notes?: string | null
+          package?: string | null
           phone_number: string
           portions_remaining?: number
+          promo_used?: string | null
           sub_area?: string | null
           subcontractor_id?: string | null
+          total_payment?: number | null
+          total_portions?: number | null
           updated_at?: string | null
         }
         Update: {
+          ad_creative?: string | null
           address?: string | null
           address_type?: string | null
           area?: string | null
           avg_price_per_portion?: number
+          converted_at?: string | null
+          converted_to_subscription?: boolean
           created_at?: string | null
           custom_schedule?: Json | null
           customer_number?: number | null
           delivery_phone?: string | null
           delivery_position?: number | null
           delivery_route?: number | null
+          first_message?: string | null
           google_maps_link?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
+          notes?: string | null
+          package?: string | null
           phone_number?: string
           portions_remaining?: number
+          promo_used?: string | null
           sub_area?: string | null
           subcontractor_id?: string | null
+          total_payment?: number | null
+          total_portions?: number | null
           updated_at?: string | null
         }
         Relationships: [

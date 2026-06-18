@@ -3,6 +3,42 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+interface ConversionRow {
+  id: string;
+  name: string | null;
+  area: string | null;
+  ad_creative: string | null;
+  package: string | null;
+  total_portions: number | null;
+  total_payment: number | null;
+  promo_used: string | null;
+  converted_to_subscription: boolean;
+  notes: string | null;
+  converted_at: string;
+}
+
+interface CreativeBreakdown {
+  creative: string;
+  conversions: number;
+  revenue: number;
+  avgOrderValue: number;
+  subscribed: number;
+  subscriptionRate: number;
+}
+
+interface ConversionData {
+  totalConversions: number;
+  conversionsThisMonth: number;
+  totalRevenue: number;
+  revenueThisMonth: number;
+  topCreative: string | null;
+  organicConversions: number;
+  byCreative: CreativeBreakdown[];
+  log: ConversionRow[];
+  total: number;
+  page: number;
+}
+
 interface ReportData {
   revenue: number;
   prevRevenue: number;
@@ -35,6 +71,7 @@ function trend(current: number, prev: number) {
 
 export default function ReportsClient() {
   const [days, setDays] = useState(30);
+  const [tab, setTab] = useState<"overview" | "conversions">("overview");
 
   const { data, isLoading } = useQuery({
     queryKey: ["reports", days],
@@ -55,18 +92,27 @@ export default function ReportsClient() {
     <div>
       <div className="flex items-center gap-4 mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
-        <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm ml-auto">
-          {[7, 30, 90].map((d) => (
-            <button key={d} type="button" onClick={() => setDays(d)} className={`px-4 py-1.5 ${days === d ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>{d}d</button>
-          ))}
+        <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
+          <button type="button" onClick={() => setTab("overview")} className={`px-4 py-1.5 ${tab === "overview" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Overview</button>
+          <button type="button" onClick={() => setTab("conversions")} className={`px-4 py-1.5 ${tab === "conversions" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Conversions</button>
         </div>
+        {tab === "overview" && (
+          <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm ml-auto">
+            {[7, 30, 90].map((d) => (
+              <button key={d} type="button" onClick={() => setDays(d)} className={`px-4 py-1.5 ${days === d ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>{d}d</button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {isLoading ? (
+      {tab === "conversions" && <ConversionTracking />}
+
+      {tab === "overview" && isLoading && (
         <div className="grid grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}
         </div>
-      ) : (
+      )}
+      {tab === "overview" && !isLoading && (
         <div className="space-y-6">
           {/* Section 1: Overview */}
           <section>
@@ -155,6 +201,200 @@ export default function ReportsClient() {
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+function ConversionTracking() {
+  const defaultEnd = new Date().toISOString().slice(0, 10);
+  const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState(defaultStart);
+  const [endDate, setEndDate] = useState(defaultEnd);
+  const [page, setPage] = useState(1);
+  const perPage = 20;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["conversions", startDate, endDate, page],
+    queryFn: async () => {
+      const params = new URLSearchParams({ startDate, endDate, page: String(page), perPage: String(perPage) });
+      const res = await fetch(`/api/reports/conversions?${params}`);
+      const json = await res.json() as { ok: boolean; data: ConversionData };
+      return json.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  async function exportCSV() {
+    const params = new URLSearchParams({ startDate, endDate, export: "true" });
+    const res = await fetch(`/api/reports/conversions?${params}`);
+    const json = await res.json() as { ok: boolean; data: ConversionData };
+    const rows = json.data?.log ?? [];
+    const headers = ["Date", "Customer", "Area", "Creative", "Package", "Portions", "Payment (Rp)", "Promo", "Subscribed", "Notes"];
+    const csvRows = [
+      headers.join(","),
+      ...rows.map((r) =>
+        [
+          r.converted_at.slice(0, 10),
+          `"${r.name ?? ""}"`,
+          r.area ?? "",
+          r.ad_creative ?? "Organic",
+          r.package ?? "",
+          r.total_portions ?? "",
+          r.total_payment ?? "",
+          `"${r.promo_used ?? ""}"`,
+          r.converted_to_subscription ? "Yes" : "No",
+          `"${(r.notes ?? "").replace(/"/g, '""')}"`,
+        ].join(","),
+      ),
+    ];
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `conversions_${startDate}_${endDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const totalPages = Math.ceil((data?.total ?? 0) / perPage);
+
+  return (
+    <div className="space-y-6">
+      {/* Date range filter */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-sm text-gray-500">From</label>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+        />
+        <label className="text-sm text-gray-500">to</label>
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+        />
+        <button
+          type="button"
+          onClick={exportCSV}
+          className="ml-auto px-4 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+        >
+          Export CSV
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard label="Total Conversions" value={String(data?.totalConversions ?? 0)} />
+          <StatCard label="Conversions This Month" value={String(data?.conversionsThisMonth ?? 0)} />
+          <StatCard label="Total Revenue" value={formatIDR(data?.totalRevenue ?? 0)} />
+          <StatCard label="Revenue This Month" value={formatIDR(data?.revenueThisMonth ?? 0)} />
+          <StatCard label="Top Creative" value={data?.topCreative ?? "—"} />
+          <StatCard label="Organic Conversions" value={String(data?.organicConversions ?? 0)} />
+        </div>
+      )}
+
+      {/* Per-creative breakdown */}
+      {!isLoading && (data?.byCreative ?? []).length > 0 && (
+        <section>
+          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">By Creative</h2>
+          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-3 text-left">Creative</th>
+                  <th className="px-4 py-3 text-right">Conversions</th>
+                  <th className="px-4 py-3 text-right">Revenue</th>
+                  <th className="px-4 py-3 text-right">Avg Order</th>
+                  <th className="px-4 py-3 text-right">Subscribed</th>
+                  <th className="px-4 py-3 text-right">Sub Rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {(data?.byCreative ?? []).map((row) => (
+                  <tr key={row.creative}>
+                    <td className="px-4 py-3 font-medium text-gray-900">{row.creative}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{row.conversions}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{formatIDR(row.revenue)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{formatIDR(row.avgOrderValue)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{row.subscribed}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{row.subscriptionRate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Conversion log */}
+      <section>
+        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">Conversion Log</h2>
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-3 text-left">Date</th>
+                <th className="px-4 py-3 text-left">Customer</th>
+                <th className="px-4 py-3 text-left">Area</th>
+                <th className="px-4 py-3 text-left">Creative</th>
+                <th className="px-4 py-3 text-left">Package</th>
+                <th className="px-4 py-3 text-right">Payment</th>
+                <th className="px-4 py-3 text-left">Promo</th>
+                <th className="px-4 py-3 text-center">Sub</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {isLoading && (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+              )}
+              {!isLoading && (data?.log ?? []).length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No conversions in this period.</td></tr>
+              )}
+              {(data?.log ?? []).map((row) => (
+                <tr key={row.id}>
+                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.converted_at.slice(0, 10)}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{row.name ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-600">{row.area ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-600">{row.ad_creative ?? <span className="text-gray-400 italic">Organic</span>}</td>
+                  <td className="px-4 py-3 text-gray-600">{row.package ?? "—"}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{row.total_payment != null ? formatIDR(row.total_payment) : "—"}</td>
+                  <td className="px-4 py-3 text-gray-600">{row.promo_used ?? "—"}</td>
+                  <td className="px-4 py-3 text-center">{row.converted_to_subscription ? "✓" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

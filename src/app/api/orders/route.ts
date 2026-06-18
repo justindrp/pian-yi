@@ -242,7 +242,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   // Fetch order + customer in one query
   const { data: order, error: fetchErr } = await db
     .from("orders")
-    .select("id, customer_id, total_price, customers(name, phone_number)")
+    .select("id, customer_id, total_price, package_size, customers(name, phone_number)")
     .eq("id", body.id)
     .single();
   if (fetchErr || !order)
@@ -255,6 +255,24 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .eq("id", body.id);
   if (updateErr)
     return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+
+  // Record conversion on first payment (fire-and-forget)
+  const convCustomerId = order.customer_id;
+  if (convCustomerId) {
+    Promise.resolve(
+      db.from("customers").select("converted_at").eq("id", convCustomerId).single(),
+    ).then(({ data: cust }) => {
+      if (cust && !cust.converted_at) {
+        const pkgSize = order.package_size ?? 0;
+        return db.from("customers").update({
+          converted_at: new Date().toISOString(),
+          total_portions: pkgSize,
+          total_payment: order.total_price ?? 0,
+          package: pkgSize > 0 ? `${pkgSize} porsi` : null,
+        }).eq("id", convCustomerId);
+      }
+    }).catch((err: unknown) => console.error("[mark_paid] conversion record error:", err));
+  }
 
   // Journal: Dr Bank BCA / Cr Uang Muka Pelanggan (full order value)
   const today = new Date().toISOString().slice(0, 10);

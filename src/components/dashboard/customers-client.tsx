@@ -36,6 +36,10 @@ export default function CustomersClient() {
     delivery_phone: "",
     google_maps_link: "",
     meal_time_preference: "",
+    ad_creative: "",
+    promo_used: "",
+    converted_to_subscription: false,
+    notes: "",
   });
   const queryClient = useQueryClient();
   const supabase = createClient();
@@ -97,6 +101,10 @@ export default function CustomersClient() {
       delivery_phone: string;
       google_maps_link: string;
       meal_time_preference: string;
+      ad_creative: string;
+      promo_used: string;
+      converted_to_subscription: boolean;
+      notes: string;
     }) => {
       if (!selected) return;
       const { error } = await supabase
@@ -112,6 +120,10 @@ export default function CustomersClient() {
           delivery_phone: form.delivery_phone || null,
           google_maps_link: form.google_maps_link || null,
           meal_time_preference: form.meal_time_preference || null,
+          ad_creative: form.ad_creative || null,
+          promo_used: form.promo_used || null,
+          converted_to_subscription: form.converted_to_subscription,
+          notes: form.notes || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", selected.id);
@@ -125,17 +137,28 @@ export default function CustomersClient() {
 
   function openDetail(customer: Customer) {
     setSelected(customer);
+    const c = customer as Customer & {
+      subcontractor_id?: string | null;
+      ad_creative?: string | null;
+      promo_used?: string | null;
+      converted_to_subscription?: boolean | null;
+      notes?: string | null;
+    };
     setEditForm({
       phone_number: customer.phone_number ?? "",
       name: customer.name ?? "",
       address: customer.address ?? "",
       area: customer.area ?? "",
       sub_area: customer.sub_area ?? "",
-      subcontractor_id: (customer as Customer & { subcontractor_id?: string | null }).subcontractor_id ?? "",
+      subcontractor_id: c.subcontractor_id ?? "",
       address_type: customer.address_type ?? "",
       delivery_phone: customer.delivery_phone ?? "",
       google_maps_link: customer.google_maps_link ?? "",
       meal_time_preference: customer.meal_time_preference ?? "",
+      ad_creative: c.ad_creative ?? "",
+      promo_used: c.promo_used ?? "",
+      converted_to_subscription: c.converted_to_subscription ?? false,
+      notes: c.notes ?? "",
     });
   }
 
@@ -495,6 +518,60 @@ export default function CustomersClient() {
                   <option value="custom_schedule">Custom schedule</option>
                 </select>
               </div>
+
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Ad Creative</label>
+                <input
+                  value={editForm.ad_creative}
+                  onChange={(e) => setEditForm({ ...editForm, ad_creative: e.target.value })}
+                  placeholder="e.g. C4"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Promo Used</label>
+                <input
+                  value={editForm.promo_used}
+                  onChange={(e) => setEditForm({ ...editForm, promo_used: e.target.value })}
+                  placeholder="e.g. Rp17k porsi pertama"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  id="converted-to-subscription"
+                  type="checkbox"
+                  checked={editForm.converted_to_subscription}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, converted_to_subscription: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded border-gray-300 accent-orange-500"
+                />
+                <label htmlFor="converted-to-subscription" className="text-sm text-gray-700">
+                  Converted to subscription
+                </label>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Notes</label>
+                <textarea
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                />
+              </div>
+
+              {(selected as Customer & { converted_at?: string | null })?.converted_at && (
+                <p className="text-xs text-gray-400">
+                  Converted:{" "}
+                  {new Date(
+                    (selected as Customer & { converted_at?: string }).converted_at as string,
+                  ).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                </p>
+              )}
 
               {saveMutation.isError && (
                 <p className="text-sm text-red-600">
