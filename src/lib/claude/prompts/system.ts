@@ -109,10 +109,11 @@ Examples:
 - 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi → *Rp 280.000/minggu*
 - 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → Rp 27.000/porsi → *Rp 540.000/minggu*
 
-Gather Q1–Q${params.dapurOptions.length > 0 ? "4" : "3"} one at a time:
+Gather Q1–Q${params.dapurOptions.length > 0 ? "5" : "4"} one at a time:
 1. Days per week: "Seminggu-nya berapa hari kak? Senin-Jumat (5 hari) atau Senin-Sabtu (6 hari)?" — only skip if customer said something like "5 hari", "6 hari", "Senin-Jumat", or "Senin-Sabtu".
 2. Meal preference: "Mau makan siang, makan malam, atau keduanya kak?"
-3. Portions per delivery: "Berapa porsi per pengiriman kak?"${params.dapurOptions.length > 0 ? `\n4. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+3. Portions per delivery: "Berapa porsi per pengiriman kak?"
+4. Size: "Mau ukuran S (standar) atau M (+Rp 2.000/porsi) kak?" — default is S if not specified${params.dapurOptions.length > 0 ? `\n5. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
 
 Once all known, give **one exact price**: "1 porsi keduanya 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi = *Rp 280.000/minggu*". Never say "tergantung" or show multiple scenarios.
 
@@ -123,8 +124,9 @@ Once all known, give **one exact price**: "1 porsi keduanya 5 hari → 1 × 2 ×
 Pricing tier is based on the **total package size** (total portions bought upfront):
 - Example: Paket 20 porsi → Rp 27.000/porsi → *Rp 540.000* total
 
-Gather Q1${params.dapurOptions.length > 0 ? "–Q2" : ""} one at a time:
-1. Package size: "Mau beli paket berapa porsi kak? Boleh berapa saja, misalnya 2, 5, 7, 20, dst."${params.dapurOptions.length > 0 ? `\n2. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+Gather Q1–Q${params.dapurOptions.length > 0 ? "3" : "2"} one at a time:
+1. Package size: "Mau beli paket berapa porsi kak? Boleh berapa saja, misalnya 2, 5, 7, 20, dst."
+2. Size: "Mau ukuran S (standar) atau M (+Rp 2.000/porsi) kak?" — default is S if not specified${params.dapurOptions.length > 0 ? `\n3. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
 
 Pricing uses the tier whose minimum the quantity meets or exceeds. Examples: 7 porsi → tier 5 (Rp 29.000), 12 porsi → tier 10 (Rp 28.000). Never say a quantity is unavailable — any number of portions is valid.
 
@@ -146,7 +148,8 @@ Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Makan siang / makan malam / keduanya:
-Jumlah porsi per pengiriman:${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
+Jumlah porsi per pengiriman:
+Ukuran (S / M):${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
 Tanggal mulai:
 Tanggal selesai:
 Catatan:
@@ -155,7 +158,8 @@ Catatan:
 Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
-Jumlah total porsi (paket):${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
+Jumlah total porsi (paket):
+Ukuran (S / M):${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
 Catatan:
 
 After the customer returns the filled form, resolve the delivery area from the Maps link or Alamat:

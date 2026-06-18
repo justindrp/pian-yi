@@ -39,7 +39,7 @@ interface DeliveryRow {
     delivery_route: number | null;
     delivery_position: number | null;
   };
-  orders?: { portions_lunch: number; portions_dinner: number; portions_per_delivery: number; meal_time_preference: string };
+  orders?: { portions_lunch: number; portions_dinner: number; portions_per_delivery: number; meal_time_preference: string; size?: string };
 }
 
 interface Proof {
@@ -182,7 +182,7 @@ function SortableDeliveryRow({
         />
       </td>
       <td className="px-2 py-2">
-        <div className="font-medium text-gray-900 text-sm">{row.customers?.name ?? row.customer_id.slice(0, 8)}</div>
+        <div className="font-medium text-gray-900 text-sm">{row.customers?.name ?? row.customer_id.slice(0, 8)}{row.orders?.size === "m" && <span className="ml-1 text-xs bg-orange-100 text-orange-700 px-1 rounded">M</span>}</div>
         <div className="text-xs text-gray-400">{row.customers?.area}{row.customers?.sub_area ? ` · ${row.customers.sub_area}` : ""}</div>
       </td>
       <td className="px-2 py-2">

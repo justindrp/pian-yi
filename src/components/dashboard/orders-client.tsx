@@ -14,6 +14,7 @@ interface Order {
   start_date: string;
   area: string;
   meal_time_preference: string;
+  size: string;
   created_at: string;
   customers?: { name: string | null; phone_number: string };
 }
@@ -42,6 +43,15 @@ export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("active");
   const [showNewOrder, setShowNewOrder] = useState(false);
   const qc = useQueryClient();
+
+  async function patchSize(id: string, newSize: "s" | "m") {
+    await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action: "update_size", size: newSize }),
+    });
+    qc.invalidateQueries({ queryKey: ["orders"] });
+  }
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ["orders", statusFilter],
@@ -87,6 +97,7 @@ export default function OrdersClient() {
               <tr>
                 <th className="px-4 py-3 text-left">Customer</th>
                 <th className="px-4 py-3 text-left">Package</th>
+                <th className="px-4 py-3 text-left">Size</th>
                 <th className="px-4 py-3 text-left">Remaining</th>
                 <th className="px-4 py-3 text-left">Total</th>
                 <th className="px-4 py-3 text-left">Area</th>
@@ -102,6 +113,16 @@ export default function OrdersClient() {
                     <div className="text-xs text-gray-400">{o.customers?.phone_number}</div>
                   </td>
                   <td className="px-4 py-3 text-gray-900">{o.package_size} porsi</td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={o.size ?? "s"}
+                      onChange={(e) => patchSize(o.id, e.target.value as "s" | "m")}
+                      className="border border-gray-200 rounded px-2 py-0.5 text-sm"
+                    >
+                      <option value="s">S</option>
+                      <option value="m">M</option>
+                    </select>
+                  </td>
                   <td className="px-4 py-3 text-gray-900">{o.portions_remaining}</td>
                   <td className="px-4 py-3 text-gray-900">Rp {o.total_price.toLocaleString("id-ID")}</td>
                   <td className="px-4 py-3 text-gray-900">{o.area}</td>
@@ -114,7 +135,7 @@ export default function OrdersClient() {
                 </tr>
               ))}
               {(orders ?? []).length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">No orders.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">No orders.</td></tr>
               )}
             </tbody>
           </table>

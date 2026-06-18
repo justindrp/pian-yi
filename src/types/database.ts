@@ -792,6 +792,7 @@ export type Database = {
           portions_remaining: number
           price_per_portion: number
           reminder_sent_at: string | null
+          size: string
           start_date: string
           status: string
           subcontractor_id: string | null
@@ -826,6 +827,7 @@ export type Database = {
           portions_remaining: number
           price_per_portion: number
           reminder_sent_at?: string | null
+          size?: string
           start_date: string
           status?: string
           subcontractor_id?: string | null
@@ -860,6 +862,7 @@ export type Database = {
           portions_remaining?: number
           price_per_portion?: number
           reminder_sent_at?: string | null
+          size?: string
           start_date?: string
           status?: string
           subcontractor_id?: string | null

@@ -449,6 +449,11 @@ async function processWebhookAsync(
             type: "string",
             description: "UUID of the chosen dapur (from the dapur ID mapping in the system prompt)",
           },
+          size: {
+            type: "string",
+            enum: ["s", "m"],
+            description: "Package size — s for standard, m for +Rp 2.000/porsi",
+          },
         },
         required: [
           "customer_name",
@@ -457,6 +462,7 @@ async function processWebhookAsync(
           "address",
           "maps_link",
           "area",
+          "size",
           ...(dapurOptions.length > 0 ? ["subcontractor_id"] : []),
         ],
       },
@@ -764,6 +770,7 @@ async function handleToolUse(
       start_date?: string;
       end_date?: string;
       subcontractor_id?: string;
+      size?: string;
     };
 
     // Look up price: find the highest tier whose minimum is <= package_size
@@ -775,7 +782,8 @@ async function handleToolUse(
       .limit(1)
       .single();
 
-    const pricePerPortion = tier?.price_per_portion ?? 0;
+    const surcharge = input.size === "m" ? 2000 : 0;
+    const pricePerPortion = (tier?.price_per_portion ?? 0) + surcharge;
     const totalPrice = pricePerPortion * input.package_size;
 
     await db.from("orders").insert({
@@ -796,6 +804,7 @@ async function handleToolUse(
         | null,
       start_date: (input.start_date ?? null) as string,
       end_date: input.end_date ?? null,
+      size: (input.size ?? "s") as "s" | "m",
       subcontractor_id: input.subcontractor_id ?? null,
       status: "pending_payment",
       confirmed_at: new Date().toISOString(),

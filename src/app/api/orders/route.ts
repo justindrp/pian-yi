@@ -52,6 +52,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     portions_lunch?: number;
     portions_dinner?: number;
     package_size?: number;
+    size?: "s" | "m";
     // Scheduled
     delivery_schedule?: {
       date: string;
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         meal_time_preference: body.meal_time_preference,
         portions_lunch: body.portions_lunch ?? null,
         portions_dinner: body.portions_dinner ?? null,
+        size: (body.size ?? "s") as "s" | "m",
       })
       .select("id, order_type, status, total_price")
       .single();
@@ -141,6 +143,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       subcontractor_id: body.subcontractor_id,
       start_date: startDate,
       end_date: endDate,
+      size: (body.size ?? "s") as "s" | "m",
     })
     .select("id, order_type, status, total_price")
     .single();
@@ -233,11 +236,17 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   if (!user)
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json()) as { id: string; action: "mark_paid" };
-  if (!body.id || body.action !== "mark_paid")
+  const body = (await req.json()) as { id: string; action: "mark_paid" | "update_size"; size?: "s" | "m" };
+  if (!body.id || (body.action !== "mark_paid" && body.action !== "update_size"))
     return NextResponse.json({ ok: false, error: "Invalid request" }, { status: 400 });
 
   const db = createAdminClient();
+
+  if (body.action === "update_size") {
+    const { error } = await db.from("orders").update({ size: body.size }).eq("id", body.id);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
   // Fetch order + customer in one query
   const { data: order, error: fetchErr } = await db

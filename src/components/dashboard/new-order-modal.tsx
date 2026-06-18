@@ -90,6 +90,8 @@ export default function NewOrderModal({
   const [portionsLunch, setPortionsLunch] = useState("");
   const [portionsDinner, setPortionsDinner] = useState("");
 
+  const [size, setSize] = useState<"s" | "m">("s");
+
   // Scheduled-specific
   const [schedStart, setSchedStart] = useState("2026-01-01");
   const [schedEnd, setSchedEnd] = useState(new Date().toISOString().slice(0, 10));
@@ -174,7 +176,7 @@ export default function NewOrderModal({
       const common = {
         customer_id: selectedCustomer.id,
         order_type: orderType,
-        price_per_portion: Number(pricePerPortion),
+        price_per_portion: Number(pricePerPortion) + (size === "m" ? 2000 : 0),
         portions_per_delivery: Number(portionsPerDelivery),
         delivery_address: deliveryAddress,
         area,
@@ -190,6 +192,7 @@ export default function NewOrderModal({
               end_date: endDate || undefined,
               meal_time_preference: mealPref,
               package_size: Number(packageSize),
+              size,
               portions_lunch: portionsLunch ? Number(portionsLunch) : undefined,
               portions_dinner: portionsDinner ? Number(portionsDinner) : undefined,
             }
@@ -438,8 +441,15 @@ export default function NewOrderModal({
                     </div>
                   </>
                 )}
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Ukuran</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setSize("s")} className={`px-4 py-2 text-sm rounded-lg border ${size === "s" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>S (Standar)</button>
+                    <button type="button" onClick={() => setSize("m")} className={`px-4 py-2 text-sm rounded-lg border ${size === "m" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>M (+Rp 2.000/porsi)</button>
+                  </div>
+                </div>
                 <div className="col-span-2 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600">
-                  Total: {packageSize} porsi × Rp {Number(pricePerPortion).toLocaleString("id-ID")} = <span className="font-semibold text-gray-900">Rp {(Number(packageSize) * Number(pricePerPortion)).toLocaleString("id-ID")}</span>
+                  Total: {packageSize} porsi × Rp {(Number(pricePerPortion) + (size === "m" ? 2000 : 0)).toLocaleString("id-ID")} = <span className="font-semibold text-gray-900">Rp {(Number(packageSize) * (Number(pricePerPortion) + (size === "m" ? 2000 : 0))).toLocaleString("id-ID")}</span>
                 </div>
               </div>
             )}

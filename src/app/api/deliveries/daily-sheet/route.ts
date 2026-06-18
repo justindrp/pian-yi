@@ -18,7 +18,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Load existing daily_deliveries for this date
   const { data: rows } = await db
     .from("daily_deliveries")
-    .select("*, customers(name, phone_number, area, sub_area, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, meal_time_preference)")
+    .select("*, customers(name, phone_number, area, sub_area, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, meal_time_preference, size)")
     .eq("delivery_date", date);
 
   return NextResponse.json({ ok: true, data: rows ?? [] });
