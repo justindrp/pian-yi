@@ -18,7 +18,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Load existing daily_deliveries for this date
   const { data: rows } = await db
     .from("daily_deliveries")
-    .select("*, customers(name, phone_number, area, sub_area, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, meal_time_preference, size)")
+    .select("*, customers(name, phone_number, area, sub_area, address, google_maps_link, address_2, area_2, sub_area_2, google_maps_link_2, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, meal_time_preference, size)")
     .eq("delivery_date", date);
 
   return NextResponse.json({ ok: true, data: rows ?? [] });
@@ -126,6 +126,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
       subcontractor_id: string | null;
       notes: string | null;
       skip: boolean;
+      address_slot?: number;
       cancel?: boolean;
     }[];
   };
@@ -201,6 +202,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
         portions: row.portions,
         subcontractor_id: row.subcontractor_id,
         notes: row.notes,
+        address_slot: row.address_slot ?? 1,
         status,
         updated_at: new Date().toISOString(),
       },

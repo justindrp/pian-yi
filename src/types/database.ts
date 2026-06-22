@@ -375,8 +375,10 @@ export type Database = {
         Row: {
           ad_creative: string | null
           address: string | null
+          address_2: string | null
           address_type: string | null
           area: string | null
+          area_2: string | null
           avg_price_per_portion: number
           converted_at: string | null
           converted_to_subscription: boolean
@@ -388,6 +390,7 @@ export type Database = {
           delivery_route: number | null
           first_message: string | null
           google_maps_link: string | null
+          google_maps_link_2: string | null
           id: string
           meal_time_preference: string | null
           name: string | null
@@ -397,6 +400,7 @@ export type Database = {
           portions_remaining: number
           promo_used: string | null
           sub_area: string | null
+          sub_area_2: string | null
           subcontractor_id: string | null
           total_payment: number | null
           total_portions: number | null
@@ -405,8 +409,10 @@ export type Database = {
         Insert: {
           ad_creative?: string | null
           address?: string | null
+          address_2?: string | null
           address_type?: string | null
           area?: string | null
+          area_2?: string | null
           avg_price_per_portion?: number
           converted_at?: string | null
           converted_to_subscription?: boolean
@@ -418,6 +424,7 @@ export type Database = {
           delivery_route?: number | null
           first_message?: string | null
           google_maps_link?: string | null
+          google_maps_link_2?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
@@ -427,6 +434,7 @@ export type Database = {
           portions_remaining?: number
           promo_used?: string | null
           sub_area?: string | null
+          sub_area_2?: string | null
           subcontractor_id?: string | null
           total_payment?: number | null
           total_portions?: number | null
@@ -435,8 +443,10 @@ export type Database = {
         Update: {
           ad_creative?: string | null
           address?: string | null
+          address_2?: string | null
           address_type?: string | null
           area?: string | null
+          area_2?: string | null
           avg_price_per_portion?: number
           converted_at?: string | null
           converted_to_subscription?: boolean
@@ -448,6 +458,7 @@ export type Database = {
           delivery_route?: number | null
           first_message?: string | null
           google_maps_link?: string | null
+          google_maps_link_2?: string | null
           id?: string
           meal_time_preference?: string | null
           name?: string | null
@@ -457,6 +468,7 @@ export type Database = {
           portions_remaining?: number
           promo_used?: string | null
           sub_area?: string | null
+          sub_area_2?: string | null
           subcontractor_id?: string | null
           total_payment?: number | null
           total_portions?: number | null
@@ -474,6 +486,7 @@ export type Database = {
       }
       daily_deliveries: {
         Row: {
+          address_slot: number
           created_at: string | null
           customer_id: string | null
           delivery_date: string
@@ -491,6 +504,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          address_slot?: number
           created_at?: string | null
           customer_id?: string | null
           delivery_date: string
@@ -508,6 +522,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          address_slot?: number
           created_at?: string | null
           customer_id?: string | null
           delivery_date?: string

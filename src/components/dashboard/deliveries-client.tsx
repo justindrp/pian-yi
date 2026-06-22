@@ -30,11 +30,18 @@ interface DeliveryRow {
   notes: string | null;
   status: string;
   skip: boolean;
+  address_slot: number;
   customers?: {
     name: string | null;
     phone_number: string;
     area: string;
     sub_area: string | null;
+    address: string | null;
+    google_maps_link: string | null;
+    address_2: string | null;
+    area_2: string | null;
+    sub_area_2: string | null;
+    google_maps_link_2: string | null;
     subcontractor_id: string | null;
     delivery_route: number | null;
     delivery_position: number | null;
@@ -149,6 +156,7 @@ function SortableDeliveryRow({
   onUpdateSkip,
   onUpdatePortions,
   onUpdateSub,
+  onUpdateAddressSlot,
 }: {
   row: DeliveryRow;
   position: number;
@@ -156,6 +164,7 @@ function SortableDeliveryRow({
   onUpdateSkip: (customerId: string, mealType: "lunch" | "dinner", skip: boolean) => void;
   onUpdatePortions: (customerId: string, mealType: "lunch" | "dinner", portions: number) => void;
   onUpdateSub: (customerId: string, mealType: "lunch" | "dinner", subId: string | null) => void;
+  onUpdateAddressSlot: (customerId: string, mealType: "lunch" | "dinner", slot: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row.customer_id });
   const style = {
@@ -182,8 +191,26 @@ function SortableDeliveryRow({
         />
       </td>
       <td className="px-2 py-2">
-        <div className="font-medium text-gray-900 text-sm">{row.customers?.name ?? row.customer_id.slice(0, 8)}{row.orders?.size === "m" && <span className="ml-1 text-xs bg-orange-100 text-orange-700 px-1 rounded">M</span>}</div>
-        <div className="text-xs text-gray-400">{row.customers?.area}{row.customers?.sub_area ? ` · ${row.customers.sub_area}` : ""}</div>
+        <div className="font-medium text-gray-900 text-sm">
+          {row.customers?.name ?? row.customer_id.slice(0, 8)}
+          {row.orders?.size === "m" && <span className="ml-1 text-xs bg-orange-100 text-orange-700 px-1 rounded">M</span>}
+        </div>
+        <div className="flex items-center gap-1 text-xs text-gray-400">
+          <span>
+            {row.address_slot === 2
+              ? `${row.customers?.area_2 ?? ""}${row.customers?.sub_area_2 ? ` · ${row.customers.sub_area_2}` : ""}`
+              : `${row.customers?.area ?? ""}${row.customers?.sub_area ? ` · ${row.customers.sub_area}` : ""}`}
+          </span>
+          {row.customers?.address_2 && (
+            <button
+              type="button"
+              onClick={() => onUpdateAddressSlot(row.customer_id, row.meal_type, row.address_slot === 2 ? 1 : 2)}
+              className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded"
+            >
+              {row.address_slot === 2 ? "A2" : "A1"}
+            </button>
+          )}
+        </div>
       </td>
       <td className="px-2 py-2">
         <div className="flex items-center gap-1">
@@ -250,7 +277,7 @@ export default function DeliveriesClient() {
 
   useEffect(() => {
     if (sheetData) {
-      setRows(sheetData.map((r) => ({ ...r, skip: r.status === "skipped" })));
+      setRows(sheetData.map((r) => ({ ...r, skip: r.status === "skipped", address_slot: r.address_slot ?? 1 })));
     }
   }, [sheetData]);
 
@@ -426,6 +453,7 @@ export default function DeliveriesClient() {
                                       onUpdateSkip={(cid, mt, skip) => updateRow(cid, mt, "skip", skip)}
                                       onUpdatePortions={(cid, mt, portions) => updateRow(cid, mt, "portions", portions)}
                                       onUpdateSub={(cid, mt, subId) => updateRow(cid, mt, "subcontractor_id", subId)}
+                                      onUpdateAddressSlot={(cid, mt, slot) => updateRow(cid, mt, "address_slot", slot)}
                                     />
                                   ))}
                                 </tbody>
@@ -454,7 +482,22 @@ export default function DeliveriesClient() {
                                 </td>
                                 <td className="px-2 py-2">
                                   <div className="font-medium text-gray-900 text-sm">{r.customers?.name ?? r.customer_id.slice(0, 8)}</div>
-                                  <div className="text-xs text-gray-400">{r.customers?.area}{r.customers?.sub_area ? ` · ${r.customers.sub_area}` : ""}</div>
+                                  <div className="flex items-center gap-1 text-xs text-gray-400">
+                                    <span>
+                                      {r.address_slot === 2
+                                        ? `${r.customers?.area_2 ?? ""}${r.customers?.sub_area_2 ? ` · ${r.customers.sub_area_2}` : ""}`
+                                        : `${r.customers?.area ?? ""}${r.customers?.sub_area ? ` · ${r.customers.sub_area}` : ""}`}
+                                    </span>
+                                    {r.customers?.address_2 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateRow(r.customer_id, meal, "address_slot", r.address_slot === 2 ? 1 : 2)}
+                                        className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded"
+                                      >
+                                        {r.address_slot === 2 ? "A2" : "A1"}
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-2 py-2">
                                   <div className="flex items-center gap-1">
