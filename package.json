@@ -1,6 +1,6 @@
 {
   "name": "pian-yi",
-  "version": "1.53.2",
+  "version": "1.54.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "db:types": "supabase gen types typescript --linked > src/types/database.ts",
     "db:reset": "supabase db reset",
-    "db:push": "supabase db push"
+    "db:push": "supabase db push",
+    "test:webhook": "tsx scripts/test-webhook.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.0",
@@ -42,8 +43,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
+    "dotenv": "^17.4.2",
     "supabase": "^2.100.1",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

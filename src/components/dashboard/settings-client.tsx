@@ -51,11 +51,12 @@ export default function SettingsClient() {
       <BusinessSection settingsMap={settingsMap} />
       <PricingSection rows={data.pricing} />
       <DeliverySection settingsMap={settingsMap} />
+      <MessagesSection settingsMap={settingsMap} templates={data.templates} />
       <ChatbotSection settingsMap={settingsMap} />
       <AutomationSection settingsMap={settingsMap} />
       <EscalationSection settingsMap={settingsMap} />
       <WeeklyMenuSection settingsMap={settingsMap} />
-      <TemplatesSection rows={data.templates} />
+      <TemplatesSection rows={data.templates.filter((t) => t.key !== "chatbot_unavailable")} />
       <AdminsSection rows={data.admins} />
     </div>
   );
@@ -524,6 +525,73 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
           </div>
         </div>
       )}
+    </Section>
+  );
+}
+
+// --- Messages ---
+function MessagesSection({ settingsMap, templates }: { settingsMap: Record<string, string>; templates: TemplateRow[] }) {
+  const qc = useQueryClient();
+  const [greeting, setGreeting] = useState(settingsMap.welcome_message ?? "");
+  const [greetingConfirm, setGreetingConfirm] = useState(false);
+
+  const awayTemplate = templates.find((t) => t.key === "chatbot_unavailable");
+  const [away, setAway] = useState(awayTemplate?.template ?? "");
+  const [awayConfirm, setAwayConfirm] = useState(false);
+
+  const saveGreeting = useSettingsMutation();
+
+  const saveAway = useMutation({
+    mutationFn: async (template: string) => {
+      await fetch("/api/settings/templates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "chatbot_unavailable", template }),
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+
+  return (
+    <Section title="Messages">
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <label className="block text-xs text-gray-500">
+            Greeting message <span className="text-gray-400">— sent to new customers on first contact</span>
+          </label>
+          <textarea
+            rows={5}
+            value={greeting}
+            onChange={(e) => { setGreeting(e.target.value); setGreetingConfirm(false); }}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
+          />
+          <ConfirmSaveButton
+            onConfirm={() => saveGreeting.mutate({ welcome_message: greeting })}
+            confirm={greetingConfirm}
+            setConfirm={setGreetingConfirm}
+            loading={saveGreeting.isPending}
+            success={saveGreeting.isSuccess}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="block text-xs text-gray-500">
+            Away message <span className="text-gray-400">— sent when chatbot is disabled</span>
+          </label>
+          <textarea
+            rows={3}
+            value={away}
+            onChange={(e) => { setAway(e.target.value); setAwayConfirm(false); }}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
+          />
+          <ConfirmSaveButton
+            onConfirm={() => saveAway.mutate(away)}
+            confirm={awayConfirm}
+            setConfirm={setAwayConfirm}
+            loading={saveAway.isPending}
+            success={saveAway.isSuccess}
+          />
+        </div>
+      </div>
     </Section>
   );
 }

@@ -524,21 +524,36 @@ async function processWebhookAsync(
     },
   ];
 
-  // Call Sonnet 4.6
+  // Call Sonnet 4.6 (with one retry on overload)
   let claudeResponse: Anthropic.Messages.Message;
   try {
     const client = getAnthropicClient();
-    claudeResponse = await client.messages.create({
-      model: SONNET_MODEL,
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages: [...history, { role: "user", content: text }],
-      tools,
-    });
+    const callClaude = () =>
+      client.messages.create({
+        model: SONNET_MODEL,
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [...history, { role: "user", content: text }],
+        tools,
+      });
+    try {
+      claudeResponse = await callClaude();
+    } catch (firstErr) {
+      const msg = (firstErr as Error).message;
+      if (!msg.includes("overloaded") && !msg.includes("529")) throw firstErr;
+      await new Promise((r) => setTimeout(r, 2000));
+      claudeResponse = await callClaude();
+    }
     recordSuccess();
   } catch (err) {
     console.error("[webhook] Claude API error:", (err as Error).message);
     await recordFailure();
+    sendPushToAllAdmins(
+      "Claude API error",
+      (err as Error).message.slice(0, 100),
+      "/inbox",
+      "high",
+    ).catch(console.error);
     const tmpl = await getTemplate("chatbot_unavailable");
     await sendTextMessage(message.from, tmpl);
     return;
