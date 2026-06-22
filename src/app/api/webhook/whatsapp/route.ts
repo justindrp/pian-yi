@@ -413,7 +413,7 @@ async function processWebhookAsync(
     customerState: stateRow?.state ?? "new",
     customerName: customer.name,
     detectedMapsLink,
-    menuShown,
+    menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,
     dapurMenuTexts,
     servedAreas,
