@@ -40,6 +40,10 @@ export default function CustomersClient() {
     promo_used: "",
     converted_to_subscription: false,
     notes: "",
+    address_2: "",
+    area_2: "",
+    sub_area_2: "",
+    google_maps_link_2: "",
   });
   const queryClient = useQueryClient();
   const supabase = createClient();
@@ -105,6 +109,10 @@ export default function CustomersClient() {
       promo_used: string;
       converted_to_subscription: boolean;
       notes: string;
+      address_2: string;
+      area_2: string;
+      sub_area_2: string;
+      google_maps_link_2: string;
     }) => {
       if (!selected) return;
       const { error } = await supabase
@@ -124,6 +132,10 @@ export default function CustomersClient() {
           promo_used: form.promo_used || null,
           converted_to_subscription: form.converted_to_subscription,
           notes: form.notes || null,
+          address_2: form.address_2 || null,
+          area_2: form.area_2 || null,
+          sub_area_2: form.sub_area_2 || null,
+          google_maps_link_2: form.google_maps_link_2 || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", selected.id);
@@ -159,6 +171,10 @@ export default function CustomersClient() {
       promo_used: c.promo_used ?? "",
       converted_to_subscription: c.converted_to_subscription ?? false,
       notes: c.notes ?? "",
+      address_2: (customer as unknown as { address_2?: string | null }).address_2 ?? "",
+      area_2: (customer as unknown as { area_2?: string | null }).area_2 ?? "",
+      sub_area_2: (customer as unknown as { sub_area_2?: string | null }).sub_area_2 ?? "",
+      google_maps_link_2: (customer as unknown as { google_maps_link_2?: string | null }).google_maps_link_2 ?? "",
     });
   }
 
@@ -488,6 +504,65 @@ export default function CustomersClient() {
                   onChange={(e) =>
                     setEditForm({ ...editForm, google_maps_link: e.target.value })
                   }
+                  placeholder="https://maps.app.goo.gl/..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div className="pt-1 pb-0.5">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Address 2</p>
+              </div>
+
+              <div>
+                <label htmlFor="customer-address-2" className="text-xs text-gray-500 block mb-1">
+                  Address 2
+                </label>
+                <textarea
+                  id="customer-address-2"
+                  value={editForm.address_2}
+                  onChange={(e) => setEditForm({ ...editForm, address_2: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="customer-area-2" className="text-xs text-gray-500 block mb-1">
+                  Area 2
+                </label>
+                <select
+                  id="customer-area-2"
+                  value={editForm.area_2}
+                  onChange={(e) => setEditForm({ ...editForm, area_2: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">— Not set —</option>
+                  {DELIVERY_AREAS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="customer-sub-area-2" className="text-xs text-gray-500 block mb-1">
+                  Sub Area 2
+                </label>
+                <input
+                  id="customer-sub-area-2"
+                  value={editForm.sub_area_2}
+                  onChange={(e) => setEditForm({ ...editForm, sub_area_2: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="customer-maps-link-2" className="text-xs text-gray-500 block mb-1">
+                  Google Maps Link 2
+                </label>
+                <input
+                  id="customer-maps-link-2"
+                  value={editForm.google_maps_link_2}
+                  onChange={(e) => setEditForm({ ...editForm, google_maps_link_2: e.target.value })}
                   placeholder="https://maps.app.goo.gl/..."
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
