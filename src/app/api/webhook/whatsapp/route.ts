@@ -330,41 +330,44 @@ async function processWebhookAsync(
     }
   }
 
-  // Send welcome sequence on first contact — deterministic, not Claude's decision
-  let menuShown = stateRow?.menu_shown ?? false;
-  if (!menuShown) {
-    const [welcomeText, priceListUrl, { data: welcomeSubs }] = await Promise.all([
-      getSetting("welcome_message"),
-      getSetting("price_list_image_url"),
-      db.from("subcontractors").select("customer_nickname, menu_image_url").eq("is_active", true).not("menu_image_url", "is", null),
-    ]);
-
-    if (welcomeText) await sendTextMessage(message.from, welcomeText);
-    if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
-    for (const sub of welcomeSubs ?? []) {
-      if (sub.menu_image_url) await sendImageMessage(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
-    }
-
-    await db
+  // Send welcome sequence on first contact — atomic claim prevents duplicate sends
+  // when two messages arrive before the first one sets menu_shown = true.
+  if (!stateRow?.menu_shown) {
+    const { data: claimed } = await db
       .from("customer_state")
       .update({ menu_shown: true })
-      .eq("customer_id", customerId);
-    menuShown = true;
+      .eq("customer_id", customerId)
+      .or("menu_shown.is.null,menu_shown.eq.false")
+      .select("customer_id");
 
-    // Welcome sequence already greets the customer; skip Claude reply to avoid
-    // a redundant second hello. Save the incoming message and mark processed.
-    await saveMessage({
-      customerId,
-      role: "user",
-      content: text,
-      messageId: message.messageId,
-      intent,
-    });
-    await db
-      .from("processed_messages")
-      .update({ processed_at: new Date().toISOString() })
-      .eq("message_id", message.messageId);
-    return;
+    if (claimed && claimed.length > 0) {
+      const [welcomeText, priceListUrl, { data: welcomeSubs }] = await Promise.all([
+        getSetting("welcome_message"),
+        getSetting("price_list_image_url"),
+        db.from("subcontractors").select("customer_nickname, menu_image_url").eq("is_active", true).not("menu_image_url", "is", null),
+      ]);
+
+      if (welcomeText) await sendTextMessage(message.from, welcomeText);
+      if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
+      for (const sub of welcomeSubs ?? []) {
+        if (sub.menu_image_url) await sendImageMessage(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
+      }
+
+      // Welcome sequence already greets the customer; skip Claude reply to avoid
+      // a redundant second hello. Save the incoming message and mark processed.
+      await saveMessage({
+        customerId,
+        role: "user",
+        content: text,
+        messageId: message.messageId,
+        intent,
+      });
+      await db
+        .from("processed_messages")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("message_id", message.messageId);
+      return;
+    }
   }
 
   // Load active dapurs and active order quota in parallel
