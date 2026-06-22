@@ -113,6 +113,7 @@ One row per customer. Holds boolean flags and escalation state. Users cannot edi
 | customer_id | uuid | Primary key, FK → customers |
 | escalated_to_human | boolean | True when Annie needs to take over the conversation |
 | escalation_reason | text | Why it was escalated |
+| last_human_activity_at | timestamptz | Stamped on takeover and each manual reply; bot auto-resumes after 15 min inactivity |
 | pending_bot_response | boolean | True when bot is waiting for Annie's answer via Inbox |
 | pending_bot_question | text | The question the bot needs Annie to answer |
 | is_blacklisted | boolean | Bot ignores all messages from blacklisted customers |

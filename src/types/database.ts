@@ -262,6 +262,7 @@ export type Database = {
           escalation_reason: string | null
           is_blacklisted: boolean | null
           is_suspicious: boolean | null
+          last_human_activity_at: string | null
           needs_human_review: boolean | null
           pending_bot_question: string | null
           pending_bot_response: boolean
@@ -274,6 +275,7 @@ export type Database = {
           escalation_reason?: string | null
           is_blacklisted?: boolean | null
           is_suspicious?: boolean | null
+          last_human_activity_at?: string | null
           needs_human_review?: boolean | null
           pending_bot_question?: string | null
           pending_bot_response?: boolean
@@ -286,6 +288,7 @@ export type Database = {
           escalation_reason?: string | null
           is_blacklisted?: boolean | null
           is_suspicious?: boolean | null
+          last_human_activity_at?: string | null
           needs_human_review?: boolean | null
           pending_bot_question?: string | null
           pending_bot_response?: boolean

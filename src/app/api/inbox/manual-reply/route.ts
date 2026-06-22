@@ -48,6 +48,11 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   await sendTextMessage(customer.phone_number, text.trim());
 
+  await db
+    .from("customer_flags")
+    .update({ last_human_activity_at: new Date().toISOString() })
+    .eq("customer_id", customer_id);
+
   return NextResponse.json({ ok: true, row });
 }
 

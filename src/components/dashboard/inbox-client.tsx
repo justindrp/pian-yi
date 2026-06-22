@@ -167,6 +167,7 @@ export default function InboxClient() {
       .update({
         escalated_to_human: newVal,
         escalation_reason: newVal ? "Manual takeover" : null,
+        last_human_activity_at: newVal ? new Date().toISOString() : null,
       })
       .eq("customer_id", selectedCustomerId);
     setFlags({ ...flags, escalated_to_human: newVal });

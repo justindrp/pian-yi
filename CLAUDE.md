@@ -316,6 +316,7 @@ Conversion tracking columns on `customers` (migration 042): `ad_creative` (e.g. 
 - `GET /api/health` — Liveness probe (returns 200 OK)
 
 ### Cron (all require `CRON_SECRET` header)
+- `GET /api/cron/auto-resume-bot` — Resume chatbot for escalated customers whose admin has been inactive > 15 min (checks `last_human_activity_at`)
 - `GET /api/cron/abandoned-recovery` — Re-message customers stuck in ordering state with no completed order
 - `POST /api/cron/cancel-unpaid` — Cancel orders that remain unpaid after N hours; notify customer
 - `POST /api/cron/daily-summary` — Push notification with yesterday's metrics (runs at 9am)
