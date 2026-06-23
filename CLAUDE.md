@@ -365,10 +365,17 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (Phase 1 — 13 tests):
+Current coverage (24 tests across 6 suites):
+
+Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
 - `test/api/orders.test.ts` — 3 tests: `mark_paid`, `update_size "m"`, invalid size returns 400
 - `test/api/settings.test.ts` — 2 tests: upsert setting key, update message template
+
+Phase 2 — business logic and data integrity:
+- `test/api/orders-post.test.ts` — 4 tests: total_price = package_size × price_per_portion, size defaults to "s", missing start_date returns 400, scheduled order derives package_size from schedule sum
+- `test/api/customers-delete.test.ts` — 3 tests: deletion order (proofs → deliveries → orders → customer), early exit on proof detach error, unauthenticated returns 401
+- `test/api/inbox.test.ts` — 4 tests: Haiku polishes answer and clears pending flag, blank admin_answer returns 400, unknown customer returns 404, no pending flag returns 400
 
 A pre-push hook (`.git/hooks/pre-push`) runs `pnpm tsc --noEmit && pnpm test` before every push and blocks if either fails.
 
