@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 interface SettingRow { key: string; value: string; description?: string | null }
 interface PricingRow { portions: number; price_per_portion: number }
 interface TemplateRow { key: string; template: string; description?: string | null }
-interface AdminRow { email: string; created_at: string }
+interface AdminRow { email: string; created_at: string; role: string }
 
 interface SettingsData {
   settings: SettingRow[];
@@ -246,7 +246,7 @@ function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }
           <label className="text-sm text-gray-700">Chatbot enabled (kill switch)</label>
           <button type="button"
             onClick={() => { setForm((f) => ({ ...f, chatbot_enabled: f.chatbot_enabled === "true" ? "false" : "true" })); save.mutate({ chatbot_enabled: form.chatbot_enabled === "true" ? "false" : "true" }); }}
-            className={`w-12 h-6 rounded-full transition-colors relative ${form.chatbot_enabled === "true" ? "bg-green-500" : "bg-gray-300"}`}
+            className={`w-12 h-6 rounded-full transition-colors relative overflow-hidden ${form.chatbot_enabled === "true" ? "bg-green-500" : "bg-gray-300"}`}
           >
             <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.chatbot_enabled === "true" ? "translate-x-7" : "translate-x-1"}`} />
           </button>
@@ -450,16 +450,27 @@ function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string
 function AdminsSection({ rows }: { rows: AdminRow[] }) {
   const qc = useQueryClient();
   const [newEmail, setNewEmail] = useState("");
+  const [newRole, setNewRole] = useState<"admin" | "owner">("admin");
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const add = useMutation({
-    mutationFn: async (email: string) => {
-      const res = await fetch("/api/settings/admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    mutationFn: async ({ email, role }: { email: string; role: string }) => {
+      const res = await fetch("/api/settings/admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
       const json = await res.json() as { ok: boolean; error?: string };
       if (!json.ok) throw new Error(json.error ?? "Failed");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setNewEmail(""); setError(""); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setNewEmail(""); setNewRole("admin"); setError(""); },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const changeRole = useMutation({
+    mutationFn: async ({ email, role }: { email: string; role: string }) => {
+      const res = await fetch("/api/settings/admins", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Failed");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
     onError: (e: Error) => setError(e.message),
   });
 
@@ -481,6 +492,7 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
             <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3 text-left">Email</th>
+                <th className="px-4 py-3 text-left">Role</th>
                 <th className="px-4 py-3 text-left">Added</th>
                 <th className="px-4 py-3 w-16" />
               </tr>
@@ -489,6 +501,16 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
               {rows.map((a) => (
                 <tr key={a.email}>
                   <td className="px-4 py-3 text-gray-900">{a.email}</td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={a.role}
+                      onChange={(e) => changeRole.mutate({ email: a.email, role: e.target.value })}
+                      className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white"
+                    >
+                      <option value="admin">admin</option>
+                      <option value="owner">owner</option>
+                    </select>
+                  </td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{new Date(a.created_at).toLocaleDateString("id-ID")}</td>
                   <td className="px-4 py-3">
                     <button type="button" onClick={() => setConfirmRemove(a.email)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
@@ -503,11 +525,19 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
             type="email"
             value={newEmail}
             onChange={(e) => { setNewEmail(e.target.value); setError(""); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && newEmail.trim()) add.mutate(newEmail.trim()); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && newEmail.trim()) add.mutate({ email: newEmail.trim(), role: newRole }); }}
             placeholder="newadmin@example.com"
             className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
           />
-          <button type="button" onClick={() => { if (newEmail.trim()) add.mutate(newEmail.trim()); }} disabled={add.isPending} className="px-4 py-2 bg-gray-800 text-white text-sm rounded-lg disabled:opacity-40">
+          <select
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value as "admin" | "owner")}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+          >
+            <option value="admin">admin</option>
+            <option value="owner">owner</option>
+          </select>
+          <button type="button" onClick={() => { if (newEmail.trim()) add.mutate({ email: newEmail.trim(), role: newRole }); }} disabled={add.isPending} className="px-4 py-2 bg-gray-800 text-white text-sm rounded-lg disabled:opacity-40">
             {add.isPending ? "Adding..." : "Add admin"}
           </button>
         </div>

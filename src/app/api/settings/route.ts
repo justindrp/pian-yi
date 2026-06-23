@@ -13,7 +13,7 @@ export async function GET(): Promise<Response> {
     db.from("settings").select("*").order("key"),
     db.from("pricing_tiers").select("*").order("portions"),
     db.from("message_templates").select("*").order("key"),
-    db.from("admin_users").select("email, created_at"),
+    db.from("admin_users").select("email, created_at, role"),
   ]);
 
   return NextResponse.json({
