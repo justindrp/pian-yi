@@ -341,10 +341,11 @@ export async function processWebhookAsync(
       .select("customer_id");
 
     if (claimed && claimed.length > 0) {
-      const [welcomeText, priceListUrl, { data: welcomeSubs }] = await Promise.all([
+      const [welcomeText, priceListUrl, { data: welcomeSubs }, { data: tier20 }] = await Promise.all([
         getSetting("welcome_message"),
         getSetting("price_list_image_url"),
         db.from("subcontractors").select("customer_nickname, menu_image_url, delivery_areas").eq("is_active", true).not("menu_image_url", "is", null),
+        db.from("pricing_tiers").select("price_per_portion").eq("portions", 20).maybeSingle(),
       ]);
 
       const activeDapurs = (welcomeSubs ?? []).filter((s) => s.customer_nickname);
@@ -362,9 +363,12 @@ export async function processWebhookAsync(
           ? (uniqueAreas[0] ?? "")
           : `${uniqueAreas.slice(0, -1).join(", ")}, dan ${uniqueAreas[uniqueAreas.length - 1]}`;
 
+      const price20Text = tier20 ? `${Math.round(tier20.price_per_portion / 1000)}RB` : "";
+
       const resolvedWelcome = (welcomeText ?? "")
         .replace("{{dapur_list}}", dapurListText)
         .replace("{{delivery_areas}}", areasText)
+        .replace("{{price_20}}", price20Text)
         .trim() || dapurListText;
 
       if (resolvedWelcome) await sendTextMessage(message.from, resolvedWelcome);
