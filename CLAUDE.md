@@ -357,6 +357,22 @@ Standard commands (always use these spellings):
 - Supabase migrate (local): `pnpm supabase db reset`
 - Supabase push (remote): `pnpm supabase db push`
 - GitHub: use `gh repo`, `gh pr`, `gh secret set`, `gh workflow` for all repo operations
+- Run tests: `pnpm test`
+- Run tests in watch mode: `pnpm test:watch`
+- Run tests with coverage: `pnpm test:coverage`
+
+## Automated tests
+
+Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
+
+Current coverage (Phase 1 — 13 tests):
+- `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
+- `test/api/orders.test.ts` — 3 tests: `mark_paid`, `update_size "m"`, invalid size returns 400
+- `test/api/settings.test.ts` — 2 tests: upsert setting key, update message template
+
+A pre-push hook (`.git/hooks/pre-push`) runs `pnpm tsc --noEmit && pnpm test` before every push and blocks if either fails.
+
+When adding new API routes or webhook code paths, add a corresponding test in `test/`.
 
 ## Testing & deployment notes
 
