@@ -176,6 +176,19 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | avg_price_per_portion | integer | Weighted average cost per portion across all active orders (WAC method) |
 | delivery_route | smallint | Route number (1 = Alam Sutera/BSD Lama, 2 = Gading Serpong/BSD Baru) |
 | delivery_position | integer | Zero-based sort order within the route for the daily delivery sheet |
+| address_2 | text | Second delivery address |
+| area_2 | text | Delivery zone for the second address |
+| sub_area_2 | text | Sub-location for the second address |
+| google_maps_link_2 | text | Google Maps URL for the second address |
+| ad_creative | text | Meta Ads creative code that drove first contact (e.g. "C4") — auto-detected from first WhatsApp message |
+| first_message | text | First message the customer sent |
+| converted_at | timestamptz | When the customer's first order was marked paid |
+| package | text | Package description from first order |
+| total_portions | integer | Total portions purchased across conversion orders |
+| total_payment | integer | Total amount paid in IDR across conversion orders |
+| promo_used | text | Promo code or campaign description (manual) |
+| converted_to_subscription | boolean | Whether customer converted to a recurring subscription (default false) |
+| notes | text | Internal notes about this customer |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 
@@ -194,6 +207,7 @@ One row per delivery event. Created when a customer requests a delivery for a sp
 | delivery_date | date | Date of delivery (YYYY-MM-DD) |
 | meal_type | text | "lunch", "dinner", or "both" |
 | portions | integer | Number of portions for this delivery |
+| address_slot | smallint | Which customer address to deliver to: 1 = primary, 2 = secondary (default 1) |
 | status | text | "scheduled", "delivered", "cancelled" |
 | notes | text | Special instructions |
 | delivery_proof_id | uuid | FK → delivery_proofs — photo proof from subcontractor |
@@ -313,7 +327,8 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 | portions_lunch | integer | Portions at lunch (for fixed both_fixed orders) |
 | portions_dinner | integer | Portions at dinner (for fixed both_fixed orders) |
 | portions_remaining | integer | Quota balance — decremented with each delivery |
-| price_per_portion | integer | Locked-in price in IDR at order time |
+| size | text | Portion size: "s" (standard) or "m" (medium, +Rp 2,000/portion) — default "s" |
+| price_per_portion | integer | Locked-in price in IDR at order time (includes size surcharge if "m") |
 | total_price | integer | Total amount due in IDR |
 | addon_cost_per_portion | integer | Extra cost per portion if applicable |
 | meal_time_preference | text | Nullable. "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" — null for scheduled orders |
