@@ -245,7 +245,7 @@ Quick reference: which file handles which feature.
 
 ### Webhook (WhatsApp chatbot)
 - `GET /api/webhook/whatsapp` — Meta webhook verification (hub.challenge handshake)
-- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. Also handles welcome sequence (sends menu images from subcontractor rows).
+- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. Also handles welcome sequence: resolves `{{dapur_list}}`, `{{delivery_areas}}`, `{{price_20}}`, `{{order_deadline}}` placeholders in `welcome_message` setting from live DB data, then sends menu images from active subcontractor rows.
 
 ### Auth
 - `POST /api/auth/check-admin` — Check if email exists in `admin_users`. ⚠️ Known issue: no session verification, allows unauthenticated email enumeration.
@@ -279,7 +279,9 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 ### Settings
 - `GET /api/settings` — All settings + pricing tiers + message templates + admin list
 - `PATCH /api/settings` — Update a single settings key (e.g. `{ key: "order_deadline_hour", value: "20" }`)
-- `POST /api/settings/admins` — Add admin user + create Supabase Auth account
+- `POST /api/settings/admins` — Add admin user + create Supabase Auth account; body: `{ email, role? }` (`role` defaults to `"admin"`)
+- `PATCH /api/settings/admins` — Change an existing admin's role; body: `{ email, role }` (`"owner"` or `"admin"`); audit-logged
+- `DELETE /api/settings/admins` — Remove admin user and their Supabase Auth account
 - `POST /api/settings/menu-image` — Upload price list image (`price_list_image_url` only; dapur menu images are managed per subcontractor)
 - `PATCH /api/settings/pricing` — Update a single pricing tier, or bulk-adjust all tiers with `{ adjust: number }`
 - `PATCH /api/settings/templates` — Update a message template by key

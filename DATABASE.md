@@ -29,7 +29,7 @@ People who can log in to the dashboard. Email is the primary key (matches Supaba
 |--------|------|-------|
 | email | text | Primary key — must match a Supabase Auth account |
 | name | text | Display name |
-| role | text | e.g. "admin" |
+| role | text | `"owner"` or `"admin"` — owners have full access, admins are blocked from Accounting |
 | created_at | timestamp | |
 
 ---
@@ -409,6 +409,8 @@ Key-value store for all configurable business settings. Edited via the Settings 
 | updated_at | timestamp | |
 
 Notable keys: `business_name`, `chatbot_enabled`, `welcome_message`, `price_list_image_url`, `bank_name`, `bank_account_number`, `bank_account_name`, `order_deadline_hour`, `order_deadline_daily_hour`, `casual_mode_probability`, `typing_delay_base_seconds`, `escalation_keywords`, `instagram_handle`
+
+`welcome_message` supports four template placeholders resolved at send time: `{{dapur_list}}` (active subcontractor names), `{{delivery_areas}}` (unique delivery areas from active subcontractors), `{{price_20}}` (20-portion tier price formatted as e.g. `27RB`), `{{order_deadline}}` (order_deadline_hour formatted as e.g. `16.00`).
 
 ---
 
