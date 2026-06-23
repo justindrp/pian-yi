@@ -347,7 +347,16 @@ export async function processWebhookAsync(
         db.from("subcontractors").select("customer_nickname, menu_image_url").eq("is_active", true).not("menu_image_url", "is", null),
       ]);
 
-      if (welcomeText) await sendTextMessage(message.from, welcomeText);
+      const activeDapurs = (welcomeSubs ?? []).filter((s) => s.customer_nickname);
+      const dapurListText =
+        activeDapurs.length === 0
+          ? ""
+          : activeDapurs.length === 1
+            ? `Kami ada 1 dapur dengan 1 menu:\n• ${activeDapurs[0].customer_nickname}`
+            : `Kami ada ${activeDapurs.length} dapur dengan ${activeDapurs.length} menu berbeda:\n${activeDapurs.map((s) => `• ${s.customer_nickname}`).join("\n")}`;
+      const resolvedWelcome = welcomeText ? welcomeText.replace("{{dapur_list}}", dapurListText) : dapurListText;
+
+      if (resolvedWelcome) await sendTextMessage(message.from, resolvedWelcome);
       if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
       for (const sub of welcomeSubs ?? []) {
         if (sub.menu_image_url) await sendImageMessage(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
