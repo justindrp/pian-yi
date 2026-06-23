@@ -54,7 +54,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   return response;
 }
 
-async function processWebhookAsync(
+export async function processWebhookAsync(
   payload: WhatsAppWebhookPayload,
 ): Promise<void> {
   const message = parseMessage(payload);

@@ -1,0 +1,11 @@
+process.env.WHATSAPP_APP_SECRET = "test-secret";
+process.env.WHATSAPP_VERIFY_TOKEN = "test-verify";
+process.env.WHATSAPP_PHONE_NUMBER_ID = "test-phone-id";
+process.env.WHATSAPP_ACCESS_TOKEN = "test-wa-token";
+process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+process.env.VAPID_PUBLIC_KEY = "test-vapid-public";
+process.env.VAPID_PRIVATE_KEY = "test-vapid-private";
+process.env.VAPID_MAILTO = "test@example.com";

@@ -243,6 +243,8 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
 
   if (body.action === "update_size") {
+    if (body.size !== "s" && body.size !== "m")
+      return NextResponse.json({ ok: false, error: "Invalid size" }, { status: 400 });
     const { error } = await db.from("orders").update({ size: body.size }).eq("id", body.id);
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
