@@ -1,5 +1,6 @@
 "use client";
 
+import { Switch } from "@/components/ui/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -244,12 +245,14 @@ function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-sm text-gray-700">Chatbot enabled (kill switch)</label>
-          <button type="button"
-            onClick={() => { setForm((f) => ({ ...f, chatbot_enabled: f.chatbot_enabled === "true" ? "false" : "true" })); save.mutate({ chatbot_enabled: form.chatbot_enabled === "true" ? "false" : "true" }); }}
-            className={`w-12 h-6 rounded-full transition-colors relative overflow-hidden ${form.chatbot_enabled === "true" ? "bg-green-500" : "bg-gray-300"}`}
-          >
-            <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.chatbot_enabled === "true" ? "translate-x-7" : "translate-x-1"}`} />
-          </button>
+          <Switch
+            checked={form.chatbot_enabled === "true"}
+            onCheckedChange={(checked) => {
+              const val = checked ? "true" : "false";
+              setForm((f) => ({ ...f, chatbot_enabled: val }));
+              save.mutate({ chatbot_enabled: val });
+            }}
+          />
         </div>
         {[
           { key: "casual_mode_probability", label: "Casual mode probability (0–1)" },
