@@ -344,17 +344,28 @@ export async function processWebhookAsync(
       const [welcomeText, priceListUrl, { data: welcomeSubs }] = await Promise.all([
         getSetting("welcome_message"),
         getSetting("price_list_image_url"),
-        db.from("subcontractors").select("customer_nickname, menu_image_url").eq("is_active", true).not("menu_image_url", "is", null),
+        db.from("subcontractors").select("customer_nickname, menu_image_url, delivery_areas").eq("is_active", true).not("menu_image_url", "is", null),
       ]);
 
       const activeDapurs = (welcomeSubs ?? []).filter((s) => s.customer_nickname);
+      const n = activeDapurs.length;
       const dapurListText =
-        activeDapurs.length === 0
+        n === 0
           ? ""
-          : activeDapurs.length === 1
+          : n === 1
             ? `Kami ada 1 dapur dengan 1 menu:\n• ${activeDapurs[0].customer_nickname}`
-            : `Kami ada ${activeDapurs.length} dapur dengan ${activeDapurs.length} menu berbeda:\n${activeDapurs.map((s) => `• ${s.customer_nickname}`).join("\n")}`;
-      const resolvedWelcome = welcomeText ? welcomeText.replace("{{dapur_list}}", dapurListText) : dapurListText;
+            : `Kami ada ${n} dapur dengan ${n} menu berbeda:\n${activeDapurs.map((s) => `• ${s.customer_nickname}`).join("\n")}`;
+
+      const uniqueAreas = [...new Set(activeDapurs.flatMap((s) => (s as { delivery_areas?: string[] | null }).delivery_areas ?? []))].sort();
+      const areasText =
+        uniqueAreas.length <= 1
+          ? (uniqueAreas[0] ?? "")
+          : `${uniqueAreas.slice(0, -1).join(", ")}, dan ${uniqueAreas[uniqueAreas.length - 1]}`;
+
+      const resolvedWelcome = (welcomeText ?? "")
+        .replace("{{dapur_list}}", dapurListText)
+        .replace("{{delivery_areas}}", areasText)
+        .trim() || dapurListText;
 
       if (resolvedWelcome) await sendTextMessage(message.from, resolvedWelcome);
       if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
