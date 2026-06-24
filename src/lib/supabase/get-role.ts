@@ -6,17 +6,17 @@ export async function getSessionWithRole(): Promise<{
   role: string;
 } | null> {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user?.email) return null;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) return null;
 
   const db = createAdminClient();
   const { data } = await db
     .from("admin_users")
     .select("role")
-    .eq("email", session.user.email)
+    .eq("email", user.email)
     .single();
 
-  return { email: session.user.email, role: data?.role ?? "admin" };
+  return { email: user.email, role: data?.role ?? "admin" };
 }
 
 export function isOwner(role: string) {
