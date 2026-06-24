@@ -299,6 +299,7 @@ async function main() {
     .in("status", ["active", "pending_payment", "payment_proof_received", "paused"]);
   const existingOrdersByCustomer = new Map<string, typeof existingOrders>();
   for (const ord of existingOrders ?? []) {
+    if (!ord.customer_id) continue;
     if (!existingOrdersByCustomer.has(ord.customer_id)) {
       existingOrdersByCustomer.set(ord.customer_id, []);
     }
@@ -403,7 +404,7 @@ async function main() {
     // New customer — create one order per row
     for (const row of rows) {
       const parsed = parseAreaSubArea(row.areaSubArea);
-      const area = parsed.area || row.areaSubArea || null;
+      const area = parsed.area || row.areaSubArea || "";
       const portions = Number.parseInt(row.sisaKuota) || 0;
       const priceRaw = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, "")) || 0;
       const totalPrice = portions * priceRaw;
