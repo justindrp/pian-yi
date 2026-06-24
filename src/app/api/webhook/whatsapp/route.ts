@@ -235,9 +235,11 @@ export async function processWebhookAsync(
       return;
     }
 
-    const tmpl = await getTemplate("text_only");
-    await sendTextMessage(message.from, tmpl);
-    return;
+    if (!message.imageCaption) {
+      const tmpl = await getTemplate("text_only");
+      await sendTextMessage(message.from, tmpl);
+      return;
+    }
   }
 
   // Non-text messages
