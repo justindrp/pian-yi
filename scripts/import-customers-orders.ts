@@ -73,7 +73,8 @@ function slugify(name: string): string {
 interface CustomerRow {
   no: string;
   nama: string;
-  areaSubArea: string;
+  areaSubArea: string; // legacy combined format "Alsut-Pacific Garden"
+  subArea: string;     // separate Sub Area column (new sheet format)
   alamat: string;
   mapsLink: string;
   catatan: string;
@@ -81,19 +82,20 @@ interface CustomerRow {
   sisaKuota: string;
   hargaPerKuota: string;
   total: string;
-  phoneNumber?: string; // column may not exist
+  phoneNumber?: string;
 }
 
 interface OrderRow {
-  tanggal: string;
-  mealType: string;
-  nama: string;
+  tanggal: string;   // Date / Tanggal
+  mealType: string;  // Meal / Lunch/Dinner column value
+  nama: string;      // Customer / Nama
   areaSubArea: string;
-  alamat: string;
+  subArea: string;
+  alamat: string;    // Address / Alamat
   mapsLink: string;
-  jumlah: string;
-  catatan: string;
-  subcontractor: string;
+  jumlah: string;    // Portions / Jumlah
+  catatan: string;   // Notes / Catatan
+  subcontractor: string; // Vendor / Subcontractor
 }
 
 // ─── CSV loading (file path or Google Sheets URL) ───────────────────────────
@@ -181,13 +183,14 @@ function normalizeCustomerRow(raw: Record<string, string>): CustomerRow | null {
     no: get(["no."]),
     nama,
     areaSubArea: get(["area"]),
-    alamat: get(["alamat"]),
+    subArea: get(["sub area", "sub_area"]),
+    alamat: get(["alamat lengkap", "alamat", "address"]),
     mapsLink: get(["google maps", "link google", "maps"]),
-    catatan: get(["catatan"]),
-    subcontractor: get(["subcontractor"]),
-    sisaKuota: get(["sisa kuota", "sisa"]),
-    hargaPerKuota: get(["harga per kuota", "harga"]),
-    total: get(["total"]),
+    catatan: get(["catatan", "notes"]),
+    subcontractor: get(["subcontractor", "vendor"]),
+    sisaKuota: get(["sisa kuota", "sisa kuota", "quota"]),
+    hargaPerKuota: get(["harga per kuota", "harga per", "sell price", "harga"]),
+    total: get(["total sale", "total"]),
     phoneNumber: get(["phone", "telpon", "telepon", "wa", "whatsapp", "no. hp", "no hp"]),
   };
 }
@@ -202,21 +205,22 @@ function normalizeOrderRow(raw: Record<string, string>): OrderRow | null {
     return "";
   };
 
-  const nama = get(["nama"]).trim();
-  const tanggal = get(["tanggal"]).trim();
+  const nama = get(["customer", "nama"]).trim();
+  const tanggal = get(["date", "tanggal"]).trim();
   // Skip #N/A rows or empty rows
   if (!nama || nama === "#N/A" || !tanggal || tanggal === "#N/A") return null;
 
   return {
     tanggal,
-    mealType: get(["lunch", "dinner", "makan"]).trim().toLowerCase(),
+    mealType: get(["lunch", "dinner", "makan", "meal"]).trim().toLowerCase(),
     nama,
     areaSubArea: get(["area"]),
-    alamat: get(["alamat"]),
+    subArea: get(["sub area", "subarea", "sub_area"]),
+    alamat: get(["alamat lengkap", "alamat", "address"]),
     mapsLink: get(["link alamat", "maps", "link google"]),
-    jumlah: get(["jumlah", "porsi"]),
-    catatan: get(["catatan"]),
-    subcontractor: get(["subcontractor"]),
+    jumlah: get(["jumlah", "porsi", "portions", "portion"]),
+    catatan: get(["catatan", "notes"]),
+    subcontractor: get(["subcontractor", "vendor"]),
   };
 }
 
@@ -288,6 +292,19 @@ async function main() {
     groups.get(key)!.push(row);
   }
 
+  // ── Load existing orders to avoid duplicates ────────────────────────────
+  const { data: existingOrders } = await db
+    .from("orders")
+    .select("id, customer_id, delivery_address, area, status")
+    .in("status", ["active", "pending_payment", "payment_proof_received", "paused"]);
+  const existingOrdersByCustomer = new Map<string, typeof existingOrders>();
+  for (const ord of existingOrders ?? []) {
+    if (!existingOrdersByCustomer.has(ord.customer_id)) {
+      existingOrdersByCustomer.set(ord.customer_id, []);
+    }
+    existingOrdersByCustomer.get(ord.customer_id)!.push(ord);
+  }
+
   // ── Upsert customers + orders ────────────────────────────────────────────
   // Map from display name (lowercase) → customer id, for ORDER_HARIAN matching
   const customerIdByName = new Map<string, string>();
@@ -316,6 +333,19 @@ async function main() {
     }
     const avgPrice = totalPortions > 0 ? Math.round(weightedPrice / totalPortions) : 0;
 
+    // Resolve area: prefer separate subArea column, fall back to parseAreaSubArea on combined
+    const parsedArea = parseAreaSubArea(rows[0].areaSubArea);
+    const resolvedArea = parsedArea.area || rows[0].areaSubArea || null;
+    const resolvedSubArea = rows[0].subArea || parsedArea.sub_area || null;
+
+    const ROUTE_1_AREAS = ["Alam Sutera", "BSD Lama"];
+    const ROUTE_2_AREAS = ["Gading Serpong", "BSD Baru", "Karawaci"];
+    const deliveryRoute = ROUTE_1_AREAS.includes(resolvedArea ?? "")
+      ? 1
+      : ROUTE_2_AREAS.includes(resolvedArea ?? "")
+        ? 2
+        : null;
+
     // Upsert customer
     const { data: cust, error: custErr } = await db
       .from("customers")
@@ -323,15 +353,16 @@ async function main() {
         {
           phone_number: phone,
           name: baseName,
-          // Use first row's address as primary (overridden per order)
           address: rows[0].alamat || null,
-          area: parseAreaSubArea(rows[0].areaSubArea).area || null,
-          sub_area: parseAreaSubArea(rows[0].areaSubArea).sub_area,
+          area: resolvedArea,
+          sub_area: resolvedSubArea,
           google_maps_link: rows[0].mapsLink || null,
+          notes: rows[0].catatan || null,
           subcontractor_id: resolveSubcontractor(rows[0].subcontractor),
           portions_remaining: totalPortions,
           avg_price_per_portion: avgPrice,
           customer_number: Number.parseInt(rows[0].no) || null,
+          delivery_route: deliveryRoute,
         },
         { onConflict: "phone_number" },
       )
@@ -344,7 +375,6 @@ async function main() {
     }
     customerCount++;
     customerIdByName.set(baseKey, cust.id);
-    // Also map full numbered names e.g. "devi 1" → same customer id
     for (const row of rows) {
       customerIdByName.set(row.nama.trim().toLowerCase(), cust.id);
     }
@@ -359,9 +389,21 @@ async function main() {
       { onConflict: "customer_id", ignoreDuplicates: true },
     );
 
-    // Upsert one order per address (i.e. per numbered row)
+    // Skip order creation if customer already has active orders
+    const existingCustOrders = existingOrdersByCustomer.get(cust.id) ?? [];
+    if (existingCustOrders.length > 0) {
+      for (const ord of existingCustOrders) {
+        const alamatSlug = slugify(ord.delivery_address || ord.area || "");
+        orderIdByKey.set(`${cust.id}:${alamatSlug}`, ord.id);
+      }
+      console.log(`  ↩ ${baseName} (existing orders, skipped creation)`);
+      continue;
+    }
+
+    // New customer — create one order per row
     for (const row of rows) {
-      const { area, sub_area } = parseAreaSubArea(row.areaSubArea);
+      const parsed = parseAreaSubArea(row.areaSubArea);
+      const area = parsed.area || row.areaSubArea || null;
       const portions = Number.parseInt(row.sisaKuota) || 0;
       const priceRaw = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, "")) || 0;
       const totalPrice = portions * priceRaw;
@@ -399,7 +441,7 @@ async function main() {
     console.log(`  ✓ ${baseName} (${rows.length} order${rows.length > 1 ? "s" : ""})`);
   }
 
-  console.log(`\nImported ${customerCount} customers, ${orderCount} orders`);
+  console.log(`\nImported ${customerCount} customers, ${orderCount} new orders`);
 
   // ── Upsert daily_deliveries from ORDER_HARIAN ────────────────────────────
   let deliveryCount = 0;
