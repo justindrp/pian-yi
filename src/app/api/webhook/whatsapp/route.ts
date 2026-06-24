@@ -251,6 +251,8 @@ export async function processWebhookAsync(
       if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
     }
     text = `[Lokasi dibagikan: ${parts.join(", ")}${zoneNote}]`;
+  } else if (message.type === "image" && message.imageCaption) {
+    text = message.imageCaption;
   } else if (message.type !== "text") {
     const tmpl = await getTemplate("text_only");
     await sendTextMessage(message.from, tmpl);
