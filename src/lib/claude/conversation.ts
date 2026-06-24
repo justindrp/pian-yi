@@ -31,6 +31,7 @@ export async function saveMessage(params: {
   outputTokens?: number;
   intent?: string;
   messageType?: string;
+  mediaId?: string;
 }): Promise<void> {
   const db = createAdminClient();
   await db.from("conversations").insert({
@@ -43,5 +44,6 @@ export async function saveMessage(params: {
     output_tokens: params.outputTokens ?? null,
     intent: params.intent ?? null,
     message_type: params.messageType ?? "text",
+    media_id: params.mediaId ?? null,
   });
 }

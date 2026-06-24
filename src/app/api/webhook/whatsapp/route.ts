@@ -173,6 +173,7 @@ export async function processWebhookAsync(
       messageId: message.messageId,
       intent: escalatedIntent,
       messageType: message.type === "image" ? "image" : "text",
+      mediaId: message.type === "image" ? message.imageId : undefined,
     });
     await sendPushToAllAdmins(
       "New message from escalated customer",
@@ -202,6 +203,7 @@ export async function processWebhookAsync(
       messageId: message.messageId,
       intent: pendingIntent,
       messageType: message.type === "image" ? "image" : "text",
+      mediaId: message.type === "image" ? message.imageId : undefined,
     });
     await sendPushToAllAdmins(
       "New message (awaiting bot reply)",

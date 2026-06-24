@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
@@ -238,6 +240,7 @@ export default function InboxClient() {
       intent: null,
       message_type: null,
       message_id: null,
+      media_id: null,
       input_tokens: null,
       output_tokens: null,
     };
@@ -335,26 +338,26 @@ export default function InboxClient() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={toggleEscalation}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                  flags?.escalated_to_human
-                    ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-                    : "bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
-                }`}
+                className={flags?.escalated_to_human ? "border-green-200 text-green-700 hover:bg-green-100" : "border-orange-200 text-orange-700 hover:bg-orange-100"}
               >
                 {flags?.escalated_to_human ? "Resume bot" : "Take over"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setDeleteConfirmOpen(true)}
                 aria-label="Delete customer"
                 title="Delete customer and chat history"
-                className="text-xs px-2 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                className="border-red-200 text-red-600 hover:bg-red-50"
               >
                 Delete
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -362,7 +365,7 @@ export default function InboxClient() {
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {messages.map((msg) => {
               const isUser = msg.role === "user";
-              const msgWithExtras = msg as Conversation & { intent?: string | null; message_type?: string | null };
+              const msgWithExtras = msg as Conversation & { intent?: string | null; message_type?: string | null; media_id?: string | null };
               return (
                 <div
                   key={msg.id}
@@ -376,7 +379,16 @@ export default function InboxClient() {
                     }`}
                   >
                     {msgWithExtras.message_type === "image" ? (
-                      <div className="text-xs italic opacity-70">[Image]</div>
+                      msgWithExtras.media_id ? (
+                        <img
+                          src={`/api/inbox/media/${msgWithExtras.media_id}`}
+                          alt="Image"
+                          className="max-w-full rounded-lg"
+                          style={{ maxHeight: 300 }}
+                        />
+                      ) : (
+                        <div className="text-xs italic opacity-70">[Image]</div>
+                      )
                     ) : (
                       <p>{msg.content}</p>
                     )}
@@ -417,21 +429,21 @@ export default function InboxClient() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <input
+                <Input
                   value={botReply}
                   onChange={(e) => setBotReply(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendBotReply()}
                   placeholder="Type your answer (AI will polish it)..."
-                  className="flex-1 px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                  className="flex-1 border-amber-200 focus-visible:ring-amber-400"
                 />
-                <button
+                <Button
                   type="button"
                   onClick={sendBotReply}
                   disabled={sendingBotReply || !botReply.trim()}
-                  className="px-4 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                  className="bg-amber-500 text-white hover:bg-amber-600"
                 >
                   {sendingBotReply ? "Sending..." : "Send"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -439,23 +451,23 @@ export default function InboxClient() {
           {/* Manual reply */}
           {flags?.escalated_to_human && (
             <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
-              <input
+              <Input
                 value={manualReply}
                 onChange={(e) => setManualReply(e.target.value)}
                 onKeyDown={(e) =>
                   e.key === "Enter" && !e.shiftKey && sendManualReply()
                 }
                 placeholder="Type a message..."
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="flex-1"
               />
-              <button
+              <Button
                 type="button"
                 onClick={sendManualReply}
                 disabled={sending || !manualReply.trim()}
-                className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                className="bg-orange-500 text-white hover:bg-orange-600"
               >
                 Send
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -481,22 +493,24 @@ export default function InboxClient() {
               deliveries. This cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setDeleteConfirmOpen(false)}
                 disabled={deleting}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="destructive"
+                size="sm"
                 onClick={deleteCustomer}
                 disabled={deleting}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {deleting ? "Deleting..." : "Delete permanently"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
