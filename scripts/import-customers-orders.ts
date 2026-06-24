@@ -317,6 +317,7 @@ async function main() {
 
   for (const [baseKey, rows] of groups) {
     const baseName = parseName(rows[0].nama).base;
+    if (baseName.toLowerCase() === "total") continue; // skip spreadsheet summary rows
     const slug = slugify(baseName);
 
     // Phone: normalize and use first valid phone in the group, else placeholder
