@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 
 export default function PushSubscribeButton() {
@@ -13,13 +14,33 @@ export default function PushSubscribeButton() {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     setIsIOS(ios);
 
-    // Use server as source of truth — browser may have a subscription the DB doesn't know about
-    fetch("/api/push/config")
-      .then((r) => r.json())
-      .then((data: { hasSubscription?: boolean }) => {
-        setSubscribed(data.hasSubscription === true);
-      })
-      .catch(() => {});
+    const sync = async () => {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+      const reg = await navigator.serviceWorker.ready;
+      const browserSub = await reg.pushManager.getSubscription();
+
+      if (!browserSub) {
+        // Browser has no subscription — show the button regardless of DB state
+        setSubscribed(false);
+        return;
+      }
+
+      // Browser has a subscription — upsert it so DB stays in sync
+      // (handles the case where DB has a stale endpoint from a previous browser session)
+      const subJson = browserSub.toJSON() as { endpoint: string; keys?: { p256dh: string; auth: string } };
+      if (subJson.keys) {
+        await fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(subJson),
+        }).catch(() => {});
+      }
+
+      setSubscribed(true);
+    };
+
+    sync().catch(() => {});
   }, []);
 
   function isStandalone() {
@@ -77,14 +98,16 @@ export default function PushSubscribeButton() {
 
   return (
     <div>
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={subscribe}
         disabled={loading}
-        className="text-sm px-3 py-1.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors disabled:opacity-50"
+        className="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
       >
         {loading ? "Enabling…" : "Enable notifications"}
-      </button>
+      </Button>
       {error && (
         <p className="mt-1 text-xs text-red-600">{error}</p>
       )}
@@ -96,13 +119,15 @@ export default function PushSubscribeButton() {
             <strong>Add to Home Screen</strong>. Open from there to enable push
             notifications.
           </p>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setShowIOSGuide(false)}
-            className="mt-2 text-xs text-gray-400 hover:text-gray-600"
+            className="mt-2 text-gray-400"
           >
             Close
-          </button>
+          </Button>
         </div>
       )}
     </div>
