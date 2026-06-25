@@ -394,6 +394,8 @@ export async function processWebhookAsync(
         content: text,
         messageId: message.messageId,
         intent,
+        messageType: message.type === "image" ? "image" : "text",
+        mediaId: message.type === "image" ? message.imageId : undefined,
       });
       await db
         .from("processed_messages")
@@ -625,6 +627,8 @@ export async function processWebhookAsync(
     content: text,
     messageId: message.messageId,
     intent,
+    messageType: message.type === "image" ? "image" : "text",
+    mediaId: message.type === "image" ? message.imageId : undefined,
   });
 
   if (replyText) {
