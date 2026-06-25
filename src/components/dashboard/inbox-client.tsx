@@ -379,16 +379,19 @@ export default function InboxClient() {
                     }`}
                   >
                     {msgWithExtras.message_type === "image" ? (
-                      msgWithExtras.media_id ? (
-                        <img
-                          src={`/api/inbox/media/${msgWithExtras.media_id}`}
-                          alt="Image"
-                          className="max-w-full rounded-lg"
-                          style={{ maxHeight: 300 }}
-                        />
-                      ) : (
-                        <div className="text-xs italic opacity-70">[Image]</div>
-                      )
+                      <>
+                        {msgWithExtras.media_id ? (
+                          <img
+                            src={`/api/inbox/media/${msgWithExtras.media_id}`}
+                            alt="Image"
+                            className="max-w-full rounded-lg"
+                            style={{ maxHeight: 300 }}
+                          />
+                        ) : (
+                          <div className="text-xs italic opacity-70">[Image]</div>
+                        )}
+                        {msg.content && <p className="mt-1">{msg.content}</p>}
+                      </>
                     ) : (
                       <p>{msg.content}</p>
                     )}
