@@ -415,4 +415,5 @@ When adding new API routes or webhook code paths, add a corresponding test in `t
 ## Known issues / tech debt
 
 - `/api/auth/check-admin` accepts the email from the request body without verifying the caller's session — allows unauthenticated admin email enumeration via 200 vs 403 response. Fix: extract email from a verified Supabase session instead.
+- **Manual delivery proof upload** (`POST /api/deliveries/proofs`, `match_method: "admin_upload"`) currently saves the proof and surfaces it in a "Ready to send" section in the Proof of Delivery tab. Future: auto-send to customer immediately on upload — call `sendDeliveryPhotoToCustomer(proofId, customerId)` directly in the POST route and set status to `"manually_sent"`, skipping the "Ready to send" UI step entirely.
 - `supabase/seed.sql` may still reference the old `"BSD"` delivery area string (not yet split into BSD Baru / BSD Lama); `subcontractors-client.tsx` was updated when Karawaci was added.

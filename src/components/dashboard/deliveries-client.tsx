@@ -402,6 +402,7 @@ export default function DeliveriesClient() {
   const uniqueSubs = [...new Set(rows.filter((r) => r.subcontractor_id).map((r) => r.subcontractor_id as string))];
 
   const autoSent = (proofs ?? []).filter((p) => p.status === "auto_sent");
+  const adminUploaded = (proofs ?? []).filter((p) => p.status === "admin_uploaded");
   const needsReview = (proofs ?? []).filter((p) => p.status === "needs_review");
   const unmatched = (proofs ?? []).filter((p) => p.status === "unmatched");
 
@@ -639,6 +640,27 @@ export default function DeliveriesClient() {
 
       {tab === "proofs" && (
         <div className="space-y-6">
+          {adminUploaded.length > 0 && (
+            <div>
+              <h2 className="font-medium text-gray-700 text-sm mb-2">Ready to send ({adminUploaded.length})</h2>
+              <div className="space-y-2">
+                {adminUploaded.map((p) => (
+                  <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-4">
+                    {p.signed_url && <img src={p.signed_url} alt="proof" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />}
+                    <div className="flex-1 text-sm text-gray-700">{p.customers?.name ?? p.matched_customer_id?.slice(0, 8) ?? "Unknown"}</div>
+                    <button
+                      type="button"
+                      onClick={() => p.matched_customer_id && sendProof.mutate({ id: p.id, customer_id: p.matched_customer_id })}
+                      disabled={!p.matched_customer_id || sendProof.isPending}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40"
+                    >
+                      Send
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <h2 className="font-medium text-gray-700 text-sm mb-2">Auto-matched & sent ({autoSent.length})</h2>
             {autoSent.length === 0 ? <p className="text-gray-400 text-sm">None today.</p> : (
