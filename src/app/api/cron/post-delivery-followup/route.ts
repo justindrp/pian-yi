@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { saveMessage } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
@@ -57,7 +58,9 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     if (!isFirst && Math.random() >= 0.2) continue;
 
-    await sendTextMessage(customer.phone_number, "halo kak gimana makanannya hari ini? 🍱");
+    const followupText = "halo kak gimana makanannya hari ini? 🍱";
+    await sendTextMessage(customer.phone_number, followupText);
+    await saveMessage({ customerId: delivery.customer_id, role: "assistant", content: followupText, messageType: "text" });
     await db.from("orders").update({ followup_sent_at: new Date().toISOString() }).eq("id", delivery.order_id);
     sent++;
   }
