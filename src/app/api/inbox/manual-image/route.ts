@@ -54,8 +54,14 @@ export async function POST(req: NextRequest): Promise<Response> {
   } = db.storage.from("menu-images").getPublicUrl(storagePath);
 
   // Upload to Meta's media endpoint so they serve from their own CDN (link-based sending fails silently)
-  const mediaId = await uploadMediaToMeta(buffer, file.type || "image/jpeg");
-  await sendImageMessageById(customer.phone_number, mediaId, caption);
+  let mediaId: string;
+  try {
+    mediaId = await uploadMediaToMeta(buffer, file.type || "image/jpeg");
+    await sendImageMessageById(customer.phone_number, mediaId, caption);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "WhatsApp send failed";
+    return NextResponse.json({ ok: false, error: msg }, { status: 502 });
+  }
 
   const { data: row, error: insertErr } = await db
     .from("conversations")

@@ -150,7 +150,23 @@ describe("POST /api/inbox/manual-image", () => {
     expect(sendImageMessageById).not.toHaveBeenCalled();
   });
 
-  test("T5 — unauthenticated returns 401", async () => {
+  test("T5 — Meta upload failure returns 502 with error message", async () => {
+    const db = makeDbMock({
+      customers: { data: { phone_number: "+6281234567890" }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+    (uploadMediaToMeta as jest.Mock).mockRejectedValueOnce(new Error("Meta API 503"));
+
+    const res = await POST(makeRequest({ customer_id: "cust-1", file: makeFile() }));
+    const json = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(json.ok).toBe(false);
+    expect(json.error).toMatch(/Meta API 503/);
+    expect(sendImageMessageById).not.toHaveBeenCalled();
+  });
+
+  test("T7 — unauthenticated returns 401", async () => {
     (createClient as jest.Mock).mockResolvedValue({
       auth: {
         getUser: jest.fn().mockResolvedValue({ data: { user: null } }),
