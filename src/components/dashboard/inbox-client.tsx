@@ -202,6 +202,23 @@ export default function InboxClient() {
     setFlags(nextFlags);
   }
 
+  async function activateBotWaiting() {
+    if (!selectedCustomerId || !flags) return;
+    const prevFlags = flags;
+    const nextFlags = { ...flags, pending_bot_response: true, pending_bot_question: null };
+    setFlags(nextFlags);
+    const res = await fetch("/api/inbox/pending-bot-response", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId }),
+    });
+    if (!res.ok) {
+      setFlags(prevFlags);
+      return;
+    }
+    setFlags(nextFlags);
+  }
+
   async function sendBotReply() {
     if (!selectedCustomerId || !botReply.trim()) return;
     setSendingBotReply(true);
@@ -401,6 +418,17 @@ export default function InboxClient() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {!flags?.pending_bot_response && !flags?.escalated_to_human && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={activateBotWaiting}
+                  className="border-amber-200 text-amber-700 hover:bg-amber-50"
+                >
+                  Guide bot
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
