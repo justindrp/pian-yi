@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { saveMessage } from "@/lib/claude/conversation";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -74,6 +75,13 @@ Rewrite the admin's answer as the bot's reply:`,
     polishResult.content[0].type === "text" ? polishResult.content[0].text.trim() : admin_answer;
 
   await sendTextMessage(customer.phone_number, polishedText);
+
+  await saveMessage({
+    customerId: customer_id,
+    role: "assistant",
+    content: polishedText,
+    modelUsed: HAIKU_MODEL,
+  });
 
   await db
     .from("customer_flags")

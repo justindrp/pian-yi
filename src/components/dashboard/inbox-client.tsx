@@ -164,7 +164,10 @@ export default function InboxClient() {
   async function toggleEscalation() {
     if (!selectedCustomerId || !flags) return;
     const newVal = !flags.escalated_to_human;
-    await supabase
+    const prevFlags = flags;
+    const nextFlags = { ...flags, escalated_to_human: newVal };
+    setFlags(nextFlags); // optimistic — show input immediately
+    const { error } = await supabase
       .from("customer_flags")
       .update({
         escalated_to_human: newVal,
@@ -172,7 +175,12 @@ export default function InboxClient() {
         last_human_activity_at: newVal ? new Date().toISOString() : null,
       })
       .eq("customer_id", selectedCustomerId);
-    setFlags({ ...flags, escalated_to_human: newVal });
+    if (error) {
+      setFlags(prevFlags); // revert on DB error
+      return;
+    }
+    // Re-apply in case a concurrent loadMessages() overwrote optimistic state during the await
+    setFlags(nextFlags);
   }
 
   async function sendBotReply() {
