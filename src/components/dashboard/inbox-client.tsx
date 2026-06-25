@@ -39,7 +39,13 @@ export default function InboxClient() {
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameQuery, setRenameQuery] = useState("");
+  const [allCustomers, setAllCustomers] = useState<
+    { id: string; name: string; phone_number: string }[]
+  >([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
   // Ref so the realtime callback always sees the latest value without re-subscribing
   const selectedCustomerIdRef = useRef<string | null>(null);
@@ -217,6 +223,37 @@ export default function InboxClient() {
       return;
     }
     setFlags(nextFlags);
+  }
+
+  async function openRename() {
+    if (allCustomers.length === 0) {
+      const { data } = await supabase
+        .from("customers")
+        .select("id, name, phone_number")
+        .not("name", "is", null)
+        .order("name");
+      setAllCustomers((data ?? []) as { id: string; name: string; phone_number: string }[]);
+    }
+    setRenameQuery("");
+    setRenaming(true);
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  }
+
+  async function submitRename(name: string) {
+    if (!selectedCustomerId || !name.trim()) return;
+    setRenaming(false);
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.customer.id === selectedCustomerId
+          ? { ...t, customer: { ...t.customer, name } }
+          : t,
+      ),
+    );
+    await fetch(`/api/customers/${selectedCustomerId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
   }
 
   async function sendBotReply() {
@@ -404,10 +441,63 @@ export default function InboxClient() {
               </button>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-gray-900">
-                    {selectedThread.customer.name ??
-                      selectedThread.customer.phone_number}
-                  </p>
+                  {renaming ? (
+                    <div className="relative">
+                      <Input
+                        ref={renameInputRef}
+                        value={renameQuery}
+                        onChange={(e) => setRenameQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") submitRename(renameQuery);
+                          if (e.key === "Escape") setRenaming(false);
+                        }}
+                        onBlur={() => setTimeout(() => setRenaming(false), 150)}
+                        className="h-6 text-sm w-44 px-2 py-0"
+                        placeholder="Type a name…"
+                      />
+                      {(() => {
+                        const results = renameQuery.trim()
+                          ? allCustomers.filter((c) =>
+                              c.name.toLowerCase().includes(renameQuery.toLowerCase()),
+                            )
+                          : allCustomers;
+                        return results.length > 0 ? (
+                          <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded shadow-md w-64 max-h-48 overflow-y-auto">
+                            {results.slice(0, 20).map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between gap-2"
+                                onMouseDown={() => submitRename(c.name)}
+                              >
+                                <span>{c.name}</span>
+                                <span className="text-xs text-gray-400 shrink-0">
+                                  {maskPhone(c.phone_number)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-gray-900">
+                        {selectedThread.customer.name ??
+                          selectedThread.customer.phone_number}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={openRename}
+                        className="text-gray-300 hover:text-gray-500 flex-shrink-0"
+                        aria-label="Rename customer"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                        </svg>
+                      </button>
+                    </>
+                  )}
                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${selectedThread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                     {selectedThread.menuShown ? "menu images sent ✓" : "menu images not sent"}
                   </span>

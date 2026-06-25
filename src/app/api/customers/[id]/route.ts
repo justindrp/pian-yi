@@ -4,6 +4,43 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
+
+  const { id } = await params;
+  const body = (await req.json()) as { name?: string };
+  const name = body.name?.trim();
+  if (!name) {
+    return NextResponse.json(
+      { ok: false, error: "Missing name" },
+      { status: 400 },
+    );
+  }
+
+  const db = createAdminClient();
+  const { error } = await db.from("customers").update({ name }).eq("id", id);
+  if (error) {
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
