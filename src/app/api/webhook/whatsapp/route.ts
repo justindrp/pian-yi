@@ -115,6 +115,11 @@ export async function processWebhookAsync(
 
   const customerId = customer.id;
 
+  // Save WhatsApp profile name on first contact (never overwrite manually-set names)
+  if (!customer.name && message.contactName) {
+    await db.from("customers").update({ name: message.contactName }).eq("id", customerId);
+  }
+
   // Capture first message and detect ad creative tag on very first contact
   if (!customer.first_message && message.text) {
     const tag = message.text.match(/\[C(\d+)\]/i)?.[1];

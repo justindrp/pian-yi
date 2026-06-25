@@ -326,4 +326,30 @@ describe("processWebhookAsync", () => {
       "[chatbot_unavailable]",
     );
   });
+
+  test("T9 — saves WhatsApp display name when customer.name is null", async () => {
+    const db = makeDefaultDb({
+      customers: { data: { id: "cust-1", name: null, first_message: "Halo" }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await processWebhookAsync(makePayload("Halo"));
+
+    expect(db.chains.customers.update).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Test Customer" }),
+    );
+  });
+
+  test("T10 — does not overwrite existing customer name with WhatsApp display name", async () => {
+    const db = makeDefaultDb({
+      customers: { data: { id: "cust-1", name: "Budi Santoso", first_message: "Halo" }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await processWebhookAsync(makePayload("Halo"));
+
+    expect(db.chains.customers.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: expect.any(String) }),
+    );
+  });
 });

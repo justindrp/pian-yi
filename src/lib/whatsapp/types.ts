@@ -10,6 +10,7 @@ export interface WhatsAppMessage {
   locationLat?: number;
   locationLng?: number;
   timestamp: string;
+  contactName?: string;
 }
 
 export interface WhatsAppWebhookPayload {
@@ -20,6 +21,10 @@ export interface WhatsAppWebhookPayload {
       value: {
         messaging_product: string;
         metadata: { display_phone_number: string; phone_number_id: string };
+        contacts?: Array<{
+          profile: { name: string };
+          wa_id: string;
+        }>;
         messages?: Array<{
           id: string;
           from: string;
@@ -39,7 +44,8 @@ export interface WhatsAppWebhookPayload {
 export function parseMessage(
   payload: WhatsAppWebhookPayload,
 ): WhatsAppMessage | null {
-  const message = payload.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  const value = payload.entry?.[0]?.changes?.[0]?.value;
+  const message = value?.messages?.[0];
   if (!message) return null;
   return {
     messageId: message.id,
@@ -53,6 +59,7 @@ export function parseMessage(
     locationLat: message.location?.latitude,
     locationLng: message.location?.longitude,
     timestamp: message.timestamp,
+    contactName: value?.contacts?.[0]?.profile?.name,
   };
 }
 
