@@ -27,6 +27,10 @@ export default function InboxClient() {
   const [botReply, setBotReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sendingBotReply, setSendingBotReply] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [sendingImage, setSendingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [flags, setFlags] = useState<{
     escalated_to_human: boolean;
     pending_bot_response: boolean;
@@ -272,6 +276,42 @@ export default function InboxClient() {
     setSending(false);
   }
 
+  function pickImage() {
+    imageInputRef.current?.click();
+  }
+
+  function onImagePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+    // reset so same file can be picked again
+    e.target.value = "";
+  }
+
+  function cancelImage() {
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    setImageFile(null);
+    setImagePreviewUrl(null);
+  }
+
+  async function sendImage() {
+    if (!selectedCustomerId || !imageFile) return;
+    setSendingImage(true);
+    const form = new FormData();
+    form.append("customer_id", selectedCustomerId);
+    form.append("file", imageFile);
+    const res = await fetch("/api/inbox/manual-image", { method: "POST", body: form });
+    setSendingImage(false);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      alert(`Failed to send image: ${body?.error ?? res.statusText}`);
+      return;
+    }
+    cancelImage();
+    await loadMessages(selectedCustomerId);
+  }
+
   const selectedThread = threads.find(
     (t) => t.customer.id === selectedCustomerId,
   );
@@ -395,10 +435,16 @@ export default function InboxClient() {
                             className="max-w-full rounded-lg"
                             style={{ maxHeight: 300 }}
                           />
+                        ) : msg.content?.startsWith("https://") ? (
+                          <img
+                            src={msg.content}
+                            alt="Image"
+                            className="max-w-full rounded-lg"
+                            style={{ maxHeight: 300 }}
+                          />
                         ) : (
                           <div className="text-xs italic opacity-70">[Image]</div>
                         )}
-                        {msg.content && <p className="mt-1">{msg.content}</p>}
                       </>
                     ) : (
                       <p>{msg.content}</p>
@@ -461,24 +507,75 @@ export default function InboxClient() {
 
           {/* Manual reply */}
           {flags?.escalated_to_human && (
-            <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
-              <Input
-                value={manualReply}
-                onChange={(e) => setManualReply(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && !e.shiftKey && sendManualReply()
-                }
-                placeholder="Type a message..."
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                onClick={sendManualReply}
-                disabled={sending || !manualReply.trim()}
-                className="bg-orange-500 text-white hover:bg-orange-600"
-              >
-                Send
-              </Button>
+            <div className="border-t border-gray-100">
+              {imagePreviewUrl && (
+                <div className="px-4 pt-3 pb-2 flex items-start gap-3 bg-gray-50">
+                  <img
+                    src={imagePreviewUrl}
+                    alt="Preview"
+                    className="h-20 w-20 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                  />
+                  <div className="flex flex-col gap-2 min-w-0 flex-1">
+                    <p className="text-xs text-gray-500 truncate">{imageFile?.name}</p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={sendImage}
+                        disabled={sendingImage}
+                        className="bg-orange-500 text-white hover:bg-orange-600"
+                      >
+                        {sendingImage ? "Sending..." : "Send image"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={cancelImage}
+                        disabled={sendingImage}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="px-4 py-3 flex gap-2">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onImagePicked}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={pickImage}
+                  title="Attach image"
+                  className="px-2.5 text-gray-500"
+                >
+                  📎
+                </Button>
+                <Input
+                  value={manualReply}
+                  onChange={(e) => setManualReply(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && !e.shiftKey && sendManualReply()
+                  }
+                  placeholder="Type a message..."
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  onClick={sendManualReply}
+                  disabled={sending || !manualReply.trim()}
+                  className="bg-orange-500 text-white hover:bg-orange-600"
+                >
+                  Send
+                </Button>
+              </div>
             </div>
           )}
         </div>
