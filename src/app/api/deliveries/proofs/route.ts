@@ -66,4 +66,50 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   return NextResponse.json({ ok: true });
 }
 
+export async function POST(req: NextRequest): Promise<Response> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+  const formData = await req.formData();
+  const file = formData.get("file") as File | null;
+  const customerId = formData.get("customer_id") as string | null;
+  const subcontractorId = formData.get("subcontractor_id") as string | null;
+  const date = (formData.get("date") as string | null) ?? new Date().toISOString().slice(0, 10);
+
+  if (!file || !customerId) {
+    return NextResponse.json({ ok: false, error: "file and customer_id required" }, { status: 400 });
+  }
+
+  const db = createAdminClient();
+  const ext = file.name.split(".").pop() ?? "jpg";
+  const storagePath = `manual/${date}/${customerId}/${Date.now()}.${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const { error: uploadErr } = await db.storage
+    .from("delivery-proofs")
+    .upload(storagePath, buffer, { contentType: file.type || "image/jpeg", upsert: false });
+
+  if (uploadErr) return NextResponse.json({ ok: false, error: uploadErr.message }, { status: 500 });
+
+  const { data: urlData } = db.storage.from("delivery-proofs").getPublicUrl(storagePath);
+
+  const { data: proof, error: insertErr } = await db
+    .from("delivery_proofs")
+    .insert({
+      image_url: urlData.publicUrl,
+      matched_customer_id: customerId,
+      subcontractor_id: subcontractorId ?? null,
+      match_method: "admin_upload",
+      status: "admin_uploaded",
+      sent_by: user.email,
+    })
+    .select("id")
+    .single();
+
+  if (insertErr) return NextResponse.json({ ok: false, error: insertErr.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true, data: proof });
+}
+
 export const dynamic = "force-dynamic";

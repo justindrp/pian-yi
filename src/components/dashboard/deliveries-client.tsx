@@ -18,7 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 interface DeliveryRow {
   id?: string;
@@ -149,6 +149,48 @@ function buildRouteSummary(rows: DeliveryRow[], route: number, date: string): st
   return text;
 }
 
+function UploadButton({
+  uploadState,
+  onUpload,
+}: {
+  uploadState: "idle" | "uploading" | "done" | "error";
+  onUpload: (file: File) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <td className="px-1 py-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onUpload(file);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploadState === "uploading"}
+        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-40"
+        title="Upload delivery proof"
+      >
+        {uploadState === "uploading" && <span className="text-[10px] text-gray-400">...</span>}
+        {uploadState === "done" && <span className="text-[11px] text-green-500">✓</span>}
+        {uploadState === "error" && <span className="text-[11px] text-red-500">!</span>}
+        {uploadState === "idle" && (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 0 2-2l2-2h8l2 2h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        )}
+      </button>
+    </td>
+  );
+}
+
 function SortableDeliveryRow({
   row,
   position,
@@ -157,6 +199,8 @@ function SortableDeliveryRow({
   onUpdatePortions,
   onUpdateSub,
   onUpdateAddressSlot,
+  uploadState,
+  onUploadProof,
 }: {
   row: DeliveryRow;
   position: number;
@@ -165,6 +209,8 @@ function SortableDeliveryRow({
   onUpdatePortions: (customerId: string, mealType: "lunch" | "dinner", portions: number) => void;
   onUpdateSub: (customerId: string, mealType: "lunch" | "dinner", subId: string | null) => void;
   onUpdateAddressSlot: (customerId: string, mealType: "lunch" | "dinner", slot: number) => void;
+  uploadState: "idle" | "uploading" | "done" | "error";
+  onUploadProof: (file: File) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row.customer_id });
   const style = {
@@ -229,6 +275,7 @@ function SortableDeliveryRow({
           {subs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </td>
+      <UploadButton uploadState={uploadState} onUpload={onUploadProof} />
     </tr>
   );
 }
@@ -239,6 +286,7 @@ export default function DeliveriesClient() {
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [uploadStates, setUploadStates] = useState<Record<string, "idle" | "uploading" | "done" | "error">>({});
   const qc = useQueryClient();
 
   const sensors = useSensors(
@@ -359,6 +407,23 @@ export default function DeliveriesClient() {
 
   const activeSubs = (subs ?? []).filter((s: Sub & { is_active?: boolean }) => s.is_active !== false);
 
+  async function handleUploadProof(customerId: string, mealType: "lunch" | "dinner", subcontractorId: string | null, file: File) {
+    const key = `${customerId}-${mealType}`;
+    setUploadStates((prev) => ({ ...prev, [key]: "uploading" }));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("customer_id", customerId);
+      if (subcontractorId) fd.append("subcontractor_id", subcontractorId);
+      fd.append("date", date);
+      const res = await fetch("/api/deliveries/proofs", { method: "POST", body: fd });
+      const json = await res.json() as { ok: boolean };
+      setUploadStates((prev) => ({ ...prev, [key]: json.ok ? "done" : "error" }));
+    } catch {
+      setUploadStates((prev) => ({ ...prev, [key]: "error" }));
+    }
+  }
+
   function copyText(key: string, text: string) {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedKey(key);
@@ -422,6 +487,7 @@ export default function DeliveriesClient() {
                           <th className="px-2 py-2 text-left">Customer</th>
                           <th className="px-2 py-2 text-left">Portions</th>
                           <th className="px-2 py-2 text-left">Dapur</th>
+                          <th className="px-1 py-2 w-8" />
                         </tr>
                       </thead>
                       {([1, 2] as const).map((route) => {
@@ -432,7 +498,7 @@ export default function DeliveriesClient() {
                           <Fragment key={route}>
                             <tbody>
                               <tr className="bg-gray-50 border-t border-gray-100">
-                                <td colSpan={6} className="px-3 py-1.5 text-xs font-medium text-gray-500">
+                                <td colSpan={7} className="px-3 py-1.5 text-xs font-medium text-gray-500">
                                   {ROUTE_LABELS[route]}
                                 </td>
                               </tr>
@@ -454,6 +520,8 @@ export default function DeliveriesClient() {
                                       onUpdatePortions={(cid, mt, portions) => updateRow(cid, mt, "portions", portions)}
                                       onUpdateSub={(cid, mt, subId) => updateRow(cid, mt, "subcontractor_id", subId)}
                                       onUpdateAddressSlot={(cid, mt, slot) => updateRow(cid, mt, "address_slot", slot)}
+                                      uploadState={uploadStates[`${r.customer_id}-${r.meal_type}`] ?? "idle"}
+                                      onUploadProof={(file) => handleUploadProof(r.customer_id, r.meal_type, r.subcontractor_id, file)}
                                     />
                                   ))}
                                 </tbody>
@@ -467,7 +535,7 @@ export default function DeliveriesClient() {
                         <>
                           <tbody>
                             <tr className="bg-gray-50 border-t border-gray-100">
-                              <td colSpan={6} className="px-3 py-1.5 text-xs font-medium text-gray-400 italic">
+                              <td colSpan={7} className="px-3 py-1.5 text-xs font-medium text-gray-400 italic">
                                 Unassigned route
                               </td>
                             </tr>
@@ -516,6 +584,10 @@ export default function DeliveriesClient() {
                                     {activeSubs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                                   </select>
                                 </td>
+                                <UploadButton
+                                  uploadState={uploadStates[`${r.customer_id}-${meal}`] ?? "idle"}
+                                  onUpload={(file) => handleUploadProof(r.customer_id, meal, r.subcontractor_id, file)}
+                                />
                               </tr>
                             ))}
                           </tbody>
