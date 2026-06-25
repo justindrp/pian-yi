@@ -134,6 +134,11 @@ export default function InboxClient() {
         { event: "INSERT", schema: "public", table: "conversations" },
         refresh,
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "customers" },
+        () => void loadThreads(),
+      )
       .subscribe();
 
     // Polling fallback — Railway's reverse proxy occasionally drops the
