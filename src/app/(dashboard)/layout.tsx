@@ -7,6 +7,7 @@ import MobileNav from "@/components/shared/mobile-nav";
 import QueryProvider from "@/components/shared/query-provider";
 import ServiceWorkerRegistrar from "@/components/shared/service-worker-registrar";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
+import { AssistantWidget } from "@/components/dashboard/assistant-widget";
 
 const allNavItems = [
   { href: "/dashboard", label: "Home", ownerOnly: false },
@@ -22,6 +23,7 @@ const allNavItems = [
   { href: "/settings", label: "Settings", ownerOnly: false },
   { href: "/broadcasts", label: "Broadcasts", ownerOnly: false },
   { href: "/guide", label: "Panduan", ownerOnly: false },
+  { href: "/assistant", label: "Assistant", ownerOnly: false },
 ];
 
 export default async function DashboardLayout({
@@ -84,6 +86,7 @@ export default async function DashboardLayout({
           <div className="max-w-6xl mx-auto p-4 md:p-6">{children}</div>
         </main>
       </div>
+      <AssistantWidget />
     </QueryProvider>
   );
 }
