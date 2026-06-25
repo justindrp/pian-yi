@@ -1,4 +1,5 @@
 import axios from "axios";
+import FormData from "form-data";
 
 const BASE_URL = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}`;
 
@@ -34,6 +35,36 @@ export async function sendImageMessage(
       to,
       type: "image",
       image: { link: imageUrl, caption },
+    },
+    { headers: headers() },
+  );
+}
+
+export async function uploadMediaToMeta(buffer: Buffer, mimeType: string): Promise<string> {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("file", buffer, { contentType: mimeType, filename: "image" });
+  const res = await axios.post<{ id: string }>(
+    `${BASE_URL}/media`,
+    form,
+    { headers: { ...form.getHeaders(), Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } },
+  );
+  return res.data.id;
+}
+
+export async function sendImageMessageById(
+  to: string,
+  mediaId: string,
+  caption: string,
+): Promise<void> {
+  await axios.post(
+    `${BASE_URL}/messages`,
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "image",
+      image: { id: mediaId, caption },
     },
     { headers: headers() },
   );

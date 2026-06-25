@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { sendImageMessage } from "@/lib/whatsapp/client";
+import { sendImageMessageById, uploadMediaToMeta } from "@/lib/whatsapp/client";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const storagePath = `inbox/${customerId}/${Date.now()}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
+  // Upload to Supabase for conversation history display
   const { error: uploadErr } = await db.storage
     .from("menu-images")
     .upload(storagePath, buffer, { contentType: file.type, upsert: false });
@@ -52,7 +53,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { publicUrl },
   } = db.storage.from("menu-images").getPublicUrl(storagePath);
 
-  await sendImageMessage(customer.phone_number, publicUrl, caption);
+  // Upload to Meta's media endpoint so they serve from their own CDN (link-based sending fails silently)
+  const mediaId = await uploadMediaToMeta(buffer, file.type || "image/jpeg");
+  await sendImageMessageById(customer.phone_number, mediaId, caption);
 
   const { data: row, error: insertErr } = await db
     .from("conversations")
