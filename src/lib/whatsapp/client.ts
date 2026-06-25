@@ -43,7 +43,8 @@ export async function sendImageMessage(
 export async function uploadMediaToMeta(buffer: Buffer, mimeType: string): Promise<string> {
   const form = new FormData();
   form.append("messaging_product", "whatsapp");
-  form.append("file", buffer, { contentType: mimeType, filename: "image" });
+  const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
+  form.append("file", buffer, { contentType: mimeType, filename: `image.${ext}` });
   const res = await axios.post<{ id: string }>(
     `${BASE_URL}/media`,
     form,
