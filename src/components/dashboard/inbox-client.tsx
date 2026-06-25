@@ -85,15 +85,8 @@ export default function InboxClient() {
     setThreads(grouped);
   }, [supabase]);
 
-  const loadMessages = useCallback(
+  const loadFlags = useCallback(
     async (customerId: string) => {
-      const { data } = await supabase
-        .from("conversations")
-        .select("*")
-        .eq("customer_id", customerId)
-        .order("created_at", { ascending: true });
-      setMessages(data ?? []);
-
       const { data: flagData } = await supabase
         .from("customer_flags")
         .select("escalated_to_human, pending_bot_response, pending_bot_question")
@@ -108,6 +101,18 @@ export default function InboxClient() {
             }
           : null,
       );
+    },
+    [supabase],
+  );
+
+  const loadMessages = useCallback(
+    async (customerId: string) => {
+      const { data } = await supabase
+        .from("conversations")
+        .select("*")
+        .eq("customer_id", customerId)
+        .order("created_at", { ascending: true });
+      setMessages(data ?? []);
     },
     [supabase],
   );
@@ -139,6 +144,14 @@ export default function InboxClient() {
         { event: "UPDATE", schema: "public", table: "customers" },
         () => void loadThreads(),
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "customer_flags" },
+        () => {
+          const current = selectedCustomerIdRef.current;
+          if (current) void loadFlags(current);
+        },
+      )
       .subscribe();
 
     // Polling fallback — Railway's reverse proxy occasionally drops the
@@ -157,7 +170,7 @@ export default function InboxClient() {
       clearInterval(pollInterval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [loadThreads, loadMessages, supabase]);
+  }, [loadThreads, loadMessages, loadFlags, supabase]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on message change only
   useEffect(() => {
@@ -167,7 +180,7 @@ export default function InboxClient() {
   async function selectThread(customerId: string) {
     setSelectedCustomerId(customerId);
     setMobileView("chat");
-    await loadMessages(customerId);
+    await Promise.all([loadMessages(customerId), loadFlags(customerId)]);
   }
 
   async function toggleEscalation() {
