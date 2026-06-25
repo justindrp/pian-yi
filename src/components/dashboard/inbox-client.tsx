@@ -189,15 +189,12 @@ export default function InboxClient() {
     const prevFlags = flags;
     const nextFlags = { ...flags, escalated_to_human: newVal };
     setFlags(nextFlags); // optimistic — show input immediately
-    const { error } = await supabase
-      .from("customer_flags")
-      .upsert({
-        customer_id: selectedCustomerId,
-        escalated_to_human: newVal,
-        escalation_reason: newVal ? "Manual takeover" : null,
-        last_human_activity_at: newVal ? new Date().toISOString() : null,
-      });
-    if (error) {
+    const res = await fetch("/api/inbox/takeover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId, escalated: newVal }),
+    });
+    if (!res.ok) {
       setFlags(prevFlags);
       return;
     }
