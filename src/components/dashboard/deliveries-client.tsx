@@ -474,7 +474,7 @@ export default function DeliveriesClient() {
           ) : rows.length === 0 ? (
             <div className="text-gray-400 text-sm text-center py-12">No deliveries for this date. Click Refresh to load from active orders.</div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(["lunch", "dinner"] as const).map((meal) => (
                 <div key={meal}>
                   <h2 className="font-medium text-gray-700 text-sm mb-2 uppercase tracking-wide">{meal}</h2>
