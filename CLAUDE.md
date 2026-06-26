@@ -366,9 +366,10 @@ Standard commands (always use these spellings):
 - Run script: `pnpm <script>`
 - Dev server: `pnpm dev`
 - Build: `pnpm build`
-- Lint: `pnpm biome check .`
-- Format: `pnpm biome format --write .`
-- Type-check: `pnpm tsc --noEmit`
+- Lint: `pnpm lint` (Biome linter, rules only)
+- Check: `pnpm check` (Biome `check` — formatter + linter + imports; the full gate)
+- Format: `pnpm format` (Biome `format --write`, applies fixes)
+- Type-check: `pnpm typecheck`
 - Supabase types: `pnpm supabase gen types typescript --linked > src/types/database.ts`
 - Supabase migrate (local): `pnpm supabase db reset`
 - Supabase push (remote): `pnpm supabase db push`
@@ -400,7 +401,7 @@ Phase 3 — admin assistant:
 Phase 4 — assistant chat history:
 - `test/api/assistant-history.test.ts` — 10 tests: conversations list/create auth + data, [id] messages + delete auth + data, saveTurn title derivation on first message vs subsequent
 
-A pre-push hook (`.git/hooks/pre-push`) runs `pnpm tsc --noEmit && pnpm test` before every push and blocks if either fails.
+A pre-push hook (`.git/hooks/pre-push`) runs `pnpm typecheck && pnpm test` before every push and blocks if either fails.
 
 When adding new API routes or webhook code paths, add a corresponding test in `test/`.
 
