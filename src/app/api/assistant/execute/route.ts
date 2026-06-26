@@ -5,6 +5,7 @@ import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage } from "@/lib/claude/conversation";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import { createJournalEntry } from "@/lib/accounting/journal";
+import { saveAssistantReply } from "@/lib/claude/assistant-history";
 
 const ALLOWED_CUSTOMER_FIELDS = new Set(["name", "address", "area", "notes"]);
 
@@ -14,19 +15,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { tool?: string; input?: Record<string, unknown> };
+  let body: { tool?: string; input?: Record<string, unknown>; conversationId?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { tool, input } = body;
+  const { tool, input, conversationId } = body;
   if (!tool || !input || !WRITE_TOOLS.has(tool)) {
     return NextResponse.json({ ok: false, error: "Invalid or disallowed tool" }, { status: 400 });
   }
 
   const db = createAdminClient();
+
+  // Persist the assistant's confirmation reply to the active thread, then respond.
+  function reply(text: string) {
+    if (conversationId) {
+      saveAssistantReply(db, conversationId, text).catch((err) =>
+        console.error("[execute] persist reply:", err),
+      );
+    }
+    return NextResponse.json({ ok: true, text, conversationId });
+  }
 
   switch (tool) {
     case "mark_order_paid": {
@@ -96,7 +107,7 @@ export async function POST(request: Request) {
         }
       }
 
-      return NextResponse.json({ ok: true, text: "Pesanan sudah ditandai lunas dan pesan konfirmasi WhatsApp sudah dikirim." });
+      return reply("Pesanan sudah ditandai lunas dan pesan konfirmasi WhatsApp sudah dikirim.");
     }
 
     case "cancel_order": {
@@ -140,14 +151,14 @@ export async function POST(request: Request) {
         }
       }
 
-      return NextResponse.json({ ok: true, text: "Pesanan sudah dibatalkan." });
+      return reply("Pesanan sudah dibatalkan.");
     }
 
     case "send_whatsapp_message": {
       const phone = input.phone_number as string;
       const message = input.message as string;
       await sendTextMessage(phone, message);
-      return NextResponse.json({ ok: true, text: `Pesan WhatsApp sudah dikirim ke ${phone}.` });
+      return reply(`Pesan WhatsApp sudah dikirim ke ${phone}.`);
     }
 
     case "update_customer_field": {
@@ -168,7 +179,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
       }
 
-      return NextResponse.json({ ok: true, text: `Field ${field} customer sudah diperbarui.` });
+      return reply(`Field ${field} customer sudah diperbarui.`);
     }
 
     default:

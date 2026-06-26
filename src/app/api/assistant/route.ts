@@ -4,6 +4,8 @@ import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { getAssistantSystemPrompt } from "@/lib/claude/assistant-prompt";
 import { assistantTools, runTool, isWriteTool, buildPendingAction } from "@/lib/claude/assistant-tools";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createConversation, saveTurn } from "@/lib/claude/assistant-history";
 
 export async function POST(request: Request) {
   const session = await getSessionWithRole();
@@ -11,21 +13,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { messages?: MessageParam[] };
+  let body: { messages?: MessageParam[]; conversationId?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { messages } = body;
+  const { messages, conversationId: incomingId } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ ok: false, error: "messages required" }, { status: 400 });
   }
 
+  // Resolve (or lazily create) the conversation thread this turn belongs to.
+  const db = createAdminClient();
+  let conversationId = incomingId;
+  if (!conversationId) {
+    conversationId = (await createConversation(db)) ?? undefined;
+  }
+  const lastUserText = extractLastUserText(messages);
+  const isFirstMessage = !incomingId && lastUserText !== null;
+
   const client = getAnthropicClient();
   const currentMessages: MessageParam[] = [...messages];
   const MAX_TURNS = 5;
+
+  // Persist this turn (user msg + assistant reply) to the thread.
+  async function persist(assistantText: string) {
+    if (!conversationId) return;
+    await saveTurn(db, {
+      conversationId,
+      userText: lastUserText ?? "",
+      assistantText,
+      isFirstMessage,
+    });
+  }
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await client.messages.create({
@@ -39,7 +61,8 @@ export async function POST(request: Request) {
     if (response.stop_reason === "end_turn") {
       const textBlock = response.content.find((b) => b.type === "text");
       const text = textBlock?.type === "text" ? textBlock.text : "";
-      return NextResponse.json({ ok: true, text });
+      await persist(text);
+      return NextResponse.json({ ok: true, text, conversationId });
     }
 
     if (response.stop_reason === "tool_use") {
@@ -54,7 +77,8 @@ export async function POST(request: Request) {
           writeBlock.name,
           writeBlock.input as Record<string, unknown>,
         );
-        return NextResponse.json({ ok: true, text, pendingAction });
+        await persist(text);
+        return NextResponse.json({ ok: true, text, pendingAction, conversationId });
       }
 
       currentMessages.push({ role: "assistant", content: response.content });
@@ -87,15 +111,35 @@ export async function POST(request: Request) {
   if (lastMsg?.role === "assistant") {
     const content = lastMsg.content;
     if (typeof content === "string") {
-      return NextResponse.json({ ok: true, text: content });
+      await persist(content);
+      return NextResponse.json({ ok: true, text: content, conversationId });
     }
     if (Array.isArray(content)) {
       const textBlock = content.find((b) => typeof b === "object" && b.type === "text");
       if (textBlock && typeof textBlock === "object" && textBlock.type === "text") {
-        return NextResponse.json({ ok: true, text: textBlock.text });
+        await persist(textBlock.text);
+        return NextResponse.json({ ok: true, text: textBlock.text, conversationId });
       }
     }
   }
 
-  return NextResponse.json({ ok: true, text: "I couldn't generate a response. Please try again." });
+  return NextResponse.json({ ok: true, text: "I couldn't generate a response. Please try again.", conversationId });
 }
+
+function extractLastUserText(messages: MessageParam[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "user") continue;
+    const content = msg.content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      const text = content.find((b) => typeof b === "object" && b.type === "text") as
+        | { type: "text"; text: string }
+        | undefined;
+      if (text) return text.text;
+    }
+  }
+  return null;
+}
+
+export const dynamic = "force-dynamic";

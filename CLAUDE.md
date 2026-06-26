@@ -309,8 +309,13 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 - `GET /api/reports/conversions` — Meta Ads conversion tracking: summary stats (total, this month, revenue, top creative, organic), per-creative breakdown, paginated conversion log. Supports `?startDate=`, `?endDate=`, `?page=`, `?export=true` (returns all rows for CSV download)
 
 ### Admin Assistant
-- `POST /api/assistant` — Multi-turn agentic chat using Sonnet 4.6. Runs tool loop (max 5 turns) with 6 read tools: `query_customers`, `query_orders`, `query_deliveries`, `query_financials`, `query_metrics`, `search_conversations`. Write tools (`mark_order_paid`, `cancel_order`, `send_whatsapp_message`, `update_customer_field`) are intercepted — returns `{ ok: true, text, pendingAction }` instead of executing. Requires auth.
-- `POST /api/assistant/execute` — Execute a confirmed write-tool action. Body: `{ tool, input }`. Only accepts tools in `WRITE_TOOLS` set. `mark_order_paid` side effects: sets status → active, conversion tracking, journal entry (Dr Bank BCA / Cr Uang Muka), WhatsApp confirmation to customer. `update_customer_field` allowlist: name, address, area, notes. Requires auth.
+- `POST /api/assistant` — Multi-turn agentic chat using Sonnet 4.6. Runs tool loop (max 5 turns) with 6 read tools: `query_customers`, `query_orders`, `query_deliveries`, `query_financials`, `query_metrics`, `search_conversations`. Write tools (`mark_order_paid`, `cancel_order`, `send_whatsapp_message`, `update_customer_field`) are intercepted — returns `{ ok: true, text, pendingAction }` instead of executing. Body accepts optional `conversationId`; if absent, a new thread is created lazily and returned. Each turn (user msg + reply) is persisted to `assistant_conversations` / `assistant_messages` (shared across all admins). Requires auth.
+- `POST /api/assistant/execute` — Execute a confirmed write-tool action. Body: `{ tool, input, conversationId? }`. Only accepts tools in `WRITE_TOOLS` set. `mark_order_paid` side effects: sets status → active, conversion tracking, journal entry (Dr Bank BCA / Cr Uang Muka), WhatsApp confirmation to customer. `update_customer_field` allowlist: name, address, area, notes. Confirmation reply persisted to the thread when `conversationId` is provided. Requires auth.
+- `GET /api/assistant/conversations` — List all chat threads (`id, title, updated_at`), newest first.
+- `POST /api/assistant/conversations` — Create an empty thread, returns `{ id }`.
+- `GET /api/assistant/conversations/[id]` — List messages for a thread.
+- `PATCH /api/assistant/conversations/[id]` — Rename a thread (body `{ title }`).
+- `DELETE /api/assistant/conversations/[id]` — Delete a thread (cascades to messages).
 
 ### Accounting
 - `GET /api/accounting` — Paginated journal entries with optional date range filter
@@ -376,7 +381,7 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (37 tests across 8 suites):
+Current coverage (47 tests across 9 suites):
 
 Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
@@ -391,6 +396,9 @@ Phase 2 — business logic and data integrity:
 Phase 3 — admin assistant:
 - `test/api/assistant.test.ts` — 7 tests: auth guard, invalid body, read-only tool loop, write-tool interception returns pendingAction, turn cap, unauthenticated returns 401
 - `test/api/assistant-execute.test.ts` — 6 tests: auth guard, invalid tool rejected, mark_order_paid success + side effects, update_customer_field allowlist, disallowed field returns 400, order not found returns 404
+
+Phase 4 — assistant chat history:
+- `test/api/assistant-history.test.ts` — 10 tests: conversations list/create auth + data, [id] messages + delete auth + data, saveTurn title derivation on first message vs subsequent
 
 A pre-push hook (`.git/hooks/pre-push`) runs `pnpm tsc --noEmit && pnpm test` before every push and blocks if either fails.
 

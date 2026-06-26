@@ -1,6 +1,6 @@
 # Database Tables
 
-24 tables in the `public` schema.
+26 tables in the `public` schema.
 
 ---
 
@@ -31,6 +31,31 @@ People who can log in to the dashboard. Email is the primary key (matches Supaba
 | name | text | Display name |
 | role | text | `"owner"` or `"admin"` — owners have full access, admins are blocked from Accounting |
 | created_at | timestamp | |
+
+---
+
+## assistant_conversations
+
+A dashboard Admin Assistant chat thread. Shared across all admins (not per-user).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| title | text | Auto-set from first user message (truncated ~40 chars); editable via PATCH |
+| created_at | timestamptz | |
+| updated_at | timestamptz | Bumped on every persisted turn |
+
+## assistant_messages
+
+One row per message in an Assistant thread (user or assistant).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| conversation_id | uuid | FK → assistant_conversations (cascade delete) |
+| role | text | `"user"` or `"assistant"` |
+| content | text | Message text |
+| created_at | timestamptz | Ordering within a thread |
 
 ---
 
