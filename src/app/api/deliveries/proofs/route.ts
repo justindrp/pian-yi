@@ -102,6 +102,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       subcontractor_id: subcontractorId ?? null,
       match_method: "admin_upload",
       status: "admin_uploaded",
+      received_at: new Date(`${date}T12:00:00Z`).toISOString(),
       sent_by: user.email,
     })
     .select("id")

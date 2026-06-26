@@ -57,6 +57,7 @@ interface Proof {
   status: string;
   match_confidence: number | null;
   sent_to_customer_at: string | null;
+  sent_by: string | null;
   subcontractors: { name: string } | null;
   customers: { name: string | null; phone_number: string } | null;
   matched_customer_id: string | null;
@@ -320,7 +321,6 @@ export default function DeliveriesClient() {
       return json.data;
     },
     refetchInterval: tab === "proofs" ? 15000 : false,
-    enabled: tab === "proofs",
   });
 
   useEffect(() => {
@@ -414,8 +414,11 @@ export default function DeliveriesClient() {
 
   const autoSent = (proofs ?? []).filter((p) => p.status === "auto_sent");
   const adminUploaded = (proofs ?? []).filter((p) => p.status === "admin_uploaded");
+  const manuallySent = (proofs ?? []).filter((p) => p.status === "manually_sent");
   const needsReview = (proofs ?? []).filter((p) => p.status === "needs_review");
   const unmatched = (proofs ?? []).filter((p) => p.status === "unmatched");
+
+  const proofCustomerIds = new Set((proofs ?? []).map((p) => p.matched_customer_id));
 
   const activeSubs = (subs ?? []).filter((s: Sub & { is_active?: boolean }) => s.is_active !== false);
 
@@ -431,6 +434,7 @@ export default function DeliveriesClient() {
       const res = await fetch("/api/deliveries/proofs", { method: "POST", body: fd });
       const json = await res.json() as { ok: boolean };
       setUploadStates((prev) => ({ ...prev, [key]: json.ok ? "done" : "error" }));
+      if (json.ok) qc.invalidateQueries({ queryKey: ["delivery-proofs", date] });
     } catch {
       setUploadStates((prev) => ({ ...prev, [key]: "error" }));
     }
@@ -532,7 +536,7 @@ export default function DeliveriesClient() {
                                       onUpdatePortions={(cid, mt, portions) => updateRow(cid, mt, "portions", portions)}
                                       onUpdateSub={(cid, mt, subId) => updateRow(cid, mt, "subcontractor_id", subId)}
                                       onUpdateAddressSlot={(cid, mt, slot) => updateRow(cid, mt, "address_slot", slot)}
-                                      uploadState={uploadStates[`${r.customer_id}-${r.meal_type}`] ?? "idle"}
+                                      uploadState={uploadStates[`${r.customer_id}-${r.meal_type}`] ?? (proofCustomerIds.has(r.customer_id) ? "done" : "idle")}
                                       onUploadProof={(file) => handleUploadProof(r.customer_id, r.meal_type, r.subcontractor_id, file)}
                                     />
                                   ))}
@@ -597,7 +601,7 @@ export default function DeliveriesClient() {
                                   </select>
                                 </td>
                                 <UploadButton
-                                  uploadState={uploadStates[`${r.customer_id}-${meal}`] ?? "idle"}
+                                  uploadState={uploadStates[`${r.customer_id}-${meal}`] ?? (proofCustomerIds.has(r.customer_id) ? "done" : "idle")}
                                   onUpload={(file) => handleUploadProof(r.customer_id, meal, r.subcontractor_id, file)}
                                 />
                               </tr>
@@ -682,6 +686,22 @@ export default function DeliveriesClient() {
               </div>
             </div>
           )}
+          <div>
+            <h2 className="font-medium text-gray-700 text-sm mb-2">Manually sent ({manuallySent.length})</h2>
+            {manuallySent.length === 0 ? <p className="text-gray-400 text-sm">None today.</p> : (
+              <div className="grid grid-cols-3 gap-3">
+                {manuallySent.map((p) => (
+                  <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3">
+                    {p.signed_url && <img src={p.signed_url} alt="proof" className="w-full h-32 object-cover rounded-lg mb-2" />}
+                    <div className="text-xs text-gray-600">{p.customers?.name ?? "Unknown"}</div>
+                    <div className="text-xs text-gray-400">{p.sent_to_customer_at ? new Date(p.sent_to_customer_at).toLocaleTimeString("id-ID") : ""}</div>
+                    {p.sent_by && <div className="text-xs text-gray-400">by {p.sent_by}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div>
             <h2 className="font-medium text-gray-700 text-sm mb-2">Auto-matched & sent ({autoSent.length})</h2>
             {autoSent.length === 0 ? <p className="text-gray-400 text-sm">None today.</p> : (

@@ -255,14 +255,14 @@ Photos sent by subcontractors via WhatsApp as proof of delivery. Haiku matches e
 | whatsapp_message_id | text | WhatsApp message ID of the photo |
 | image_url | text | Public URL of the uploaded photo in Supabase Storage |
 | caption | text | Caption attached to the photo |
-| status | text | "pending", "matched", "unmatched", "sent_to_customer" |
+| status | text | "admin_uploaded" (awaiting send), "auto_sent", "manually_sent", "needs_review", "unmatched" |
 | matched_delivery_id | uuid | FK → daily_deliveries — the delivery this photo is matched to |
 | matched_customer_id | uuid | FK → customers |
 | match_confidence | number | 0–1 confidence score from Haiku |
 | match_method | text | How the match was made (e.g. "ai", "manual") |
 | sent_by | text | Admin who sent the proof to the customer |
 | sent_to_customer_at | timestamp | When the proof was forwarded to the customer |
-| received_at | timestamp | |
+| received_at | timestamp | Stamped to the admin-selected delivery date on admin upload (GET filters proofs by this date) |
 
 ---
 

@@ -273,7 +273,7 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 - `GET /api/deliveries/daily-sheet` — Fetch delivery rows for a given date
 - `POST /api/deliveries/daily-sheet` — Create daily delivery rows for a date
 - `GET /api/deliveries/proofs` — List payment proof photos with signed URLs
-- `POST /api/deliveries/proofs` — Upload proof photo; triggers Haiku photo matching against expected orders
+- `POST /api/deliveries/proofs` — Upload proof photo (admin upload); stamps `received_at` to the admin-selected delivery date so it lands on the right day, inserts with `status: "admin_uploaded"` and `matched_customer_id`; surfaces in the "Ready to send" section of the Proof of Delivery tab.
 
 ### Inbox (admin-guided bot responses)
 - `POST /api/inbox/bot-reply` — Admin provides a concise answer → Haiku polishes it → bot sends polished message to customer → clears `pending_bot_response` flag
@@ -384,7 +384,7 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (47 tests across 9 suites):
+Current coverage (60 tests across 11 suites):
 
 Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
@@ -402,6 +402,9 @@ Phase 3 — admin assistant:
 
 Phase 4 — assistant chat history:
 - `test/api/assistant-history.test.ts` — 10 tests: conversations list/create auth + data, [id] messages + delete auth + data, saveTurn title derivation on first message vs subsequent
+
+Phase 5 — delivery proofs:
+- `test/api/delivery-proofs.test.ts` — 5 tests: POST stamps `received_at` to selected date, POST missing customer_id returns 400, PATCH send sets `manually_sent` + side fields, PATCH unmatch, unauthenticated GET/POST return 401
 
 A pre-push hook (`.git/hooks/pre-push`) runs `pnpm typecheck && pnpm test` before every push and blocks if either fails.
 
@@ -435,7 +438,7 @@ When adding new API routes or webhook code paths, add a corresponding test in `t
 ## Known issues / tech debt
 
 - `/api/auth/check-admin` accepts the email from the request body without verifying the caller's session — allows unauthenticated admin email enumeration via 200 vs 403 response. Fix: extract email from a verified Supabase session instead.
-- **Manual delivery proof upload** (`POST /api/deliveries/proofs`, `match_method: "admin_upload"`) currently saves the proof and surfaces it in a "Ready to send" section in the Proof of Delivery tab. Future: auto-send to customer immediately on upload — call `sendDeliveryPhotoToCustomer(proofId, customerId)` directly in the POST route and set status to `"manually_sent"`, skipping the "Ready to send" UI step entirely.
+- **Manual delivery proof upload** (`POST /api/deliveries/proofs`, `match_method: "admin_upload"`) saves the proof with `received_at` stamped to the selected delivery date and surfaces it in a "Ready to send" section in the Proof of Delivery tab. The Daily Sheet row's camera/checkmark icon derives from whether a proof exists for that customer+date (DB-backed, survives refresh). Sending moves the proof to a "Manually sent" section (`status: "manually_sent"`). Future: auto-send to customer immediately on upload — call `sendDeliveryPhotoToCustomer(proofId, customerId)` directly in the POST route, skipping the "Ready to send" UI step entirely.
 - `supabase/seed.sql` may still reference the old `"BSD"` delivery area string (not yet split into BSD Baru / BSD Lama); `subcontractors-client.tsx` was updated when Karawaci was added.
 
 <!-- rtk-instructions v2 -->
