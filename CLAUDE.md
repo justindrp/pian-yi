@@ -367,7 +367,9 @@ Standard commands (always use these spellings):
 - Dev server: `pnpm dev`
 - Build: `pnpm build`
 - Lint: `pnpm lint` (Biome linter, rules only)
+- Lint autofix: `pnpm lint:fix` (applies safe lint-rule fixes)
 - Check: `pnpm check` (Biome `check` — formatter + linter + imports; the full gate)
+- Check autofix: `pnpm check:fix` (applies safe lint + format + import fixes)
 - Format: `pnpm format` (Biome `format --write`, applies fixes)
 - Type-check: `pnpm typecheck`
 - Supabase types: `pnpm supabase gen types typescript --linked > src/types/database.ts`
