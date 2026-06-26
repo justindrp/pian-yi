@@ -49,7 +49,7 @@ export function parseMessage(
   if (!message) return null;
   return {
     messageId: message.id,
-    from: message.from,
+    from: message.from.startsWith("+") ? message.from : `+${message.from}`,
     type: message.type,
     text: message.text?.body,
     imageId: message.image?.id,
