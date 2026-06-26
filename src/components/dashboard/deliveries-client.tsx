@@ -269,7 +269,7 @@ function SortableDeliveryRow({
         <select
           value={row.subcontractor_id ?? ""}
           onChange={(e) => onUpdateSub(row.customer_id, row.meal_type, e.target.value || null)}
-          className="text-xs border border-gray-200 rounded px-1 py-0.5"
+          className="text-xs border border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto"
         >
           <option value="">—</option>
           {subs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -360,6 +360,17 @@ export default function DeliveriesClient() {
   const sendProof = useMutation({
     mutationFn: async ({ id, customer_id }: { id: string; customer_id: string }) => {
       await fetch("/api/deliveries/proofs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "send", customer_id }) });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
+  });
+
+  const sendAll = useMutation({
+    mutationFn: async (toSend: Proof[]) => {
+      for (const p of toSend) {
+        if (p.matched_customer_id) {
+          await fetch("/api/deliveries/proofs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: p.id, action: "send", customer_id: p.matched_customer_id }) });
+        }
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
   });
@@ -579,7 +590,7 @@ export default function DeliveriesClient() {
                                   <select
                                     value={r.subcontractor_id ?? ""}
                                     onChange={(e) => updateRow(r.customer_id, meal, "subcontractor_id", e.target.value || null)}
-                                    className="text-xs border border-gray-200 rounded px-1 py-0.5"
+                                    className="text-xs border border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto"
                                   >
                                     <option value="">—</option>
                                     {activeSubs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -642,7 +653,17 @@ export default function DeliveriesClient() {
         <div className="space-y-6">
           {adminUploaded.length > 0 && (
             <div>
-              <h2 className="font-medium text-gray-700 text-sm mb-2">Ready to send ({adminUploaded.length})</h2>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-medium text-gray-700 text-sm">Ready to send ({adminUploaded.length})</h2>
+                <button
+                  type="button"
+                  onClick={() => sendAll.mutate(adminUploaded)}
+                  disabled={sendAll.isPending || adminUploaded.every((p) => !p.matched_customer_id)}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40"
+                >
+                  {sendAll.isPending ? "Sending..." : "Send All"}
+                </button>
+              </div>
               <div className="space-y-2">
                 {adminUploaded.map((p) => (
                   <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-4">
