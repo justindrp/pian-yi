@@ -3,6 +3,7 @@ import { POST } from "@/app/api/assistant/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAnthropicClient } from "@/lib/claude/client";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
+import { buildPendingAction } from "@/lib/claude/assistant-tools";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/claude/client", () => ({
@@ -10,6 +11,19 @@ jest.mock("@/lib/claude/client", () => ({
   SONNET_MODEL: "claude-sonnet-4-6",
 }));
 jest.mock("@/lib/supabase/get-role", () => ({ getSessionWithRole: jest.fn() }));
+jest.mock("@/lib/claude/assistant-tools", () => {
+  const real = jest.requireActual("@/lib/claude/assistant-tools");
+  return {
+    ...real,
+    buildPendingAction: jest.fn().mockResolvedValue({
+      tool: "mark_order_paid",
+      input: { order_id: "order-1" },
+      label: "Mark order as paid — Rp 290,000",
+      details: ["Customer: Budi"],
+      dangerous: false,
+    }),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -167,6 +181,78 @@ describe("POST /api/assistant", () => {
     expect(db.from).toHaveBeenCalledWith("daily_deliveries");
     expect(db.from).toHaveBeenCalledWith("customer_state");
     expect(db.from).toHaveBeenCalledWith("delivery_proofs");
+  });
+
+  test("T6 — Claude calls write tool, pendingAction returned, no DB update", async () => {
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    (getAnthropicClient as jest.Mock).mockReturnValue(
+      makeClaudeMock([
+        {
+          stop_reason: "tool_use",
+          content: [
+            { type: "text", text: "I'll mark that order as paid." },
+            { type: "tool_use", id: "t1", name: "mark_order_paid", input: { order_id: "order-1" } },
+          ],
+        },
+      ]),
+    );
+
+    const res = await POST(
+      postRequest({ messages: [{ role: "user", content: "mark order order-1 as paid" }] }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.pendingAction).toBeDefined();
+    expect(body.pendingAction.tool).toBe("mark_order_paid");
+    expect(buildPendingAction as jest.Mock).toHaveBeenCalledWith("mark_order_paid", { order_id: "order-1" });
+    // orders table must NOT have been updated
+    expect(db.chains.orders?.update).toBeUndefined();
+  });
+
+  test("T7 — write tool after read tool: loop terminates with pendingAction", async () => {
+    const db = makeDbMock({
+      orders: { data: [], error: null, count: 3 },
+      daily_deliveries: { data: [], error: null, count: 2 },
+      customer_state: { data: [], error: null, count: 0 },
+      delivery_proofs: { data: [], error: null, count: 1 },
+      journal_lines: { data: [], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    (getAnthropicClient as jest.Mock).mockReturnValue(
+      makeClaudeMock([
+        // turn 1: read tool
+        {
+          stop_reason: "tool_use",
+          content: [{ type: "tool_use", id: "t1", name: "query_metrics", input: {} }],
+        },
+        // turn 2: write tool
+        {
+          stop_reason: "tool_use",
+          content: [
+            { type: "text", text: "Looks like order-1 is unpaid. Marking it now." },
+            { type: "tool_use", id: "t2", name: "mark_order_paid", input: { order_id: "order-1" } },
+          ],
+        },
+      ]),
+    );
+
+    const res = await POST(
+      postRequest({ messages: [{ role: "user", content: "check metrics then mark order-1 paid" }] }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.pendingAction).toBeDefined();
+    expect(body.pendingAction.tool).toBe("mark_order_paid");
+    // loop should have called create exactly twice
+    const mockCreate = (getAnthropicClient as jest.Mock).mock.results[0].value.messages.create;
+    expect(mockCreate.mock.calls.length).toBe(2);
   });
 
   test("T5 — tool loop caps at 5 turns and still returns", async () => {

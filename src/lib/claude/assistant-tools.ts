@@ -1,6 +1,25 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+export type PendingAction = {
+  tool: string;
+  input: Record<string, unknown>;
+  label: string;
+  details: string[];
+  dangerous: boolean;
+};
+
+export const WRITE_TOOLS = new Set([
+  "mark_order_paid",
+  "cancel_order",
+  "send_whatsapp_message",
+  "update_customer_field",
+]);
+
+export function isWriteTool(name: string): boolean {
+  return WRITE_TOOLS.has(name);
+}
+
 export const assistantTools: Tool[] = [
   {
     name: "query_customers",
@@ -86,12 +105,79 @@ export const assistantTools: Tool[] = [
       },
     },
   },
+  {
+    name: "mark_order_paid",
+    description:
+      "Mark a pending order as paid and activate it. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_id: { type: "string", description: "The order UUID" },
+      },
+      required: ["order_id"],
+    },
+  },
+  {
+    name: "cancel_order",
+    description:
+      "Cancel an order by admin. Optionally notify the customer via WhatsApp. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_id: { type: "string", description: "The order UUID" },
+        notify_customer: {
+          type: "boolean",
+          description: "Whether to send a WhatsApp cancellation message to the customer",
+        },
+        reason: { type: "string", description: "Optional reason for cancellation (included in WhatsApp message)" },
+      },
+      required: ["order_id", "notify_customer"],
+    },
+  },
+  {
+    name: "send_whatsapp_message",
+    description:
+      "Send a WhatsApp text message to a customer's phone number. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        phone_number: {
+          type: "string",
+          description: "Customer's phone number in international format (e.g. +628...)",
+        },
+        message: { type: "string", description: "The message text to send" },
+      },
+      required: ["phone_number", "message"],
+    },
+  },
+  {
+    name: "update_customer_field",
+    description:
+      "Update a specific field on a customer record. Only name, address, area, and notes are allowed. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        customer_id: { type: "string", description: "The customer UUID" },
+        field: {
+          type: "string",
+          enum: ["name", "address", "area", "notes"],
+          description: "Which field to update",
+        },
+        value: { type: "string", description: "The new value" },
+      },
+      required: ["customer_id", "field", "value"],
+    },
+  },
 ];
 
 export async function runTool(
   name: string,
   input: Record<string, unknown>,
 ): Promise<unknown> {
+  if (isWriteTool(name)) {
+    throw new Error(`Write tool '${name}' must not be executed via runTool`);
+  }
+
   const db = createAdminClient();
   const limit = Math.min(Number(input.limit ?? 20), 50);
 
@@ -253,5 +339,107 @@ export async function runTool(
 
     default:
       return { error: `Unknown tool: ${name}` };
+  }
+}
+
+export async function buildPendingAction(
+  tool: string,
+  input: Record<string, unknown>,
+): Promise<PendingAction> {
+  const db = createAdminClient();
+
+  switch (tool) {
+    case "mark_order_paid": {
+      const { data: order } = await db
+        .from("orders")
+        .select("id, total_price, package_size, size, status, customers(name)")
+        .eq("id", input.order_id as string)
+        .single();
+      const rawCustomer = order?.customers;
+      const customerName = Array.isArray(rawCustomer)
+        ? (rawCustomer[0]?.name ?? "Unknown")
+        : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
+      const totalPrice = (order as { total_price?: number } | null)?.total_price ?? 0;
+      const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
+      const orderData = order as {
+        package_size?: number;
+        size?: string;
+        status?: string;
+      } | null;
+      return {
+        tool,
+        input,
+        label: `Mark order as paid — Rp ${formatted}`,
+        details: [
+          `Customer: ${customerName}`,
+          `Package: ${orderData?.package_size ?? "?"} porsi (${(orderData?.size ?? "s").toUpperCase()})`,
+          `Current status: ${orderData?.status ?? "unknown"}`,
+        ],
+        dangerous: false,
+      };
+    }
+
+    case "cancel_order": {
+      const { data: order } = await db
+        .from("orders")
+        .select("id, status, package_size, customers(name)")
+        .eq("id", input.order_id as string)
+        .single();
+      const rawCustomer = order?.customers;
+      const customerName = Array.isArray(rawCustomer)
+        ? (rawCustomer[0]?.name ?? "Unknown")
+        : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
+      const orderData = order as { package_size?: number; status?: string } | null;
+      return {
+        tool,
+        input,
+        label: "Cancel order",
+        details: [
+          `Customer: ${customerName}`,
+          `Package: ${orderData?.package_size ?? "?"} porsi`,
+          `Current status: ${orderData?.status ?? "unknown"}`,
+          input.notify_customer
+            ? "Will notify customer via WhatsApp"
+            : "Customer will NOT be notified",
+          ...(input.reason ? [`Reason: ${input.reason as string}`] : []),
+        ],
+        dangerous: true,
+      };
+    }
+
+    case "send_whatsapp_message": {
+      const phone = input.phone_number as string;
+      const message = input.message as string;
+      const preview = message.length > 60 ? `${message.slice(0, 60)}...` : message;
+      return {
+        tool,
+        input,
+        label: `Send WhatsApp to ${phone}`,
+        details: [`Message: "${preview}"`],
+        dangerous: false,
+      };
+    }
+
+    case "update_customer_field": {
+      const { data: customer } = await db
+        .from("customers")
+        .select("name")
+        .eq("id", input.customer_id as string)
+        .single();
+      return {
+        tool,
+        input,
+        label: `Update customer ${input.field as string}`,
+        details: [
+          `Customer: ${(customer as { name?: string } | null)?.name ?? "Unknown"}`,
+          `Field: ${input.field as string}`,
+          `New value: ${input.value as string}`,
+        ],
+        dangerous: false,
+      };
+    }
+
+    default:
+      return { tool, input, label: `Execute: ${tool}`, details: [], dangerous: false };
   }
 }

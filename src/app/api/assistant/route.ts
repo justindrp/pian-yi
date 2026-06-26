@@ -2,7 +2,7 @@ import type { MessageParam, ToolResultBlockParam } from "@anthropic-ai/sdk/resou
 import { NextResponse } from "next/server";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { getAssistantSystemPrompt } from "@/lib/claude/assistant-prompt";
-import { assistantTools, runTool } from "@/lib/claude/assistant-tools";
+import { assistantTools, runTool, isWriteTool, buildPendingAction } from "@/lib/claude/assistant-tools";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 
 export async function POST(request: Request) {
@@ -45,6 +45,17 @@ export async function POST(request: Request) {
     if (response.stop_reason === "tool_use") {
       const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
       if (toolUseBlocks.length === 0) break;
+
+      const writeBlock = toolUseBlocks.find((b) => b.type === "tool_use" && isWriteTool(b.name));
+      if (writeBlock && writeBlock.type === "tool_use") {
+        const proposalText = response.content.find((b) => b.type === "text");
+        const text = proposalText?.type === "text" ? proposalText.text : "";
+        const pendingAction = await buildPendingAction(
+          writeBlock.name,
+          writeBlock.input as Record<string, unknown>,
+        );
+        return NextResponse.json({ ok: true, text, pendingAction });
+      }
 
       currentMessages.push({ role: "assistant", content: response.content });
 
