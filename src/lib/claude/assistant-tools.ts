@@ -13,6 +13,7 @@ export const WRITE_TOOLS = new Set([
   "mark_order_paid",
   "cancel_order",
   "send_whatsapp_message",
+  "send_whatsapp_image",
   "update_customer_field",
 ]);
 
@@ -106,6 +107,15 @@ export const assistantTools: Tool[] = [
     },
   },
   {
+    name: "query_menu_assets",
+    description:
+      "Get the current price list image and active weekly dapur menu images/text. Use this before answering or sending this week's menu.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+    },
+  },
+  {
     name: "mark_order_paid",
     description:
       "Mark a pending order as paid and activate it. Admin must confirm before this executes.",
@@ -148,6 +158,23 @@ export const assistantTools: Tool[] = [
         message: { type: "string", description: "The message text to send" },
       },
       required: ["phone_number", "message"],
+    },
+  },
+  {
+    name: "send_whatsapp_image",
+    description:
+      "Send a WhatsApp image by public URL to a customer's phone number. Use for price list or weekly menu images. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        phone_number: {
+          type: "string",
+          description: "Customer's phone number in international format (e.g. +628...)",
+        },
+        image_url: { type: "string", description: "Public image URL to send" },
+        caption: { type: "string", description: "Short image caption" },
+      },
+      required: ["phone_number", "image_url", "caption"],
     },
   },
   {
@@ -337,6 +364,27 @@ export async function runTool(
       return { messages: (data ?? []).reverse(), count: data?.length ?? 0 };
     }
 
+    case "query_menu_assets": {
+      const [{ data: settings }, { data: subcontractors }] = await Promise.all([
+        db.from("settings").select("key, value").eq("key", "price_list_image_url"),
+        db
+          .from("subcontractors")
+          .select("customer_nickname, menu_image_url, menu_text, delivery_areas")
+          .eq("is_active", true)
+          .not("menu_image_url", "is", null)
+          .order("customer_nickname"),
+      ]);
+      return {
+        price_list_image_url: settings?.[0]?.value ?? null,
+        menus: (subcontractors ?? []).map((s) => ({
+          dapur: s.customer_nickname,
+          image_url: s.menu_image_url,
+          menu_text: s.menu_text,
+          delivery_areas: s.delivery_areas,
+        })),
+      };
+    }
+
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -416,6 +464,20 @@ export async function buildPendingAction(
         input,
         label: `Send WhatsApp to ${phone}`,
         details: [`Message: "${preview}"`],
+        dangerous: false,
+      };
+    }
+
+    case "send_whatsapp_image": {
+      const phone = input.phone_number as string;
+      const imageUrl = input.image_url as string;
+      const caption = input.caption as string;
+      const preview = caption.length > 60 ? `${caption.slice(0, 60)}...` : caption;
+      return {
+        tool,
+        input,
+        label: `Send WhatsApp image to ${phone}`,
+        details: [`Caption: "${preview}"`, `Image: ${imageUrl}`],
         dangerous: false,
       };
     }

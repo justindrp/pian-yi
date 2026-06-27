@@ -39,6 +39,8 @@ export default function InboxClient() {
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [learningContext, setLearningContext] = useState(false);
+  const [learnedContextStatus, setLearnedContextStatus] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameQuery, setRenameQuery] = useState("");
   const [allCustomers, setAllCustomers] = useState<
@@ -185,6 +187,7 @@ export default function InboxClient() {
 
   async function selectThread(customerId: string) {
     setSelectedCustomerId(customerId);
+    setLearnedContextStatus(null);
     setMobileView("chat");
     await Promise.all([loadMessages(customerId), loadFlags(customerId)]);
   }
@@ -223,6 +226,24 @@ export default function InboxClient() {
       return;
     }
     setFlags(nextFlags);
+  }
+
+  async function learnConversationContext() {
+    if (!selectedCustomerId) return;
+    setLearningContext(true);
+    setLearnedContextStatus(null);
+    const res = await fetch("/api/inbox/learn-context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId }),
+    });
+    setLearningContext(false);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      setLearnedContextStatus(body?.error ?? "Failed to learn context");
+      return;
+    }
+    setLearnedContextStatus("Learned context saved");
   }
 
   async function openRename() {
@@ -429,7 +450,7 @@ export default function InboxClient() {
       {selectedThread ? (
         <div className={`flex-1 flex flex-col min-w-0 ${mobileView === "list" ? "hidden md:flex" : "flex"}`}>
           {/* Header */}
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <button
                 type="button"
@@ -507,7 +528,17 @@ export default function InboxClient() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-end gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={learnConversationContext}
+                disabled={learningContext}
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                {learningContext ? "Learning..." : "Learn chat"}
+              </Button>
               {!flags?.pending_bot_response && !flags?.escalated_to_human && (
                 <Button
                   type="button"
@@ -541,6 +572,12 @@ export default function InboxClient() {
               </Button>
             </div>
           </div>
+
+          {learnedContextStatus && (
+            <div className="px-5 py-2 border-b border-blue-100 bg-blue-50 text-xs text-blue-700">
+              {learnedContextStatus}
+            </div>
+          )}
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2">

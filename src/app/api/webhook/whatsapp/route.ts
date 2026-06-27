@@ -108,7 +108,7 @@ export async function processWebhookAsync(
       { phone_number: message.from, updated_at: new Date().toISOString() },
       { onConflict: "phone_number" },
     )
-    .select("id, name, first_message")
+    .select("id, name, notes, first_message")
     .single();
 
   if (!customer) return;
@@ -464,6 +464,7 @@ export async function processWebhookAsync(
     casual,
     customerState: stateRow?.state ?? "new",
     customerName: customer.name,
+    customerNotes: customer.notes,
     detectedMapsLink,
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,

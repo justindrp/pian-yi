@@ -8,6 +8,7 @@ export async function buildSystemPrompt(params: {
   casual: boolean;
   customerState: string;
   customerName: string | null;
+  customerNotes: string | null;
   detectedMapsLink: string | null;
   menuShown: boolean;
   dapurOptions: { id: string; nickname: string }[];
@@ -23,7 +24,7 @@ export async function buildSystemPrompt(params: {
 }): Promise<string> {
   const [
     businessName,
-    instagramHandle,
+    ,
     bankName,
     bankAccountNumber,
     bankAccountName,
@@ -232,6 +233,7 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 ## Current context
 - Customer state: ${params.customerState}
 - Customer name (if known): ${params.customerName ?? "unknown"}
+- Customer notes / learned context: ${params.customerNotes?.trim() || "none"}
 - Today: ${now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 - Order deadline tonight: ${deadlineTime}
 - Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${params.activeOrder ? `\n- Active order quota: ${params.activeOrder.portionsRemaining} / ${params.activeOrder.packageSize} portions remaining` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${

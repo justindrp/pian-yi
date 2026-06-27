@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
-import { saveMessage } from "@/lib/claude/conversation";
-import { sendTextMessage } from "@/lib/whatsapp/client";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { saveAssistantReply } from "@/lib/claude/assistant-history";
+import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
+import { saveMessage } from "@/lib/claude/conversation";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
+import { sendImageMessage, sendTextMessage } from "@/lib/whatsapp/client";
 
 const ALLOWED_CUSTOMER_FIELDS = new Set(["name", "address", "area", "notes"]);
 
@@ -168,6 +168,28 @@ export async function POST(request: Request) {
         await saveMessage({ customerId: cust.id, role: "assistant", content: message, modelUsed: "human" });
       }
       return reply(`Pesan WhatsApp sudah dikirim ke ${phone}.`);
+    }
+
+    case "send_whatsapp_image": {
+      const phone = input.phone_number as string;
+      const imageUrl = input.image_url as string;
+      const caption = input.caption as string;
+      await sendImageMessage(phone, imageUrl, caption);
+      const { data: cust } = await db
+        .from("customers")
+        .select("id")
+        .eq("phone_number", phone)
+        .maybeSingle();
+      if (cust?.id) {
+        await saveMessage({
+          customerId: cust.id,
+          role: "assistant",
+          content: imageUrl,
+          messageType: "image",
+          modelUsed: "human",
+        });
+      }
+      return reply(`Gambar WhatsApp sudah dikirim ke ${phone}.`);
     }
 
     case "update_customer_field": {

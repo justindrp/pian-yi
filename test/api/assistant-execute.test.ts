@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/assistant/execute/route";
+import { createJournalEntry } from "@/lib/accounting/journal";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { sendTextMessage } from "@/lib/whatsapp/client";
-import { saveMessage } from "@/lib/claude/conversation";
-import { createJournalEntry } from "@/lib/accounting/journal";
+import { sendImageMessage, sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/supabase/get-role", () => ({ getSessionWithRole: jest.fn() }));
-jest.mock("@/lib/whatsapp/client", () => ({ sendTextMessage: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("@/lib/whatsapp/client", () => ({
+  sendImageMessage: jest.fn().mockResolvedValue(undefined),
+  sendTextMessage: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("@/lib/claude/conversation", () => ({ saveMessage: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/accounting/journal", () => ({ createJournalEntry: jest.fn().mockResolvedValue(undefined) }));
 
@@ -28,6 +30,7 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
@@ -168,7 +171,32 @@ describe("POST /api/assistant/execute", () => {
     expect(db.chains.customers?.update).toHaveBeenCalledWith({ name: "Budi Baru" });
   });
 
-  test("T6 — update_customer_field field=phone_number → 400, no DB update", async () => {
+  test("T6 — send_whatsapp_image sends image and logs image row", async () => {
+    const db = makeDbMock({
+      customers: { data: { id: "cust-4" }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await POST(
+      postRequest({
+        tool: "send_whatsapp_image",
+        input: {
+          phone_number: "+628111",
+          image_url: "https://example.com/menu.jpg",
+          caption: "Menu minggu ini",
+        },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(sendImageMessage).toHaveBeenCalledWith(
+      "+628111",
+      "https://example.com/menu.jpg",
+      "Menu minggu ini",
+    );
+  });
+
+  test("T7 — update_customer_field field=phone_number → 400, no DB update", async () => {
     const db = makeDbMock();
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
