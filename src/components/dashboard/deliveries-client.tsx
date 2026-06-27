@@ -671,6 +671,7 @@ export default function DeliveriesClient() {
               <div className="space-y-2">
                 {adminUploaded.map((p) => (
                   <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-4">
+                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && <img src={p.signed_url} alt="proof" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />}
                     <div className="flex-1 text-sm text-gray-700">{p.customers?.name ?? p.matched_customer_id?.slice(0, 8) ?? "Unknown"}</div>
                     <button
@@ -692,6 +693,7 @@ export default function DeliveriesClient() {
               <div className="grid grid-cols-3 gap-3">
                 {manuallySent.map((p) => (
                   <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3">
+                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && <img src={p.signed_url} alt="proof" className="w-full h-32 object-cover rounded-lg mb-2" />}
                     <div className="text-xs text-gray-600">{p.customers?.name ?? "Unknown"}</div>
                     <div className="text-xs text-gray-400">{p.sent_to_customer_at ? new Date(p.sent_to_customer_at).toLocaleTimeString("id-ID") : ""}</div>
@@ -708,6 +710,7 @@ export default function DeliveriesClient() {
               <div className="grid grid-cols-3 gap-3">
                 {autoSent.map((p) => (
                   <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3">
+                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && <img src={p.signed_url} alt="proof" className="w-full h-32 object-cover rounded-lg mb-2" />}
                     <div className="text-xs text-gray-600">{p.customers?.name ?? "Unknown"}</div>
                     <div className="text-xs text-gray-400">Confidence: {p.match_confidence ? `${Math.round(p.match_confidence * 100)}%` : "—"}</div>
@@ -735,6 +738,7 @@ export default function DeliveriesClient() {
               <div className="grid grid-cols-3 gap-3">
                 {unmatched.map((p) => (
                   <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3 opacity-60">
+                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && <img src={p.signed_url} alt="proof" className="w-full h-32 object-cover rounded-lg mb-2" />}
                     <div className="text-xs text-gray-500">{p.caption ?? "No caption"}</div>
                   </div>
@@ -776,6 +780,7 @@ function ReviewProofCard({ proof, date, onSend, onUnmatch }: { proof: Proof; dat
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 flex gap-4">
+      {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
       {proof.signed_url && <img src={proof.signed_url} alt="proof" className="w-32 h-32 object-cover rounded-lg flex-shrink-0" />}
       <div className="flex-1 space-y-2">
         <div className="text-xs text-gray-500">From: {proof.subcontractors?.name ?? "Unknown"}</div>

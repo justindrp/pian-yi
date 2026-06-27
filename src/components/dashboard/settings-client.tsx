@@ -422,6 +422,7 @@ function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: stri
       <p className="block text-xs text-gray-500">{label}</p>
       {currentUrl && (
         <a href={currentUrl} target="_blank" rel="noreferrer">
+          {/* biome-ignore lint/performance/noImgElement: Supabase Storage URL — next/image impractical */}
           <img src={currentUrl} alt={label} className="h-24 w-auto rounded-lg border border-gray-200 object-cover" />
         </a>
       )}

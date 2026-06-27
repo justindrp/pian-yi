@@ -280,18 +280,14 @@ export default function CustomersClient() {
                         {c.customer_number ?? "—"}
                       </td>
                       <td
-                        className="px-4 py-3 text-gray-900 cursor-text"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCell({ id: c.id, field: "name", value: c.name ?? "" });
-                        }}
+                        className="px-4 py-3 text-gray-900"
                       >
                         {editingCell?.id === c.id && editingCell.field === "name" ? (
                           <Input
-                            // biome-ignore lint/a11y/noAutofocus: intentional inline edit activation
                             autoFocus
                             value={editingCell.value}
                             onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                            onClick={(e) => e.stopPropagation()}
                             onBlur={() => saveInline(c.id, "name", editingCell.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") saveInline(c.id, "name", editingCell.value);
@@ -300,20 +296,23 @@ export default function CustomersClient() {
                             className="w-full h-auto py-0.5 px-1 text-sm border-orange-400"
                           />
                         ) : (
-                          <span className="hover:underline decoration-dashed underline-offset-2 decoration-gray-300">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCell({ id: c.id, field: "name", value: c.name ?? "" });
+                            }}
+                            className="cursor-text hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
+                          >
                             {c.name ?? "—"}
-                          </span>
+                          </button>
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-500">
                         {maskPhone(c.phone_number)}
                       </td>
                       <td
-                        className="px-4 py-3 text-gray-500 cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCell({ id: c.id, field: "area", value: c.area ?? "" });
-                        }}
+                        className="px-4 py-3 text-gray-500"
                       >
                         {editingCell?.id === c.id && editingCell.field === "area" ? (
                           <select
@@ -321,6 +320,7 @@ export default function CustomersClient() {
                             autoFocus
                             value={editingCell.value}
                             onChange={(e) => saveInline(c.id, "area", e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
                             onBlur={() => setEditingCell(null)}
                             className="text-sm border border-orange-400 rounded focus:outline-none px-1 py-0.5"
                           >
@@ -330,24 +330,27 @@ export default function CustomersClient() {
                             ))}
                           </select>
                         ) : (
-                          <span className="hover:underline decoration-dashed underline-offset-2 decoration-gray-300">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCell({ id: c.id, field: "area", value: c.area ?? "" });
+                            }}
+                            className="cursor-pointer hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
+                          >
                             {c.area ?? "—"}
-                          </span>
+                          </button>
                         )}
                       </td>
                       <td
-                        className="px-4 py-3 text-gray-500 cursor-text"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCell({ id: c.id, field: "sub_area", value: c.sub_area ?? "" });
-                        }}
+                        className="px-4 py-3 text-gray-500"
                       >
                         {editingCell?.id === c.id && editingCell.field === "sub_area" ? (
                           <Input
-                            // biome-ignore lint/a11y/noAutofocus: intentional inline edit activation
                             autoFocus
                             value={editingCell.value}
                             onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                            onClick={(e) => e.stopPropagation()}
                             onBlur={() => saveInline(c.id, "sub_area", editingCell.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") saveInline(c.id, "sub_area", editingCell.value);
@@ -356,9 +359,16 @@ export default function CustomersClient() {
                             className="w-full h-auto py-0.5 px-1 text-sm border-orange-400"
                           />
                         ) : (
-                          <span className="hover:underline decoration-dashed underline-offset-2 decoration-gray-300">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCell({ id: c.id, field: "sub_area", value: c.sub_area ?? "" });
+                            }}
+                            className="cursor-text hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
+                          >
                             {c.sub_area ?? "—"}
-                          </span>
+                          </button>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-700">

@@ -28,7 +28,7 @@ export default function MobileNav({ navItems, userEmail, version }: MobileNavPro
           className="p-2 rounded-lg text-gray-500 hover:bg-gray-50"
           aria-label="Open menu"
         >
-          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} role="img" aria-label="Open menu">
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
@@ -36,9 +36,11 @@ export default function MobileNav({ navItems, userEmail, version }: MobileNavPro
 
       {/* Overlay */}
       {open && (
-        <div
+        <button
+          type="button"
           className="md:hidden fixed inset-0 z-40 bg-black/30"
           onClick={() => setOpen(false)}
+          aria-label="Close menu"
         />
       )}
 
@@ -59,7 +61,7 @@ export default function MobileNav({ navItems, userEmail, version }: MobileNavPro
             className="p-1 rounded-lg text-gray-400 hover:bg-gray-50"
             aria-label="Close menu"
           >
-            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} role="img" aria-label="Close menu">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

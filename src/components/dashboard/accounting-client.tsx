@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface JournalLine {
   journal_id: string;
@@ -26,7 +29,7 @@ function formatRp(n: number) {
 
 export default function AccountingClient() {
   const today = new Date().toISOString().slice(0, 10);
-  const firstOfMonth = today.slice(0, 8) + "01";
+  const firstOfMonth = `${today.slice(0, 8)}01`;
 
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(today);
@@ -39,7 +42,13 @@ export default function AccountingClient() {
       const params = new URLSearchParams({ from, to, page: String(page) });
       const res = await fetch(`/api/accounting?${params}`);
       const json = await res.json();
-      return json as { ok: boolean; data: Journal[]; total: number; page: number; pageSize: number };
+      return json as {
+        ok: boolean;
+        data: Journal[];
+        total: number;
+        page: number;
+        pageSize: number;
+      };
     },
   });
 
@@ -57,21 +66,25 @@ export default function AccountingClient() {
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4 flex flex-wrap gap-4 items-end">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Dari</label>
-          <input
+          <Label className="block text-xs text-gray-500 mb-1">Dari</Label>
+          <Input
             type="date"
             value={from}
-            onChange={(e) => { setFrom(e.target.value); setPage(1); }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            onChange={(e) => {
+              setFrom(e.target.value);
+              setPage(1);
+            }}
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Sampai</label>
-          <input
+          <Label className="block text-xs text-gray-500 mb-1">Sampai</Label>
+          <Input
             type="date"
             value={to}
-            onChange={(e) => { setTo(e.target.value); setPage(1); }}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            onChange={(e) => {
+              setTo(e.target.value);
+              setPage(1);
+            }}
           />
         </div>
         <p className="text-sm text-gray-400 self-end pb-2">{total} jurnal</p>
@@ -93,47 +106,80 @@ export default function AccountingClient() {
           const isOpen = expanded === j.id;
           const totalDebit = j.lines.reduce((s, l) => s + l.debit, 0);
           return (
-            <div key={j.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <button
+            <div
+              key={j.id}
+              className="bg-white rounded-xl border border-gray-100 overflow-hidden"
+            >
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() => setExpanded(isOpen ? null : j.id)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                className="w-full flex items-center justify-between px-4 py-3 h-auto text-left"
               >
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-gray-400 w-28 shrink-0">{j.reference}</span>
+                  <span className="font-mono text-xs text-gray-400 w-28 shrink-0">
+                    {j.reference}
+                  </span>
                   <div>
                     <p className="text-sm text-gray-800">{j.description}</p>
-                    <p className="text-xs text-gray-400">{j.date} · {j.source_type === "order_payment" ? "Pembayaran" : "Pengiriman"}</p>
+                    <p className="text-xs text-gray-400">
+                      {j.date} ·{" "}
+                      {j.source_type === "order_payment"
+                        ? "Pembayaran"
+                        : "Pengiriman"}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm font-medium text-gray-700">{formatRp(totalDebit)}</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    {formatRp(totalDebit)}
+                  </span>
                   <svg
-                    width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth={2}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    role="img"
+                    aria-label="Toggle details"
                     className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M19 9l-7 7-7-7"
+                    />
                   </svg>
                 </div>
-              </button>
+              </Button>
 
               {isOpen && (
                 <div className="border-t border-gray-100 px-4 py-3">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-gray-400">
-                        <th className="text-left pb-2 font-normal w-16">Kode</th>
+                        <th className="text-left pb-2 font-normal w-16">
+                          Kode
+                        </th>
                         <th className="text-left pb-2 font-normal">Akun</th>
-                        <th className="text-right pb-2 font-normal w-28">Debit</th>
-                        <th className="text-right pb-2 font-normal w-28">Kredit</th>
+                        <th className="text-right pb-2 font-normal w-28">
+                          Debit
+                        </th>
+                        <th className="text-right pb-2 font-normal w-28">
+                          Kredit
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {j.lines.map((line, i) => (
-                        <tr key={i} className="border-t border-gray-50">
-                          <td className="py-1.5 text-gray-400 font-mono">{line.account?.code}</td>
-                          <td className="py-1.5 text-gray-700">{line.account?.name}</td>
+                      {j.lines.map((line) => (
+                        <tr key={`${line.journal_id}-${line.account?.code}`} className="border-t border-gray-50">
+                          <td className="py-1.5 text-gray-400 font-mono">
+                            {line.account?.code}
+                          </td>
+                          <td className="py-1.5 text-gray-700">
+                            {line.account?.name}
+                          </td>
                           <td className="py-1.5 text-right text-gray-700">
                             {line.debit > 0 ? formatRp(line.debit) : "—"}
                           </td>
@@ -145,7 +191,9 @@ export default function AccountingClient() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-gray-200">
-                        <td colSpan={2} className="pt-2 text-gray-400">Total</td>
+                        <td colSpan={2} className="pt-2 text-gray-400">
+                          Total
+                        </td>
                         <td className="pt-2 text-right font-medium text-gray-800">
                           {formatRp(j.lines.reduce((s, l) => s + l.debit, 0))}
                         </td>
@@ -165,23 +213,27 @@ export default function AccountingClient() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 mt-6">
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 disabled:opacity-40"
           >
             Prev
-          </button>
-          <span className="px-3 py-1.5 text-sm text-gray-500">{page} / {totalPages}</span>
-          <button
+          </Button>
+          <span className="px-3 py-1.5 text-sm text-gray-500">
+            {page} / {totalPages}
+          </span>
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            className="px-3 py-1.5 rounded-lg border text-sm text-gray-600 disabled:opacity-40"
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

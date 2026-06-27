@@ -492,7 +492,7 @@ export default function InboxClient() {
                         className="text-gray-300 hover:text-gray-500 flex-shrink-0"
                         aria-label="Rename customer"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Rename customer">
                           <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                         </svg>
                       </button>
@@ -560,25 +560,25 @@ export default function InboxClient() {
                     }`}
                   >
                     {msgWithExtras.message_type === "image" ? (
-                      <>
-                        {msgWithExtras.media_id ? (
-                          <img
-                            src={`/api/inbox/media/${msgWithExtras.media_id}`}
-                            alt="Image"
-                            className="max-w-full rounded-lg"
-                            style={{ maxHeight: 300 }}
-                          />
-                        ) : msg.content?.startsWith("https://") ? (
-                          <img
-                            src={msg.content}
-                            alt="Image"
-                            className="max-w-full rounded-lg"
-                            style={{ maxHeight: 300 }}
-                          />
-                        ) : (
-                          <div className="text-xs italic opacity-70">[Image]</div>
-                        )}
-                      </>
+                      msgWithExtras.media_id ? (
+                        // biome-ignore lint/performance/noImgElement: media served via API route — next/image impractical
+                        <img
+                          src={`/api/inbox/media/${msgWithExtras.media_id}`}
+                          alt="Media"
+                          className="max-w-full rounded-lg"
+                          style={{ maxHeight: 300 }}
+                        />
+                      ) : msg.content?.startsWith("https://") ? (
+                        // biome-ignore lint/performance/noImgElement: external WhatsApp media URL — next/image impractical
+                        <img
+                          src={msg.content}
+                          alt="Media"
+                          className="max-w-full rounded-lg"
+                          style={{ maxHeight: 300 }}
+                        />
+                      ) : (
+                        <div className="text-xs italic opacity-70">[Image]</div>
+                      )
                     ) : (
                       <p>{msg.content}</p>
                     )}
@@ -643,6 +643,7 @@ export default function InboxClient() {
             <div className="border-t border-gray-100">
               {imagePreviewUrl && (
                 <div className="px-4 pt-3 pb-2 flex items-start gap-3 bg-gray-50">
+                  {/* biome-ignore lint/performance/noImgElement: local object URL preview — next/image impractical */}
                   <img
                     src={imagePreviewUrl}
                     alt="Preview"

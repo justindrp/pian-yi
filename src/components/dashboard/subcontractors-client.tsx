@@ -2,6 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 function parseDapurNumber(nickname: string | null | undefined): number | null {
   if (!nickname) return null;
@@ -9,14 +13,43 @@ function parseDapurNumber(nickname: string | null | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
-function DapurStepper({ value, onChange }: { value: number | null; onChange: (n: number | null) => void }) {
+function DapurStepper({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (n: number | null) => void;
+}) {
   const n = value ?? 0;
   return (
     <div className="flex items-center gap-2">
-      <button type="button" onClick={() => onChange(Math.max(1, n - 1))} disabled={n <= 1} className="w-7 h-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 text-sm font-medium">−</button>
-      <span className="w-16 text-center text-sm text-gray-900">{n > 0 ? `Dapur ${n}` : <span className="text-gray-400">—</span>}</span>
-      <button type="button" onClick={() => onChange(n + 1)} className="w-7 h-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium">+</button>
-      {n > 0 && <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-600 ml-1">Clear</button>}
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, n - 1))}
+        disabled={n <= 1}
+        className="w-7 h-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 text-sm font-medium"
+      >
+        −
+      </button>
+      <span className="w-16 text-center text-sm text-gray-900">
+        {n > 0 ? `Dapur ${n}` : <span className="text-gray-400">—</span>}
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(n + 1)}
+        className="w-7 h-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium"
+      >
+        +
+      </button>
+      {n > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="text-xs text-gray-400 hover:text-gray-600 ml-1"
+        >
+          Clear
+        </button>
+      )}
     </div>
   );
 }
@@ -45,30 +78,67 @@ interface Subcontractor {
   subcontractor_off_days: OffDay[];
 }
 
-function SubMenuImageUploader({ subId, currentUrl, onSuccess }: { subId: string; currentUrl: string | null; onSuccess: (url: string) => void }) {
+function SubMenuImageUploader({
+  subId,
+  currentUrl,
+  onSuccess,
+}: {
+  subId: string;
+  currentUrl: string | null;
+  onSuccess: (url: string) => void;
+}) {
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [error, setError] = useState("");
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true); setError(""); setUploaded(false);
+    setUploading(true);
+    setError("");
+    setUploaded(false);
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`/api/subcontractors/${subId}/menu-image`, { method: "POST", body: form });
-    const json = await res.json() as { ok: boolean; url?: string; error?: string };
+    const res = await fetch(`/api/subcontractors/${subId}/menu-image`, {
+      method: "POST",
+      body: form,
+    });
+    const json = (await res.json()) as {
+      ok: boolean;
+      url?: string;
+      error?: string;
+    };
     setUploading(false);
-    if (json.ok && json.url) { setUploaded(true); onSuccess(json.url); setTimeout(() => setUploaded(false), 3000); }
-    else setError(json.error ?? "Upload failed");
+    if (json.ok && json.url) {
+      setUploaded(true);
+      onSuccess(json.url);
+      setTimeout(() => setUploaded(false), 3000);
+    } else setError(json.error ?? "Upload failed");
     e.target.value = "";
   }
   return (
     <div className="space-y-2">
-      {currentUrl && <a href={currentUrl} target="_blank" rel="noreferrer"><img src={currentUrl} alt="Menu" className="h-24 w-auto rounded-lg border border-gray-200 object-cover" /></a>}
+      {currentUrl && (
+        <a href={currentUrl} target="_blank" rel="noreferrer">
+          {/* biome-ignore lint/performance/noImgElement: Supabase Storage URL — next/image impractical */}
+          <img
+            src={currentUrl}
+            alt="Menu"
+            className="h-24 w-auto rounded-lg border border-gray-200 object-cover"
+          />
+        </a>
+      )}
       <div className="flex items-center gap-2">
-        <label className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}>
+        <label
+          className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}
+        >
           {uploading ? "Uploading..." : currentUrl ? "Replace" : "Upload"}
-          <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFile}
+            disabled={uploading}
+          />
         </label>
         {uploaded && <span className="text-xs text-green-600">Saved!</span>}
         {error && <span className="text-xs text-red-500">{error}</span>}
@@ -77,57 +147,114 @@ function SubMenuImageUploader({ subId, currentUrl, onSuccess }: { subId: string;
   );
 }
 
-const AREAS = ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Karawaci", "Bintaro", "Graha Raya"];
+const AREAS = [
+  "BSD Baru",
+  "BSD Lama",
+  "Gading Serpong",
+  "Alam Sutera",
+  "Karawaci",
+  "Bintaro",
+  "Graha Raya",
+];
 
 async function fetchSubcontractors(): Promise<Subcontractor[]> {
   const res = await fetch("/api/subcontractors");
-  const json = await res.json() as { ok: boolean; data: Subcontractor[] };
+  const json = (await res.json()) as { ok: boolean; data: Subcontractor[] };
   return json.data;
 }
 
 export default function SubcontractorsClient() {
   const qc = useQueryClient();
-  const { data: subs, isLoading } = useQuery({ queryKey: ["subcontractors"], queryFn: fetchSubcontractors });
+  const { data: subs, isLoading } = useQuery({
+    queryKey: ["subcontractors"],
+    queryFn: fetchSubcontractors,
+  });
 
   const [selected, setSelected] = useState<Subcontractor | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Subcontractor>>({});
   const [editDapurNum, setEditDapurNum] = useState<number | null>(null);
-  const [addForm, setAddForm] = useState({ name: "", admin_phone: "", admin_phone_2: "", delivery_areas: [] as string[], notes: "" });
+  const [addForm, setAddForm] = useState({
+    name: "",
+    admin_phone: "",
+    admin_phone_2: "",
+    delivery_areas: [] as string[],
+    notes: "",
+  });
   const [addDapurNum, setAddDapurNum] = useState<number | null>(null);
   const [offDayForm, setOffDayForm] = useState({ off_date: "", reason: "" });
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
   const patchSub = useMutation({
-    mutationFn: async ({ id, ...body }: Partial<Subcontractor> & { id: string }) => {
-      await fetch(`/api/subcontractors/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    mutationFn: async ({
+      id,
+      ...body
+    }: Partial<Subcontractor> & { id: string }) => {
+      await fetch(`/api/subcontractors/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subcontractors"] }); setConfirmDeactivate(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subcontractors"] });
+      setConfirmDeactivate(false);
+    },
   });
 
   const addSub = useMutation({
     mutationFn: async () => {
-      const body = { ...addForm, customer_nickname: addDapurNum ? `Dapur ${addDapurNum}` : null };
-      await fetch("/api/subcontractors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const body = {
+        ...addForm,
+        customer_nickname: addDapurNum ? `Dapur ${addDapurNum}` : null,
+      };
+      await fetch("/api/subcontractors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subcontractors"] }); setShowAdd(false); setAddForm({ name: "", admin_phone: "", admin_phone_2: "", delivery_areas: [], notes: "" }); setAddDapurNum(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subcontractors"] });
+      setShowAdd(false);
+      setAddForm({
+        name: "",
+        admin_phone: "",
+        admin_phone_2: "",
+        delivery_areas: [],
+        notes: "",
+      });
+      setAddDapurNum(null);
+    },
   });
 
   const addOffDay = useMutation({
     mutationFn: async () => {
-      await fetch("/api/subcontractors/off-days", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subcontractor_id: selected?.id, ...offDayForm }) });
+      await fetch("/api/subcontractors/off-days", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subcontractor_id: selected?.id, ...offDayForm }),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subcontractors"] }); setOffDayForm({ off_date: "", reason: "" }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subcontractors"] });
+      setOffDayForm({ off_date: "", reason: "" });
+    },
   });
 
   const deleteOffDay = useMutation({
     mutationFn: async (id: string) => {
-      await fetch("/api/subcontractors/off-days", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      await fetch("/api/subcontractors/off-days", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["subcontractors"] }),
   });
 
-  if (isLoading) return <div className="p-6 text-gray-400 text-sm">Loading...</div>;
+  if (isLoading)
+    return <div className="p-6 text-gray-400 text-sm">Loading...</div>;
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -136,8 +263,12 @@ export default function SubcontractorsClient() {
       {/* List */}
       <div className="flex-1">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-semibold text-gray-900">Subcontractors</h1>
-          <button onClick={() => setShowAdd(true)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">Add</button>
+          <h1 className="text-xl font-semibold text-gray-900">
+            Subcontractors
+          </h1>
+          <Button onClick={() => setShowAdd(true)} variant="default" size="sm">
+            Add
+          </Button>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -154,18 +285,45 @@ export default function SubcontractorsClient() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {(subs ?? []).map((s) => {
-                const onTimeRate = s.total_delivery_count > 0
-                  ? Math.round(((s.total_delivery_count - s.late_delivery_count) / s.total_delivery_count) * 100)
-                  : null;
+                const onTimeRate =
+                  s.total_delivery_count > 0
+                    ? Math.round(
+                        ((s.total_delivery_count - s.late_delivery_count) /
+                          s.total_delivery_count) *
+                          100,
+                      )
+                    : null;
                 return (
-                  <tr key={s.id} onClick={() => { setSelected(s); setEditForm(s); setEditDapurNum(parseDapurNumber(s.customer_nickname)); }} className="cursor-pointer hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
-                    <td className="px-4 py-3 text-gray-900">{s.customer_nickname ?? <span className="text-gray-400">—</span>}</td>
-                    <td className="px-4 py-3 text-gray-500">{(s.delivery_areas ?? []).join(", ")}</td>
-                    <td className="px-4 py-3 text-gray-500">{s.admin_phone ?? "—"}</td>
-                    <td className="px-4 py-3 text-gray-500">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</td>
+                  <tr
+                    key={s.id}
+                    onClick={() => {
+                      setSelected(s);
+                      setEditForm(s);
+                      setEditDapurNum(parseDapurNumber(s.customer_nickname));
+                    }}
+                    className="cursor-pointer hover:bg-gray-50"
+                  >
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      {s.name}
+                    </td>
+                    <td className="px-4 py-3 text-gray-900">
+                      {s.customer_nickname ?? (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {(s.delivery_areas ?? []).join(", ")}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {s.admin_phone ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {onTimeRate !== null ? `${onTimeRate}%` : "—"}
+                    </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                      >
                         {s.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
@@ -182,45 +340,75 @@ export default function SubcontractorsClient() {
         <div className="w-96 bg-white border border-gray-100 rounded-xl p-5 space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-900">{selected.name}</h2>
-            <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+            >
+              &times;
+            </button>
           </div>
 
           {/* Edit form */}
           <div className="space-y-3">
-            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
-              <div key={field}>
-                <label className="block text-xs text-gray-500 mb-1 capitalize">{field.replace(/_/g, " ")}</label>
-                <input
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-                  value={(editForm[field] as string) ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
-                />
-              </div>
-            ))}
+            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map(
+              (field) => (
+                <div key={field}>
+                  <Label className="block text-xs text-gray-500 mb-1 capitalize font-normal">
+                    {field.replace(/_/g, " ")}
+                  </Label>
+                  <Input
+                    className="text-sm"
+                    value={(editForm[field] as string) ?? ""}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, [field]: e.target.value }))
+                    }
+                  />
+                </div>
+              ),
+            )}
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Dapur number (shown to customers)</label>
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Dapur number (shown to customers)
+              </Label>
               <DapurStepper value={editDapurNum} onChange={setEditDapurNum} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Cost per portion (Rp)</label>
-              <input
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Cost per portion (Rp)
+              </Label>
+              <Input
                 type="number"
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                className="text-sm"
                 value={editForm.cost_per_portion ?? 0}
-                onChange={(e) => setEditForm((f) => ({ ...f, cost_per_portion: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    cost_per_portion: Number(e.target.value),
+                  }))
+                }
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Delivery areas</label>
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Delivery areas
+              </Label>
               <div className="flex flex-wrap gap-1">
                 {AREAS.map((a) => (
                   <button
                     key={a}
                     type="button"
-                    onClick={() => setEditForm((f) => {
-                      const areas = (f.delivery_areas ?? []) as string[];
-                      return { ...f, delivery_areas: areas.includes(a) ? areas.filter((x) => x !== a) : [...areas, a] };
-                    })}
+                    onClick={() =>
+                      setEditForm((f) => {
+                        const areas = (f.delivery_areas ?? []) as string[];
+                        return {
+                          ...f,
+                          delivery_areas: areas.includes(a)
+                            ? areas.filter((x) => x !== a)
+                            : [...areas, a],
+                        };
+                      })
+                    }
                     className={`px-2 py-0.5 rounded text-xs border ${((editForm.delivery_areas ?? []) as string[]).includes(a) ? "bg-blue-100 border-blue-300 text-blue-700" : "border-gray-200 text-gray-500"}`}
                   >
                     {a}
@@ -229,30 +417,56 @@ export default function SubcontractorsClient() {
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Menu image</label>
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Menu image
+              </Label>
               <SubMenuImageUploader
                 subId={selected.id}
                 currentUrl={editForm.menu_image_url ?? null}
-                onSuccess={(url) => { setEditForm((f) => ({ ...f, menu_image_url: url })); qc.invalidateQueries({ queryKey: ["subcontractors"] }); }}
+                onSuccess={(url) => {
+                  setEditForm((f) => ({ ...f, menu_image_url: url }));
+                  qc.invalidateQueries({ queryKey: ["subcontractors"] });
+                }}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Menu text (chatbot)</label>
-              <textarea
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Menu text (chatbot)
+              </Label>
+              <Textarea
                 rows={5}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-mono"
+                className="text-sm font-mono"
                 value={(editForm.menu_text as string) ?? ""}
-                onChange={(e) => setEditForm((f) => ({ ...f, menu_text: e.target.value }))}
-                placeholder={"SENIN\nAyam bakar, tempe orek, tumis kangkung\n\nSELASA\n..."}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, menu_text: e.target.value }))
+                }
+                placeholder={
+                  "SENIN\nAyam bakar, tempe orek, tumis kangkung\n\nSELASA\n..."
+                }
               />
             </div>
-            <button
+            <Button
               type="button"
-              onClick={() => patchSub.mutate({ id: selected.id, name: editForm.name, customer_nickname: editDapurNum ? `Dapur ${editDapurNum}` : null, admin_phone: editForm.admin_phone, admin_phone_2: editForm.admin_phone_2, delivery_areas: editForm.delivery_areas as string[], notes: editForm.notes, cost_per_portion: editForm.cost_per_portion, menu_text: editForm.menu_text as string | null })}
-              className="w-full py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+              variant="default"
+              onClick={() =>
+                patchSub.mutate({
+                  id: selected.id,
+                  name: editForm.name,
+                  customer_nickname: editDapurNum
+                    ? `Dapur ${editDapurNum}`
+                    : null,
+                  admin_phone: editForm.admin_phone,
+                  admin_phone_2: editForm.admin_phone_2,
+                  delivery_areas: editForm.delivery_areas as string[],
+                  notes: editForm.notes,
+                  cost_per_portion: editForm.cost_per_portion,
+                  menu_text: editForm.menu_text as string | null,
+                })
+              }
+              className="w-full"
             >
               Save changes
-            </button>
+            </Button>
           </div>
 
           {/* Active toggle */}
@@ -267,10 +481,31 @@ export default function SubcontractorsClient() {
               </button>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-gray-500">Menonaktifkan subcontractor ini tidak menghapus data historis.</p>
+                <p className="text-xs text-gray-500">
+                  Menonaktifkan subcontractor ini tidak menghapus data historis.
+                </p>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => patchSub.mutate({ id: selected.id, is_active: !selected.is_active })} className="px-3 py-1 bg-red-600 text-white text-xs rounded">Confirm</button>
-                  <button type="button" onClick={() => setConfirmDeactivate(false)} className="px-3 py-1 border border-gray-200 text-xs rounded">Cancel</button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() =>
+                      patchSub.mutate({
+                        id: selected.id,
+                        is_active: !selected.is_active,
+                      })
+                    }
+                  >
+                    Confirm
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmDeactivate(false)}
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </div>
             )}
@@ -278,10 +513,24 @@ export default function SubcontractorsClient() {
 
           {/* Performance */}
           <div className="border-t pt-3">
-            <p className="text-xs font-medium text-gray-700 mb-2">Performance</p>
+            <p className="text-xs font-medium text-gray-700 mb-2">
+              Performance
+            </p>
             <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-              <div>Total deliveries<br /><span className="text-gray-900 font-medium">{selected.total_delivery_count}</span></div>
-              <div>Late deliveries<br /><span className="text-gray-900 font-medium">{selected.late_delivery_count}</span></div>
+              <div>
+                Total deliveries
+                <br />
+                <span className="text-gray-900 font-medium">
+                  {selected.total_delivery_count}
+                </span>
+              </div>
+              <div>
+                Late deliveries
+                <br />
+                <span className="text-gray-900 font-medium">
+                  {selected.late_delivery_count}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -292,16 +541,52 @@ export default function SubcontractorsClient() {
               {(selected.subcontractor_off_days ?? [])
                 .filter((d) => d.off_date >= today)
                 .map((d) => (
-                  <div key={d.id} className="flex items-center justify-between text-xs text-gray-600">
-                    <span>{d.off_date}{d.reason ? ` — ${d.reason}` : ""}</span>
-                    <button type="button" onClick={() => deleteOffDay.mutate(d.id)} className="text-red-400 hover:text-red-600 ml-2">Remove</button>
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between text-xs text-gray-600"
+                  >
+                    <span>
+                      {d.off_date}
+                      {d.reason ? ` — ${d.reason}` : ""}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteOffDay.mutate(d.id)}
+                      className="text-red-400 hover:text-red-600 ml-2"
+                    >
+                      Remove
+                    </Button>
                   </div>
                 ))}
             </div>
             <div className="flex gap-2">
-              <input type="date" className="border border-gray-200 rounded px-2 py-1 text-xs" value={offDayForm.off_date} onChange={(e) => setOffDayForm((f) => ({ ...f, off_date: e.target.value }))} />
-              <input placeholder="Reason" className="border border-gray-200 rounded px-2 py-1 text-xs flex-1" value={offDayForm.reason} onChange={(e) => setOffDayForm((f) => ({ ...f, reason: e.target.value }))} />
-              <button type="button" onClick={() => addOffDay.mutate()} disabled={!offDayForm.off_date} className="px-2 py-1 bg-gray-800 text-white text-xs rounded disabled:opacity-40">Add</button>
+              <Input
+                type="date"
+                className="text-xs"
+                value={offDayForm.off_date}
+                onChange={(e) =>
+                  setOffDayForm((f) => ({ ...f, off_date: e.target.value }))
+                }
+              />
+              <Input
+                placeholder="Reason"
+                className="text-xs flex-1"
+                value={offDayForm.reason}
+                onChange={(e) =>
+                  setOffDayForm((f) => ({ ...f, reason: e.target.value }))
+                }
+              />
+              <Button
+                type="button"
+                variant="dark"
+                size="sm"
+                onClick={() => addOffDay.mutate()}
+                disabled={!offDayForm.off_date}
+              >
+                Add
+              </Button>
             </div>
           </div>
         </div>
@@ -312,30 +597,70 @@ export default function SubcontractorsClient() {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
             <h2 className="font-semibold text-gray-900">Add Subcontractor</h2>
-            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map((field) => (
-              <div key={field}>
-                <label className="block text-xs text-gray-500 mb-1 capitalize">{field.replace(/_/g, " ")}</label>
-                <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={addForm[field] ?? ""} onChange={(e) => setAddForm((f) => ({ ...f, [field]: e.target.value }))} />
-              </div>
-            ))}
+            {(["name", "admin_phone", "admin_phone_2", "notes"] as const).map(
+              (field) => (
+                <div key={field}>
+                  <Label className="block text-xs text-gray-500 mb-1 capitalize font-normal">
+                    {field.replace(/_/g, " ")}
+                  </Label>
+                  <Input
+                    className="text-sm"
+                    value={addForm[field] ?? ""}
+                    onChange={(e) =>
+                      setAddForm((f) => ({ ...f, [field]: e.target.value }))
+                    }
+                  />
+                </div>
+              ),
+            )}
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Dapur number (shown to customers)</label>
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Dapur number (shown to customers)
+              </Label>
               <DapurStepper value={addDapurNum} onChange={setAddDapurNum} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Delivery areas</label>
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Delivery areas
+              </Label>
               <div className="flex flex-wrap gap-1">
                 {AREAS.map((a) => (
-                  <button key={a} type="button"
-                    onClick={() => setAddForm((f) => ({ ...f, delivery_areas: f.delivery_areas.includes(a) ? f.delivery_areas.filter((x) => x !== a) : [...f.delivery_areas, a] }))}
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() =>
+                      setAddForm((f) => ({
+                        ...f,
+                        delivery_areas: f.delivery_areas.includes(a)
+                          ? f.delivery_areas.filter((x) => x !== a)
+                          : [...f.delivery_areas, a],
+                      }))
+                    }
                     className={`px-2 py-0.5 rounded text-xs border ${addForm.delivery_areas.includes(a) ? "bg-blue-100 border-blue-300 text-blue-700" : "border-gray-200 text-gray-500"}`}
-                  >{a}</button>
+                  >
+                    {a}
+                  </button>
                 ))}
               </div>
             </div>
             <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => addSub.mutate()} disabled={!addForm.name} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">Add</button>
-              <button type="button" onClick={() => setShowAdd(false)} className="flex-1 py-2 border border-gray-200 text-sm rounded-lg">Cancel</button>
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => addSub.mutate()}
+                disabled={!addForm.name}
+                className="flex-1"
+              >
+                Add
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAdd(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
             </div>
           </div>
         </div>
