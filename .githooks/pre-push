@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+pnpm install --frozen-lockfile
+
+if [ "$#" -eq 0 ]; then
+  exit 0
+fi
+
 MSG=$(git log -1 --format="%s")
 
 # Skip for merge commits, chore commits, or amend-only pushes
