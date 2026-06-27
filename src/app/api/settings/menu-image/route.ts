@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const ALLOWED_KEYS = ["price_list_image_url"];
+const MAX_WHATSAPP_IMAGE_BYTES = 5_000_000;
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -17,6 +18,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!file || !key) return NextResponse.json({ ok: false, error: "Missing file or key" }, { status: 400 });
   if (!ALLOWED_KEYS.includes(key)) return NextResponse.json({ ok: false, error: "Invalid key" }, { status: 400 });
   if (!file.type.startsWith("image/")) return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
+  if (file.size > MAX_WHATSAPP_IMAGE_BYTES) {
+    return NextResponse.json({ ok: false, error: "Image must be 5 MB or smaller for WhatsApp delivery" }, { status: 400 });
+  }
 
   const ext = file.name.split(".").pop() ?? "jpg";
   const path = `${key}/${Date.now()}.${ext}`;
