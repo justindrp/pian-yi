@@ -309,8 +309,8 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 - `GET /api/reports/conversions` — Meta Ads conversion tracking: summary stats (total, this month, revenue, top creative, organic), per-creative breakdown, paginated conversion log. Supports `?startDate=`, `?endDate=`, `?page=`, `?export=true` (returns all rows for CSV download)
 
 ### Admin Assistant
-- `POST /api/assistant` — Multi-turn agentic chat using Sonnet 4.6. Runs tool loop (max 5 turns) with 6 read tools: `query_customers`, `query_orders`, `query_deliveries`, `query_financials`, `query_metrics`, `search_conversations`. Write tools (`mark_order_paid`, `cancel_order`, `send_whatsapp_message`, `update_customer_field`) are intercepted — returns `{ ok: true, text, pendingAction }` instead of executing. Body accepts optional `conversationId`; if absent, a new thread is created lazily and returned. Each turn (user msg + reply) is persisted to `assistant_conversations` / `assistant_messages` (shared across all admins). Requires auth.
-- `POST /api/assistant/execute` — Execute a confirmed write-tool action. Body: `{ tool, input, conversationId? }`. Only accepts tools in `WRITE_TOOLS` set. `mark_order_paid` side effects: sets status → active, conversion tracking, journal entry (Dr Bank BCA / Cr Uang Muka), WhatsApp confirmation to customer. `send_whatsapp_message` sends the text via WhatsApp, then looks up the customer by `phone_number` and logs the message to `conversations` as an `assistant` row (`model_used: "human"`) so it appears in the dashboard inbox. `update_customer_field` allowlist: name, address, area, notes. Confirmation reply persisted to the thread when `conversationId` is provided. Requires auth.
+- `POST /api/assistant` — Multi-turn agentic chat using Sonnet 4.6. Runs tool loop (max 5 turns) with read tools: `query_customers`, `query_orders`, `query_deliveries`, `query_financials`, `query_metrics`, `search_conversations`, `query_menu_assets`. Write tools (`mark_order_paid`, `cancel_order`, `send_whatsapp_message`, `send_whatsapp_image`, `update_customer_field`) are intercepted — returns `{ ok: true, text, pendingAction }` instead of executing. If Claude proposes multiple WhatsApp send actions in one response (for example menu image + price list image), the route returns one `pendingAction` with `tool: "batch"` and an `actions` array so the admin confirms once and every send is preserved. Body accepts optional `conversationId`; if absent, a new thread is created lazily and returned. Each turn (user msg + reply) is persisted to `assistant_conversations` / `assistant_messages` (shared across all admins). Requires auth.
+- `POST /api/assistant/execute` — Execute a confirmed write-tool action. Body: `{ tool, input, conversationId? }`. Accepts tools in `WRITE_TOOLS` plus `tool: "batch"` for multiple confirmed WhatsApp sends. `mark_order_paid` side effects: sets status → active, conversion tracking, journal entry (Dr Bank BCA / Cr Uang Muka), WhatsApp confirmation to customer. `send_whatsapp_message` sends text via WhatsApp, then looks up the customer by `phone_number` and logs the message to `conversations` as an `assistant` row (`model_used: "human"`) so it appears in the dashboard inbox. `send_whatsapp_image` downloads the public image URL, uploads the binary to Meta with `uploadMediaToMeta`, sends by `sendImageMessageById` (not by `image.link`, which can fail silently), then logs the public URL to `conversations` as an `assistant` image row (`message_type: "image"`, `model_used: "human"`). `update_customer_field` allowlist: name, address, area, notes. Confirmation reply persisted to the thread when `conversationId` is provided. Requires auth.
 - `GET /api/assistant/conversations` — List all chat threads (`id, title, updated_at`), newest first.
 - `POST /api/assistant/conversations` — Create an empty thread, returns `{ id }`.
 - `GET /api/assistant/conversations/[id]` — List messages for a thread.
@@ -319,6 +319,8 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 
 ### Accounting
 - `GET /api/accounting` — Paginated journal entries with optional date range filter
+- `POST /api/accounting` — Owner-only. Create a manual balanced journal entry. Body: `{ date (YYYY-MM-DD), description, lines: [{ accountCode, debit, credit }] }`. Validates each line is debit XOR credit, total debit = total credit (> 0), and every `accountCode` exists. Inserts a `journals` header (`source_type: "manual"`, `source_id: null`) with an atomic `next_journal_reference` reference, then `journal_lines`; rolls back the header if line insert fails.
+- `GET /api/accounting/accounts` — Owner-only. Active chart of accounts (`code, name, type`) for the manual-journal form dropdown
 
 ### WhatsApp (manual send)
 - `POST /api/whatsapp/send` — Admin sends a manual text message from the dashboard UI
@@ -355,6 +357,7 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 - Dates stored as ISO strings; phone numbers as strings (preserve leading zero in display, store as international format `+628...`)
 - All commits go through `gh` CLI; PR descriptions written via `gh pr create`
 - Formatting enforced by Biome on save and in CI
+- After making any code or documentation change, commit and push the completed change to `origin/main`. Stage only files relevant to the change; leave unrelated dirty worktree files untouched.
 
 ## Tooling commands
 
@@ -397,8 +400,8 @@ Phase 2 — business logic and data integrity:
 - `test/api/inbox.test.ts` — 4 tests: Haiku polishes answer and clears pending flag, blank admin_answer returns 400, unknown customer returns 404, no pending flag returns 400
 
 Phase 3 — admin assistant:
-- `test/api/assistant.test.ts` — 7 tests: auth guard, invalid body, read-only tool loop, write-tool interception returns pendingAction, turn cap, unauthenticated returns 401
-- `test/api/assistant-execute.test.ts` — 6 tests: auth guard, invalid tool rejected, mark_order_paid success + side effects, update_customer_field allowlist, disallowed field returns 400, order not found returns 404
+- `test/api/assistant.test.ts` — 8 tests: auth guard, invalid body, read-only tool loop, write-tool interception returns pendingAction, batch pendingAction for multiple WhatsApp sends, turn cap, unauthenticated returns 401
+- `test/api/assistant-execute.test.ts` — 8 tests: auth guard, invalid tool rejected, mark_order_paid success + side effects, update_customer_field allowlist, disallowed field returns 400, order not found returns 404, image sends upload URL content to Meta and send by media ID, batch image sends execute every image
 
 Phase 4 — assistant chat history:
 - `test/api/assistant-history.test.ts` — 10 tests: conversations list/create auth + data, [id] messages + delete auth + data, saveTurn title derivation on first message vs subsequent
