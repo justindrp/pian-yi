@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateCache } from "@/lib/cache/settings";
+import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const ALLOWED_KEYS = ["price_list_image_url"];
-const MAX_WHATSAPP_IMAGE_BYTES = 5_000_000;
+type UploadedImage = Awaited<ReturnType<typeof compressUploadedImage>>;
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -18,18 +19,21 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!file || !key) return NextResponse.json({ ok: false, error: "Missing file or key" }, { status: 400 });
   if (!ALLOWED_KEYS.includes(key)) return NextResponse.json({ ok: false, error: "Invalid key" }, { status: 400 });
   if (!file.type.startsWith("image/")) return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
-  if (file.size > MAX_WHATSAPP_IMAGE_BYTES) {
-    return NextResponse.json({ ok: false, error: "Image must be 5 MB or smaller for WhatsApp delivery" }, { status: 400 });
+
+  let image: UploadedImage;
+  try {
+    image = await compressUploadedImage(Buffer.from(await file.arrayBuffer()));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Image compression failed";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
   }
 
-  const ext = file.name.split(".").pop() ?? "jpg";
-  const path = `${key}/${Date.now()}.${ext}`;
+  const path = `${key}/${Date.now()}.${image.extension}`;
 
   const db = createAdminClient();
-  const bytes = await file.arrayBuffer();
   const { error: uploadError } = await db.storage
     .from("menu-images")
-    .upload(path, bytes, { contentType: file.type, upsert: true });
+    .upload(path, image.buffer, { contentType: image.contentType, upsert: true });
 
   if (uploadError) {
     console.error("[menu-image upload]", uploadError.message);

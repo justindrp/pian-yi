@@ -1,11 +1,19 @@
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/inbox/manual-image/route";
+import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { uploadMediaToMeta, sendImageMessageById } from "@/lib/whatsapp/client";
+import { sendImageMessageById, uploadMediaToMeta } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
+jest.mock("@/lib/images/compress", () => ({
+  compressUploadedImage: jest.fn().mockResolvedValue({
+    buffer: Buffer.from("compressed-jpeg"),
+    contentType: "image/jpeg",
+    extension: "jpg",
+  }),
+}));
 jest.mock("@/lib/whatsapp/client", () => ({
   uploadMediaToMeta: jest.fn().mockResolvedValue("meta-media-id-123"),
   sendImageMessageById: jest.fn().mockResolvedValue(undefined),
@@ -27,6 +35,7 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
@@ -97,7 +106,13 @@ describe("POST /api/inbox/manual-image", () => {
     expect(json.ok).toBe(true);
 
     // Must upload buffer to Meta and send by media ID (not by URL)
-    expect(uploadMediaToMeta).toHaveBeenCalledWith(expect.any(Buffer), "image/jpeg");
+    expect(compressUploadedImage).toHaveBeenCalledWith(expect.any(Buffer));
+    expect(db.storageMock.upload).toHaveBeenCalledWith(
+      expect.stringMatching(/\.jpg$/),
+      Buffer.from("compressed-jpeg"),
+      { contentType: "image/jpeg", upsert: false },
+    );
+    expect(uploadMediaToMeta).toHaveBeenCalledWith(Buffer.from("compressed-jpeg"), "image/jpeg");
     expect(sendImageMessageById).toHaveBeenCalledWith("+6281234567890", "meta-media-id-123", "Ini menunya");
 
     // Must save public URL to conversations for display

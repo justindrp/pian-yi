@@ -1,7 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { sendDeliveryPhotoToCustomer } from "@/lib/claude/photo-matcher";
+import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+
+type UploadedImage = Awaited<ReturnType<typeof compressUploadedImage>>;
 
 export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -80,15 +83,24 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!file || !customerId) {
     return NextResponse.json({ ok: false, error: "file and customer_id required" }, { status: 400 });
   }
+  if (!file.type.startsWith("image/")) {
+    return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
+  }
 
   const db = createAdminClient();
-  const ext = file.name.split(".").pop() ?? "jpg";
-  const storagePath = `manual/${date}/${customerId}/${Date.now()}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  let image: UploadedImage;
+  try {
+    image = await compressUploadedImage(Buffer.from(await file.arrayBuffer()));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Image compression failed";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+  }
+
+  const storagePath = `manual/${date}/${customerId}/${Date.now()}.${image.extension}`;
 
   const { error: uploadErr } = await db.storage
     .from("delivery-proofs")
-    .upload(storagePath, buffer, { contentType: file.type || "image/jpeg", upsert: false });
+    .upload(storagePath, image.buffer, { contentType: image.contentType, upsert: false });
 
   if (uploadErr) return NextResponse.json({ ok: false, error: uploadErr.message }, { status: 500 });
 

@@ -1,7 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendImageMessageById, uploadMediaToMeta } from "@/lib/whatsapp/client";
+
+type UploadedImage = Awaited<ReturnType<typeof compressUploadedImage>>;
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -23,6 +26,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ ok: false, error: "file required" }, { status: 400 });
   }
+  if (!file.type.startsWith("image/")) {
+    return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
+  }
 
   const db = createAdminClient();
 
@@ -36,14 +42,20 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
   }
 
-  const ext = file.name.split(".").pop() ?? "jpg";
-  const storagePath = `inbox/${customerId}/${Date.now()}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  let image: UploadedImage;
+  try {
+    image = await compressUploadedImage(Buffer.from(await file.arrayBuffer()));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Image compression failed";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+  }
+
+  const storagePath = `inbox/${customerId}/${Date.now()}.${image.extension}`;
 
   // Upload to Supabase for conversation history display
   const { error: uploadErr } = await db.storage
     .from("menu-images")
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false });
+    .upload(storagePath, image.buffer, { contentType: image.contentType, upsert: false });
 
   if (uploadErr) {
     return NextResponse.json({ ok: false, error: uploadErr.message }, { status: 500 });
@@ -56,7 +68,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // Upload to Meta's media endpoint so they serve from their own CDN (link-based sending fails silently)
   let mediaId: string;
   try {
-    mediaId = await uploadMediaToMeta(buffer, file.type || "image/jpeg");
+    mediaId = await uploadMediaToMeta(image.buffer, image.contentType);
     await sendImageMessageById(customer.phone_number, mediaId, caption);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "WhatsApp send failed";

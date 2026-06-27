@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+
+type UploadedImage = Awaited<ReturnType<typeof compressUploadedImage>>;
 
 export async function POST(
   req: NextRequest,
@@ -17,14 +20,20 @@ export async function POST(
   if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
   if (!file.type.startsWith("image/")) return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
 
-  const ext = file.name.split(".").pop() ?? "jpg";
-  const path = `subcontractors/${id}/${Date.now()}.${ext}`;
+  let image: UploadedImage;
+  try {
+    image = await compressUploadedImage(Buffer.from(await file.arrayBuffer()));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Image compression failed";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+  }
+
+  const path = `subcontractors/${id}/${Date.now()}.${image.extension}`;
 
   const db = createAdminClient();
-  const bytes = await file.arrayBuffer();
   const { error: uploadError } = await db.storage
     .from("menu-images")
-    .upload(path, bytes, { contentType: file.type, upsert: true });
+    .upload(path, image.buffer, { contentType: image.contentType, upsert: true });
 
   if (uploadError) {
     console.error("[subcontractor menu-image upload]", uploadError.message);

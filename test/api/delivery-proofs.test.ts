@@ -3,11 +3,19 @@ import { GET, POST, PATCH } from "@/app/api/deliveries/proofs/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendDeliveryPhotoToCustomer } from "@/lib/claude/photo-matcher";
+import { compressUploadedImage } from "@/lib/images/compress";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/claude/photo-matcher", () => ({
   sendDeliveryPhotoToCustomer: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("@/lib/images/compress", () => ({
+  compressUploadedImage: jest.fn().mockResolvedValue({
+    buffer: Buffer.from("compressed-jpeg"),
+    contentType: "image/jpeg",
+    extension: "jpg",
+  }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -21,6 +29,7 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (resolve: (v: unknown) => unknown, _reject?: (e: unknown) => unknown) =>
     Promise.resolve(result).then(resolve);
   chain.catch = (reject: (e: unknown) => unknown) => Promise.resolve(result).catch(reject);
@@ -91,6 +100,12 @@ describe("POST /api/deliveries/proofs", () => {
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
+    expect(compressUploadedImage).toHaveBeenCalledWith(expect.any(Buffer));
+    expect(db.storageMock.upload).toHaveBeenCalledWith(
+      expect.stringMatching(/\.jpg$/),
+      Buffer.from("compressed-jpeg"),
+      { contentType: "image/jpeg", upsert: false },
+    );
     // Proof must land on the admin's selected date, not always "today"
     expect(db.chains.delivery_proofs.insert).toHaveBeenCalledWith(
       expect.objectContaining({ received_at: "2026-06-27T12:00:00.000Z", status: "admin_uploaded" }),
