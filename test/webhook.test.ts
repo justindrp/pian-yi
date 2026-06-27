@@ -60,6 +60,7 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
@@ -327,7 +328,9 @@ describe("processWebhookAsync", () => {
     );
   });
 
-  test("T9 — saves WhatsApp display name when customer.name is null", async () => {
+  test("T9 — does NOT save WhatsApp display name to customer.name", async () => {
+    // Name must come from the order form only, never the WhatsApp profile name,
+    // so a contact is not "renamed" before they order and pay.
     const db = makeDefaultDb({
       customers: { data: { id: "cust-1", name: null, first_message: "Halo" }, error: null },
     });
@@ -335,8 +338,8 @@ describe("processWebhookAsync", () => {
 
     await processWebhookAsync(makePayload("Halo"));
 
-    expect(db.chains.customers.update).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Test Customer" }),
+    expect(db.chains.customers.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: expect.any(String) }),
     );
   });
 

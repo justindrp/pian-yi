@@ -115,10 +115,9 @@ export async function processWebhookAsync(
 
   const customerId = customer.id;
 
-  // Save WhatsApp profile name on first contact (never overwrite manually-set names)
-  if (!customer.name && message.contactName) {
-    await db.from("customers").update({ name: message.contactName }).eq("id", customerId);
-  }
+  // NOTE: customer.name is never populated from the WhatsApp profile name here.
+  // It is set only from the order form (extract_order) once the customer actually orders,
+  // so contacts are not "renamed" / listed until they have ordered and paid.
 
   // Capture first message and detect ad creative tag on very first contact
   if (!customer.first_message && message.text) {
