@@ -313,7 +313,7 @@ export default function DeliveriesClient() {
     },
   });
 
-  const { data: proofs, isLoading: proofsLoading } = useQuery({
+  const { data: proofs } = useQuery({
     queryKey: ["delivery-proofs", date],
     queryFn: async () => {
       const res = await fetch(`/api/deliveries/proofs?date=${date}`);
@@ -399,10 +399,10 @@ export default function DeliveriesClient() {
     const posMap = new Map(reorderedIds.map((id, i) => [id, i]));
     setRows((prev) =>
       prev.map((r) => {
-        if (r.customers?.delivery_route !== route) return r;
+        if (!r.customers || r.customers.delivery_route !== route) return r;
         const newPos = posMap.get(r.customer_id);
         if (newPos === undefined) return r;
-        return { ...r, customers: { ...r.customers!, delivery_position: newPos } };
+        return { ...r, customers: { ...r.customers, delivery_position: newPos } };
       }),
     );
     reorder.mutate(reorderedIds.map((id, i) => ({ id, delivery_position: i })));

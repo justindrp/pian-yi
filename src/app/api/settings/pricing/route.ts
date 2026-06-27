@@ -12,12 +12,13 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
 
   if (typeof body.adjust === "number") {
+    const adjust = body.adjust;
     const { data: tiers, error: fetchError } = await db.from("pricing_tiers").select("portions, price_per_portion");
     if (fetchError) return NextResponse.json({ ok: false, error: fetchError.message }, { status: 500 });
 
     await Promise.all(
       (tiers ?? []).map((t) =>
-        db.from("pricing_tiers").update({ price_per_portion: t.price_per_portion + body.adjust! }).eq("portions", t.portions)
+        db.from("pricing_tiers").update({ price_per_portion: t.price_per_portion + adjust }).eq("portions", t.portions)
       )
     );
 

@@ -38,7 +38,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Summary stats
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const thisMonth = rows.filter((r) => r.converted_at! >= monthStart);
+  const thisMonth = rows.filter((r) => r.converted_at != null && r.converted_at >= monthStart);
 
   const totalRevenue = rows.reduce((sum, r) => sum + (r.total_payment ?? 0), 0);
   const revenueThisMonth = thisMonth.reduce((sum, r) => sum + (r.total_payment ?? 0), 0);

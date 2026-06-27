@@ -74,8 +74,8 @@ function BusinessSection({ settingsMap }: { settingsMap: Record<string, string> 
       <div className="space-y-3">
         {BUSINESS_KEYS.map((k) => (
           <div key={k}>
-            <label className="block text-xs text-gray-500 mb-1 capitalize">{k.replace(/_/g, " ")}</label>
-            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+            <label htmlFor={`business-${k}`} className="block text-xs text-gray-500 mb-1 capitalize">{k.replace(/_/g, " ")}</label>
+            <input id={`business-${k}`} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
           </div>
         ))}
         <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
@@ -177,7 +177,7 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
             <p className="font-medium text-gray-900">Price changes only apply to new orders. Existing orders are not affected. Continue?</p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => save.mutate({ portions: editPortions!, price_per_portion: Number(editPrice) })} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">{save.isPending ? "Saving..." : "Confirm"}</button>
+              <button type="button" onClick={() => { if (editPortions === null) return; save.mutate({ portions: editPortions, price_per_portion: Number(editPrice) }); }} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">{save.isPending ? "Saving..." : "Confirm"}</button>
               <button type="button" onClick={() => setConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Cancel</button>
             </div>
           </div>
@@ -214,7 +214,7 @@ function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> 
     <Section title="Delivery">
       <div className="space-y-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Delivery areas</label>
+          <p className="block text-xs text-gray-500 mb-1">Delivery areas</p>
           <div className="flex flex-wrap gap-1">
             {AREAS.map((a) => (
               <button key={a} type="button"
@@ -225,8 +225,8 @@ function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> 
           </div>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Order deadline hour (WIB)</label>
-          <input type="number" min={0} max={23} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form.order_deadline_hour ?? ""} onChange={(e) => setForm((f) => ({ ...f, order_deadline_hour: e.target.value }))} />
+          <label htmlFor="delivery-order-deadline-hour" className="block text-xs text-gray-500 mb-1">Order deadline hour (WIB)</label>
+          <input id="delivery-order-deadline-hour" type="number" min={0} max={23} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form.order_deadline_hour ?? ""} onChange={(e) => setForm((f) => ({ ...f, order_deadline_hour: e.target.value }))} />
         </div>
         <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
       </div>
@@ -244,8 +244,9 @@ function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }
     <Section title="Chatbot Behavior">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-700">Chatbot enabled (kill switch)</label>
+          <label htmlFor="chatbot-enabled" className="text-sm text-gray-700">Chatbot enabled (kill switch)</label>
           <Switch
+            id="chatbot-enabled"
             checked={form.chatbot_enabled === "true"}
             onCheckedChange={(checked) => {
               const val = checked ? "true" : "false";
@@ -262,8 +263,8 @@ function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }
           { key: "photo_match_confidence_threshold", label: "Photo match threshold (0–1)" },
         ].map(({ key, label }) => (
           <div key={key}>
-            <label className="block text-xs text-gray-500 mb-1">{label}</label>
-            <input type="number" step="0.01" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-32" value={form[key] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
+            <label htmlFor={`chatbot-${key}`} className="block text-xs text-gray-500 mb-1">{label}</label>
+            <input id={`chatbot-${key}`} type="number" step="0.01" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-32" value={form[key] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
           </div>
         ))}
         <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
@@ -290,8 +291,8 @@ function AutomationSection({ settingsMap }: { settingsMap: Record<string, string
       <div className="space-y-3">
         {AUTOMATION_KEYS.map((k) => (
           <div key={k}>
-            <label className="block text-xs text-gray-500 mb-1">{labels[k]}</label>
-            <input type="number" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+            <label htmlFor={`automation-${k}`} className="block text-xs text-gray-500 mb-1">{labels[k]}</label>
+            <input id={`automation-${k}`} type="number" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
           </div>
         ))}
         <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
@@ -418,16 +419,16 @@ function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: stri
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs text-gray-500">{label}</label>
+      <p className="block text-xs text-gray-500">{label}</p>
       {currentUrl && (
         <a href={currentUrl} target="_blank" rel="noreferrer">
           <img src={currentUrl} alt={label} className="h-24 w-auto rounded-lg border border-gray-200 object-cover" />
         </a>
       )}
       <div className="flex items-center gap-2">
-        <label className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}>
+        <label htmlFor={`menu-image-${settingKey}`} className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}>
           {uploading ? "Uploading..." : currentUrl ? "Replace" : "Upload"}
-          <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+          <input id={`menu-image-${settingKey}`} type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
         </label>
         {uploaded && <span className="text-xs text-green-600">Saved!</span>}
         {error && <span className="text-xs text-red-500">{error}</span>}
@@ -589,10 +590,11 @@ function MessagesSection({ settingsMap, templates }: { settingsMap: Record<strin
     <Section title="Messages">
       <div className="space-y-6">
         <div className="space-y-2">
-          <label className="block text-xs text-gray-500">
+          <label htmlFor="settings-greeting-message" className="block text-xs text-gray-500">
             Greeting message <span className="text-gray-400">— sent to new customers on first contact</span>
           </label>
           <textarea
+            id="settings-greeting-message"
             rows={5}
             value={greeting}
             onChange={(e) => { setGreeting(e.target.value); setGreetingConfirm(false); }}
@@ -607,10 +609,11 @@ function MessagesSection({ settingsMap, templates }: { settingsMap: Record<strin
           />
         </div>
         <div className="space-y-2">
-          <label className="block text-xs text-gray-500">
+          <label htmlFor="settings-away-message" className="block text-xs text-gray-500">
             Away message <span className="text-gray-400">— sent when chatbot is disabled</span>
           </label>
           <textarea
+            id="settings-away-message"
             rows={3}
             value={away}
             onChange={(e) => { setAway(e.target.value); setAwayConfirm(false); }}

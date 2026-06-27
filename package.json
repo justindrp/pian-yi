@@ -1,6 +1,6 @@
 {
   "name": "pian-yi",
-  "version": "1.74.1",
+  "version": "1.74.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -51,7 +51,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.2.0",
+    "@biomejs/biome": "2.5.1",
     "@tailwindcss/postcss": "^4",
     "@types/form-data": "^2.5.2",
     "@types/jest": "^30.0.0",

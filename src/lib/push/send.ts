@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { requiredEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function sendPushToAllAdmins(
@@ -8,9 +9,9 @@ export async function sendPushToAllAdmins(
   priority: "high" | "medium" | "low",
 ): Promise<void> {
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT!,
-    process.env.VAPID_PUBLIC_KEY!,
-    process.env.VAPID_PRIVATE_KEY!,
+    requiredEnv("VAPID_SUBJECT", process.env.VAPID_SUBJECT),
+    requiredEnv("VAPID_PUBLIC_KEY", process.env.VAPID_PUBLIC_KEY),
+    requiredEnv("VAPID_PRIVATE_KEY", process.env.VAPID_PRIVATE_KEY),
   );
   const db = createAdminClient();
   const { data: subs } = await db.from("push_subscriptions").select("*");

@@ -20,8 +20,8 @@ import type { Database } from "../src/types/database";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl || !serviceRoleKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);
@@ -44,7 +44,7 @@ const AREA_PREFIXES: [string, string][] = [
 function parseAreaSubArea(raw: string): { area: string; sub_area: string | null } {
   const trimmed = raw.trim();
   for (const [prefix, area] of AREA_PREFIXES) {
-    if (trimmed.startsWith(prefix + "-")) {
+    if (trimmed.startsWith(`${prefix}-`)) {
       return { area, sub_area: trimmed.slice(prefix.length + 1).trim() || null };
     }
     if (trimmed === prefix) {
@@ -60,7 +60,7 @@ function parseAreaSubArea(raw: string): { area: string; sub_area: string | null 
 // "Devi 1" → { base: "Devi", index: 1 }  |  "Annie" → { base: "Annie", index: 0 }
 function parseName(name: string): { base: string; index: number } {
   const m = name.trim().match(/^(.+?)\s+(\d+)$/);
-  if (m) return { base: m[1].trim(), index: Number.parseInt(m[2]) };
+  if (m) return { base: m[1].trim(), index: Number.parseInt(m[2], 10) };
   return { base: name.trim(), index: 0 };
 }
 
@@ -288,8 +288,12 @@ async function main() {
   for (const row of rawCustomers) {
     const { base } = parseName(row.nama);
     const key = base.toLowerCase();
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(row);
+    let group = groups.get(key);
+    if (!group) {
+      group = [];
+      groups.set(key, group);
+    }
+    group.push(row);
   }
 
   // ── Load existing orders to avoid duplicates ────────────────────────────
@@ -303,7 +307,8 @@ async function main() {
     if (!existingOrdersByCustomer.has(ord.customer_id)) {
       existingOrdersByCustomer.set(ord.customer_id, []);
     }
-    existingOrdersByCustomer.get(ord.customer_id)!.push(ord);
+    const bucket = existingOrdersByCustomer.get(ord.customer_id);
+    if (bucket) bucket.push(ord);
   }
 
   // ── Upsert customers + orders ────────────────────────────────────────────
@@ -328,8 +333,8 @@ async function main() {
     let totalPortions = 0;
     let weightedPrice = 0;
     for (const row of rows) {
-      const qty = Number.parseInt(row.sisaKuota) || 0;
-      const price = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, "")) || 0;
+      const qty = Number.parseInt(row.sisaKuota, 10) || 0;
+      const price = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, ""), 10) || 0;
       totalPortions += qty;
       weightedPrice += qty * price;
     }
@@ -363,7 +368,7 @@ async function main() {
           subcontractor_id: resolveSubcontractor(rows[0].subcontractor),
           portions_remaining: totalPortions,
           avg_price_per_portion: avgPrice,
-          customer_number: Number.parseInt(rows[0].no) || null,
+          customer_number: Number.parseInt(rows[0].no, 10) || null,
           delivery_route: deliveryRoute,
         },
         { onConflict: "phone_number" },
@@ -406,8 +411,8 @@ async function main() {
     for (const row of rows) {
       const parsed = parseAreaSubArea(row.areaSubArea);
       const area = parsed.area || row.areaSubArea || "";
-      const portions = Number.parseInt(row.sisaKuota) || 0;
-      const priceRaw = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, "")) || 0;
+      const portions = Number.parseInt(row.sisaKuota, 10) || 0;
+      const priceRaw = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, ""), 10) || 0;
       const totalPrice = portions * priceRaw;
 
       const { data: ord, error: ordErr } = await db
@@ -454,7 +459,7 @@ async function main() {
     if (!date) { deliverySkipped++; continue; }
 
     const mealType = row.mealType.toLowerCase().includes("dinner") ? "dinner" : "lunch";
-    const portions = Number.parseInt(row.jumlah) || 1;
+    const portions = Number.parseInt(row.jumlah, 10) || 1;
     const nameKey = row.nama.trim().toLowerCase();
 
     // Match customer: try full name first, then base name

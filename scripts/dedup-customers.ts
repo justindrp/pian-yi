@@ -9,6 +9,7 @@
  *  4. Delete the old placeholder record
  */
 import { createClient } from "@supabase/supabase-js";
+import { requiredEnv } from "../src/lib/env";
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 
@@ -18,8 +19,8 @@ function normalize(name: string) {
 
 async function main() {
   const db = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    requiredEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
+    requiredEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY),
   );
 
   // Load all customers
