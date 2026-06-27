@@ -320,7 +320,11 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 ### Accounting
 - `GET /api/accounting` — Paginated journal entries with optional date range filter
 - `POST /api/accounting` — Owner-only. Create a manual balanced journal entry. Body: `{ date (YYYY-MM-DD), description, lines: [{ accountCode, debit, credit }] }`. Validates each line is debit XOR credit, total debit = total credit (> 0), and every `accountCode` exists. Inserts a `journals` header (`source_type: "manual"`, `source_id: null`) with an atomic `next_journal_reference` reference, then `journal_lines`; rolls back the header if line insert fails.
-- `GET /api/accounting/accounts` — Owner-only. Active chart of accounts (`code, name, type`) for the manual-journal form dropdown
+- `GET /api/accounting/accounts` — Owner-only. Active chart of accounts (`code, name, type`) for the manual-journal form dropdown. With `?all=true` returns every account incl. inactive with full fields (`id, code, name, type, normal_balance, category, is_active`) for the Akun management tab.
+- `POST /api/accounting/accounts` — Owner-only. Create a chart-of-accounts entry. Body: `{ code (3–5 digits, unique), name, type (Asset|Liability|Equity|Revenue|Expense), category }`. `normal_balance` is derived server-side (Asset/Expense → Debit, else Credit), never accepted from client. Rejects duplicate code.
+- `PATCH /api/accounting/accounts/[id]` — Owner-only. Edit `name`, `category`, or toggle `is_active`. `code`/`type`/`normal_balance` are immutable once created (locked to protect historical postings). Accounts are never deleted (referenced by `journal_lines`); deactivate hides them from the journal dropdown.
+- `GET /api/accounting/reports?type=&from=&to=` — Owner-only. Server-computed financial statements from `journal_lines`. `type=trial_balance` (each account netted onto its normal side, `from` optional, cumulative through `to`); `type=pnl` (revenue − expense over `from..to`, returns `netIncome`); `type=balance_sheet` (assets / liabilities / equity cumulative through `to`, with cumulative revenue−expense folded into equity as a "Laba ditahan & berjalan" line, plus `balanced` flag).
+- `GET /api/accounting/ledger?account=<code>&from=&to=` — Owner-only. Per-account general ledger: opening balance (net of lines before `from`), every line in range with a running balance on the account's normal side, and closing balance.
 
 ### WhatsApp (manual send)
 - `POST /api/whatsapp/send` — Admin sends a manual text message from the dashboard UI
@@ -387,7 +391,7 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (60 tests across 11 suites):
+Current coverage (92 tests across 16 suites):
 
 Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
@@ -408,6 +412,11 @@ Phase 4 — assistant chat history:
 
 Phase 5 — delivery proofs:
 - `test/api/delivery-proofs.test.ts` — 5 tests: POST stamps `received_at` to selected date, POST missing customer_id returns 400, PATCH send sets `manually_sent` + side fields, PATCH unmatch, unauthenticated GET/POST return 401
+
+Phase 6 — accounting reports & chart-of-accounts management:
+- `test/api/accounting.test.ts` — 5 tests: manual journal POST auth/balance/unknown-account/valid-insert
+- `test/api/accounting-accounts.test.ts` — 8 tests: POST create (auth, invalid code, invalid type, duplicate code, normal_balance derived from type for Asset/Expense vs Liability), PATCH (auth, empty patch 400, toggle `is_active`)
+- `test/api/accounting-reports.test.ts` — 8 tests: reports auth + invalid type, trial_balance net-on-normal-side + balanced, pnl netIncome, balance_sheet earnings-into-equity + balanced; ledger missing/unknown account, running-balance computation
 
 A pre-push hook (`.git/hooks/pre-push`) runs `pnpm typecheck && pnpm test` before every push and blocks if either fails.
 

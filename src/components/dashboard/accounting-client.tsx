@@ -6,10 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Revenue", "Expense"] as const;
+
 interface Account {
   code: string;
   name: string;
   type: string;
+}
+
+interface ManagedAccount {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  normal_balance: string;
+  category: string;
+  is_active: boolean;
 }
 
 function sourceLabel(t: string) {
@@ -17,6 +29,84 @@ function sourceLabel(t: string) {
   if (t === "manual") return "Manual";
   return "Pengiriman";
 }
+
+function formatRp(n: number) {
+  return `Rp ${n.toLocaleString("id-ID")}`;
+}
+
+type Tab = "jurnal" | "buku-besar" | "neraca-saldo" | "laba-rugi" | "neraca" | "akun";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "jurnal", label: "Jurnal" },
+  { id: "buku-besar", label: "Buku Besar" },
+  { id: "neraca-saldo", label: "Neraca Saldo" },
+  { id: "laba-rugi", label: "Laba Rugi" },
+  { id: "neraca", label: "Neraca" },
+  { id: "akun", label: "Akun" },
+];
+
+export default function AccountingClient() {
+  const today = new Date().toISOString().slice(0, 10);
+  const firstOfMonth = `${today.slice(0, 8)}01`;
+
+  const [tab, setTab] = useState<Tab>("jurnal");
+  const [from, setFrom] = useState(firstOfMonth);
+  const [to, setTo] = useState(today);
+
+  const showRange = tab !== "neraca" && tab !== "akun";
+  const showAsOf = tab === "neraca";
+
+  return (
+    <div>
+      <h1 className="text-xl font-semibold text-gray-900 mb-4">Accounting</h1>
+
+      {/* Tab nav */}
+      <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-4">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
+              tab === t.id
+                ? "border-gray-900 text-gray-900 font-medium"
+                : "border-transparent text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Date controls */}
+      {(showRange || showAsOf) && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4 flex flex-wrap gap-4 items-end">
+          {showRange && (
+            <div>
+              <Label className="block text-xs text-gray-500 mb-1">Dari</Label>
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
+          )}
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">{showAsOf ? "Per tanggal" : "Sampai"}</Label>
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {tab === "jurnal" && <JournalTab from={from} to={to} />}
+      {tab === "buku-besar" && <LedgerTab from={from} to={to} />}
+      {tab === "neraca-saldo" && <TrialBalanceTab from={from} to={to} />}
+      {tab === "laba-rugi" && <PnlTab from={from} to={to} />}
+      {tab === "neraca" && <BalanceSheetTab to={to} />}
+      {tab === "akun" && <AccountsTab />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Jurnal tab
+// ---------------------------------------------------------------------------
 
 interface JournalLine {
   journal_id: string;
@@ -35,16 +125,7 @@ interface Journal {
   lines: JournalLine[];
 }
 
-function formatRp(n: number) {
-  return `Rp ${n.toLocaleString("id-ID")}`;
-}
-
-export default function AccountingClient() {
-  const today = new Date().toISOString().slice(0, 10);
-  const firstOfMonth = `${today.slice(0, 8)}01`;
-
-  const [from, setFrom] = useState(firstOfMonth);
-  const [to, setTo] = useState(today);
+function JournalTab({ from, to }: { from: string; to: string }) {
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -54,8 +135,7 @@ export default function AccountingClient() {
     queryFn: async () => {
       const params = new URLSearchParams({ from, to, page: String(page) });
       const res = await fetch(`/api/accounting?${params}`);
-      const json = await res.json();
-      return json as {
+      return (await res.json()) as {
         ok: boolean;
         data: Journal[];
         total: number;
@@ -72,8 +152,8 @@ export default function AccountingClient() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Accounting</h1>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-400">{total} jurnal</p>
         <Button type="button" size="sm" onClick={() => setShowModal(true)}>
           Tambah Jurnal
         </Button>
@@ -81,34 +161,6 @@ export default function AccountingClient() {
 
       {showModal && <NewJournalModal onClose={() => setShowModal(false)} />}
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4 flex flex-wrap gap-4 items-end">
-        <div>
-          <Label className="block text-xs text-gray-500 mb-1">Dari</Label>
-          <Input
-            type="date"
-            value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-        <div>
-          <Label className="block text-xs text-gray-500 mb-1">Sampai</Label>
-          <Input
-            type="date"
-            value={to}
-            onChange={(e) => {
-              setTo(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-        <p className="text-sm text-gray-400 self-end pb-2">{total} jurnal</p>
-      </div>
-
-      {/* Journal list */}
       <div className="space-y-2">
         {isLoading && (
           <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
@@ -124,10 +176,7 @@ export default function AccountingClient() {
           const isOpen = expanded === j.id;
           const totalDebit = j.lines.reduce((s, l) => s + l.debit, 0);
           return (
-            <div
-              key={j.id}
-              className="bg-white rounded-xl border border-gray-100 overflow-hidden"
-            >
+            <div key={j.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               <Button
                 type="button"
                 variant="ghost"
@@ -135,9 +184,7 @@ export default function AccountingClient() {
                 className="w-full flex items-center justify-between px-4 py-3 h-auto text-left"
               >
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-gray-400 w-28 shrink-0">
-                    {j.reference}
-                  </span>
+                  <span className="font-mono text-xs text-gray-400 w-28 shrink-0">{j.reference}</span>
                   <div>
                     <p className="text-sm text-gray-800">{j.description}</p>
                     <p className="text-xs text-gray-400">
@@ -146,9 +193,7 @@ export default function AccountingClient() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm font-medium text-gray-700">
-                    {formatRp(totalDebit)}
-                  </span>
+                  <span className="text-sm font-medium text-gray-700">{formatRp(totalDebit)}</span>
                   <svg
                     width="16"
                     height="16"
@@ -160,11 +205,7 @@ export default function AccountingClient() {
                     aria-label="Toggle details"
                     className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19 9l-7 7-7-7"
-                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
               </Button>
@@ -174,27 +215,17 @@ export default function AccountingClient() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-gray-400">
-                        <th className="text-left pb-2 font-normal w-16">
-                          Kode
-                        </th>
+                        <th className="text-left pb-2 font-normal w-16">Kode</th>
                         <th className="text-left pb-2 font-normal">Akun</th>
-                        <th className="text-right pb-2 font-normal w-28">
-                          Debit
-                        </th>
-                        <th className="text-right pb-2 font-normal w-28">
-                          Kredit
-                        </th>
+                        <th className="text-right pb-2 font-normal w-28">Debit</th>
+                        <th className="text-right pb-2 font-normal w-28">Kredit</th>
                       </tr>
                     </thead>
                     <tbody>
                       {j.lines.map((line) => (
                         <tr key={`${line.journal_id}-${line.account?.code}`} className="border-t border-gray-50">
-                          <td className="py-1.5 text-gray-400 font-mono">
-                            {line.account?.code}
-                          </td>
-                          <td className="py-1.5 text-gray-700">
-                            {line.account?.name}
-                          </td>
+                          <td className="py-1.5 text-gray-400 font-mono">{line.account?.code}</td>
+                          <td className="py-1.5 text-gray-700">{line.account?.name}</td>
                           <td className="py-1.5 text-right text-gray-700">
                             {line.debit > 0 ? formatRp(line.debit) : "—"}
                           </td>
@@ -225,7 +256,6 @@ export default function AccountingClient() {
         })}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 mt-6">
           <Button
@@ -255,6 +285,530 @@ export default function AccountingClient() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Buku Besar (general ledger) tab
+// ---------------------------------------------------------------------------
+
+interface LedgerRow {
+  reference: string;
+  description: string;
+  date: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+function LedgerTab({ from, to }: { from: string; to: string }) {
+  const [account, setAccount] = useState("");
+
+  const { data: accountsData } = useQuery({
+    queryKey: ["accounting-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/accounting/accounts");
+      return (await res.json()) as { ok: boolean; data: Account[] };
+    },
+  });
+  const accounts = accountsData?.data ?? [];
+
+  const { data, isLoading } = useQuery({
+    enabled: account.length > 0,
+    queryKey: ["accounting-ledger", account, from, to],
+    queryFn: async () => {
+      const params = new URLSearchParams({ account, from, to });
+      const res = await fetch(`/api/accounting/ledger?${params}`);
+      return (await res.json()) as {
+        ok: boolean;
+        data: {
+          account: { code: string; name: string; type: string };
+          opening: number;
+          rows: LedgerRow[];
+          closing: number;
+        };
+      };
+    },
+  });
+
+  return (
+    <div>
+      <div className="mb-4 max-w-md">
+        <Label className="block text-xs text-gray-500 mb-1">Akun</Label>
+        <select
+          value={account}
+          onChange={(e) => setAccount(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="">Pilih akun…</option>
+          {accounts.map((a) => (
+            <option key={a.code} value={a.code}>
+              {a.code} — {a.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {!account && (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+          Pilih akun untuk melihat buku besar.
+        </div>
+      )}
+
+      {account && isLoading && (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+          Memuat...
+        </div>
+      )}
+
+      {account && data?.ok && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-400 border-b border-gray-100">
+                <th className="text-left p-3 font-normal w-24">Tanggal</th>
+                <th className="text-left p-3 font-normal w-28">Ref</th>
+                <th className="text-left p-3 font-normal">Keterangan</th>
+                <th className="text-right p-3 font-normal w-28">Debit</th>
+                <th className="text-right p-3 font-normal w-28">Kredit</th>
+                <th className="text-right p-3 font-normal w-32">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-gray-50 text-gray-400">
+                <td className="p-3" colSpan={5}>
+                  Saldo awal
+                </td>
+                <td className="p-3 text-right font-medium">{formatRp(data.data.opening)}</td>
+              </tr>
+              {data.data.rows.map((r, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: ledger rows have no stable unique id
+                <tr key={`${r.reference}-${i}`} className="border-b border-gray-50">
+                  <td className="p-3 text-gray-500">{r.date}</td>
+                  <td className="p-3 font-mono text-gray-400">{r.reference}</td>
+                  <td className="p-3 text-gray-700">{r.description}</td>
+                  <td className="p-3 text-right text-gray-700">{r.debit > 0 ? formatRp(r.debit) : "—"}</td>
+                  <td className="p-3 text-right text-gray-700">{r.credit > 0 ? formatRp(r.credit) : "—"}</td>
+                  <td className="p-3 text-right text-gray-700">{formatRp(r.balance)}</td>
+                </tr>
+              ))}
+              {data.data.rows.length === 0 && (
+                <tr>
+                  <td className="p-3 text-gray-400 text-center" colSpan={6}>
+                    Tidak ada transaksi pada periode ini.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-gray-200 font-medium text-gray-800">
+                <td className="p-3" colSpan={5}>
+                  Saldo akhir
+                </td>
+                <td className="p-3 text-right">{formatRp(data.data.closing)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Neraca Saldo (trial balance) tab
+// ---------------------------------------------------------------------------
+
+function TrialBalanceTab({ from, to }: { from: string; to: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["accounting-trial-balance", from, to],
+    queryFn: async () => {
+      const params = new URLSearchParams({ type: "trial_balance", from, to });
+      const res = await fetch(`/api/accounting/reports?${params}`);
+      return (await res.json()) as {
+        ok: boolean;
+        data: {
+          rows: { code: string; name: string; type: string; debit: number; credit: number }[];
+          totalDebit: number;
+          totalCredit: number;
+        };
+      };
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+        Memuat...
+      </div>
+    );
+  }
+  if (!data?.ok) return null;
+
+  const { rows, totalDebit, totalCredit } = data.data;
+  const balanced = totalDebit === totalCredit;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-400 border-b border-gray-100">
+            <th className="text-left p-3 font-normal w-16">Kode</th>
+            <th className="text-left p-3 font-normal">Akun</th>
+            <th className="text-right p-3 font-normal w-32">Debit</th>
+            <th className="text-right p-3 font-normal w-32">Kredit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.code} className="border-b border-gray-50">
+              <td className="p-3 font-mono text-gray-400">{r.code}</td>
+              <td className="p-3 text-gray-700">{r.name}</td>
+              <td className="p-3 text-right text-gray-700">{r.debit > 0 ? formatRp(r.debit) : "—"}</td>
+              <td className="p-3 text-right text-gray-700">{r.credit > 0 ? formatRp(r.credit) : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-gray-200 font-medium text-gray-800">
+            <td className="p-3" colSpan={2}>
+              Total {balanced ? "" : "(tidak seimbang!)"}
+            </td>
+            <td className={`p-3 text-right ${balanced ? "" : "text-red-600"}`}>{formatRp(totalDebit)}</td>
+            <td className={`p-3 text-right ${balanced ? "" : "text-red-600"}`}>{formatRp(totalCredit)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Laba Rugi (P&L) tab
+// ---------------------------------------------------------------------------
+
+function PnlTab({ from, to }: { from: string; to: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["accounting-pnl", from, to],
+    queryFn: async () => {
+      const params = new URLSearchParams({ type: "pnl", from, to });
+      const res = await fetch(`/api/accounting/reports?${params}`);
+      return (await res.json()) as {
+        ok: boolean;
+        data: {
+          revenue: { code: string; name: string; amount: number }[];
+          expense: { code: string; name: string; amount: number }[];
+          totalRevenue: number;
+          totalExpense: number;
+          netIncome: number;
+        };
+      };
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+        Memuat...
+      </div>
+    );
+  }
+  if (!data?.ok) return null;
+
+  const { revenue, expense, totalRevenue, totalExpense, netIncome } = data.data;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 max-w-xl">
+      <ReportSection title="Pendapatan" rows={revenue} total={totalRevenue} />
+      <ReportSection title="Beban" rows={expense} total={totalExpense} />
+      <div className="flex justify-between items-center border-t-2 border-gray-300 pt-3 mt-3">
+        <span className="text-sm font-semibold text-gray-900">Laba Bersih</span>
+        <span className={`text-sm font-semibold ${netIncome >= 0 ? "text-green-600" : "text-red-600"}`}>
+          {formatRp(netIncome)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Neraca (balance sheet) tab
+// ---------------------------------------------------------------------------
+
+function BalanceSheetTab({ to }: { to: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["accounting-balance-sheet", to],
+    queryFn: async () => {
+      const params = new URLSearchParams({ type: "balance_sheet", to });
+      const res = await fetch(`/api/accounting/reports?${params}`);
+      return (await res.json()) as {
+        ok: boolean;
+        data: {
+          assets: { code: string; name: string; amount: number }[];
+          liabilities: { code: string; name: string; amount: number }[];
+          equity: { code: string; name: string; amount: number }[];
+          totalAssets: number;
+          totalLiabilities: number;
+          totalEquity: number;
+          balanced: boolean;
+        };
+      };
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+        Memuat...
+      </div>
+    );
+  }
+  if (!data?.ok) return null;
+
+  const { assets, liabilities, equity, totalAssets, totalLiabilities, totalEquity, balanced } = data.data;
+
+  return (
+    <div className="grid md:grid-cols-2 gap-4">
+      <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <ReportSection title="Aset" rows={assets} total={totalAssets} />
+      </div>
+      <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
+        <ReportSection title="Liabilitas" rows={liabilities} total={totalLiabilities} />
+        <ReportSection title="Ekuitas" rows={equity} total={totalEquity} />
+        <div className="flex justify-between items-center border-t-2 border-gray-300 pt-3">
+          <span className="text-sm font-semibold text-gray-900">Total Liabilitas + Ekuitas</span>
+          <span className={`text-sm font-semibold ${balanced ? "text-gray-900" : "text-red-600"}`}>
+            {formatRp(totalLiabilities + totalEquity)}
+          </span>
+        </div>
+        {!balanced && <p className="text-xs text-red-600">Tidak seimbang dengan total aset.</p>}
+      </div>
+    </div>
+  );
+}
+
+function ReportSection({
+  title,
+  rows,
+  total,
+}: {
+  title: string;
+  rows: { code: string; name: string; amount: number }[];
+  total: number;
+}) {
+  return (
+    <div className="mb-4 last:mb-0">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">{title}</h3>
+      <table className="w-full text-xs">
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.code}>
+              <td className="py-1 text-gray-400 font-mono w-12">{r.code}</td>
+              <td className="py-1 text-gray-700">{r.name}</td>
+              <td className="py-1 text-right text-gray-700">{formatRp(r.amount)}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td className="py-1 text-gray-300" colSpan={3}>
+                —
+              </td>
+            </tr>
+          )}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-gray-200 font-medium text-gray-800">
+            <td className="pt-2" colSpan={2}>
+              Total {title}
+            </td>
+            <td className="pt-2 text-right">{formatRp(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Akun (chart of accounts) tab
+// ---------------------------------------------------------------------------
+
+function AccountsTab() {
+  const queryClient = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["accounting-accounts-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/accounting/accounts?all=true");
+      return (await res.json()) as { ok: boolean; data: ManagedAccount[] };
+    },
+  });
+  const accounts = data?.data ?? [];
+
+  async function toggleActive(a: ManagedAccount) {
+    setBusy(a.id);
+    await fetch(`/api/accounting/accounts/${a.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !a.is_active }),
+    });
+    await queryClient.invalidateQueries({ queryKey: ["accounting-accounts-all"] });
+    await queryClient.invalidateQueries({ queryKey: ["accounting-accounts"] });
+    setBusy(null);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-400">{accounts.length} akun</p>
+        <Button type="button" size="sm" onClick={() => setShowModal(true)}>
+          Tambah Akun
+        </Button>
+      </div>
+
+      {showModal && <NewAccountModal onClose={() => setShowModal(false)} />}
+
+      {isLoading ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+          Memuat...
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-400 border-b border-gray-100">
+                <th className="text-left p-3 font-normal w-16">Kode</th>
+                <th className="text-left p-3 font-normal">Nama</th>
+                <th className="text-left p-3 font-normal w-24">Tipe</th>
+                <th className="text-left p-3 font-normal w-40">Kategori</th>
+                <th className="text-right p-3 font-normal w-28">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((a) => (
+                <tr key={a.id} className={`border-b border-gray-50 ${a.is_active ? "" : "opacity-50"}`}>
+                  <td className="p-3 font-mono text-gray-400">{a.code}</td>
+                  <td className="p-3 text-gray-700">{a.name}</td>
+                  <td className="p-3 text-gray-500">{a.type}</td>
+                  <td className="p-3 text-gray-500">{a.category}</td>
+                  <td className="p-3 text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy === a.id}
+                      onClick={() => toggleActive(a)}
+                      className={a.is_active ? "text-gray-500" : "text-green-600"}
+                    >
+                      {a.is_active ? "Nonaktifkan" : "Aktifkan"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewAccountModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("Expense");
+  const [category, setCategory] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const canSubmit = /^\d{3,5}$/.test(code) && name.trim() && category.trim() && !saving;
+
+  async function submit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/accounting/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim(), name: name.trim(), type, category: category.trim() }),
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error ?? "Gagal menyimpan akun");
+        setSaving(false);
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ["accounting-accounts-all"] });
+      await queryClient.invalidateQueries({ queryKey: ["accounting-accounts"] });
+      onClose();
+    } catch {
+      setError("Gagal terhubung ke server");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-xl w-full max-w-md my-8 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Akun Baru</h2>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Tutup
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">Kode (3–5 digit)</Label>
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6005" inputMode="numeric" />
+          </div>
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">Nama</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama akun" />
+          </div>
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">Tipe</Label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value as (typeof ACCOUNT_TYPES)[number])}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              {ACCOUNT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">Kategori</Label>
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Operating Expenses"
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+        <div className="flex justify-end gap-2 mt-4">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Batal
+          </Button>
+          <Button type="button" onClick={submit} disabled={!canSubmit}>
+            {saving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// New journal modal (manual entry)
+// ---------------------------------------------------------------------------
+
 interface DraftLine {
   accountCode: string;
   debit: string;
@@ -278,8 +832,7 @@ function NewJournalModal({ onClose }: { onClose: () => void }) {
     queryKey: ["accounting-accounts"],
     queryFn: async () => {
       const res = await fetch("/api/accounting/accounts");
-      const json = await res.json();
-      return json as { ok: boolean; data: Account[] };
+      return (await res.json()) as { ok: boolean; data: Account[] };
     },
   });
   const accounts = accountsData?.data ?? [];
