@@ -1,14 +1,16 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
 
 type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
+const LEARNED_CONTEXT_START = "[AI learned context]";
+const LEARNED_CONTEXT_END = "[/AI learned context]";
 
 interface Thread {
   customer: Customer;
@@ -41,6 +43,7 @@ export default function InboxClient() {
   const [deleting, setDeleting] = useState(false);
   const [learningContext, setLearningContext] = useState(false);
   const [learnedContextStatus, setLearnedContextStatus] = useState<string | null>(null);
+  const [learnedContext, setLearnedContext] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameQuery, setRenameQuery] = useState("");
   const [allCustomers, setAllCustomers] = useState<
@@ -125,6 +128,18 @@ export default function InboxClient() {
     [supabase],
   );
 
+  const loadLearnedContext = useCallback(
+    async (customerId: string) => {
+      const { data } = await supabase
+        .from("customers")
+        .select("notes")
+        .eq("id", customerId)
+        .single();
+      setLearnedContext(extractLearnedContext(data?.notes ?? null));
+    },
+    [supabase],
+  );
+
   // Keep the ref in sync with state
   useEffect(() => {
     selectedCustomerIdRef.current = selectedCustomerId;
@@ -188,8 +203,9 @@ export default function InboxClient() {
   async function selectThread(customerId: string) {
     setSelectedCustomerId(customerId);
     setLearnedContextStatus(null);
+    setLearnedContext(null);
     setMobileView("chat");
-    await Promise.all([loadMessages(customerId), loadFlags(customerId)]);
+    await Promise.all([loadMessages(customerId), loadFlags(customerId), loadLearnedContext(customerId)]);
   }
 
   async function toggleEscalation() {
@@ -243,6 +259,8 @@ export default function InboxClient() {
       setLearnedContextStatus(body?.error ?? "Failed to learn context");
       return;
     }
+    const body = (await res.json().catch(() => null)) as { summary?: string } | null;
+    setLearnedContext(body?.summary ?? null);
     setLearnedContextStatus("Learned context saved");
   }
 
@@ -579,6 +597,21 @@ export default function InboxClient() {
             </div>
           )}
 
+          {learnedContext && (
+            <div className="px-5 py-3 border-b border-blue-100 bg-blue-50">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-blue-900 mb-1">
+                    Customer context
+                  </p>
+                  <p className="text-xs text-blue-800 whitespace-pre-wrap leading-relaxed">
+                    {learnedContext}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {messages.map((msg) => {
@@ -796,6 +829,17 @@ export default function InboxClient() {
       )}
     </div>
   );
+}
+
+function extractLearnedContext(notes: string | null): string | null {
+  if (!notes) return null;
+  const start = notes.indexOf(LEARNED_CONTEXT_START);
+  const end = notes.indexOf(LEARNED_CONTEXT_END);
+  if (start === -1 || end === -1 || end <= start) return null;
+  const content = notes
+    .slice(start + LEARNED_CONTEXT_START.length, end)
+    .trim();
+  return content || null;
 }
 
 function IntentBadge({ intent }: { intent: string }) {
