@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pian Yi Catering
 
-## Getting Started
+WhatsApp-based ordering system for **Pian Yi Catering**, a daily catering business in Tangerang Selatan, Indonesia (BSD City, Gading Serpong, Alam Sutera, Bintaro, Graha Raya).
 
-First, run the development server:
+Two surfaces:
+
+- **Customers** — chat only via WhatsApp with an AI bot (Claude Sonnet 4.6)
+- **Admins** — a PWA dashboard for operations (orders, deliveries, payments, inbox, accounting)
+
+## Tech stack
+
+| Concern | Choice |
+| --- | --- |
+| Framework | Next.js 16.2.6 (App Router, `output: 'standalone'`) + TypeScript |
+| Package manager | pnpm (only) |
+| Lint / format | Biome (only) |
+| Hosting | Railway (always-on Node, Singapore region) |
+| Database | Supabase Postgres + Row Level Security |
+| Auth | Supabase Auth (magic-link, admins only) |
+| AI | Claude Sonnet 4.6 (chat), Haiku 4.5 (classify/photo-match/sentiment) |
+| Messaging | Meta WhatsApp Business Cloud API v25.0 |
+| Push | `web-push` (VAPID, no Firebase) |
+| Data fetching | TanStack Query |
+| UI | Tailwind CSS + shadcn/ui |
+
+## Prerequisites
+
+- Node `26.3.1` (see `engines` in `package.json`)
+- pnpm
+- Supabase CLI
+- A Supabase project (local stack or staging) and a Meta WhatsApp app
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.local   # fill in env vars
+pnpm supabase start          # local Supabase stack
+pnpm db:reset                # apply migrations + seed
+pnpm dev                     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm dev          # dev server
+pnpm build        # production build (standalone)
+pnpm start        # serve production build
+pnpm lint         # Biome lint
+pnpm check        # Biome check (format + lint + imports) — full gate
+pnpm typecheck    # tsc --noEmit
+pnpm test         # Jest suite
+pnpm db:types     # regenerate src/types/database.ts from linked project
+pnpm db:push      # push migrations to remote
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Architecture principles
 
-## Learn More
+1. **HTTP 200 first, process after** — webhook acks Meta immediately, processes async
+2. **Idempotency everywhere** — every `message_id` checked against `processed_messages`
+3. **Defense in depth** — 9 layers of AI cost protection
+4. **Settings over hardcoding** — mutable config lives in the `settings` table
+5. **Server-controlled fields** — `id`, `status`, `total_price`, timestamps set server-side
+6. **Allowlist field updates** — no mass assignment
+7. **Append-only audit logs** — `edit_log`, `processed_messages`, `conversation_logs`
 
-To learn more about Next.js, take a look at the following resources:
+## Project layout
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+src/
+  app/
+    (dashboard)/   admin PWA pages (inbox, orders, deliveries, payments, ...)
+    (auth)/        login + callback
+    api/           webhook, cron, push, and dashboard APIs
+  lib/             supabase, claude, whatsapp, push, utils
+  components/      ui (shadcn), dashboard, shared
+  types/database.ts  (generated)
+supabase/migrations/  SQL migrations (Supabase CLI)
+test/                 Jest suite
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+WhatsApp webhook (after deploy): `https://<railway-app>.up.railway.app/api/webhook/whatsapp`
 
-## Deploy on Vercel
+See `CLAUDE.md` for full conventions, business rules, and the API route reference.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Testing
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Jest suite under `test/` (Node env, all external deps mocked — no network). A pre-push hook runs `pnpm typecheck && pnpm test` and blocks on failure.
+
+```bash
+pnpm test
+pnpm test:coverage
+```
+
+## Deployment
+
+Railway auto-deploys on push to `main`. Cron jobs hit `/api/cron/*` with a `CRON_SECRET` header. Not deployed to Vercel.
+
+## License
+
+Private. All rights reserved.
