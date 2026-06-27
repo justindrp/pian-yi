@@ -69,14 +69,16 @@ export async function POST(request: Request) {
       const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
       if (toolUseBlocks.length === 0) break;
 
-      const writeBlock = toolUseBlocks.find((b) => b.type === "tool_use" && isWriteTool(b.name));
-      if (writeBlock && writeBlock.type === "tool_use") {
+      const writeBlocks = toolUseBlocks.filter((b) => b.type === "tool_use" && isWriteTool(b.name));
+      if (writeBlocks.length > 0) {
         const proposalText = response.content.find((b) => b.type === "text");
         const text = proposalText?.type === "text" ? proposalText.text : "";
-        const pendingAction = await buildPendingAction(
-          writeBlock.name,
-          writeBlock.input as Record<string, unknown>,
-        );
+        const pendingAction = writeBlocks.length === 1 || !writeBlocks.every((block) => isBatchableWriteTool(block.name))
+          ? await buildPendingAction(
+              writeBlocks[0].name,
+              writeBlocks[0].input as Record<string, unknown>,
+            )
+          : await buildBatchPendingAction(writeBlocks);
         await persist(text);
         return NextResponse.json({ ok: true, text, pendingAction, conversationId });
       }
@@ -124,6 +126,34 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, text: "I couldn't generate a response. Please try again.", conversationId });
+}
+
+function isBatchableWriteTool(name: string): boolean {
+  return name === "send_whatsapp_message" || name === "send_whatsapp_image";
+}
+
+async function buildBatchPendingAction(
+  writeBlocks: Array<{ name: string; input: unknown }>,
+) {
+  const actions = await Promise.all(
+    writeBlocks.map((block) => buildPendingAction(block.name, block.input as Record<string, unknown>)),
+  );
+
+  return {
+    tool: "batch",
+    input: {
+      actions: writeBlocks.map((block) => ({
+        tool: block.name,
+        input: block.input as Record<string, unknown>,
+      })),
+    },
+    label: `Confirm ${actions.length} actions`,
+    details: actions.flatMap((action, index) => [
+      `${index + 1}. ${action.label}`,
+      ...action.details,
+    ]),
+    dangerous: actions.some((action) => action.dangerous),
+  };
 }
 
 function extractLastUserText(messages: MessageParam[]): string | null {

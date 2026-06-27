@@ -3,13 +3,14 @@ import { POST } from "@/app/api/assistant/execute/route";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { sendImageMessage, sendTextMessage } from "@/lib/whatsapp/client";
+import { sendImageMessageById, sendTextMessage, uploadMediaToMeta } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/supabase/get-role", () => ({ getSessionWithRole: jest.fn() }));
 jest.mock("@/lib/whatsapp/client", () => ({
-  sendImageMessage: jest.fn().mockResolvedValue(undefined),
+  sendImageMessageById: jest.fn().mockResolvedValue(undefined),
   sendTextMessage: jest.fn().mockResolvedValue(undefined),
+  uploadMediaToMeta: jest.fn().mockResolvedValue("meta-media-id-123"),
 }));
 jest.mock("@/lib/claude/conversation", () => ({ saveMessage: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/accounting/journal", () => ({ createJournalEntry: jest.fn().mockResolvedValue(undefined) }));
@@ -64,6 +65,11 @@ function postRequest(body: unknown) {
 beforeEach(() => {
   jest.clearAllMocks();
   (getSessionWithRole as jest.Mock).mockResolvedValue({ email: "drpramadyo@gmail.com", role: "owner" });
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    headers: new Headers({ "content-type": "image/jpeg" }),
+    arrayBuffer: () => Promise.resolve(Buffer.from("image-bytes").buffer),
+  }) as jest.Mock;
 });
 
 // ---------------------------------------------------------------------------
@@ -171,7 +177,7 @@ describe("POST /api/assistant/execute", () => {
     expect(db.chains.customers?.update).toHaveBeenCalledWith({ name: "Budi Baru" });
   });
 
-  test("T6 — send_whatsapp_image sends image and logs image row", async () => {
+  test("T6 — send_whatsapp_image uploads image URL to Meta, sends by media ID, and logs image row", async () => {
     const db = makeDbMock({
       customers: { data: { id: "cust-4" }, error: null },
     });
@@ -189,11 +195,52 @@ describe("POST /api/assistant/execute", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(sendImageMessage).toHaveBeenCalledWith(
+    expect(global.fetch).toHaveBeenCalledWith("https://example.com/menu.jpg");
+    expect(uploadMediaToMeta).toHaveBeenCalledWith(expect.any(Buffer), "image/jpeg");
+    expect(sendImageMessageById).toHaveBeenCalledWith(
       "+628111",
-      "https://example.com/menu.jpg",
+      "meta-media-id-123",
       "Menu minggu ini",
     );
+  });
+
+  test("T8 — batch send_whatsapp_image executes every image", async () => {
+    const db = makeDbMock({
+      customers: { data: { id: "cust-4" }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await POST(
+      postRequest({
+        tool: "batch",
+        input: {
+          actions: [
+            {
+              tool: "send_whatsapp_image",
+              input: {
+                phone_number: "+628111",
+                image_url: "https://example.com/menu.jpg",
+                caption: "Menu minggu ini",
+              },
+            },
+            {
+              tool: "send_whatsapp_image",
+              input: {
+                phone_number: "+628111",
+                image_url: "https://example.com/prices.jpg",
+                caption: "Price list",
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(sendImageMessageById).toHaveBeenCalledTimes(2);
+    expect(sendImageMessageById).toHaveBeenNthCalledWith(1, "+628111", "meta-media-id-123", "Menu minggu ini");
+    expect(sendImageMessageById).toHaveBeenNthCalledWith(2, "+628111", "meta-media-id-123", "Price list");
   });
 
   test("T7 — update_customer_field field=phone_number → 400, no DB update", async () => {

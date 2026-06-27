@@ -41,6 +41,7 @@ function makeChain(result: { data: unknown; error: unknown; count?: number } = {
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
@@ -253,6 +254,55 @@ describe("POST /api/assistant", () => {
     // loop should have called create exactly twice
     const mockCreate = (getAnthropicClient as jest.Mock).mock.results[0].value.messages.create;
     expect(mockCreate.mock.calls.length).toBe(2);
+  });
+
+  test("T8 — multiple write tools are returned as one batch pendingAction", async () => {
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    (getAnthropicClient as jest.Mock).mockReturnValue(
+      makeClaudeMock([
+        {
+          stop_reason: "tool_use",
+          content: [
+            { type: "text", text: "I'll send both images." },
+            {
+              type: "tool_use",
+              id: "t1",
+              name: "send_whatsapp_image",
+              input: {
+                phone_number: "+628111",
+                image_url: "https://example.com/menu.jpg",
+                caption: "Menu",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "t2",
+              name: "send_whatsapp_image",
+              input: {
+                phone_number: "+628111",
+                image_url: "https://example.com/prices.jpg",
+                caption: "Price list",
+              },
+            },
+          ],
+        },
+      ]),
+    );
+
+    const res = await POST(
+      postRequest({ messages: [{ role: "user", content: "send menu and price list" }] }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.pendingAction.tool).toBe("batch");
+    expect(body.pendingAction.input.actions).toHaveLength(2);
+    expect(body.pendingAction.input.actions[0].tool).toBe("send_whatsapp_image");
+    expect(body.pendingAction.input.actions[1].input.image_url).toBe("https://example.com/prices.jpg");
+    expect(buildPendingAction as jest.Mock).toHaveBeenCalledTimes(2);
   });
 
   test("T5 — tool loop caps at 5 turns and still returns", async () => {

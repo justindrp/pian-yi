@@ -5,7 +5,7 @@ import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { sendImageMessage, sendTextMessage } from "@/lib/whatsapp/client";
+import { sendImageMessageById, sendTextMessage, uploadMediaToMeta } from "@/lib/whatsapp/client";
 
 const ALLOWED_CUSTOMER_FIELDS = new Set(["name", "address", "area", "notes"]);
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   const { tool, input, conversationId } = body;
-  if (!tool || !input || !WRITE_TOOLS.has(tool)) {
+  if (!tool || !input || (tool !== "batch" && !WRITE_TOOLS.has(tool))) {
     return NextResponse.json({ ok: false, error: "Invalid or disallowed tool" }, { status: 400 });
   }
 
@@ -39,7 +39,70 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, text, conversationId });
   }
 
+  async function sendAssistantText(phone: string, message: string) {
+    await sendTextMessage(phone, message);
+    const { data: cust } = await db
+      .from("customers")
+      .select("id")
+      .eq("phone_number", phone)
+      .maybeSingle();
+    if (cust?.id) {
+      await saveMessage({ customerId: cust.id, role: "assistant", content: message, modelUsed: "human" });
+    }
+  }
+
+  async function sendAssistantImage(phone: string, imageUrl: string, caption: string) {
+    const mediaId = await uploadImageUrlToMeta(imageUrl);
+    await sendImageMessageById(phone, mediaId, caption);
+    const { data: cust } = await db
+      .from("customers")
+      .select("id")
+      .eq("phone_number", phone)
+      .maybeSingle();
+    if (cust?.id) {
+      await saveMessage({
+        customerId: cust.id,
+        role: "assistant",
+        content: imageUrl,
+        messageType: "image",
+        modelUsed: "human",
+      });
+    }
+  }
+
   switch (tool) {
+    case "batch": {
+      const actions = input.actions;
+      if (!Array.isArray(actions) || actions.length === 0) {
+        return NextResponse.json({ ok: false, error: "actions required" }, { status: 400 });
+      }
+
+      for (const action of actions) {
+        if (!isWriteAction(action)) {
+          return NextResponse.json({ ok: false, error: "Invalid batch action" }, { status: 400 });
+        }
+        switch (action.tool) {
+          case "send_whatsapp_message":
+            await sendAssistantText(action.input.phone_number as string, action.input.message as string);
+            break;
+          case "send_whatsapp_image":
+            await sendAssistantImage(
+              action.input.phone_number as string,
+              action.input.image_url as string,
+              action.input.caption as string,
+            );
+            break;
+          default:
+            return NextResponse.json(
+              { ok: false, error: `Tool '${action.tool}' cannot be batched yet` },
+              { status: 400 },
+            );
+        }
+      }
+
+      return reply(`Selesai menjalankan ${actions.length} aksi.`);
+    }
+
     case "mark_order_paid": {
       const orderId = input.order_id as string;
       const { data: order, error: fetchErr } = await db
@@ -157,16 +220,7 @@ export async function POST(request: Request) {
     case "send_whatsapp_message": {
       const phone = input.phone_number as string;
       const message = input.message as string;
-      await sendTextMessage(phone, message);
-      // Log to the inbox so the message appears in the customer conversation.
-      const { data: cust } = await db
-        .from("customers")
-        .select("id")
-        .eq("phone_number", phone)
-        .maybeSingle();
-      if (cust?.id) {
-        await saveMessage({ customerId: cust.id, role: "assistant", content: message, modelUsed: "human" });
-      }
+      await sendAssistantText(phone, message);
       return reply(`Pesan WhatsApp sudah dikirim ke ${phone}.`);
     }
 
@@ -174,21 +228,7 @@ export async function POST(request: Request) {
       const phone = input.phone_number as string;
       const imageUrl = input.image_url as string;
       const caption = input.caption as string;
-      await sendImageMessage(phone, imageUrl, caption);
-      const { data: cust } = await db
-        .from("customers")
-        .select("id")
-        .eq("phone_number", phone)
-        .maybeSingle();
-      if (cust?.id) {
-        await saveMessage({
-          customerId: cust.id,
-          role: "assistant",
-          content: imageUrl,
-          messageType: "image",
-          modelUsed: "human",
-        });
-      }
+      await sendAssistantImage(phone, imageUrl, caption);
       return reply(`Gambar WhatsApp sudah dikirim ke ${phone}.`);
     }
 
@@ -216,6 +256,28 @@ export async function POST(request: Request) {
     default:
       return NextResponse.json({ ok: false, error: "Unknown tool" }, { status: 400 });
   }
+}
+
+function isWriteAction(value: unknown): value is { tool: string; input: Record<string, unknown> } {
+  if (!value || typeof value !== "object") return false;
+  const action = value as { tool?: unknown; input?: unknown };
+  return typeof action.tool === "string"
+    && WRITE_TOOLS.has(action.tool)
+    && !!action.input
+    && typeof action.input === "object";
+}
+
+async function uploadImageUrlToMeta(imageUrl: string): Promise<string> {
+  const res = await fetch(imageUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to download image: ${res.status}`);
+  }
+  const contentType = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+  if (!contentType.startsWith("image/")) {
+    throw new Error(`URL did not return an image (${contentType})`);
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return uploadMediaToMeta(buffer, contentType);
 }
 
 export const dynamic = "force-dynamic";
