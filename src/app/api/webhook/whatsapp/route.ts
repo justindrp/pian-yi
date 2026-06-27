@@ -384,14 +384,7 @@ export async function processWebhookAsync(
         .replace("{{order_deadline}}", deadlineText)
         .trim() || dapurListText;
 
-      if (resolvedWelcome) await sendTextMessage(message.from, resolvedWelcome);
-      if (priceListUrl) await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
-      for (const sub of welcomeSubs ?? []) {
-        if (sub.menu_image_url) await sendImageMessage(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
-      }
-
-      // Welcome sequence already greets the customer; skip Claude reply to avoid
-      // a redundant second hello. Save the incoming message and mark processed.
+      // Save the incoming message first so it sorts before the welcome replies.
       await saveMessage({
         customerId,
         role: "user",
@@ -401,6 +394,26 @@ export async function processWebhookAsync(
         messageType: message.type === "image" ? "image" : "text",
         mediaId: message.type === "image" ? message.imageId : undefined,
       });
+
+      // Send welcome sequence and log each outbound message to the inbox so the
+      // greeting and menu images are visible in the dashboard conversation view.
+      if (resolvedWelcome) {
+        await sendTextMessage(message.from, resolvedWelcome);
+        await saveMessage({ customerId, role: "assistant", content: resolvedWelcome, modelUsed: "system" });
+      }
+      if (priceListUrl) {
+        await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
+        await saveMessage({ customerId, role: "assistant", content: priceListUrl, messageType: "image", modelUsed: "system" });
+      }
+      for (const sub of welcomeSubs ?? []) {
+        if (sub.menu_image_url) {
+          await sendImageMessage(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
+          await saveMessage({ customerId, role: "assistant", content: sub.menu_image_url, messageType: "image", modelUsed: "system" });
+        }
+      }
+
+      // Welcome sequence already greets the customer; skip Claude reply to avoid
+      // a redundant second hello, then mark processed.
       await db
         .from("processed_messages")
         .update({ processed_at: new Date().toISOString() })

@@ -158,6 +158,15 @@ export async function POST(request: Request) {
       const phone = input.phone_number as string;
       const message = input.message as string;
       await sendTextMessage(phone, message);
+      // Log to the inbox so the message appears in the customer conversation.
+      const { data: cust } = await db
+        .from("customers")
+        .select("id")
+        .eq("phone_number", phone)
+        .maybeSingle();
+      if (cust?.id) {
+        await saveMessage({ customerId: cust.id, role: "assistant", content: message, modelUsed: "human" });
+      }
       return reply(`Pesan WhatsApp sudah dikirim ke ${phone}.`);
     }
 
