@@ -2,7 +2,7 @@
 
 Every `biome-ignore` suppression in the codebase, grouped by rule. Each entry lists where it lives and why the rule is intentionally disabled at that site.
 
-Last updated: 2026-06-27 (30 suppressions across 18 files).
+Last updated: 2026-06-27 (34 suppressions across 18 files).
 
 ---
 
@@ -66,7 +66,7 @@ Used in tests on mocked Supabase query builders. Biome flags the mock because it
 
 | File | Line | Reason |
 |------|------|--------|
-| `src/app/api/assistant/execute/route.ts` | 175 | Dynamic field from validated allowlist — key is checked against `ALLOWED_FIELDS` set before use |
+| `src/app/api/assistant/execute/route.ts` | 175 | Dynamic field from validated allowlist — key is checked against `ALLOWED_CUSTOMER_FIELDS` set before use |
 | `test/webhook.test.ts` | 134 | Test payload — shape intentionally loose |
 
 ---
