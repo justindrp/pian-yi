@@ -54,6 +54,17 @@ export default function CustomersClient() {
     sub_area_2: "",
     google_maps_link_2: "",
   });
+  const [showAdd, setShowAdd] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState({
+    name: "",
+    phone_number: "",
+    area: "",
+    sub_area: "",
+    address: "",
+    google_maps_link: "",
+    subcontractor_id: "",
+  });
   const queryClient = useQueryClient();
   const supabase = createClient();
 
@@ -156,6 +167,32 @@ export default function CustomersClient() {
     },
   });
 
+  const createMutation = useMutation({
+    mutationFn: async (form: typeof addForm) => {
+      const res = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Gagal membuat pelanggan");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["customers"] });
+      setShowAdd(false);
+      setAddForm({ name: "", phone_number: "", area: "", sub_area: "", address: "", google_maps_link: "", subcontractor_id: "" });
+    },
+  });
+
+  function submitAdd() {
+    setAddError(null);
+    if (!addForm.phone_number.trim()) {
+      setAddError("Nomor telepon wajib diisi");
+      return;
+    }
+    createMutation.mutate(addForm, { onError: (e) => setAddError((e as Error).message) });
+  }
+
   function openDetail(customer: Customer) {
     setSelected(customer);
     const c = customer as Customer & {
@@ -206,7 +243,10 @@ export default function CustomersClient() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Customers</h1>
-        <span className="text-sm text-gray-400">{data?.total ?? 0} total</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{data?.total ?? 0} total</span>
+          <Button type="button" onClick={() => { setAddError(null); setShowAdd(true); }} className="bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">+ Add customer</Button>
+        </div>
       </div>
 
       <div className="mb-4">
@@ -418,6 +458,64 @@ export default function CustomersClient() {
           </div>
         )}
       </div>
+
+      {/* Add customer modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Pelanggan Baru</h2>
+              <Button type="button" variant="ghost" onClick={() => setShowAdd(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0">&times;</Button>
+            </div>
+
+            <div>
+              <Label htmlFor="add-phone" className="text-xs text-gray-500 block mb-1">Phone *</Label>
+              <Input id="add-phone" value={addForm.phone_number} onChange={(e) => setAddForm({ ...addForm, phone_number: e.target.value })} placeholder="+628..." />
+            </div>
+            <div>
+              <Label htmlFor="add-name" className="text-xs text-gray-500 block mb-1">Name</Label>
+              <Input id="add-name" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="add-address" className="text-xs text-gray-500 block mb-1">Address</Label>
+              <Textarea id="add-address" value={addForm.address} onChange={(e) => setAddForm({ ...addForm, address: e.target.value })} rows={2} className="resize-none" />
+            </div>
+            <div>
+              <Label htmlFor="add-area" className="text-xs text-gray-500 block mb-1">Area</Label>
+              <select id="add-area" value={addForm.area} onChange={(e) => setAddForm({ ...addForm, area: e.target.value })} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                <option value="">— Select area —</option>
+                {DELIVERY_AREAS.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="add-sub-area" className="text-xs text-gray-500 block mb-1">Sub Area</Label>
+              <Input id="add-sub-area" value={addForm.sub_area} onChange={(e) => setAddForm({ ...addForm, sub_area: e.target.value })} placeholder="e.g. Binus, Pacific Garden" />
+            </div>
+            <div>
+              <Label htmlFor="add-maps" className="text-xs text-gray-500 block mb-1">Google Maps Link</Label>
+              <Input id="add-maps" value={addForm.google_maps_link} onChange={(e) => setAddForm({ ...addForm, google_maps_link: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="add-sub" className="text-xs text-gray-500 block mb-1">Assigned Subcontractor</Label>
+              <select id="add-sub" value={addForm.subcontractor_id} onChange={(e) => setAddForm({ ...addForm, subcontractor_id: e.target.value })} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                <option value="">— None —</option>
+                {(subcontractors ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {addError && <p className="text-xs text-red-600">{addError}</p>}
+
+            <div className="flex gap-2 pt-1">
+              <Button type="button" onClick={submitAdd} disabled={createMutation.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">{createMutation.isPending ? "Menyimpan..." : "Simpan"}</Button>
+              <Button type="button" variant="outline" onClick={() => setShowAdd(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg">Batal</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Detail slide-over */}
       {selected && (

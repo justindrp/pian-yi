@@ -88,6 +88,13 @@ export default function NewOrderModal({
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerComboRef = useRef<HTMLDivElement>(null);
 
+  // Inline new-customer creation (for a customer who ordered a package manually
+  // and isn't in the system yet).
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [creatingBusy, setCreatingBusy] = useState(false);
+  const [creatingError, setCreatingError] = useState("");
+  const [newCust, setNewCust] = useState({ name: "", phone_number: "", area: "", address: "", subcontractor_id: "" });
+
   // Common fields
   const [pricePerPortion, setPricePerPortion] = useState("28000");
   const [portionsPerDelivery, setPortionsPerDelivery] = useState("1");
@@ -146,6 +153,43 @@ export default function NewOrderModal({
     setDeliveryAddress(c.address ?? "");
     setArea(c.area ?? "");
     setSubcontractorId(c.subcontractor_id ?? "");
+  }
+
+  function openCreateCustomer() {
+    setShowCustomerDropdown(false);
+    setCreatingError("");
+    // Prefill phone if the search box looks like a number.
+    const looksLikePhone = /[0-9]/.test(customerSearch) && !/[a-z]/i.test(customerSearch);
+    setNewCust({ name: "", phone_number: looksLikePhone ? customerSearch.trim() : "", area: "", address: "", subcontractor_id: "" });
+    setCreatingCustomer(true);
+  }
+
+  async function createCustomerInline() {
+    setCreatingError("");
+    if (!newCust.phone_number.trim()) {
+      setCreatingError("Nomor telepon wajib diisi");
+      return;
+    }
+    setCreatingBusy(true);
+    try {
+      const res = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newCust),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string; data?: Customer };
+      if (!json.ok || !json.data) {
+        setCreatingError(json.error ?? "Gagal membuat pelanggan");
+        return;
+      }
+      setCustomers((prev) => [json.data as Customer, ...prev]);
+      selectCustomer(json.data);
+      setCreatingCustomer(false);
+    } catch {
+      setCreatingError("Gagal membuat pelanggan");
+    } finally {
+      setCreatingBusy(false);
+    }
   }
 
   function toggleWeekday(day: number) {
@@ -290,9 +334,39 @@ export default function NewOrderModal({
                     }).length === 0 && (
                       <li className="px-3 py-2 text-sm text-gray-400">Tidak ditemukan</li>
                     )}
+                  <li
+                    onMouseDown={(e) => { e.preventDefault(); openCreateCustomer(); }}
+                    className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 text-blue-600 font-medium border-t border-gray-100 sticky bottom-0 bg-white"
+                  >
+                    + Buat pelanggan baru
+                  </li>
                 </ul>
               )}
             </div>
+
+            {creatingCustomer && (
+              <div className="mt-3 border border-blue-200 bg-blue-50/40 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Pelanggan baru</span>
+                  <Button type="button" variant="ghost" onClick={() => setCreatingCustomer(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none h-auto w-auto p-0">&times;</Button>
+                </div>
+                <Input value={newCust.phone_number} onChange={(e) => setNewCust({ ...newCust, phone_number: e.target.value })} placeholder="Nomor telepon (+628...) *" className="text-sm h-auto" />
+                <Input value={newCust.name} onChange={(e) => setNewCust({ ...newCust, name: e.target.value })} placeholder="Nama" className="text-sm h-auto" />
+                <Input value={newCust.address} onChange={(e) => setNewCust({ ...newCust, address: e.target.value })} placeholder="Alamat" className="text-sm h-auto" />
+                <Input value={newCust.area} onChange={(e) => setNewCust({ ...newCust, area: e.target.value })} placeholder="Area" className="text-sm h-auto" />
+                <Select value={newCust.subcontractor_id || NO_SUBCONTRACTOR} onValueChange={(v) => setNewCust({ ...newCust, subcontractor_id: v === NO_SUBCONTRACTOR ? "" : v })}>
+                  <SelectTrigger className="text-sm h-auto"><SelectValue placeholder="Dapur" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SUBCONTRACTOR}>— Dapur —</SelectItem>
+                    {subcontractors.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {creatingError && <p className="text-xs text-red-600">{creatingError}</p>}
+                <Button type="button" onClick={createCustomerInline} disabled={creatingBusy} className="w-full py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">{creatingBusy ? "Menyimpan..." : "Buat & pilih"}</Button>
+              </div>
+            )}
           </div>
         </div>
 

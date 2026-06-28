@@ -44,4 +44,62 @@ export async function GET(): Promise<Response> {
   return NextResponse.json({ ok: true, data });
 }
 
+// Create a new customer (e.g. someone who ordered a package manually via
+// WhatsApp and needs to be onboarded into the dashboard). Allowlisted fields
+// only; phone_number is required and must be unique.
+export async function POST(req: Request): Promise<Response> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+  const body = (await req.json()) as {
+    name?: string;
+    phone_number?: string;
+    area?: string;
+    sub_area?: string;
+    address?: string;
+    google_maps_link?: string;
+    subcontractor_id?: string;
+  };
+
+  const phone = body.phone_number?.trim();
+  if (!phone)
+    return NextResponse.json({ ok: false, error: "phone_number required" }, { status: 400 });
+
+  const db = createAdminClient();
+
+  const { data: existing } = await db
+    .from("customers")
+    .select("id")
+    .eq("phone_number", phone)
+    .maybeSingle();
+  if (existing)
+    return NextResponse.json(
+      { ok: false, error: "Pelanggan dengan nomor ini sudah ada", existingId: existing.id },
+      { status: 409 },
+    );
+
+  const { data, error } = await db
+    .from("customers")
+    .insert({
+      phone_number: phone,
+      name: body.name?.trim() || null,
+      area: body.area?.trim() || null,
+      sub_area: body.sub_area?.trim() || null,
+      address: body.address?.trim() || null,
+      google_maps_link: body.google_maps_link?.trim() || null,
+      subcontractor_id: body.subcontractor_id || null,
+    })
+    .select("id, name, phone_number, area, sub_area, address, subcontractor_id")
+    .single();
+
+  if (error)
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true, data });
+}
+
 export const dynamic = "force-dynamic";
