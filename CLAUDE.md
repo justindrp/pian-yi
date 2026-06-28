@@ -259,7 +259,7 @@ Quick reference: which file handles which feature.
 ### Orders
 - `GET /api/orders` — List orders, optional `?status=` filter
 - `POST /api/orders` — Admin creates a new order; accepts `size` (`"s"` | `"m"`, default `"s"`) and `lunch_address_slot` / `dinner_address_slot` (`1` | `2`, default `1`) — a standing per-meal delivery-address rule (slot 2 = the customer's `address_2`). Persisted on the order; the `generate-deliveries` cron and the scheduled-order delivery rows stamp each `daily_deliveries` row's `address_slot` from the matching meal's slot. A per-day flip on the daily sheet still overrides.
-- `PATCH /api/orders` — Requires `{ id, action }`. Actions: `"mark_paid"` (sets status → active, records conversion); `"update_size"` (updates `size` column only, never recalculates price)
+- `PATCH /api/orders` — Requires `{ id, action }`. Actions: `"mark_paid"` (sets status → active, records conversion, posts journal + WhatsApp confirmation); `"update_size"` (updates `size` column only, never recalculates price); `"update_fields"` (allowlisted operational columns only — `area, delivery_address, maps_link, subcontractor_id, meal_time_preference, end_date, size, lunch_address_slot, dinner_address_slot, portions_lunch, portions_dinner, portions_per_delivery`; never touches money/quota/status/server columns); `"update_status"` (safe side-effect-free transitions only — `paused`/`completed`/`cancelled_by_admin`, stamps `completed_at`/`cancelled_at`; rejects any other value incl. `active` so money-activation stays on the `mark_paid` path). The Orders table rows are clickable → a detail slide-over (`orders-client.tsx`) showing all order fields read-only, editing the operational set via `update_fields`, a Mark-Paid button (pending orders → `mark_paid`), and a status dropdown (→ `update_status`).
 
 ### Customers
 - `GET /api/customers` — List customers who have at least one paid order (status `payment_proof_received`/`active`/`paused`/`completed`); leads and unpaid/cancelled do not surface. `?all=true` returns every customer (used by the new-order modal so an admin can start the first order for a just-created, order-less customer)
@@ -397,11 +397,11 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (103 tests across 18 suites):
+Current coverage (107 tests across 18 suites):
 
 Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
-- `test/api/orders.test.ts` — 3 tests: `mark_paid`, `update_size "m"`, invalid size returns 400
+- `test/api/orders.test.ts` — 7 tests: `mark_paid`, `update_size "m"`, invalid size returns 400, `update_fields` writes only allowlisted columns (drops total_price/status/price_per_portion), `update_fields` invalid size → 400, `update_status "paused"` succeeds, `update_status "active"` → 400
 - `test/api/settings.test.ts` — 2 tests: upsert setting key, update message template
 
 Phase 2 — business logic and data integrity:

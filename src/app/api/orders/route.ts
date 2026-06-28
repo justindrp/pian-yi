@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import type { Database } from "@/types/database";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { saveMessage } from "@/lib/claude/conversation";
@@ -248,8 +249,20 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   if (!user)
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json()) as { id: string; action: "mark_paid" | "update_size"; size?: "s" | "m" };
-  if (!body.id || (body.action !== "mark_paid" && body.action !== "update_size"))
+  const body = (await req.json()) as {
+    id: string;
+    action: "mark_paid" | "update_size" | "update_fields" | "update_status";
+    size?: "s" | "m";
+    status?: string;
+    fields?: Record<string, unknown>;
+  };
+  if (
+    !body.id ||
+    (body.action !== "mark_paid" &&
+      body.action !== "update_size" &&
+      body.action !== "update_fields" &&
+      body.action !== "update_status")
+  )
     return NextResponse.json({ ok: false, error: "Invalid request" }, { status: 400 });
 
   const db = createAdminClient();
@@ -258,6 +271,60 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     if (body.size !== "s" && body.size !== "m")
       return NextResponse.json({ ok: false, error: "Invalid size" }, { status: 400 });
     const { error } = await db.from("orders").update({ size: body.size }).eq("id", body.id);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "update_fields") {
+    const f = body.fields ?? {};
+    const update: Database["public"]["Tables"]["orders"]["Update"] = {
+      updated_at: new Date().toISOString(),
+    };
+
+    // Allowlisted operational fields only — never money/quota/status/server columns.
+    if ("area" in f) update.area = String(f.area);
+    if ("delivery_address" in f) update.delivery_address = String(f.delivery_address);
+    if ("maps_link" in f) update.maps_link = f.maps_link ? String(f.maps_link) : null;
+    if ("subcontractor_id" in f)
+      update.subcontractor_id = f.subcontractor_id ? String(f.subcontractor_id) : null;
+    if ("meal_time_preference" in f)
+      update.meal_time_preference = f.meal_time_preference ? String(f.meal_time_preference) : null;
+    if ("end_date" in f) update.end_date = f.end_date ? String(f.end_date) : null;
+    if ("portions_lunch" in f)
+      update.portions_lunch =
+        f.portions_lunch === null || f.portions_lunch === "" ? null : Number(f.portions_lunch);
+    if ("portions_dinner" in f)
+      update.portions_dinner =
+        f.portions_dinner === null || f.portions_dinner === "" ? null : Number(f.portions_dinner);
+    if ("portions_per_delivery" in f)
+      update.portions_per_delivery = Number(f.portions_per_delivery);
+    if ("lunch_address_slot" in f)
+      update.lunch_address_slot = Number(f.lunch_address_slot) === 2 ? 2 : 1;
+    if ("dinner_address_slot" in f)
+      update.dinner_address_slot = Number(f.dinner_address_slot) === 2 ? 2 : 1;
+    if ("size" in f) {
+      if (f.size !== "s" && f.size !== "m")
+        return NextResponse.json({ ok: false, error: "Invalid size" }, { status: 400 });
+      update.size = f.size;
+    }
+
+    const { error } = await db.from("orders").update(update).eq("id", body.id);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "update_status") {
+    const SAFE_STATUSES = ["paused", "completed", "cancelled_by_admin"];
+    if (!body.status || !SAFE_STATUSES.includes(body.status))
+      return NextResponse.json({ ok: false, error: "Invalid status" }, { status: 400 });
+    const now = new Date().toISOString();
+    const update: Database["public"]["Tables"]["orders"]["Update"] = {
+      status: body.status,
+      updated_at: now,
+    };
+    if (body.status === "completed") update.completed_at = now;
+    if (body.status === "cancelled_by_admin") update.cancelled_at = now;
+    const { error } = await db.from("orders").update(update).eq("id", body.id);
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
