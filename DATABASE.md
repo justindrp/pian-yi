@@ -36,7 +36,7 @@ People who can log in to the dashboard. Email is the primary key (matches Supaba
 
 ## assistant_conversations
 
-A dashboard Admin Assistant chat thread. Shared across all admins (not per-user).
+A dashboard Admin Assistant chat thread. Shared across all admins (not per-user). This is separate from customer WhatsApp chat history in `conversations`.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -47,7 +47,7 @@ A dashboard Admin Assistant chat thread. Shared across all admins (not per-user)
 
 ## assistant_messages
 
-One row per message in an Assistant thread (user or assistant).
+One row per message in an Admin Assistant thread (user or assistant). Confirmed assistant actions that send WhatsApp messages are also logged to the customer-facing `conversations` table when they should appear in the Inbox.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -118,11 +118,12 @@ Full chat history between customers and the bot. Append-only — never updated o
 | id | uuid | Primary key |
 | customer_id | uuid | FK → customers |
 | role | text | "user" or "assistant" |
-| content | text | Message text |
+| content | text | Message text. For image rows, this is usually the public image URL displayed by the Inbox |
 | message_id | text | WhatsApp message ID (for user messages) |
 | message_type | text | "text" or "image" |
+| media_id | text | WhatsApp media ID for inbound media; used by `/api/inbox/media/[mediaId]` proxy. Outbound/manual image rows usually keep this null and store the public URL in `content` |
 | intent | text | Haiku classification (e.g. "ordering", "inquiry") |
-| model_used | text | Which Claude model replied, or "human" for manual replies |
+| model_used | text | Which Claude model replied, "human" for manual/admin-assistant sends, or "system" for automated welcome/menu rows |
 | input_tokens | integer | Tokens consumed on input (assistant turns) |
 | output_tokens | integer | Tokens produced on output (assistant turns) |
 | created_at | timestamp | |
@@ -186,6 +187,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
+| customer_number | integer | Short human-friendly customer number |
 | phone_number | text | WhatsApp number in international format (+628...) |
 | name | text | Full name (filled in when they place an order) |
 | address | text | Delivery address |
