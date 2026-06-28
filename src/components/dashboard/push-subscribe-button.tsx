@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export default function PushSubscribeButton() {
   const [subscribed, setSubscribed] = useState(false);
@@ -14,38 +14,19 @@ export default function PushSubscribeButton() {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     setIsIOS(ios);
 
-    const sync = async () => {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-
-      const reg = await navigator.serviceWorker.ready;
-      const browserSub = await reg.pushManager.getSubscription();
-
-      if (!browserSub) {
-        // Browser has no subscription — show the button regardless of DB state
-        setSubscribed(false);
-        return;
-      }
-
-      // Browser has a subscription — upsert it so DB stays in sync
-      // (handles the case where DB has a stale endpoint from a previous browser session)
-      const subJson = browserSub.toJSON() as { endpoint: string; keys?: { p256dh: string; auth: string } };
-      if (subJson.keys) {
-        await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(subJson),
-        }).catch(() => {});
-      }
-
-      setSubscribed(true);
-    };
-
-    sync().catch(() => {});
+    // Use server as source of truth — browser may have a subscription the DB doesn't know about
+    fetch("/api/push/config")
+      .then((r) => r.json())
+      .then((data: { hasSubscription?: boolean }) => {
+        setSubscribed(data.hasSubscription === true);
+      })
+      .catch(() => {});
   }, []);
 
   function isStandalone() {
     return (
-      ("standalone" in navigator && (navigator as { standalone?: boolean }).standalone === true) ||
+      ("standalone" in navigator &&
+        (navigator as { standalone?: boolean }).standalone === true) ||
       window.matchMedia("(display-mode: standalone)").matches
     );
   }
@@ -68,7 +49,9 @@ export default function PushSubscribeButton() {
 
       // Fetch the VAPID public key from the server to avoid build-time baking issues
       const configRes = await fetch("/api/push/config");
-      const { vapidPublicKey } = await configRes.json() as { vapidPublicKey: string };
+      const { vapidPublicKey } = (await configRes.json()) as {
+        vapidPublicKey: string;
+      };
       if (!vapidPublicKey) throw new Error("VAPID public key not configured");
 
       const reg = await navigator.serviceWorker.ready;
@@ -83,12 +66,15 @@ export default function PushSubscribeButton() {
         body: JSON.stringify(sub.toJSON()),
       });
 
-      const json = await res.json() as { ok: boolean; error?: string };
-      if (!json.ok) throw new Error(json.error ?? "Failed to save subscription");
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok)
+        throw new Error(json.error ?? "Failed to save subscription");
 
       setSubscribed(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to enable notifications");
+      setError(
+        err instanceof Error ? err.message : "Failed to enable notifications",
+      );
     } finally {
       setLoading(false);
     }
@@ -108,9 +94,7 @@ export default function PushSubscribeButton() {
       >
         {loading ? "Enabling…" : "Enable notifications"}
       </Button>
-      {error && (
-        <p className="mt-1 text-xs text-red-600">{error}</p>
-      )}
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       {showIOSGuide && (
         <div className="absolute right-6 mt-2 w-72 p-3 bg-white border border-gray-200 rounded-xl shadow-lg text-sm text-gray-700 z-10">
           <p className="font-medium mb-1">Enable on iPhone/iPad</p>

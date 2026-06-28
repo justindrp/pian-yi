@@ -1,6 +1,6 @@
+import { DELETE } from "@/app/api/customers/[id]/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { DELETE } from "@/app/api/customers/[id]/route";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
@@ -9,20 +9,39 @@ jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -30,10 +49,13 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
@@ -79,8 +101,13 @@ describe("DELETE /api/customers/[id]", () => {
     expect(json.ok).toBe(true);
 
     // Must detach proofs (update matched_customer_id → null)
-    expect(db.chains.delivery_proofs.update).toHaveBeenCalledWith({ matched_customer_id: null });
-    expect(db.chains.delivery_proofs.eq).toHaveBeenCalledWith("matched_customer_id", "cust-1");
+    expect(db.chains.delivery_proofs.update).toHaveBeenCalledWith({
+      matched_customer_id: null,
+    });
+    expect(db.chains.delivery_proofs.eq).toHaveBeenCalledWith(
+      "matched_customer_id",
+      "cust-1",
+    );
 
     // Must delete deliveries and orders before customer
     expect(db.chains.daily_deliveries.delete).toHaveBeenCalled();
@@ -89,9 +116,15 @@ describe("DELETE /api/customers/[id]", () => {
 
     // Verify call order via from() invocations
     const tableOrder = (db.from as jest.Mock).mock.calls.map((c) => c[0]);
-    expect(tableOrder.indexOf("delivery_proofs")).toBeLessThan(tableOrder.indexOf("daily_deliveries"));
-    expect(tableOrder.indexOf("daily_deliveries")).toBeLessThan(tableOrder.indexOf("orders"));
-    expect(tableOrder.indexOf("orders")).toBeLessThan(tableOrder.indexOf("customers"));
+    expect(tableOrder.indexOf("delivery_proofs")).toBeLessThan(
+      tableOrder.indexOf("daily_deliveries"),
+    );
+    expect(tableOrder.indexOf("daily_deliveries")).toBeLessThan(
+      tableOrder.indexOf("orders"),
+    );
+    expect(tableOrder.indexOf("orders")).toBeLessThan(
+      tableOrder.indexOf("customers"),
+    );
   });
 
   test("T2 — stops early and returns 500 if proof detach fails", async () => {

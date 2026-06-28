@@ -12,20 +12,39 @@ jest.mock("@/lib/cache/settings", () => ({ invalidateCache: jest.fn() }));
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -33,10 +52,13 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };

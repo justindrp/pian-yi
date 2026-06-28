@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 
 export default function KillSwitch({
@@ -41,20 +42,22 @@ export default function KillSwitch({
             you sure?
           </p>
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="destructive"
+              size="sm"
               onClick={() => applyToggle(false)}
-              className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
             >
               Yes, disable
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setShowConfirm(false)}
-              className="px-3 py-1.5 bg-white border border-gray-200 text-sm rounded-lg hover:bg-gray-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

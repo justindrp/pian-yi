@@ -6,7 +6,10 @@ import { sendTextMessage } from "@/lib/whatsapp/client";
 
 export async function GET(req: NextRequest): Promise<Response> {
   if (req.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const db = createAdminClient();
@@ -14,8 +17,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     getSetting("low_quota_first_warning"),
     getSetting("low_quota_final_warning"),
   ]);
-  const firstThreshold = Number.parseInt(firstWarningRaw) || 3;
-  const finalThreshold = Number.parseInt(finalWarningRaw) || 1;
+  const firstThreshold = Number.parseInt(firstWarningRaw ?? "3", 10) || 3;
+  const finalThreshold = Number.parseInt(finalWarningRaw ?? "1", 10) || 1;
 
   const [firstTemplate, finalTemplate] = await Promise.all([
     getTemplate("quota_low_first"),
@@ -31,11 +34,19 @@ export async function GET(req: NextRequest): Promise<Response> {
     .is("reminder_sent_at", null);
 
   for (const order of firstOrders ?? []) {
-    const customer = order.customers as { phone_number: string; name: string | null } | null;
+    const customer = order.customers as {
+      phone_number: string;
+      name: string | null;
+    } | null;
     if (!customer) continue;
-    const msg = firstTemplate.replace("{name}", customer.name ?? "kak").replace("{remaining}", String(firstThreshold));
+    const msg = firstTemplate
+      .replace("{name}", customer.name ?? "kak")
+      .replace("{remaining}", String(firstThreshold));
     await sendTextMessage(customer.phone_number, msg);
-    await db.from("orders").update({ reminder_sent_at: new Date().toISOString() }).eq("id", order.id);
+    await db
+      .from("orders")
+      .update({ reminder_sent_at: new Date().toISOString() })
+      .eq("id", order.id);
   }
 
   // Final reminder — portions_remaining equals final threshold AND reminder was already sent (for first) but not followup
@@ -48,11 +59,19 @@ export async function GET(req: NextRequest): Promise<Response> {
     .is("followup_sent_at", null);
 
   for (const order of finalOrders ?? []) {
-    const customer = order.customers as { phone_number: string; name: string | null } | null;
+    const customer = order.customers as {
+      phone_number: string;
+      name: string | null;
+    } | null;
     if (!customer) continue;
-    const msg = finalTemplate.replace("{name}", customer.name ?? "kak").replace("{remaining}", String(finalThreshold));
+    const msg = finalTemplate
+      .replace("{name}", customer.name ?? "kak")
+      .replace("{remaining}", String(finalThreshold));
     await sendTextMessage(customer.phone_number, msg);
-    await db.from("orders").update({ followup_sent_at: new Date().toISOString() }).eq("id", order.id);
+    await db
+      .from("orders")
+      .update({ followup_sent_at: new Date().toISOString() })
+      .eq("id", order.id);
   }
 
   return NextResponse.json({

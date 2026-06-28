@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/inbox/bot-reply/route";
+import { getAnthropicClient } from "@/lib/claude/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getAnthropicClient } from "@/lib/claude/client";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
@@ -19,20 +19,39 @@ jest.mock("@/lib/whatsapp/client", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -40,10 +59,13 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
@@ -90,8 +112,17 @@ beforeEach(() => {
 describe("POST /api/inbox/bot-reply", () => {
   test("T1 — Haiku polishes answer, sends to customer, clears pending flag", async () => {
     const db = makeDbMock({
-      customers: { data: { phone_number: "+6281234567890", name: "Budi" }, error: null },
-      customer_flags: { data: { pending_bot_response: true, pending_bot_question: "Kapan dikirim?" }, error: null },
+      customers: {
+        data: { phone_number: "+6281234567890", name: "Budi" },
+        error: null,
+      },
+      customer_flags: {
+        data: {
+          pending_bot_response: true,
+          pending_bot_question: "Kapan dikirim?",
+        },
+        error: null,
+      },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
@@ -115,7 +146,10 @@ describe("POST /api/inbox/bot-reply", () => {
       pending_bot_response: false,
       pending_bot_question: null,
     });
-    expect(db.chains.customer_flags.eq).toHaveBeenCalledWith("customer_id", "cust-1");
+    expect(db.chains.customer_flags.eq).toHaveBeenCalledWith(
+      "customer_id",
+      "cust-1",
+    );
   });
 
   test("T2 — missing admin_answer returns 400", async () => {
@@ -139,7 +173,10 @@ describe("POST /api/inbox/bot-reply", () => {
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
     const res = await POST(
-      postRequest({ customer_id: "does-not-exist", admin_answer: "besok pagi" }),
+      postRequest({
+        customer_id: "does-not-exist",
+        admin_answer: "besok pagi",
+      }),
     );
     const json = await res.json();
 
@@ -150,8 +187,14 @@ describe("POST /api/inbox/bot-reply", () => {
 
   test("T4 — no pending_bot_response flag returns 400", async () => {
     const db = makeDbMock({
-      customers: { data: { phone_number: "+6281234567890", name: "Budi" }, error: null },
-      customer_flags: { data: { pending_bot_response: false, pending_bot_question: null }, error: null },
+      customers: {
+        data: { phone_number: "+6281234567890", name: "Budi" },
+        error: null,
+      },
+      customer_flags: {
+        data: { pending_bot_response: false, pending_bot_question: null },
+        error: null,
+      },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 

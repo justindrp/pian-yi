@@ -1,8 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, formatIDR } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
 
@@ -115,15 +117,17 @@ export default function PaymentsClient() {
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
         {tabs.map((t) => (
-          <button
+          <Button
             type="button"
             key={t.key}
+            size="sm"
+            variant="ghost"
             onClick={() => setTab(t.key)}
-            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+            className={
               tab === t.key
-                ? "bg-white text-gray-900 shadow-sm"
+                ? "bg-white text-gray-900 shadow-sm hover:bg-white"
                 : "text-gray-500 hover:text-gray-700"
-            }`}
+            }
           >
             {t.label}
             {t.count > 0 && (
@@ -131,7 +135,7 @@ export default function PaymentsClient() {
                 {t.count}
               </span>
             )}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -168,36 +172,40 @@ export default function PaymentsClient() {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="success"
                         onClick={() => markPaidMutation.mutate(order.id)}
                         disabled={markPaidMutation.isPending}
-                        className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors"
                       >
                         Mark as paid
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="outline"
                         onClick={() => setRejectOrderId(order.id)}
-                        className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
                       >
                         Reject
-                      </button>
+                      </Button>
                     </div>
                   </div>
 
                   {/* Reject form */}
                   {rejectOrderId === order.id && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
-                      <input
+                      <Input
                         value={rejectReason}
                         onChange={(e) => setRejectReason(e.target.value)}
                         placeholder="Reason for rejection..."
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none mb-2"
+                        className="mb-2"
                       />
                       <div className="flex gap-2">
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
+                          variant="destructive"
                           onClick={() =>
                             rejectMutation.mutate({
                               orderId: order.id,
@@ -205,20 +213,20 @@ export default function PaymentsClient() {
                             })
                           }
                           disabled={rejectMutation.isPending}
-                          className="text-xs px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
                         >
                           Confirm reject
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          size="sm"
+                          variant="outline"
                           onClick={() => {
                             setRejectOrderId(null);
                             setRejectReason("");
                           }}
-                          className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"
                         >
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}

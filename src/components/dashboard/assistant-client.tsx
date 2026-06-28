@@ -1,11 +1,15 @@
 "use client";
 
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { PendingAction } from "@/lib/claude/assistant-tools";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = { id: string; role: "user" | "assistant"; content: string };
+
+function makeMessage(role: Message["role"], content: string): Message {
+  return { id: crypto.randomUUID(), role, content };
+}
 type Conversation = { id: string; title: string; updated_at: string };
 
 interface AssistantClientProps {
@@ -17,7 +21,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+    null,
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -57,11 +63,15 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
 
   function invalidateLists() {
     qc.invalidateQueries({ queryKey: ["assistant-conversations"] });
-    if (activeId) qc.invalidateQueries({ queryKey: ["assistant-messages", activeId] });
+    if (activeId)
+      qc.invalidateQueries({ queryKey: ["assistant-messages", activeId] });
   }
 
   const send = useMutation({
-    mutationFn: async (payload: { messages: Message[]; conversationId?: string }) => {
+    mutationFn: async (payload: {
+      messages: Message[];
+      conversationId?: string;
+    }) => {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -72,19 +82,25 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Request failed");
-      return json as { text: string; pendingAction?: PendingAction; conversationId?: string };
+      return json as {
+        text: string;
+        pendingAction?: PendingAction;
+        conversationId?: string;
+      };
     },
     onSuccess: (data) => {
       if (data.conversationId && data.conversationId !== activeId) {
         setActiveId(data.conversationId);
       }
       if (data.text) {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.text }]);
+        setMessages((prev) => [...prev, makeMessage("assistant", data.text)]);
       }
       setPendingAction(data.pendingAction ?? null);
       qc.invalidateQueries({ queryKey: ["assistant-conversations"] });
       if (data.conversationId) {
-        qc.invalidateQueries({ queryKey: ["assistant-messages", data.conversationId] });
+        qc.invalidateQueries({
+          queryKey: ["assistant-messages", data.conversationId],
+        });
       }
     },
   });
@@ -94,26 +110,35 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       const res = await fetch("/api/assistant/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tool: action.tool, input: action.input, conversationId: activeId ?? undefined }),
+        body: JSON.stringify({
+          tool: action.tool,
+          input: action.input,
+          conversationId: activeId ?? undefined,
+        }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Execute failed");
       return json.text as string;
     },
     onSuccess: (text) => {
-      setMessages((prev) => [...prev, { role: "assistant", content: text }]);
+      setMessages((prev) => [...prev, makeMessage("assistant", text)]);
       setPendingAction(null);
       invalidateLists();
     },
     onError: (err) => {
-      setMessages((prev) => [...prev, { role: "assistant", content: `Gagal: ${err.message}` }]);
+      setMessages((prev) => [
+        ...prev,
+        makeMessage("assistant", `Gagal: ${err.message}`),
+      ]);
       setPendingAction(null);
     },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/assistant/conversations/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/assistant/conversations/${id}`, {
+        method: "DELETE",
+      });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Delete failed");
     },
@@ -127,6 +152,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   });
 
   useEffect(() => {
+    if (!messages.length && !send.isPending && !pendingAction) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, send.isPending, pendingAction]);
 
@@ -136,15 +162,21 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
 
     let base = messages;
     if (pendingAction) {
-      base = [...messages, { role: "assistant", content: "Dibatalkan karena ada pesan baru." }];
+      base = [
+        ...messages,
+        makeMessage("assistant", "Dibatalkan karena ada pesan baru."),
+      ];
       setMessages(base);
       setPendingAction(null);
     }
 
-    const newMessages: Message[] = [...base, { role: "user", content: trimmed }];
+    const newMessages: Message[] = [...base, makeMessage("user", trimmed)];
     setMessages(newMessages);
     setInput("");
-    send.mutate({ messages: newMessages, conversationId: activeId ?? undefined });
+    send.mutate({
+      messages: newMessages,
+      conversationId: activeId ?? undefined,
+    });
   }
 
   function handleConfirm() {
@@ -153,7 +185,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   }
 
   function handleCancel() {
-    setMessages((prev) => [...prev, { role: "assistant", content: "Dibatalkan." }]);
+    setMessages((prev) => [...prev, makeMessage("assistant", "Dibatalkan.")]);
     setPendingAction(null);
   }
 
@@ -185,7 +217,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
           <p className="text-xs text-gray-400 px-2 py-1">Loading…</p>
         )}
         {conversationsQuery.data?.length === 0 && (
-          <p className="text-xs text-gray-400 px-2 py-1">No conversations yet.</p>
+          <p className="text-xs text-gray-400 px-2 py-1">
+            No conversations yet.
+          </p>
         )}
         {conversationsQuery.data?.map((c) => (
           <div
@@ -200,7 +234,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
               className="flex-1 min-w-0 px-2.5 py-2 text-left"
             >
               <p className="text-sm truncate text-gray-800">{c.title}</p>
-              <p className="text-[11px] text-gray-400">{formatDate(c.updated_at)}</p>
+              <p className="text-[11px] text-gray-400">
+                {formatDate(c.updated_at)}
+              </p>
             </button>
             <button
               type="button"
@@ -225,10 +261,11 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       {/* Mobile drawer */}
       {sidebarOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex">
-          <div
+          <button
+            type="button"
             className="absolute inset-0 bg-black/40"
             onClick={() => setSidebarOpen(false)}
-            onKeyDown={(e) => e.key === "Escape" && setSidebarOpen(false)}
+            aria-label="Close sidebar"
           />
           <div className="relative z-10 h-full">{sidebar}</div>
         </div>
@@ -246,7 +283,8 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
           </button>
           <span className="text-sm text-gray-500 truncate">
             {activeId
-              ? (conversationsQuery.data?.find((c) => c.id === activeId)?.title ?? "Chat")
+              ? (conversationsQuery.data?.find((c) => c.id === activeId)
+                  ?.title ?? "Chat")
               : "New chat"}
           </span>
         </div>
@@ -260,9 +298,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
               Ask anything about customers, orders, deliveries, or financials.
             </div>
           )}
-          {messages.map((msg, i) => (
+          {messages.map((msg) => (
             <div
-              key={i}
+              key={msg.id}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
@@ -279,7 +317,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
           {pendingAction && (
             <div className="flex justify-start">
               <div className="max-w-[80%] border rounded-2xl p-3 bg-amber-50 border-amber-200 space-y-2 text-sm">
-                <p className="font-medium text-amber-900">{pendingAction.label}</p>
+                <p className="font-medium text-amber-900">
+                  {pendingAction.label}
+                </p>
                 <ul className="space-y-0.5 text-amber-800">
                   {pendingAction.details.map((d) => (
                     <li key={d}>• {d}</li>
@@ -291,7 +331,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
                     onClick={handleConfirm}
                     disabled={confirm.isPending}
                     className={`px-3 py-1.5 rounded-lg text-white text-xs font-medium disabled:opacity-50 ${
-                      pendingAction.dangerous ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"
+                      pendingAction.dangerous
+                        ? "bg-red-600 hover:bg-red-700"
+                        : "bg-blue-600 hover:bg-blue-700"
                     }`}
                   >
                     {confirm.isPending ? "..." : "Confirm"}

@@ -2,6 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -18,7 +21,7 @@ interface Instruction {
 
 async function fetchInstructions(): Promise<Instruction[]> {
   const res = await fetch("/api/chatbot-instructions");
-  const json = await res.json() as { ok: boolean; data: Instruction[] };
+  const json = (await res.json()) as { ok: boolean; data: Instruction[] };
   return json.data;
 }
 
@@ -28,15 +31,59 @@ export default function ChatbotTrainingClient() {
   return (
     <div>
       <div className="flex items-center gap-4 mb-4">
-        <h1 className="text-xl font-semibold text-gray-900">Chatbot Training</h1>
+        <h1 className="text-xl font-semibold text-gray-900">
+          Chatbot Training
+        </h1>
         <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
-          <button type="button" onClick={() => setTab("chat")} className={`px-4 py-1.5 ${tab === "chat" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Conversational</button>
-          <button type="button" onClick={() => setTab("list")} className={`px-4 py-1.5 ${tab === "list" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Instructions</button>
-          <button type="button" onClick={() => setTab("simulator")} className={`px-4 py-1.5 ${tab === "simulator" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Simulator</button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setTab("chat")}
+            className={
+              tab === "chat"
+                ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white rounded-none"
+                : "text-gray-600 rounded-none"
+            }
+          >
+            Conversational
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setTab("list")}
+            className={
+              tab === "list"
+                ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white rounded-none"
+                : "text-gray-600 rounded-none"
+            }
+          >
+            Instructions
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setTab("simulator")}
+            className={
+              tab === "simulator"
+                ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white rounded-none"
+                : "text-gray-600 rounded-none"
+            }
+          >
+            Simulator
+          </Button>
         </div>
       </div>
 
-      {tab === "chat" ? <TrainingChat /> : tab === "list" ? <InstructionList /> : <ChatbotSimulator />}
+      {tab === "chat" ? (
+        <TrainingChat />
+      ) : tab === "list" ? (
+        <InstructionList />
+      ) : (
+        <ChatbotSimulator />
+      )}
     </div>
   );
 }
@@ -49,13 +96,23 @@ function TrainingChat() {
 
   const send = useMutation({
     mutationFn: async (userMsg: string) => {
-      const newMessages: ChatMessage[] = [...messages, { role: "user", content: userMsg }];
+      const newMessages: ChatMessage[] = [
+        ...messages,
+        { role: "user", content: userMsg },
+      ];
       const res = await fetch("/api/training-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: newMessages }),
       });
-      return { newMessages, data: await res.json() as { ok: boolean; text: string; savedInstruction: string | null } };
+      return {
+        newMessages,
+        data: (await res.json()) as {
+          ok: boolean;
+          text: string;
+          savedInstruction: string | null;
+        },
+      };
     },
     onSuccess: ({ newMessages, data }) => {
       // Strip [SAVE_INSTRUCTION] block from display
@@ -63,12 +120,18 @@ function TrainingChat() {
         ? data.text.split("[SAVE_INSTRUCTION]")[0].trim()
         : data.text;
 
-      setMessages([...newMessages, { role: "assistant", content: displayText }]);
+      setMessages([
+        ...newMessages,
+        { role: "assistant", content: displayText },
+      ]);
       if (data.savedInstruction) {
         setToast("Instruksi berhasil disimpan dan langsung aktif!");
         setTimeout(() => setToast(null), 4000);
       }
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      setTimeout(
+        () => bottomRef.current?.scrollIntoView({ behavior: "smooth" }),
+        100,
+      );
     },
   });
 
@@ -79,43 +142,67 @@ function TrainingChat() {
   }
 
   return (
-    <div className="flex flex-col bg-white border border-gray-100 rounded-xl overflow-hidden" style={{ height: "calc(100vh - 200px)" }}>
+    <div
+      className="flex flex-col bg-white border border-gray-100 rounded-xl overflow-hidden"
+      style={{ height: "calc(100vh - 200px)" }}
+    >
       {toast && (
-        <div className="px-4 py-2 bg-green-50 border-b border-green-100 text-green-700 text-sm">{toast}</div>
+        <div className="px-4 py-2 bg-green-50 border-b border-green-100 text-green-700 text-sm">
+          {toast}
+        </div>
       )}
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div className="text-gray-400 text-sm text-center pt-12">
-            Ceritakan ke saya apa yang ingin kamu ubah dari cara chatbot bekerja.
+            Ceritakan ke saya apa yang ingin kamu ubah dari cara chatbot
+            bekerja.
           </div>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-2xl px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-800"}`}>
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: ephemeral chat messages have no stable id
+            key={`${m.role}-${i}`}
+            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-2xl px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-800"}`}
+            >
               {m.content}
             </div>
           </div>
         ))}
         {send.isPending && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-400 px-4 py-2.5 rounded-2xl text-sm">...</div>
+            <div className="bg-gray-100 text-gray-400 px-4 py-2.5 rounded-2xl text-sm">
+              ...
+            </div>
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
       <div className="border-t border-gray-100 p-3 flex gap-2">
-        <input
+        <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
           placeholder="Ketik pesan..."
-          className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-400"
+          className="flex-1 rounded-xl"
         />
-        <button type="button" onClick={handleSend} disabled={!input.trim() || send.isPending} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-xl disabled:opacity-40 hover:bg-blue-700">
+        <Button
+          type="button"
+          onClick={handleSend}
+          disabled={!input.trim() || send.isPending}
+          className="bg-blue-600 hover:bg-blue-700 rounded-xl"
+        >
           Kirim
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -123,23 +210,44 @@ function TrainingChat() {
 
 function InstructionList() {
   const qc = useQueryClient();
-  const { data: instructions, isLoading } = useQuery({ queryKey: ["chatbot-instructions"], queryFn: fetchInstructions });
+  const { data: instructions, isLoading } = useQuery({
+    queryKey: ["chatbot-instructions"],
+    queryFn: fetchInstructions,
+  });
   const [editing, setEditing] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const patch = useMutation({
-    mutationFn: async (body: { id: string; instruction?: string; is_active?: boolean }) => {
-      await fetch("/api/chatbot-instructions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    mutationFn: async (body: {
+      id: string;
+      instruction?: string;
+      is_active?: boolean;
+    }) => {
+      await fetch("/api/chatbot-instructions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["chatbot-instructions"] }); setEditing(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["chatbot-instructions"] });
+      setEditing(null);
+    },
   });
 
   const del = useMutation({
     mutationFn: async (id: string) => {
-      await fetch("/api/chatbot-instructions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      await fetch("/api/chatbot-instructions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["chatbot-instructions"] }); setConfirmDelete(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["chatbot-instructions"] });
+      setConfirmDelete(null);
+    },
   });
 
   if (isLoading) return <div className="text-gray-400 text-sm">Loading...</div>;
@@ -161,47 +269,111 @@ function InstructionList() {
               <td className="px-4 py-3">
                 {editing === inst.id ? (
                   <div className="flex gap-2">
-                    <textarea
+                    <Textarea
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       rows={3}
-                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                      className="flex-1"
                     />
                     <div className="flex flex-col gap-1">
-                      <button type="button" onClick={() => patch.mutate({ id: inst.id, instruction: editText })} className="px-2 py-1 bg-blue-600 text-white text-xs rounded">Save</button>
-                      <button type="button" onClick={() => setEditing(null)} className="px-2 py-1 border border-gray-200 text-xs rounded">Cancel</button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() =>
+                          patch.mutate({ id: inst.id, instruction: editText })
+                        }
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditing(null)}
+                      >
+                        Cancel
+                      </Button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-gray-700 line-clamp-2">{inst.instruction}</p>
+                  <p className="text-gray-700 line-clamp-2">
+                    {inst.instruction}
+                  </p>
                 )}
               </td>
               <td className="px-4 py-3">
-                <button type="button"
-                  onClick={() => patch.mutate({ id: inst.id, is_active: !inst.is_active })}
+                <button
+                  type="button"
+                  onClick={() =>
+                    patch.mutate({ id: inst.id, is_active: !inst.is_active })
+                  }
                   className={`w-10 h-5 rounded-full transition-colors ${inst.is_active ? "bg-blue-600" : "bg-gray-200"} relative`}
                 >
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${inst.is_active ? "translate-x-5" : "translate-x-0.5"}`} />
+                  <span
+                    className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${inst.is_active ? "translate-x-5" : "translate-x-0.5"}`}
+                  />
                 </button>
               </td>
-              <td className="px-4 py-3 text-gray-400 text-xs">{new Date(inst.created_at).toLocaleDateString("id-ID")}</td>
+              <td className="px-4 py-3 text-gray-400 text-xs">
+                {new Date(inst.created_at).toLocaleDateString("id-ID")}
+              </td>
               <td className="px-4 py-3">
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => { setEditing(inst.id); setEditText(inst.instruction); }} className="text-blue-500 hover:text-blue-700 text-xs">Edit</button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditing(inst.id);
+                      setEditText(inst.instruction);
+                    }}
+                    className="text-blue-500 hover:text-blue-700 h-auto py-0 px-1"
+                  >
+                    Edit
+                  </Button>
                   {confirmDelete === inst.id ? (
                     <span className="flex gap-1">
-                      <button type="button" onClick={() => del.mutate(inst.id)} className="text-red-500 text-xs">Hapus</button>
-                      <button type="button" onClick={() => setConfirmDelete(null)} className="text-gray-400 text-xs">Batal</button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => del.mutate(inst.id)}
+                        className="text-red-500 h-auto py-0 px-1"
+                      >
+                        Hapus
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmDelete(null)}
+                        className="text-gray-400 h-auto py-0 px-1"
+                      >
+                        Batal
+                      </Button>
                     </span>
                   ) : (
-                    <button type="button" onClick={() => setConfirmDelete(inst.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setConfirmDelete(inst.id)}
+                      className="text-red-400 hover:text-red-600 h-auto py-0 px-1"
+                    >
+                      Delete
+                    </Button>
                   )}
                 </div>
               </td>
             </tr>
           ))}
           {(instructions ?? []).length === 0 && (
-            <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">No instructions yet. Use Conversational mode to add some.</td></tr>
+            <tr>
+              <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                No instructions yet. Use Conversational mode to add some.
+              </td>
+            </tr>
           )}
         </tbody>
       </table>
@@ -224,34 +396,55 @@ const TOOL_LABELS: Record<string, string> = {
 
 function ChatbotSimulator() {
   const [items, setItems] = useState<SimItem[]>([]);
-  const [apiMessages, setApiMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [apiMessages, setApiMessages] = useState<
+    Array<{ role: "user" | "assistant"; content: string }>
+  >([]);
   const [input, setInput] = useState("");
   const [hasActiveOrder, setHasActiveOrder] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const send = useMutation({
     mutationFn: async (text: string) => {
-      const newApiMessages = [...apiMessages, { role: "user" as const, content: text }];
+      const newApiMessages = [
+        ...apiMessages,
+        { role: "user" as const, content: text },
+      ];
       const res = await fetch("/api/chatbot-simulator", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: newApiMessages, hasActiveOrder }),
       });
-      return { newApiMessages, data: await res.json() as { ok: boolean; reply: string; toolCalled: { name: string; input: unknown } | null } };
+      return {
+        newApiMessages,
+        data: (await res.json()) as {
+          ok: boolean;
+          reply: string;
+          toolCalled: { name: string; input: unknown } | null;
+        },
+      };
     },
     onSuccess: ({ newApiMessages, data }) => {
       setItems((prev) => {
         const next = [...prev];
         if (data.reply) next.push({ kind: "bot", text: data.reply });
-        if (data.toolCalled) next.push({ kind: "tool", name: data.toolCalled.name, input: data.toolCalled.input });
+        if (data.toolCalled)
+          next.push({
+            kind: "tool",
+            name: data.toolCalled.name,
+            input: data.toolCalled.input,
+          });
         return next;
       });
 
       const updatedApiMessages = [...newApiMessages];
-      if (data.reply) updatedApiMessages.push({ role: "assistant", content: data.reply });
+      if (data.reply)
+        updatedApiMessages.push({ role: "assistant", content: data.reply });
 
       setApiMessages(updatedApiMessages);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      setTimeout(
+        () => bottomRef.current?.scrollIntoView({ behavior: "smooth" }),
+        100,
+      );
     },
   });
 
@@ -260,7 +453,10 @@ function ChatbotSimulator() {
     const text = input.trim();
     setItems((prev) => [...prev, { kind: "user", text }]);
     setInput("");
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    setTimeout(
+      () => bottomRef.current?.scrollIntoView({ behavior: "smooth" }),
+      50,
+    );
     send.mutate(text);
   }
 
@@ -277,35 +473,49 @@ function ChatbotSimulator() {
           <span>Scenario:</span>
           <button
             type="button"
-            onClick={() => { setHasActiveOrder(false); handleReset(); }}
+            onClick={() => {
+              setHasActiveOrder(false);
+              handleReset();
+            }}
             className={`px-3 py-1 rounded-full border text-xs transition-colors ${!hasActiveOrder ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 hover:bg-gray-50"}`}
           >
             New customer
           </button>
           <button
             type="button"
-            onClick={() => { setHasActiveOrder(true); handleReset(); }}
+            onClick={() => {
+              setHasActiveOrder(true);
+              handleReset();
+            }}
             className={`px-3 py-1 rounded-full border text-xs transition-colors ${hasActiveOrder ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 hover:bg-gray-50"}`}
           >
             Active order (30 of 50 portions left)
           </button>
         </div>
-        <button type="button" onClick={handleReset} className="ml-auto text-xs text-gray-400 hover:text-gray-700 px-3 py-1 border border-gray-200 rounded-lg">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleReset}
+          className="ml-auto text-gray-400 hover:text-gray-700"
+        >
           Reset
-        </button>
+        </Button>
       </div>
 
       <div className="flex-1 flex flex-col bg-[#e5ddd5] rounded-xl overflow-hidden border border-gray-200">
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {items.length === 0 && (
             <div className="text-center text-sm text-gray-500 pt-12">
-              Type a message as if you're a customer. The bot will respond using the real system prompt and active instructions.
+              Type a message as if you're a customer. The bot will respond using
+              the real system prompt and active instructions.
             </div>
           )}
           {items.map((item, i) => {
             if (item.kind === "user") {
               return (
-                <div key={i} className="flex justify-end">
+                // biome-ignore lint/suspicious/noArrayIndexKey: chat bubbles are append-only
+                <div key={`user-${i}`} className="flex justify-end">
                   <div className="max-w-xs sm:max-w-md px-3 py-2 rounded-lg bg-[#dcf8c6] text-gray-900 text-sm whitespace-pre-wrap shadow-sm">
                     {item.text}
                   </div>
@@ -314,7 +524,8 @@ function ChatbotSimulator() {
             }
             if (item.kind === "bot") {
               return (
-                <div key={i} className="flex justify-start">
+                // biome-ignore lint/suspicious/noArrayIndexKey: chat bubbles are append-only
+                <div key={`bot-${i}`} className="flex justify-start">
                   <div className="max-w-xs sm:max-w-md px-3 py-2 rounded-lg bg-white text-gray-900 text-sm whitespace-pre-wrap shadow-sm">
                     {item.text}
                   </div>
@@ -322,38 +533,50 @@ function ChatbotSimulator() {
               );
             }
             return (
-              <div key={i} className="flex justify-center">
+              // biome-ignore lint/suspicious/noArrayIndexKey: chat bubbles are append-only
+              <div key={`tool-${i}`} className="flex justify-center">
                 <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 max-w-sm w-full">
-                  <div className="font-medium mb-1">{TOOL_LABELS[item.name] ?? item.name}</div>
-                  <pre className="text-amber-700 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(item.input, null, 2)}</pre>
+                  <div className="font-medium mb-1">
+                    {TOOL_LABELS[item.name] ?? item.name}
+                  </div>
+                  <pre className="text-amber-700 overflow-x-auto whitespace-pre-wrap break-all">
+                    {JSON.stringify(item.input, null, 2)}
+                  </pre>
                 </div>
               </div>
             );
           })}
           {send.isPending && (
             <div className="flex justify-start">
-              <div className="bg-white px-3 py-2 rounded-lg text-gray-400 text-sm shadow-sm">...</div>
+              <div className="bg-white px-3 py-2 rounded-lg text-gray-400 text-sm shadow-sm">
+                ...
+              </div>
             </div>
           )}
           <div ref={bottomRef} />
         </div>
 
         <div className="bg-[#f0f0f0] px-3 py-2 flex gap-2 border-t border-gray-200">
-          <input
+          <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Type as a customer..."
-            className="flex-1 bg-white border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-gray-400"
+            className="flex-1 rounded-full px-4"
           />
-          <button
+          <Button
             type="button"
             onClick={handleSend}
             disabled={!input.trim() || send.isPending}
-            className="px-4 py-2 bg-[#128c7e] text-white text-sm rounded-full disabled:opacity-40 hover:bg-[#0e7064]"
+            className="rounded-full bg-[#128c7e] hover:bg-[#0e7064]"
           >
             Send
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ export type ConversationRow = {
 };
 
 export type AssistantMessageRow = {
+  id: string;
   role: "user" | "assistant";
   content: string;
 };
@@ -18,11 +19,15 @@ const MAX_TITLE = 40;
 
 function deriveTitle(text: string): string {
   const clean = text.replace(/\s+/g, " ").trim();
-  return clean.length > MAX_TITLE ? `${clean.slice(0, MAX_TITLE)}…` : clean || "New chat";
+  return clean.length > MAX_TITLE
+    ? `${clean.slice(0, MAX_TITLE)}…`
+    : clean || "New chat";
 }
 
 /** Create an empty conversation, return its id. */
-export async function createConversation(db: AssistantDb): Promise<string | null> {
+export async function createConversation(
+  db: AssistantDb,
+): Promise<string | null> {
   const { data, error } = await db
     .from("assistant_conversations")
     .insert({})
@@ -45,14 +50,19 @@ export async function saveTurn(
     isFirstMessage: boolean;
   },
 ): Promise<void> {
-  const rows: AssistantMessageRow[] = [];
+  const rows: Array<Pick<AssistantMessageRow, "role" | "content">> = [];
   if (args.userText) rows.push({ role: "user", content: args.userText });
-  if (args.assistantText) rows.push({ role: "assistant", content: args.assistantText });
+  if (args.assistantText)
+    rows.push({ role: "assistant", content: args.assistantText });
   if (rows.length === 0) return;
 
-  const { error: msgErr } = await db
-    .from("assistant_messages")
-    .insert(rows.map((r) => ({ conversation_id: args.conversationId, role: r.role, content: r.content })));
+  const { error: msgErr } = await db.from("assistant_messages").insert(
+    rows.map((r) => ({
+      conversation_id: args.conversationId,
+      role: r.role,
+      content: r.content,
+    })),
+  );
   if (msgErr) {
     console.error("[assistant-history] saveTurn insert:", msgErr);
     return;
@@ -64,7 +74,10 @@ export async function saveTurn(
   if (args.isFirstMessage && args.userText) {
     update.title = deriveTitle(args.userText);
   }
-  await db.from("assistant_conversations").update(update).eq("id", args.conversationId);
+  await db
+    .from("assistant_conversations")
+    .update(update)
+    .eq("id", args.conversationId);
 }
 
 /** Persist a single assistant reply (e.g. after a confirmed write action). */
@@ -89,7 +102,9 @@ export async function saveAssistantReply(
     .eq("id", conversationId);
 }
 
-export async function listConversations(db: AssistantDb): Promise<ConversationRow[]> {
+export async function listConversations(
+  db: AssistantDb,
+): Promise<ConversationRow[]> {
   const { data, error } = await db
     .from("assistant_conversations")
     .select("id, title, updated_at")
@@ -102,10 +117,13 @@ export async function listConversations(db: AssistantDb): Promise<ConversationRo
   return (data ?? []) as ConversationRow[];
 }
 
-export async function getMessages(db: AssistantDb, id: string): Promise<AssistantMessageRow[]> {
+export async function getMessages(
+  db: AssistantDb,
+  id: string,
+): Promise<AssistantMessageRow[]> {
   const { data, error } = await db
     .from("assistant_messages")
-    .select("role, content")
+    .select("id, role, content")
     .eq("conversation_id", id)
     .order("created_at", { ascending: true });
   if (error) {
