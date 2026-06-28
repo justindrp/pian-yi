@@ -19,6 +19,16 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface DeliveryRow {
   id?: string;
@@ -64,6 +74,9 @@ interface Proof {
 }
 
 interface Sub { id: string; name: string }
+
+// Radix Select forbids an empty-string item value; use this sentinel for "no subcontractor".
+const NO_SUB = "__none__";
 
 const ROUTE_LABELS: Record<number, string> = {
   1: "Route 1 — Alam Sutera & BSD Lama",
@@ -171,11 +184,12 @@ function UploadButton({
           e.target.value = "";
         }}
       />
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => inputRef.current?.click()}
         disabled={uploadState === "uploading"}
-        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-40"
+        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-40 h-auto p-0"
         title="Upload delivery proof"
       >
         {uploadState === "uploading" && <span className="text-[10px] text-gray-400">...</span>}
@@ -187,7 +201,7 @@ function UploadButton({
             <circle cx="12" cy="13" r="4"/>
           </svg>
         )}
-      </button>
+      </Button>
     </td>
   );
 }
@@ -231,10 +245,9 @@ function SortableDeliveryRow({
       </td>
       <td className="px-2 py-2 text-gray-300 text-xs w-5 tabular-nums">{position}</td>
       <td className="px-2 py-2">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={!row.skip}
-          onChange={(e) => onUpdateSkip(row.customer_id, row.meal_type, !e.target.checked)}
+          onCheckedChange={(checked) => onUpdateSkip(row.customer_id, row.meal_type, !checked)}
         />
       </td>
       <td className="px-2 py-2">
@@ -249,32 +262,37 @@ function SortableDeliveryRow({
               : `${row.customers?.area ?? ""}${row.customers?.sub_area ? ` · ${row.customers.sub_area}` : ""}`}
           </span>
           {row.customers?.address_2 && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => onUpdateAddressSlot(row.customer_id, row.meal_type, row.address_slot === 2 ? 1 : 2)}
-              className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded"
+              className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded h-auto py-0"
             >
               {row.address_slot === 2 ? "A2" : "A1"}
-            </button>
+            </Button>
           )}
         </div>
       </td>
       <td className="px-2 py-2">
         <div className="flex items-center gap-1">
-          <button type="button" onClick={() => onUpdatePortions(row.customer_id, row.meal_type, Math.max(1, row.portions - 1))} className="w-5 h-5 rounded border text-xs">-</button>
+          <Button type="button" variant="outline" onClick={() => onUpdatePortions(row.customer_id, row.meal_type, Math.max(1, row.portions - 1))} className="w-5 h-5 rounded border text-xs p-0">-</Button>
           <span className="w-6 text-center text-sm">{row.portions}</span>
-          <button type="button" onClick={() => onUpdatePortions(row.customer_id, row.meal_type, row.portions + 1)} className="w-5 h-5 rounded border text-xs">+</button>
+          <Button type="button" variant="outline" onClick={() => onUpdatePortions(row.customer_id, row.meal_type, row.portions + 1)} className="w-5 h-5 rounded border text-xs p-0">+</Button>
         </div>
       </td>
       <td className="px-2 py-2">
-        <select
-          value={row.subcontractor_id ?? ""}
-          onChange={(e) => onUpdateSub(row.customer_id, row.meal_type, e.target.value || null)}
-          className="text-xs border border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto"
+        <Select
+          value={row.subcontractor_id ?? NO_SUB}
+          onValueChange={(v) => onUpdateSub(row.customer_id, row.meal_type, v === NO_SUB ? null : v)}
         >
-          <option value="">—</option>
-          {subs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+          <SelectTrigger className="text-xs border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto h-auto">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_SUB}>—</SelectItem>
+            {subs.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </td>
       <UploadButton uploadState={uploadState} onUpload={onUploadProof} />
     </tr>
@@ -452,10 +470,10 @@ export default function DeliveriesClient() {
       <div className="flex items-center gap-4 mb-4">
         <h1 className="text-xl font-semibold text-gray-900">Deliveries</h1>
         <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
-          <button type="button" onClick={() => setTab("sheet")} className={`px-4 py-1.5 ${tab === "sheet" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Daily Sheet</button>
-          <button type="button" onClick={() => setTab("proofs")} className={`px-4 py-1.5 ${tab === "proofs" ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Proof of Delivery</button>
+          <Button type="button" variant="ghost" onClick={() => setTab("sheet")} className={`px-4 py-1.5 rounded-none h-auto ${tab === "sheet" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}>Daily Sheet</Button>
+          <Button type="button" variant="ghost" onClick={() => setTab("proofs")} className={`px-4 py-1.5 rounded-none h-auto ${tab === "proofs" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}>Proof of Delivery</Button>
         </div>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm ml-auto" />
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-gray-200 rounded-lg px-3 py-1.5 text-sm ml-auto h-auto w-auto" />
       </div>
 
       {tab === "sheet" && (
@@ -477,10 +495,10 @@ export default function DeliveriesClient() {
               <div className="font-semibold text-gray-900">{dinnerRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
             </div>
             <div className="flex gap-2 ml-auto">
-              <button type="button" onClick={() => rows.length === 0 ? generate.mutate() : qc.invalidateQueries({ queryKey: ["daily-sheet", date] })} disabled={generate.isPending} className="px-4 py-2 border border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40">
+              <Button type="button" variant="outline" onClick={() => rows.length === 0 ? generate.mutate() : qc.invalidateQueries({ queryKey: ["daily-sheet", date] })} disabled={generate.isPending} className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40 h-auto">
                 {generate.isPending ? "Refreshing..." : "Refresh"}
-              </button>
-              <button type="button" onClick={() => setShowConfirm(true)} disabled={rows.length === 0} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40">Save</button>
+              </Button>
+              <Button type="button" onClick={() => setShowConfirm(true)} disabled={rows.length === 0} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 h-auto">Save</Button>
             </div>
           </div>
 
@@ -562,7 +580,7 @@ export default function DeliveriesClient() {
                                 <td className="px-2 py-2 w-6" />
                                 <td className="px-2 py-2 w-5" />
                                 <td className="px-2 py-2">
-                                  <input type="checkbox" checked={!r.skip} onChange={(e) => updateRow(r.customer_id, meal, "skip", !e.target.checked)} />
+                                  <Checkbox checked={!r.skip} onCheckedChange={(checked) => updateRow(r.customer_id, meal, "skip", !checked)} />
                                 </td>
                                 <td className="px-2 py-2">
                                   <div className="font-medium text-gray-900 text-sm">{r.customers?.name ?? r.customer_id.slice(0, 8)}</div>
@@ -573,32 +591,37 @@ export default function DeliveriesClient() {
                                         : `${r.customers?.area ?? ""}${r.customers?.sub_area ? ` · ${r.customers.sub_area}` : ""}`}
                                     </span>
                                     {r.customers?.address_2 && (
-                                      <button
+                                      <Button
                                         type="button"
+                                        variant="ghost"
                                         onClick={() => updateRow(r.customer_id, meal, "address_slot", r.address_slot === 2 ? 1 : 2)}
-                                        className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded"
+                                        className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded h-auto py-0"
                                       >
                                         {r.address_slot === 2 ? "A2" : "A1"}
-                                      </button>
+                                      </Button>
                                     )}
                                   </div>
                                 </td>
                                 <td className="px-2 py-2">
                                   <div className="flex items-center gap-1">
-                                    <button type="button" onClick={() => updateRow(r.customer_id, meal, "portions", Math.max(1, r.portions - 1))} className="w-5 h-5 rounded border text-xs">-</button>
+                                    <Button type="button" variant="outline" onClick={() => updateRow(r.customer_id, meal, "portions", Math.max(1, r.portions - 1))} className="w-5 h-5 rounded border text-xs p-0">-</Button>
                                     <span className="w-6 text-center text-sm">{r.portions}</span>
-                                    <button type="button" onClick={() => updateRow(r.customer_id, meal, "portions", r.portions + 1)} className="w-5 h-5 rounded border text-xs">+</button>
+                                    <Button type="button" variant="outline" onClick={() => updateRow(r.customer_id, meal, "portions", r.portions + 1)} className="w-5 h-5 rounded border text-xs p-0">+</Button>
                                   </div>
                                 </td>
                                 <td className="px-2 py-2">
-                                  <select
-                                    value={r.subcontractor_id ?? ""}
-                                    onChange={(e) => updateRow(r.customer_id, meal, "subcontractor_id", e.target.value || null)}
-                                    className="text-xs border border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto"
+                                  <Select
+                                    value={r.subcontractor_id ?? NO_SUB}
+                                    onValueChange={(v) => updateRow(r.customer_id, meal, "subcontractor_id", v === NO_SUB ? null : v)}
                                   >
-                                    <option value="">—</option>
-                                    {activeSubs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                  </select>
+                                    <SelectTrigger className="text-xs border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto h-auto">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value={NO_SUB}>—</SelectItem>
+                                      {activeSubs.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
                                 </td>
                                 <UploadButton
                                   uploadState={uploadStates[`${r.customer_id}-${meal}`] ?? (proofCustomerIds.has(r.customer_id) ? "done" : "idle")}
@@ -624,28 +647,30 @@ export default function DeliveriesClient() {
                 const hasRows = rows.some((r) => r.customers?.delivery_route === route && !r.skip);
                 if (!hasRows) return null;
                 return (
-                  <button
+                  <Button
                     key={key}
                     type="button"
+                    variant="outline"
                     onClick={() => copyText(key, buildRouteSummary(rows, route, date))}
-                    className="px-3 py-1.5 border border-blue-200 bg-blue-50 text-blue-700 text-sm rounded-lg hover:bg-blue-100"
+                    className="px-3 py-1.5 border-blue-200 bg-blue-50 text-blue-700 text-sm rounded-lg hover:bg-blue-100 h-auto"
                   >
                     {copiedKey === key ? "Copied!" : `Copy Route ${route}`}
-                  </button>
+                  </Button>
                 );
               })}
               {uniqueSubs.map((subId) => {
                 const sub = (subs ?? []).find((s: Sub) => s.id === subId);
                 const key = `sub-${subId}`;
                 return (
-                  <button
+                  <Button
                     key={key}
                     type="button"
+                    variant="outline"
                     onClick={() => copyText(key, buildSubcontractorSummary(rows, subs ?? [], subId, date))}
-                    className="px-3 py-1.5 border border-gray-200 text-sm rounded-lg hover:bg-gray-50"
+                    className="px-3 py-1.5 border-gray-200 text-sm rounded-lg hover:bg-gray-50 h-auto"
                   >
                     {copiedKey === key ? "Copied!" : `Copy for ${sub?.name ?? subId}`}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -659,14 +684,14 @@ export default function DeliveriesClient() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-medium text-gray-700 text-sm">Ready to send ({adminUploaded.length})</h2>
-                <button
+                <Button
                   type="button"
                   onClick={() => sendAll.mutate(adminUploaded)}
                   disabled={sendAll.isPending || adminUploaded.every((p) => !p.matched_customer_id)}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40"
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40 h-auto"
                 >
                   {sendAll.isPending ? "Sending..." : "Send All"}
-                </button>
+                </Button>
               </div>
               <div className="space-y-2">
                 {adminUploaded.map((p) => (
@@ -674,14 +699,14 @@ export default function DeliveriesClient() {
                     {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && <img src={p.signed_url} alt="proof" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />}
                     <div className="flex-1 text-sm text-gray-700">{p.customers?.name ?? p.matched_customer_id?.slice(0, 8) ?? "Unknown"}</div>
-                    <button
+                    <Button
                       type="button"
                       onClick={() => p.matched_customer_id && sendProof.mutate({ id: p.id, customer_id: p.matched_customer_id })}
                       disabled={!p.matched_customer_id || sendProof.isPending}
-                      className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40"
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40 h-auto"
                     >
                       Send
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -755,8 +780,8 @@ export default function DeliveriesClient() {
             <h2 className="font-semibold text-gray-900">Simpan pengiriman untuk {date}?</h2>
             <p className="text-sm text-gray-500">Ini akan mengurangi kuota pelanggan.</p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">{save.isPending ? "Saving..." : "Simpan"}</button>
-              <button type="button" onClick={() => setShowConfirm(false)} className="flex-1 py-2 border border-gray-200 text-sm rounded-lg">Batal</button>
+              <Button type="button" onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">{save.isPending ? "Saving..." : "Simpan"}</Button>
+              <Button type="button" variant="outline" onClick={() => setShowConfirm(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
             </div>
           </div>
         </div>
@@ -788,13 +813,17 @@ function ReviewProofCard({ proof, date, onSend, onUnmatch }: { proof: Proof; dat
         {proof.match_confidence !== null && (
           <div className="text-xs text-gray-400">AI confidence: {Math.round((proof.match_confidence ?? 0) * 100)}%</div>
         )}
-        <select value={selectedCustomer} onChange={(e) => setSelectedCustomer(e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
-          <option value="">Select customer...</option>
-          {customers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select>
+        <Select value={selectedCustomer || undefined} onValueChange={setSelectedCustomer}>
+          <SelectTrigger className="w-full border-gray-200 rounded-lg px-2 py-1.5 text-sm h-auto">
+            <SelectValue placeholder="Select customer..." />
+          </SelectTrigger>
+          <SelectContent>
+            {customers.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <div className="flex gap-2">
-          <button type="button" onClick={() => onSend(selectedCustomer)} disabled={!selectedCustomer} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40">Send</button>
-          <button type="button" onClick={onUnmatch} className="px-3 py-1.5 border border-gray-200 text-xs rounded-lg text-gray-500">Can't match</button>
+          <Button type="button" onClick={() => onSend(selectedCustomer)} disabled={!selectedCustomer} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40 h-auto">Send</Button>
+          <Button type="button" variant="outline" onClick={onUnmatch} className="px-3 py-1.5 border-gray-200 text-xs rounded-lg text-gray-500 h-auto">Can't match</Button>
         </div>
       </div>
     </div>

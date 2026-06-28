@@ -1,6 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Customer {
   id: string;
@@ -29,6 +40,9 @@ const MEAL_PREFS = [
   { value: "dinner_only", label: "Dinner only" },
   { value: "both_fixed", label: "Both (lunch + dinner)" },
 ];
+
+// Radix Select forbids an empty-string item value; use this sentinel for "no subcontractor".
+const NO_SUBCONTRACTOR = "__none__";
 
 const WEEKDAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5]; // Mon–Fri
@@ -227,14 +241,15 @@ export default function NewOrderModal({
         <div className="px-6 pt-6 pb-0">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-semibold text-gray-900">Order Baru</h2>
-            <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            <Button type="button" variant="ghost" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0">&times;</Button>
           </div>
 
           {/* Step 0: Customer */}
           <div className="mb-5" ref={customerComboRef}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</label>
+            <Label htmlFor="new-order-customer" className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</Label>
             <div className="relative">
-              <input
+              <Input
+                id="new-order-customer"
                 type="text"
                 value={customerSearch}
                 placeholder="Cari nama atau nomor..."
@@ -244,7 +259,7 @@ export default function NewOrderModal({
                   setShowCustomerDropdown(true);
                 }}
                 onFocus={() => setShowCustomerDropdown(true)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
               />
               {showCustomerDropdown && (
                 <ul className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
@@ -286,24 +301,26 @@ export default function NewOrderModal({
 
         {/* Step 1: Order type */}
         <div className="mb-5">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Tipe Order</label>
+          <p className="block text-sm font-medium text-gray-700 mb-2">Tipe Order</p>
           <div className="grid grid-cols-2 gap-3">
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => { setOrderType("scheduled"); setStep(2); }}
-              className={`border rounded-lg p-3 text-left transition-colors ${orderType === "scheduled" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
+              className={`flex flex-col items-start justify-start h-auto border rounded-lg p-3 text-left transition-colors ${orderType === "scheduled" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
             >
               <div className="font-medium text-sm text-gray-900">Scheduled</div>
               <div className="text-xs text-gray-500 mt-0.5">Pilih tanggal-tanggal spesifik</div>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
               onClick={() => { setOrderType("recurring"); setStep(2); }}
-              className={`border rounded-lg p-3 text-left transition-colors ${orderType === "recurring" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
+              className={`flex flex-col items-start justify-start h-auto border rounded-lg p-3 text-left transition-colors ${orderType === "recurring" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
             >
               <div className="font-medium text-sm text-gray-900">Recurring</div>
               <div className="text-xs text-gray-500 mt-0.5">Cron generate otomatis tiap hari</div>
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -313,67 +330,76 @@ export default function NewOrderModal({
             {/* Common fields */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Harga / porsi (Rp)</label>
-                <input
+                <Label htmlFor="new-order-price-per-portion" className="block text-xs font-medium text-gray-600 mb-1">Harga / porsi (Rp)</Label>
+                <Input
+                  id="new-order-price-per-portion"
                   type="number"
                   value={pricePerPortion}
                   onChange={(e) => setPricePerPortion(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Porsi / pengiriman</label>
-                <input
+                <Label htmlFor="new-order-portions-per-delivery" className="block text-xs font-medium text-gray-600 mb-1">Porsi / pengiriman</Label>
+                <Input
+                  id="new-order-portions-per-delivery"
                   type="number"
                   value={portionsPerDelivery}
                   onChange={(e) => setPortionsPerDelivery(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Area</label>
-                <input
+                <Label htmlFor="new-order-area" className="block text-xs font-medium text-gray-600 mb-1">Area</Label>
+                <Input
+                  id="new-order-area"
                   type="text"
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Subkontraktor</label>
-                <select
-                  value={subcontractorId}
-                  onChange={(e) => setSubcontractorId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                <Label htmlFor="new-order-subcontractor" className="block text-xs font-medium text-gray-600 mb-1">Subkontraktor</Label>
+                <Select
+                  value={subcontractorId || NO_SUBCONTRACTOR}
+                  onValueChange={(v) => setSubcontractorId(v === NO_SUBCONTRACTOR ? "" : v)}
                 >
-                  <option value="">— Tidak ada —</option>
-                  {subcontractors.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.customer_nickname ?? s.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="new-order-subcontractor" className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SUBCONTRACTOR}>— Tidak ada —</SelectItem>
+                    {subcontractors.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.customer_nickname ?? s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Alamat pengiriman</label>
-                <input
+                <Label htmlFor="new-order-delivery-address" className="block text-xs font-medium text-gray-600 mb-1">Alamat pengiriman</Label>
+                <Input
+                  id="new-order-delivery-address"
                   type="text"
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Status order</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as typeof status)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="pending_payment">Pending Payment</option>
-                </select>
+                <Label htmlFor="new-order-status" className="block text-xs font-medium text-gray-600 mb-1">Status order</Label>
+                <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+                  <SelectTrigger id="new-order-status" className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="pending_payment">Pending Payment</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -381,71 +407,77 @@ export default function NewOrderModal({
             {orderType === "recurring" && (
               <div className="grid grid-cols-2 gap-3 mb-4 border-t pt-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Tanggal mulai</label>
-                  <input
+                  <Label htmlFor="new-order-start-date" className="block text-xs font-medium text-gray-600 mb-1">Tanggal mulai</Label>
+                  <Input
+                    id="new-order-start-date"
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Tanggal selesai (opsional)</label>
-                  <input
+                  <Label htmlFor="new-order-end-date" className="block text-xs font-medium text-gray-600 mb-1">Tanggal selesai (opsional)</Label>
+                  <Input
+                    id="new-order-end-date"
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Total porsi (package size)</label>
-                  <input
+                  <Label htmlFor="new-order-package-size" className="block text-xs font-medium text-gray-600 mb-1">Total porsi (package size)</Label>
+                  <Input
+                    id="new-order-package-size"
                     type="number"
                     value={packageSize}
                     onChange={(e) => setPackageSize(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Preferensi makan</label>
-                  <select
-                    value={mealPref}
-                    onChange={(e) => setMealPref(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                  >
-                    {MEAL_PREFS.map((m) => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </select>
+                  <Label htmlFor="new-order-meal-pref" className="block text-xs font-medium text-gray-600 mb-1">Preferensi makan</Label>
+                  <Select value={mealPref} onValueChange={setMealPref}>
+                    <SelectTrigger id="new-order-meal-pref" className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEAL_PREFS.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 {(mealPref === "both_fixed") && (
                   <>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Porsi lunch</label>
-                      <input
+                      <Label htmlFor="new-order-portions-lunch" className="block text-xs font-medium text-gray-600 mb-1">Porsi lunch</Label>
+                      <Input
+                        id="new-order-portions-lunch"
                         type="number"
                         value={portionsLunch}
                         onChange={(e) => setPortionsLunch(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Porsi dinner</label>
-                      <input
+                      <Label htmlFor="new-order-portions-dinner" className="block text-xs font-medium text-gray-600 mb-1">Porsi dinner</Label>
+                      <Input
+                        id="new-order-portions-dinner"
                         type="number"
                         value={portionsDinner}
                         onChange={(e) => setPortionsDinner(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                       />
                     </div>
                   </>
                 )}
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Ukuran</label>
+                  <p className="block text-xs font-medium text-gray-600 mb-1">Ukuran</p>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setSize("s")} className={`px-4 py-2 text-sm rounded-lg border ${size === "s" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>S (Standar)</button>
-                    <button type="button" onClick={() => setSize("m")} className={`px-4 py-2 text-sm rounded-lg border ${size === "m" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>M (+Rp 2.000/porsi)</button>
+                    <Button type="button" variant="outline" onClick={() => setSize("s")} className={`px-4 py-2 text-sm rounded-lg border h-auto ${size === "s" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>S (Standar)</Button>
+                    <Button type="button" variant="outline" onClick={() => setSize("m")} className={`px-4 py-2 text-sm rounded-lg border h-auto ${size === "m" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>M (+Rp 2.000/porsi)</Button>
                   </div>
                 </div>
                 <div className="col-span-2 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600">
@@ -459,66 +491,70 @@ export default function NewOrderModal({
               <div className="border-t pt-4 mb-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Dari tanggal</label>
-                    <input
+                    <Label htmlFor="new-order-sched-start" className="block text-xs font-medium text-gray-600 mb-1">Dari tanggal</Label>
+                    <Input
+                      id="new-order-sched-start"
                       type="date"
                       value={schedStart}
                       min="2026-01-01"
                       onChange={(e) => { setSchedStart(e.target.value); setScheduleGenerated(false); }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Sampai tanggal</label>
-                    <input
+                    <Label htmlFor="new-order-sched-end" className="block text-xs font-medium text-gray-600 mb-1">Sampai tanggal</Label>
+                    <Input
+                      id="new-order-sched-end"
                       type="date"
                       value={schedEnd}
                       min="2026-01-01"
                       onChange={(e) => { setSchedEnd(e.target.value); setScheduleGenerated(false); }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Hari pengiriman</label>
+                  <p className="block text-xs font-medium text-gray-600 mb-1">Hari pengiriman</p>
                   <div className="flex gap-1">
                     {WEEKDAY_LABELS.map((label, i) => (
-                      <button
+                      <Button
                         key={label}
                         type="button"
+                        variant="ghost"
                         onClick={() => toggleWeekday(i)}
-                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${weekdays.includes(i) ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                        className={`px-2.5 py-1 rounded text-xs font-medium h-auto transition-colors ${weekdays.includes(i) ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                       >
                         {label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Waktu makan</label>
-                  <div className="flex gap-2">
+                  <p className="block text-xs font-medium text-gray-600 mb-1">Waktu makan</p>
+                  <RadioGroup
+                    value={schedMeal}
+                    onValueChange={(v) => { setSchedMeal(v as "lunch" | "dinner" | "both"); setScheduleGenerated(false); }}
+                    className="flex gap-2"
+                  >
                     {(["lunch", "dinner", "both"] as const).map((m) => (
-                      <label key={m} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input
-                          type="radio"
-                          checked={schedMeal === m}
-                          onChange={() => { setSchedMeal(m); setScheduleGenerated(false); }}
-                        />
+                      <Label key={m} htmlFor={`sched-meal-${m}`} className="flex items-center gap-1.5 text-sm cursor-pointer font-normal">
+                        <RadioGroupItem id={`sched-meal-${m}`} value={m} />
                         {m === "lunch" ? "Lunch" : m === "dinner" ? "Dinner" : "Keduanya"}
-                      </label>
+                      </Label>
                     ))}
-                  </div>
+                  </RadioGroup>
                 </div>
 
-                <button
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={generateSchedule}
-                  className="w-full border border-blue-500 text-blue-600 rounded-lg py-2 text-sm font-medium hover:bg-blue-50 transition-colors"
+                  className="w-full border-blue-500 text-blue-600 rounded-lg py-2 text-sm font-medium h-auto hover:bg-blue-50 transition-colors"
                 >
                   Generate jadwal
-                </button>
+                </Button>
 
                 {scheduleGenerated && schedule.length === 0 && (
                   <p className="text-sm text-gray-400 text-center py-2">Tidak ada tanggal yang cocok.</p>
@@ -535,13 +571,14 @@ export default function NewOrderModal({
                           <span className="text-gray-700">{formatDate(slot.date)}</span>
                           <span className="text-gray-400 capitalize">{slot.meal_type}</span>
                           <span className="text-gray-700">{slot.portions} porsi</span>
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
                             onClick={() => removeSlot(idx)}
-                            className="text-gray-300 hover:text-red-400 text-lg leading-none ml-2"
+                            className="text-gray-300 hover:text-red-400 text-lg leading-none ml-2 h-auto w-auto p-0"
                           >
                             &times;
-                          </button>
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -558,15 +595,16 @@ export default function NewOrderModal({
         {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
 
         <div className="flex gap-3 justify-end pt-2 border-t">
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 h-auto"
           >
             Batal
-          </button>
+          </Button>
           {step === 2 && (
-            <button
+            <Button
               type="button"
               onClick={handleSubmit}
               disabled={
@@ -574,10 +612,10 @@ export default function NewOrderModal({
                 !selectedCustomer ||
                 (orderType === "scheduled" && schedule.length === 0)
               }
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed h-auto"
             >
               {submitting ? "Menyimpan..." : "Simpan Order"}
-            </button>
+            </Button>
           )}
         </div>
         </div>{/* end footer */}
