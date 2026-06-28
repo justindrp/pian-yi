@@ -418,7 +418,7 @@ Phase 6 — accounting reports & chart-of-accounts management:
 - `test/api/accounting-accounts.test.ts` — 8 tests: POST create (auth, invalid code, invalid type, duplicate code, normal_balance derived from type for Asset/Expense vs Liability), PATCH (auth, empty patch 400, toggle `is_active`)
 - `test/api/accounting-reports.test.ts` — 8 tests: reports auth + invalid type, trial_balance net-on-normal-side + balanced, pnl netIncome, balance_sheet earnings-into-equity + balanced; ledger missing/unknown account, running-balance computation
 
-A pre-push hook (`.git/hooks/pre-push`) runs `pnpm typecheck && pnpm test` before every push and blocks if either fails.
+A pre-push hook (`.git/hooks/pre-push`) runs `pnpm lint && pnpm typecheck && pnpm test` before every push and blocks if any fails.
 
 When adding new API routes or webhook code paths, add a corresponding test in `test/`.
 
