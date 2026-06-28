@@ -262,7 +262,7 @@ Quick reference: which file handles which feature.
 - `PATCH /api/orders` — Requires `{ id, action }`. Actions: `"mark_paid"` (sets status → active, records conversion); `"update_size"` (updates `size` column only, never recalculates price)
 
 ### Customers
-- `GET /api/customers` — List customers who have at least one paid order (status `payment_proof_received`/`active`/`paused`/`completed`); leads and unpaid/cancelled do not surface
+- `GET /api/customers` — List customers who have at least one paid order (status `payment_proof_received`/`active`/`paused`/`completed`); leads and unpaid/cancelled do not surface. `?all=true` returns every customer (used by the new-order modal so an admin can start the first order for a just-created, order-less customer)
 - `POST /api/customers` — Create a customer (e.g. someone who ordered a package manually via WhatsApp and isn't onboarded yet). Allowlisted fields only (`name, phone_number, area, sub_area, address, address_2, google_maps_link, subcontractor_id`); `phone_number` and `address` (primary address) are required, `address_2` (secondary address) is optional; `phone_number` must be unique (duplicate → 409 with `existingId`). Used by the "+ Add customer" form on the Customers page and the inline "+ Buat pelanggan baru" creation in the new-order modal.
 - `DELETE /api/customers/[id]` — Delete customer: detaches payment proofs, removes conversation state and rate limit records
 - `PATCH /api/customers/reorder` — Bulk-update `delivery_position` for multiple customers; body: `{ updates: [{ id, delivery_position }] }`
@@ -395,7 +395,7 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (99 tests across 18 suites):
+Current coverage (101 tests across 18 suites):
 
 Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
@@ -425,8 +425,8 @@ Phase 6 — accounting reports & chart-of-accounts management:
 Phase 7 — add customer to daily sheet:
 - `test/api/addable-customers.test.ts` — 2 tests: unauthenticated returns 401, returns only customers with an active package (one-offs impossible) with the order attached
 
-Phase 8 — create customer:
-- `test/api/customers-post.test.ts` — 5 tests: unauthenticated returns 401, missing phone_number returns 400, missing address returns 400, duplicate phone returns 409 with `existingId`, valid insert trims phone + carries optional address_2 + only allowlisted fields reach the insert
+Phase 8 — create + list customers:
+- `test/api/customers-post.test.ts` — 7 tests: POST unauthenticated returns 401, missing phone_number returns 400, missing address returns 400, duplicate phone returns 409 with `existingId`, valid insert trims phone + carries optional address_2 + only allowlisted fields reach the insert; GET default lists only paid customers (queries orders, filters by id), GET `?all=true` returns every customer without the paid filter
 
 A pre-push hook (`.git/hooks/pre-push`) runs `pnpm lint && pnpm typecheck && pnpm test` before every push and blocks if any fails.
 

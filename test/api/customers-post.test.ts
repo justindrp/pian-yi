@@ -1,26 +1,32 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { POST } from "@/app/api/customers/route";
+import { GET, POST } from "@/app/api/customers/route";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 
-type Chain = Record<string, jest.Mock>;
+type Chain = Record<string, jest.Mock> & {
+  then: (resolve: (v: unknown) => unknown) => Promise<unknown>;
+};
 
 function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }): Chain {
-  const chain: Chain = {};
+  const chain = {} as Chain;
   for (const m of ["select", "insert", "update", "delete", "eq", "order", "in", "limit"]) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  // Supabase query builder is thenable; awaiting a terminal chain (e.g. .order())
+  // resolves to { data, error }.
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
+  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve);
   return chain;
 }
 
-function makeDbMock() {
+function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain();
+    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
@@ -97,5 +103,40 @@ describe("POST /api/customers", () => {
     );
     // Allowlist: no stray field leaks through
     expect(db.chains.customers.insert.mock.calls[0][0]).not.toHaveProperty("evil");
+  });
+});
+
+describe("GET /api/customers", () => {
+  test("G1 — default lists only paid customers (queries orders, filters by id)", async () => {
+    const db = makeDbMock({
+      orders: { data: [{ customer_id: "cust-1" }], error: null },
+      customers: { data: [{ id: "cust-1", name: "Alice" }], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await GET(new Request("http://localhost/api/customers"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(db.from).toHaveBeenCalledWith("orders");
+    expect(db.chains.customers.in).toHaveBeenCalledWith("id", ["cust-1"]);
+    expect(json.data).toHaveLength(1);
+  });
+
+  test("G2 — ?all=true returns every customer without the paid filter", async () => {
+    const db = makeDbMock({
+      customers: { data: [{ id: "cust-1", name: "Alice" }, { id: "cust-2", name: "Elaine" }], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await GET(new Request("http://localhost/api/customers?all=true"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    // No paid-status pre-query and no id filter — a just-created, order-less
+    // customer (Elaine) is included.
+    expect(db.from).not.toHaveBeenCalledWith("orders");
+    expect(db.chains.customers.in).not.toHaveBeenCalled();
+    expect(json.data).toHaveLength(2);
   });
 });

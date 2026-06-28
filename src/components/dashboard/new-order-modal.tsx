@@ -136,7 +136,7 @@ export default function NewOrderModal({
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/customers").then((r) => r.json()),
+      fetch("/api/customers?all=true").then((r) => r.json()),
       fetch("/api/subcontractors").then((r) => r.json()),
     ]).then(([cRes, sRes]) => {
       if (cRes.ok) setCustomers(cRes.data ?? []);

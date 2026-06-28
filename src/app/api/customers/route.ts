@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -11,10 +11,26 @@ export async function GET(): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const db = createAdminClient();
+  const all = new URL(req.url).searchParams.get("all") === "true";
 
-  // Only list customers who have ordered AND paid: at least one order in a
-  // paid-onward status (proof received / active / paused / completed). Leads and
-  // unpaid (pending_payment) or cancelled orders do not surface here.
+  const columns =
+    "id, name, phone_number, area, sub_area, address, address_2, subcontractor_id";
+
+  // `?all=true` returns every customer (e.g. the new-order modal, which must let
+  // an admin start the first order for a just-created customer who has no paid
+  // order yet). The default lists only customers who have ordered AND paid: at
+  // least one order in a paid-onward status (proof received / active / paused /
+  // completed). Leads and unpaid (pending_payment) or cancelled do not surface.
+  if (all) {
+    const { data, error } = await db
+      .from("customers")
+      .select(columns)
+      .order("name");
+    if (error)
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, data });
+  }
+
   const PAID_STATUSES = [
     "payment_proof_received",
     "active",
@@ -35,7 +51,7 @@ export async function GET(): Promise<Response> {
 
   const { data, error } = await db
     .from("customers")
-    .select("id, name, phone_number, area, sub_area, address, subcontractor_id")
+    .select(columns)
     .in("id", paidCustomerIds)
     .order("name");
 
