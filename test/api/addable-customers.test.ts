@@ -42,7 +42,7 @@ describe("GET /api/deliveries/addable-customers", () => {
     expect(res.status).toBe(401);
   });
 
-  test("T2 — attaches active order to matching customer, null otherwise", async () => {
+  test("T2 — returns only customers with an active package, with order attached", async () => {
     const db = makeDbMock({
       orders: {
         data: [
@@ -65,9 +65,10 @@ describe("GET /api/deliveries/addable-customers", () => {
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
-    const alice = json.data.find((c: { id: string }) => c.id === "cust-1");
-    const bob = json.data.find((c: { id: string }) => c.id === "cust-2");
+    // Bob has no active package → excluded; only Alice returned.
+    expect(json.data).toHaveLength(1);
+    const alice = json.data[0];
+    expect(alice.id).toBe("cust-1");
     expect(alice.active_order).toEqual(expect.objectContaining({ id: "ord-1", portions_per_delivery: 2 }));
-    expect(bob.active_order).toBeNull();
   });
 });

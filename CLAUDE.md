@@ -272,8 +272,8 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 ### Deliveries
 - `GET /api/deliveries/daily-sheet` — Fetch delivery rows for a given date
 - `POST /api/deliveries/daily-sheet` — Create daily delivery rows for a date
-- `PUT /api/deliveries/daily-sheet` — Save edited rows for a date (upsert `daily_deliveries`, post revenue/COGS journals per non-skipped row that links an `order_id`; quota deduction handled by the nightly cron). Accepts rows with `order_id: null` (manually-added logistics-only rows that don't deduct quota or post journals).
-- `GET /api/deliveries/addable-customers` — List customers Agnes can manually add to a daily sheet (a customer who decided to order for a date but has no auto-generated row). Returns all customers with the address/route fields the sheet renders, plus their active recurring `order` (`active_order`, nullable) so the added row links an `order_id` — letting the nightly cron deduct quota and the save path post journals. The Deliveries → Daily Sheet tab has an "Add customer" button → modal (searchable customer combobox, meal type, portions, dapur) that appends a `daily_deliveries` row to local state; admin clicks Save to persist. Customers without an active package can still be added as a logistics-only row (no quota deduction).
+- `PUT /api/deliveries/daily-sheet` — Save edited rows for a date (upsert `daily_deliveries`, post revenue/COGS journals per non-skipped row; quota deduction handled by the nightly cron). Every row links an `order_id` (a draw always comes from a package).
+- `GET /api/deliveries/addable-customers` — List customers Agnes can manually add to a daily sheet (a customer who decided to draw extra from their package for a date but has no auto-generated row). A draw always comes from a package — customers cannot buy a fresh one-off — so only customers **with an active recurring order** are returned, each with the address/route fields the sheet renders plus their `active_order`. The Deliveries → Daily Sheet tab has an "Add customer" button → modal (searchable customer combobox, meal type, portions, dapur) that appends a `daily_deliveries` row (linked to the active order's `order_id`) to local state; admin clicks Save to persist (nightly cron deducts quota, save posts journals).
 - `GET /api/deliveries/proofs` — List payment proof photos with signed URLs
 - `POST /api/deliveries/proofs` — Upload proof photo (admin upload); stamps `received_at` to the admin-selected delivery date so it lands on the right day, inserts with `status: "admin_uploaded"` and `matched_customer_id`; surfaces in the "Ready to send" section of the Proof of Delivery tab.
 
@@ -421,7 +421,7 @@ Phase 6 — accounting reports & chart-of-accounts management:
 - `test/api/accounting-reports.test.ts` — 8 tests: reports auth + invalid type, trial_balance net-on-normal-side + balanced, pnl netIncome, balance_sheet earnings-into-equity + balanced; ledger missing/unknown account, running-balance computation
 
 Phase 7 — add customer to daily sheet:
-- `test/api/addable-customers.test.ts` — 2 tests: unauthenticated returns 401, attaches active recurring order to matching customer + null otherwise
+- `test/api/addable-customers.test.ts` — 2 tests: unauthenticated returns 401, returns only customers with an active package (one-offs impossible) with the order attached
 
 A pre-push hook (`.git/hooks/pre-push`) runs `pnpm lint && pnpm typecheck && pnpm test` before every push and blocks if any fails.
 

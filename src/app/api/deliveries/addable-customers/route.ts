@@ -3,11 +3,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 // Customers Agnes can manually add to a daily delivery sheet (e.g. a customer
-// who decided to order for a date but has no auto-generated row). Each customer
-// carries their active recurring order, if any, so the added row links an
-// order_id — letting the nightly cron deduct quota and the save path post
-// revenue/COGS journals. Customers with no active order can still be added as a
-// logistics-only row (order_id null, no quota deduction).
+// who decided to draw extra from their package for a date but has no
+// auto-generated row). A draw always comes from a package — customers cannot
+// buy a fresh one-off — so only customers with an active recurring order are
+// returned, and the added row always links that order_id (the nightly cron
+// deducts quota and the save path posts revenue/COGS journals).
 export async function GET(): Promise<Response> {
   const supabase = await createClient();
   const {
@@ -43,10 +43,10 @@ export async function GET(): Promise<Response> {
   if (error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const data = (customers ?? []).map((c) => ({
-    ...c,
-    active_order: orderByCustomer.get(c.id) ?? null,
-  }));
+  // Only customers with an active package can be added (draws come from a package).
+  const data = (customers ?? [])
+    .map((c) => ({ ...c, active_order: orderByCustomer.get(c.id) }))
+    .filter((c): c is typeof c & { active_order: NonNullable<typeof c.active_order> } => c.active_order != null);
 
   return NextResponse.json({ ok: true, data });
 }

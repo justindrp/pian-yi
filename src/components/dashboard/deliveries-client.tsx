@@ -33,7 +33,7 @@ import {
 interface DeliveryRow {
   id?: string;
   customer_id: string;
-  order_id: string | null;
+  order_id: string;
   meal_type: "lunch" | "dinner";
   portions: number;
   subcontractor_id: string | null;
@@ -95,7 +95,7 @@ interface AddableCustomer {
     portions_per_delivery: number;
     portions_lunch: number | null;
     portions_dinner: number | null;
-  } | null;
+  };
 }
 
 // Radix Select forbids an empty-string item value; use this sentinel for "no subcontractor".
@@ -482,7 +482,7 @@ export default function DeliveriesClient() {
       ...prev,
       {
         customer_id: addCustomer.id,
-        order_id: active_order?.id ?? null,
+        order_id: active_order.id,
         meal_type: addMeal,
         portions: addPortions,
         subcontractor_id: addSubId,
@@ -912,7 +912,7 @@ export default function DeliveriesClient() {
                       className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"
                     >
                       <span className="text-gray-900">{c.name ?? c.phone_number}</span>
-                      <span className="text-gray-400 text-xs">{c.active_order ? c.area : `${c.area} · tanpa paket`}</span>
+                      <span className="text-gray-400 text-xs">{c.area}</span>
                     </li>
                   ))}
                   {(addableCustomers ?? []).length === 0 && (
@@ -921,10 +921,6 @@ export default function DeliveriesClient() {
                 </ul>
               )}
             </div>
-
-            {addCustomer && !addCustomer.active_order && (
-              <p className="text-xs text-amber-600">Pelanggan tanpa paket aktif — porsi tidak akan mengurangi kuota.</p>
-            )}
 
             {/* Meal type */}
             <div>

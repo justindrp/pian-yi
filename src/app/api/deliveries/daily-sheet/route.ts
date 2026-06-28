@@ -119,7 +119,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
     rows: {
       id?: string;
       customer_id: string;
-      order_id: string | null;
+      order_id: string;
       meal_type: string;
       portions: number;
       subcontractor_id: string | null;
@@ -208,10 +208,8 @@ export async function PUT(req: NextRequest): Promise<Response> {
       { onConflict: "delivery_date,customer_id,meal_type" },
     ).select("id").single();
 
-    // Record journals for non-skipped rows that link an order (quota deduction
-    // handled by nightly cron). Manually-added rows without an order_id are
-    // logistics-only and post no journals.
-    if (!row.skip && upserted?.id && row.order_id) {
+    // Record journals for non-skipped rows (quota deduction handled by nightly cron)
+    if (!row.skip && upserted?.id) {
       const { data: ord } = await db
         .from("orders")
         .select("price_per_portion, addon_cost_per_portion")
