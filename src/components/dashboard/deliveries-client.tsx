@@ -33,7 +33,7 @@ import {
 interface DeliveryRow {
   id?: string;
   customer_id: string;
-  order_id: string;
+  order_id: string | null;
   meal_type: "lunch" | "dinner";
   portions: number;
   subcontractor_id: string | null;
@@ -74,6 +74,29 @@ interface Proof {
 }
 
 interface Sub { id: string; name: string }
+
+interface AddableCustomer {
+  id: string;
+  name: string | null;
+  phone_number: string;
+  area: string;
+  sub_area: string | null;
+  address: string | null;
+  google_maps_link: string | null;
+  address_2: string | null;
+  area_2: string | null;
+  sub_area_2: string | null;
+  google_maps_link_2: string | null;
+  subcontractor_id: string | null;
+  delivery_route: number | null;
+  delivery_position: number | null;
+  active_order: {
+    id: string;
+    portions_per_delivery: number;
+    portions_lunch: number | null;
+    portions_dinner: number | null;
+  } | null;
+}
 
 // Radix Select forbids an empty-string item value; use this sentinel for "no subcontractor".
 const NO_SUB = "__none__";
@@ -306,6 +329,13 @@ export default function DeliveriesClient() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [uploadStates, setUploadStates] = useState<Record<string, "idle" | "uploading" | "done" | "error">>({});
+  const [showAdd, setShowAdd] = useState(false);
+  const [addSearch, setAddSearch] = useState("");
+  const [addCustomer, setAddCustomer] = useState<AddableCustomer | null>(null);
+  const [addDropdownOpen, setAddDropdownOpen] = useState(false);
+  const [addMeal, setAddMeal] = useState<"lunch" | "dinner">("lunch");
+  const [addPortions, setAddPortions] = useState(1);
+  const [addSubId, setAddSubId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const sensors = useSensors(
@@ -329,6 +359,16 @@ export default function DeliveriesClient() {
       const json = await res.json() as { ok: boolean; data: Sub[] };
       return json.data;
     },
+  });
+
+  const { data: addableCustomers } = useQuery({
+    queryKey: ["addable-customers"],
+    queryFn: async () => {
+      const res = await fetch("/api/deliveries/addable-customers");
+      const json = await res.json() as { ok: boolean; data: AddableCustomer[] };
+      return json.data;
+    },
+    enabled: showAdd,
   });
 
   const { data: proofs } = useQuery({
@@ -404,6 +444,56 @@ export default function DeliveriesClient() {
     setRows((prev) => prev.map((r) =>
       r.customer_id === customerId && r.meal_type === mealType ? { ...r, [field]: value } : r,
     ));
+  }
+
+  function defaultPortionsFor(c: AddableCustomer | null, meal: "lunch" | "dinner"): number {
+    const o = c?.active_order;
+    if (!o) return 1;
+    const slot = meal === "lunch" ? o.portions_lunch : o.portions_dinner;
+    return (slot ?? 0) > 0 ? (slot as number) : o.portions_per_delivery || 1;
+  }
+
+  function selectAddCustomer(c: AddableCustomer) {
+    setAddCustomer(c);
+    setAddSearch(c.name ?? c.phone_number);
+    setAddDropdownOpen(false);
+    setAddPortions(defaultPortionsFor(c, addMeal));
+    setAddSubId(c.subcontractor_id);
+  }
+
+  function resetAdd() {
+    setShowAdd(false);
+    setAddSearch("");
+    setAddCustomer(null);
+    setAddDropdownOpen(false);
+    setAddMeal("lunch");
+    setAddPortions(1);
+    setAddSubId(null);
+  }
+
+  function confirmAddRow() {
+    if (!addCustomer) return;
+    if (rows.some((r) => r.customer_id === addCustomer.id && r.meal_type === addMeal)) {
+      alert(`${addCustomer.name ?? addCustomer.phone_number} sudah ada di daftar ${addMeal} untuk tanggal ini.`);
+      return;
+    }
+    const { active_order, ...cust } = addCustomer;
+    setRows((prev) => [
+      ...prev,
+      {
+        customer_id: addCustomer.id,
+        order_id: active_order?.id ?? null,
+        meal_type: addMeal,
+        portions: addPortions,
+        subcontractor_id: addSubId,
+        notes: null,
+        status: "scheduled",
+        skip: false,
+        address_slot: 1,
+        customers: cust,
+      },
+    ]);
+    resetAdd();
   }
 
   function handleDragEnd(event: DragEndEvent, route: number) {
@@ -498,6 +588,7 @@ export default function DeliveriesClient() {
               <Button type="button" variant="outline" onClick={() => rows.length === 0 ? generate.mutate() : qc.invalidateQueries({ queryKey: ["daily-sheet", date] })} disabled={generate.isPending} className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40 h-auto">
                 {generate.isPending ? "Refreshing..." : "Refresh"}
               </Button>
+              <Button type="button" variant="outline" onClick={() => setShowAdd(true)} className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 h-auto">+ Add customer</Button>
               <Button type="button" onClick={() => setShowConfirm(true)} disabled={rows.length === 0} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 h-auto">Save</Button>
             </div>
           </div>
@@ -783,6 +874,102 @@ export default function DeliveriesClient() {
               <Button type="button" onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">{save.isPending ? "Saving..." : "Simpan"}</Button>
               <Button type="button" variant="outline" onClick={() => setShowConfirm(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-96 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Tambah pelanggan ke {date}</h2>
+              <Button type="button" variant="ghost" onClick={resetAdd} className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0">&times;</Button>
+            </div>
+
+            {/* Customer combobox */}
+            <div className="relative">
+              <span className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</span>
+              <Input
+                type="text"
+                value={addSearch}
+                placeholder="Cari nama atau nomor..."
+                onChange={(e) => { setAddSearch(e.target.value); setAddCustomer(null); setAddDropdownOpen(true); }}
+                onFocus={() => setAddDropdownOpen(true)}
+                className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
+              />
+              {addDropdownOpen && (
+                <ul className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                  {(addSearch.trim() === ""
+                    ? (addableCustomers ?? [])
+                    : (addableCustomers ?? []).filter((c) => {
+                        const q = addSearch.toLowerCase();
+                        return (c.name ?? "").toLowerCase().includes(q) || c.phone_number.includes(q);
+                      })
+                  ).slice(0, 50).map((c) => (
+                    <li
+                      key={c.id}
+                      onMouseDown={(e) => { e.preventDefault(); selectAddCustomer(c); }}
+                      className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"
+                    >
+                      <span className="text-gray-900">{c.name ?? c.phone_number}</span>
+                      <span className="text-gray-400 text-xs">{c.active_order ? c.area : `${c.area} · tanpa paket`}</span>
+                    </li>
+                  ))}
+                  {(addableCustomers ?? []).length === 0 && (
+                    <li className="px-3 py-2 text-sm text-gray-400">Memuat...</li>
+                  )}
+                </ul>
+              )}
+            </div>
+
+            {addCustomer && !addCustomer.active_order && (
+              <p className="text-xs text-amber-600">Pelanggan tanpa paket aktif — porsi tidak akan mengurangi kuota.</p>
+            )}
+
+            {/* Meal type */}
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-1">Waktu makan</span>
+              <Select
+                value={addMeal}
+                onValueChange={(v) => { const m = v as "lunch" | "dinner"; setAddMeal(m); setAddPortions(defaultPortionsFor(addCustomer, m)); }}
+              >
+                <SelectTrigger className="w-full border-gray-200 rounded-lg text-sm h-auto"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lunch">Lunch</SelectItem>
+                  <SelectItem value="dinner">Dinner</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Portions */}
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-1">Porsi</span>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setAddPortions((p) => Math.max(1, p - 1))} className="w-7 h-7 rounded border text-sm p-0">-</Button>
+                <span className="w-8 text-center text-sm">{addPortions}</span>
+                <Button type="button" variant="outline" onClick={() => setAddPortions((p) => p + 1)} className="w-7 h-7 rounded border text-sm p-0">+</Button>
+              </div>
+            </div>
+
+            {/* Subcontractor */}
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-1">Dapur</span>
+              <Select value={addSubId ?? NO_SUB} onValueChange={(v) => setAddSubId(v === NO_SUB ? null : v)}>
+                <SelectTrigger className="w-full border-gray-200 rounded-lg text-sm h-auto"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_SUB}>—</SelectItem>
+                  {activeSubs.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button type="button" onClick={confirmAddRow} disabled={!addCustomer} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">Tambah</Button>
+              <Button type="button" variant="outline" onClick={resetAdd} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
+            </div>
+            <p className="text-xs text-gray-400">Klik Save setelah menambah untuk menyimpan ke sheet.</p>
           </div>
         </div>
       )}

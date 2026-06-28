@@ -46,7 +46,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!orders) return NextResponse.json({ ok: true, data: [] });
 
   const targetDate = new Date(date);
-  const dayOfWeek = targetDate.getDay(); // 0=Sun, 6=Sat
 
   const rows: {
     delivery_date: string;
@@ -120,7 +119,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
     rows: {
       id?: string;
       customer_id: string;
-      order_id: string;
+      order_id: string | null;
       meal_type: string;
       portions: number;
       subcontractor_id: string | null;
@@ -209,8 +208,10 @@ export async function PUT(req: NextRequest): Promise<Response> {
       { onConflict: "delivery_date,customer_id,meal_type" },
     ).select("id").single();
 
-    // Record journals for non-skipped rows (quota deduction handled by nightly cron)
-    if (!row.skip && upserted?.id) {
+    // Record journals for non-skipped rows that link an order (quota deduction
+    // handled by nightly cron). Manually-added rows without an order_id are
+    // logistics-only and post no journals.
+    if (!row.skip && upserted?.id && row.order_id) {
       const { data: ord } = await db
         .from("orders")
         .select("price_per_portion, addon_cost_per_portion")
@@ -267,5 +268,5 @@ export const dynamic = "force-dynamic";
 // Helper: load deadline hour
 export async function getDeadlineHour(): Promise<number> {
   const raw = await getSetting("order_deadline_hour");
-  return Number.parseInt(raw) || 20;
+  return Number.parseInt(raw ?? "20", 10) || 20;
 }

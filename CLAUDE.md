@@ -272,6 +272,8 @@ Second address columns on `customers` (migration 044): `address_2`, `area_2`, `s
 ### Deliveries
 - `GET /api/deliveries/daily-sheet` — Fetch delivery rows for a given date
 - `POST /api/deliveries/daily-sheet` — Create daily delivery rows for a date
+- `PUT /api/deliveries/daily-sheet` — Save edited rows for a date (upsert `daily_deliveries`, post revenue/COGS journals per non-skipped row that links an `order_id`; quota deduction handled by the nightly cron). Accepts rows with `order_id: null` (manually-added logistics-only rows that don't deduct quota or post journals).
+- `GET /api/deliveries/addable-customers` — List customers Agnes can manually add to a daily sheet (a customer who decided to order for a date but has no auto-generated row). Returns all customers with the address/route fields the sheet renders, plus their active recurring `order` (`active_order`, nullable) so the added row links an `order_id` — letting the nightly cron deduct quota and the save path post journals. The Deliveries → Daily Sheet tab has an "Add customer" button → modal (searchable customer combobox, meal type, portions, dapur) that appends a `daily_deliveries` row to local state; admin clicks Save to persist. Customers without an active package can still be added as a logistics-only row (no quota deduction).
 - `GET /api/deliveries/proofs` — List payment proof photos with signed URLs
 - `POST /api/deliveries/proofs` — Upload proof photo (admin upload); stamps `received_at` to the admin-selected delivery date so it lands on the right day, inserts with `status: "admin_uploaded"` and `matched_customer_id`; surfaces in the "Ready to send" section of the Proof of Delivery tab.
 
@@ -391,7 +393,7 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (92 tests across 16 suites):
+Current coverage (94 tests across 17 suites):
 
 Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
@@ -417,6 +419,9 @@ Phase 6 — accounting reports & chart-of-accounts management:
 - `test/api/accounting.test.ts` — 5 tests: manual journal POST auth/balance/unknown-account/valid-insert
 - `test/api/accounting-accounts.test.ts` — 8 tests: POST create (auth, invalid code, invalid type, duplicate code, normal_balance derived from type for Asset/Expense vs Liability), PATCH (auth, empty patch 400, toggle `is_active`)
 - `test/api/accounting-reports.test.ts` — 8 tests: reports auth + invalid type, trial_balance net-on-normal-side + balanced, pnl netIncome, balance_sheet earnings-into-equity + balanced; ledger missing/unknown account, running-balance computation
+
+Phase 7 — add customer to daily sheet:
+- `test/api/addable-customers.test.ts` — 2 tests: unauthenticated returns 401, attaches active recurring order to matching customer + null otherwise
 
 A pre-push hook (`.git/hooks/pre-push`) runs `pnpm lint && pnpm typecheck && pnpm test` before every push and blocks if any fails.
 
@@ -454,6 +459,9 @@ When adding new API routes or webhook code paths, add a corresponding test in `t
 - `supabase/seed.sql` may still reference the old `"BSD"` delivery area string (not yet split into BSD Baru / BSD Lama); `subcontractors-client.tsx` was updated when Karawaci was added.
 - **Accounting Phase 4 — reverse/void entries (TODO).** No edit allowed on journals (append-only audit principle). Instead add a "Balik jurnal" action that posts a mirror entry (swap debit/credit), linked via a new `reversed_journal_id` column on `journals`. Restrict to `source_type: "manual"` entries — auto-posted (`order_payment`/`delivery`) stay locked. Verify: a reversed pair nets to zero in the trial balance.
 - **Accounting Phase 5 — export + quick expense (TODO).** (a) CSV export for journals/ledger via `?export=true`, matching the `/api/reports/conversions` export pattern. (b) Quick-expense form: pick an expense account + a bank/cash account + amount → auto-build the 2-line balanced journal, so Annie doesn't hand-enter raw debit/credit.
+- **Domain naming refactor — disambiguate "order" (TODO, big, deferred).** Today `order` means the prepaid *package* (the 20-portion quota) everywhere — `orders` table, `/api/orders`, `extract_order`, `new-order-modal`, `total_price`, `price_per_portion`, `package_size` — while the per-day quantity that *deducts* from that quota lives in `daily_deliveries` rows (`portions` per date/meal). There is no clean single word for that daily-draw layer, which causes confusion (a delivery can carry multiple portions, so "delivery" ≠ the portion-draw; "order" is already taken by the package). Two candidate fixes, both deferred:
+  - **(A) Add a word, no rename (low risk, preferred).** Keep `order` = package. Name the daily-draw layer `drawdown` (alt: `redemption`) — it's the quota-accounting concept "draw N portions from prepaid balance on date D". Default draw = schedule; per-day override = explicit row. Balance = quota − Σ drawdowns. Only the new layer gets named; every existing `order` reference stays correct. Optionally decouple display labels: code keeps `order`, customer/UI says "paket" for the package and "pesanan hari ini" for the daily draw.
+  - **(B) Swap the meaning of `order` (high risk).** Rename package → `package_order`, and call the daily draw `order` (matches customer mental model "I order food today"). Blast radius is huge: flips the meaning of the most-used word — `orders` table, all `/api/orders`, `orders-client.tsx`, `extract_order`, `new-order-modal`, tools, customer chat, accounting journal descriptions, docs all need re-audit + a schema split/migration. Note `record_daily_order` already half-uses "order"=daily, so the collision is live today. Grep `order` usage to size before attempting.
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands
