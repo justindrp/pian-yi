@@ -397,8 +397,8 @@ export default function NewOrderModal({
               onClick={() => { setOrderType("scheduled"); setStep(2); }}
               className={`flex flex-col items-start justify-start h-auto border rounded-lg p-3 text-left transition-colors ${orderType === "scheduled" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
             >
-              <div className="font-medium text-sm text-gray-900">Scheduled</div>
-              <div className="text-xs text-gray-500 mt-0.5">Pilih tanggal-tanggal spesifik</div>
+              <div className="font-medium text-sm text-gray-900">Tanggal Manual</div>
+              <div className="text-xs text-gray-500 mt-0.5">Pilih tanggal sendiri, sekali isi</div>
             </Button>
             <Button
               type="button"
@@ -406,8 +406,8 @@ export default function NewOrderModal({
               onClick={() => { setOrderType("recurring"); setStep(2); }}
               className={`flex flex-col items-start justify-start h-auto border rounded-lg p-3 text-left transition-colors ${orderType === "recurring" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
             >
-              <div className="font-medium text-sm text-gray-900">Recurring</div>
-              <div className="text-xs text-gray-500 mt-0.5">Cron generate otomatis tiap hari</div>
+              <div className="font-medium text-sm text-gray-900">Paket Langganan</div>
+              <div className="text-xs text-gray-500 mt-0.5">Otomatis tiap hari sampai paket habis</div>
             </Button>
           </div>
         </div>
