@@ -5,8 +5,10 @@ import { POST } from "@/app/api/customers/route";
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
-  const chain: Record<string, unknown> = {};
+type Chain = Record<string, jest.Mock>;
+
+function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }): Chain {
+  const chain: Chain = {};
   for (const m of ["select", "insert", "update", "delete", "eq", "order", "in", "limit"]) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
@@ -14,8 +16,6 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   return chain;
 }
-
-type Chain = ReturnType<typeof makeChain>;
 
 function makeDbMock() {
   const chains: Record<string, Chain> = {};
@@ -53,7 +53,15 @@ describe("POST /api/customers", () => {
   test("T2 — missing phone_number returns 400", async () => {
     const db = makeDbMock();
     (createAdminClient as jest.Mock).mockReturnValue(db);
-    const res = await POST(postRequest({ name: "Alice" }));
+    const res = await POST(postRequest({ name: "Alice", address: "Jl A" }));
+    expect(res.status).toBe(400);
+    expect(db.from).not.toHaveBeenCalled();
+  });
+
+  test("T2b — missing address returns 400", async () => {
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+    const res = await POST(postRequest({ phone_number: "+628111", name: "Alice" }));
     expect(res.status).toBe(400);
     expect(db.from).not.toHaveBeenCalled();
   });
@@ -64,28 +72,28 @@ describe("POST /api/customers", () => {
     db.chains.customers.maybeSingle.mockResolvedValue({ data: { id: "existing-1" }, error: null });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await POST(postRequest({ phone_number: "+628111" }));
+    const res = await POST(postRequest({ phone_number: "+628111", address: "Jl A" }));
     const json = await res.json();
     expect(res.status).toBe(409);
     expect(json.existingId).toBe("existing-1");
     expect(db.chains.customers.insert).not.toHaveBeenCalled();
   });
 
-  test("T4 — creates customer with allowlisted fields, trims phone", async () => {
+  test("T4 — creates customer with allowlisted fields, trims phone, address_2 optional", async () => {
     const db = makeDbMock();
     db.from("customers");
     db.chains.customers.maybeSingle.mockResolvedValue({ data: null, error: null });
     db.chains.customers.single.mockResolvedValue({ data: { id: "new-1", name: "Alice", phone_number: "+628111" }, error: null });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await POST(postRequest({ phone_number: "  +628111  ", name: "Alice", area: "BSD Baru", subcontractor_id: "sub-1", evil: "ignored" }));
+    const res = await POST(postRequest({ phone_number: "  +628111  ", name: "Alice", address: "Jl A", address_2: "Jl B", area: "BSD Baru", subcontractor_id: "sub-1", evil: "ignored" }));
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
     expect(json.data.id).toBe("new-1");
     expect(db.chains.customers.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ phone_number: "+628111", name: "Alice", area: "BSD Baru", subcontractor_id: "sub-1" }),
+      expect.objectContaining({ phone_number: "+628111", name: "Alice", address: "Jl A", address_2: "Jl B", area: "BSD Baru", subcontractor_id: "sub-1" }),
     );
     // Allowlist: no stray field leaks through
     expect(db.chains.customers.insert.mock.calls[0][0]).not.toHaveProperty("evil");

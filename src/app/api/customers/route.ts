@@ -61,6 +61,7 @@ export async function POST(req: Request): Promise<Response> {
     area?: string;
     sub_area?: string;
     address?: string;
+    address_2?: string;
     google_maps_link?: string;
     subcontractor_id?: string;
   };
@@ -68,6 +69,10 @@ export async function POST(req: Request): Promise<Response> {
   const phone = body.phone_number?.trim();
   if (!phone)
     return NextResponse.json({ ok: false, error: "phone_number required" }, { status: 400 });
+
+  const address = body.address?.trim();
+  if (!address)
+    return NextResponse.json({ ok: false, error: "address required" }, { status: 400 });
 
   const db = createAdminClient();
 
@@ -89,11 +94,12 @@ export async function POST(req: Request): Promise<Response> {
       name: body.name?.trim() || null,
       area: body.area?.trim() || null,
       sub_area: body.sub_area?.trim() || null,
-      address: body.address?.trim() || null,
+      address,
+      address_2: body.address_2?.trim() || null,
       google_maps_link: body.google_maps_link?.trim() || null,
       subcontractor_id: body.subcontractor_id || null,
     })
-    .select("id, name, phone_number, area, sub_area, address, subcontractor_id")
+    .select("id, name, phone_number, area, sub_area, address, address_2, subcontractor_id")
     .single();
 
   if (error)

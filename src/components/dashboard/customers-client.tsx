@@ -62,6 +62,7 @@ export default function CustomersClient() {
     area: "",
     sub_area: "",
     address: "",
+    address_2: "",
     google_maps_link: "",
     subcontractor_id: "",
   });
@@ -180,7 +181,7 @@ export default function CustomersClient() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["customers"] });
       setShowAdd(false);
-      setAddForm({ name: "", phone_number: "", area: "", sub_area: "", address: "", google_maps_link: "", subcontractor_id: "" });
+      setAddForm({ name: "", phone_number: "", area: "", sub_area: "", address: "", address_2: "", google_maps_link: "", subcontractor_id: "" });
     },
   });
 
@@ -188,6 +189,10 @@ export default function CustomersClient() {
     setAddError(null);
     if (!addForm.phone_number.trim()) {
       setAddError("Nomor telepon wajib diisi");
+      return;
+    }
+    if (!addForm.address.trim()) {
+      setAddError("Alamat wajib diisi");
       return;
     }
     createMutation.mutate(addForm, { onError: (e) => setAddError((e as Error).message) });
@@ -477,8 +482,12 @@ export default function CustomersClient() {
               <Input id="add-name" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} />
             </div>
             <div>
-              <Label htmlFor="add-address" className="text-xs text-gray-500 block mb-1">Address</Label>
+              <Label htmlFor="add-address" className="text-xs text-gray-500 block mb-1">Address *</Label>
               <Textarea id="add-address" value={addForm.address} onChange={(e) => setAddForm({ ...addForm, address: e.target.value })} rows={2} className="resize-none" />
+            </div>
+            <div>
+              <Label htmlFor="add-address-2" className="text-xs text-gray-500 block mb-1">Address 2 (opsional)</Label>
+              <Textarea id="add-address-2" value={addForm.address_2} onChange={(e) => setAddForm({ ...addForm, address_2: e.target.value })} rows={2} className="resize-none" />
             </div>
             <div>
               <Label htmlFor="add-area" className="text-xs text-gray-500 block mb-1">Area</Label>

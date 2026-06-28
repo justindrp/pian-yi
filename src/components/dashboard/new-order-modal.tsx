@@ -93,7 +93,7 @@ export default function NewOrderModal({
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [creatingBusy, setCreatingBusy] = useState(false);
   const [creatingError, setCreatingError] = useState("");
-  const [newCust, setNewCust] = useState({ name: "", phone_number: "", area: "", address: "", subcontractor_id: "" });
+  const [newCust, setNewCust] = useState({ name: "", phone_number: "", area: "", address: "", address_2: "", subcontractor_id: "" });
 
   // Common fields
   const [pricePerPortion, setPricePerPortion] = useState("28000");
@@ -160,7 +160,7 @@ export default function NewOrderModal({
     setCreatingError("");
     // Prefill phone if the search box looks like a number.
     const looksLikePhone = /[0-9]/.test(customerSearch) && !/[a-z]/i.test(customerSearch);
-    setNewCust({ name: "", phone_number: looksLikePhone ? customerSearch.trim() : "", area: "", address: "", subcontractor_id: "" });
+    setNewCust({ name: "", phone_number: looksLikePhone ? customerSearch.trim() : "", area: "", address: "", address_2: "", subcontractor_id: "" });
     setCreatingCustomer(true);
   }
 
@@ -168,6 +168,10 @@ export default function NewOrderModal({
     setCreatingError("");
     if (!newCust.phone_number.trim()) {
       setCreatingError("Nomor telepon wajib diisi");
+      return;
+    }
+    if (!newCust.address.trim()) {
+      setCreatingError("Alamat wajib diisi");
       return;
     }
     setCreatingBusy(true);
@@ -352,7 +356,8 @@ export default function NewOrderModal({
                 </div>
                 <Input value={newCust.phone_number} onChange={(e) => setNewCust({ ...newCust, phone_number: e.target.value })} placeholder="Nomor telepon (+628...) *" className="text-sm h-auto" />
                 <Input value={newCust.name} onChange={(e) => setNewCust({ ...newCust, name: e.target.value })} placeholder="Nama" className="text-sm h-auto" />
-                <Input value={newCust.address} onChange={(e) => setNewCust({ ...newCust, address: e.target.value })} placeholder="Alamat" className="text-sm h-auto" />
+                <Input value={newCust.address} onChange={(e) => setNewCust({ ...newCust, address: e.target.value })} placeholder="Alamat *" className="text-sm h-auto" />
+                <Input value={newCust.address_2} onChange={(e) => setNewCust({ ...newCust, address_2: e.target.value })} placeholder="Alamat 2 (opsional)" className="text-sm h-auto" />
                 <Input value={newCust.area} onChange={(e) => setNewCust({ ...newCust, area: e.target.value })} placeholder="Area" className="text-sm h-auto" />
                 <Select value={newCust.subcontractor_id || NO_SUBCONTRACTOR} onValueChange={(v) => setNewCust({ ...newCust, subcontractor_id: v === NO_SUBCONTRACTOR ? "" : v })}>
                   <SelectTrigger className="text-sm h-auto"><SelectValue placeholder="Dapur" /></SelectTrigger>
