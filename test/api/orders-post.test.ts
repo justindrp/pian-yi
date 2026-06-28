@@ -25,6 +25,7 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
@@ -105,6 +106,39 @@ describe("POST /api/orders — recurring", () => {
     // total_price must be 30 * 28000 = 840000
     expect(db.chains.orders.insert).toHaveBeenCalledWith(
       expect.objectContaining({ total_price: 840000, package_size: 30 }),
+    );
+    // address slots default to 1 when not provided
+    expect(db.chains.orders.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ lunch_address_slot: 1, dinner_address_slot: 1 }),
+    );
+  });
+
+  test("T1b — per-meal address slots persisted (lunch 1, dinner 2)", async () => {
+    const db = makeDbMock({
+      orders: { data: { id: "order-1b", order_type: "recurring", status: "active", total_price: 280000 }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await POST(
+      postRequest({
+        customer_id: "cust-1",
+        order_type: "recurring",
+        price_per_portion: 28000,
+        portions_per_delivery: 1,
+        package_size: 10,
+        delivery_address: "Jl. Test",
+        area: "BSD Baru",
+        subcontractor_id: null,
+        status: "active",
+        start_date: FUTURE_DATE,
+        meal_time_preference: "both_fixed",
+        lunch_address_slot: 1,
+        dinner_address_slot: 2,
+      }),
+    );
+
+    expect(db.chains.orders.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ lunch_address_slot: 1, dinner_address_slot: 2 }),
     );
   });
 
@@ -200,5 +234,38 @@ describe("POST /api/orders — scheduled", () => {
     expect(db.chains.orders.insert).toHaveBeenCalledWith(
       expect.objectContaining({ package_size: 3, total_price: 84000 }),
     );
+  });
+
+  test("T5 — scheduled delivery rows stamped with per-meal address slot", async () => {
+    const db = makeDbMock({
+      orders: { data: { id: "order-5", order_type: "scheduled", status: "active", total_price: 84000 }, error: null },
+      daily_deliveries: { data: [], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const schedule = [
+      { date: FUTURE_DATE, meal_type: "lunch", portions: 2 },
+      { date: "2099-12-30", meal_type: "dinner", portions: 1 },
+    ];
+
+    await POST(
+      postRequest({
+        customer_id: "cust-1",
+        order_type: "scheduled",
+        price_per_portion: 28000,
+        portions_per_delivery: 2,
+        delivery_address: "Jl. Test",
+        area: "BSD Baru",
+        subcontractor_id: null,
+        status: "active",
+        delivery_schedule: schedule,
+        lunch_address_slot: 1,
+        dinner_address_slot: 2,
+      }),
+    );
+
+    const upsertRows = (db.chains.daily_deliveries.upsert as jest.Mock).mock.calls[0][0] as Array<{ meal_type: string; address_slot: number }>;
+    expect(upsertRows.find((r) => r.meal_type === "lunch")?.address_slot).toBe(1);
+    expect(upsertRows.find((r) => r.meal_type === "dinner")?.address_slot).toBe(2);
   });
 });

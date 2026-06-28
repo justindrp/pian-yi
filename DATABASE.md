@@ -356,6 +356,8 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 | price_per_portion | integer | Locked-in price in IDR at order time (includes size surcharge if "m") |
 | total_price | integer | Total amount due in IDR |
 | addon_cost_per_portion | integer | Extra cost per portion if applicable |
+| lunch_address_slot | smallint | Standing address slot for lunch deliveries: 1 = primary, 2 = secondary (customers.address_2) — default 1. Generated daily_deliveries rows inherit it; per-day sheet flip overrides |
+| dinner_address_slot | smallint | Standing address slot for dinner deliveries: 1 = primary, 2 = secondary — default 1 |
 | meal_time_preference | text | Nullable. "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" — null for scheduled orders |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | delivery_address | text | Street address |

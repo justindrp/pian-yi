@@ -20,6 +20,7 @@ interface Customer {
   area: string | null;
   sub_area: string | null;
   address: string | null;
+  address_2: string | null;
   subcontractor_id: string | null;
 }
 
@@ -113,6 +114,10 @@ export default function NewOrderModal({
 
   const [size, setSize] = useState<"s" | "m">("s");
 
+  // Standing per-meal delivery-address slot (1=primary, 2=secondary/address_2).
+  const [lunchSlot, setLunchSlot] = useState<1 | 2>(1);
+  const [dinnerSlot, setDinnerSlot] = useState<1 | 2>(1);
+
   // Scheduled-specific
   const [schedStart, setSchedStart] = useState("2026-01-01");
   const [schedEnd, setSchedEnd] = useState(new Date().toISOString().slice(0, 10));
@@ -153,6 +158,8 @@ export default function NewOrderModal({
     setDeliveryAddress(c.address ?? "");
     setArea(c.area ?? "");
     setSubcontractorId(c.subcontractor_id ?? "");
+    setLunchSlot(1);
+    setDinnerSlot(1);
   }
 
   function openCreateCustomer() {
@@ -244,6 +251,8 @@ export default function NewOrderModal({
         area,
         subcontractor_id: subcontractorId || null,
         status,
+        lunch_address_slot: lunchSlot,
+        dinner_address_slot: dinnerSlot,
       };
 
       const body =
@@ -480,6 +489,29 @@ export default function NewOrderModal({
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedCustomer?.address_2 && (
+                <div className="col-span-2 border-t pt-3">
+                  <p className="block text-xs font-medium text-gray-600 mb-2">Alamat pengiriman per waktu makan</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Lunch</p>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" onClick={() => setLunchSlot(1)} className={`flex-1 px-2 py-1.5 text-xs rounded-lg border h-auto ${lunchSlot === 1 ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>Alamat 1</Button>
+                        <Button type="button" variant="outline" onClick={() => setLunchSlot(2)} className={`flex-1 px-2 py-1.5 text-xs rounded-lg border h-auto ${lunchSlot === 2 ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>Alamat 2</Button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Dinner</p>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" onClick={() => setDinnerSlot(1)} className={`flex-1 px-2 py-1.5 text-xs rounded-lg border h-auto ${dinnerSlot === 1 ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>Alamat 1</Button>
+                        <Button type="button" variant="outline" onClick={() => setDinnerSlot(2)} className={`flex-1 px-2 py-1.5 text-xs rounded-lg border h-auto ${dinnerSlot === 2 ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-700"}`}>Alamat 2</Button>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1.5">Alamat 2: {selectedCustomer.address_2}</p>
+                </div>
+              )}
             </div>
 
             {/* Recurring-specific */}

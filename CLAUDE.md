@@ -258,7 +258,7 @@ Quick reference: which file handles which feature.
 
 ### Orders
 - `GET /api/orders` — List orders, optional `?status=` filter
-- `POST /api/orders` — Admin creates a new order; accepts `size` (`"s"` | `"m"`, default `"s"`)
+- `POST /api/orders` — Admin creates a new order; accepts `size` (`"s"` | `"m"`, default `"s"`) and `lunch_address_slot` / `dinner_address_slot` (`1` | `2`, default `1`) — a standing per-meal delivery-address rule (slot 2 = the customer's `address_2`). Persisted on the order; the `generate-deliveries` cron and the scheduled-order delivery rows stamp each `daily_deliveries` row's `address_slot` from the matching meal's slot. A per-day flip on the daily sheet still overrides.
 - `PATCH /api/orders` — Requires `{ id, action }`. Actions: `"mark_paid"` (sets status → active, records conversion); `"update_size"` (updates `size` column only, never recalculates price)
 
 ### Customers
@@ -270,6 +270,8 @@ Quick reference: which file handles which feature.
 Conversion tracking columns on `customers` (migration 042): `ad_creative` (e.g. `"C4"`, auto-detected from first WhatsApp message), `first_message`, `converted_at` (set on first `mark_paid`), `package`, `total_portions`, `total_payment`, `promo_used` (manual), `converted_to_subscription` (boolean), `notes`. All editable via the customer detail panel.
 
 Second address columns on `customers` (migration 044): `address_2`, `area_2`, `sub_area_2`, `google_maps_link_2`. Linked to `daily_deliveries.address_slot` (1 = primary, 2 = secondary, default 1).
+
+Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`, `dinner_address_slot` (`smallint`, `IN (1, 2)`, default 1). Set in the new-order modal (toggles shown only when the customer has `address_2`). The `generate-deliveries` cron stamps each generated `daily_deliveries` row's `address_slot` from the matching meal's order slot, and scheduled orders stamp their rows at creation. A per-day flip on the daily sheet still overrides for a single day.
 
 ### Deliveries
 - `GET /api/deliveries/daily-sheet` — Fetch delivery rows for a given date
@@ -395,7 +397,7 @@ Standard commands (always use these spellings):
 
 Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (101 tests across 18 suites):
+Current coverage (103 tests across 18 suites):
 
 Phase 1 — webhook safety paths and basic API coverage:
 - `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
@@ -403,7 +405,7 @@ Phase 1 — webhook safety paths and basic API coverage:
 - `test/api/settings.test.ts` — 2 tests: upsert setting key, update message template
 
 Phase 2 — business logic and data integrity:
-- `test/api/orders-post.test.ts` — 4 tests: total_price = package_size × price_per_portion, size defaults to "s", missing start_date returns 400, scheduled order derives package_size from schedule sum
+- `test/api/orders-post.test.ts` — 6 tests: total_price = package_size × price_per_portion (+ address slots default to 1), per-meal address slots persisted (lunch 1, dinner 2), size defaults to "s", missing start_date returns 400, scheduled order derives package_size from schedule sum, scheduled delivery rows stamped with per-meal address slot
 - `test/api/customers-delete.test.ts` — 3 tests: deletion order (proofs → deliveries → orders → customer), early exit on proof detach error, unauthenticated returns 401
 - `test/api/inbox.test.ts` — 4 tests: Haiku polishes answer and clears pending flag, blank admin_answer returns 400, unknown customer returns 404, no pending flag returns 400
 

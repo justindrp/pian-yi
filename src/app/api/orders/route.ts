@@ -53,6 +53,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     portions_dinner?: number;
     package_size?: number;
     size?: "s" | "m";
+    // Standing per-meal delivery-address rule (1=primary, 2=secondary/address_2)
+    lunch_address_slot?: number;
+    dinner_address_slot?: number;
     // Scheduled
     delivery_schedule?: {
       date: string;
@@ -73,6 +76,10 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
   const today = new Date().toISOString().slice(0, 10);
+
+  // Per-meal address slot: only 1 or 2 allowed; anything else falls back to 1.
+  const lunchSlot = body.lunch_address_slot === 2 ? 2 : 1;
+  const dinnerSlot = body.dinner_address_slot === 2 ? 2 : 1;
 
   if (body.order_type === "recurring") {
     if (!body.start_date || !body.meal_time_preference || !body.package_size) {
@@ -104,6 +111,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         portions_lunch: body.portions_lunch ?? null,
         portions_dinner: body.portions_dinner ?? null,
         size: (body.size ?? "s") as "s" | "m",
+        lunch_address_slot: lunchSlot,
+        dinner_address_slot: dinnerSlot,
       })
       .select("id, order_type, status, total_price")
       .single();
@@ -144,6 +153,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       start_date: startDate,
       end_date: endDate,
       size: (body.size ?? "s") as "s" | "m",
+      lunch_address_slot: lunchSlot,
+      dinner_address_slot: dinnerSlot,
     })
     .select("id, order_type, status, total_price")
     .single();
@@ -169,6 +180,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     meal_type: slot.meal_type,
     portions: slot.portions,
     subcontractor_id: body.subcontractor_id,
+    address_slot: slot.meal_type === "dinner" ? dinnerSlot : lunchSlot,
     status: slot.date < today ? "delivered" : "scheduled",
   }));
 

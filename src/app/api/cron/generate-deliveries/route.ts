@@ -27,7 +27,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const { data: orders } = await db
     .from("orders")
-    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, pause_until, subcontractor_id, customers(name, phone_number, area, subcontractor_id)")
+    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, customers(name, phone_number, area, subcontractor_id)")
     .eq("status", "active")
     .eq("order_type", "recurring")
     .lte("start_date", date);
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     meal_type: string;
     portions: number;
     subcontractor_id: string | null;
+    address_slot: number;
     status: string;
   }[] = [];
 
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         meal_type: "lunch",
         portions: (order.portions_lunch ?? 0) > 0 ? (order.portions_lunch ?? 0) : order.portions_per_delivery,
         subcontractor_id: subcontractorId,
+        address_slot: order.lunch_address_slot ?? 1,
         status: "scheduled",
       });
     }
@@ -78,6 +80,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         meal_type: "dinner",
         portions: (order.portions_dinner ?? 0) > 0 ? (order.portions_dinner ?? 0) : order.portions_per_delivery,
         subcontractor_id: subcontractorId,
+        address_slot: order.dinner_address_slot ?? 1,
         status: "scheduled",
       });
     }

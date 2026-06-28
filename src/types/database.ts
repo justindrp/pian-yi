@@ -850,9 +850,11 @@ export type Database = {
           custom_schedule: Json | null
           customer_id: string | null
           delivery_address: string
+          dinner_address_slot: number
           end_date: string | null
           followup_sent_at: string | null
           id: string
+          lunch_address_slot: number
           maps_link: string | null
           meal_time_preference: string | null
           order_type: string
@@ -885,9 +887,11 @@ export type Database = {
           custom_schedule?: Json | null
           customer_id?: string | null
           delivery_address: string
+          dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
           id?: string
+          lunch_address_slot?: number
           maps_link?: string | null
           meal_time_preference?: string | null
           order_type?: string
@@ -920,9 +924,11 @@ export type Database = {
           custom_schedule?: Json | null
           customer_id?: string | null
           delivery_address?: string
+          dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
           id?: string
+          lunch_address_slot?: number
           maps_link?: string | null
           meal_time_preference?: string | null
           order_type?: string
