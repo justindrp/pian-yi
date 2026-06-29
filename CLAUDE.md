@@ -75,7 +75,7 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 - Existing orders lock in `price_per_portion` at order creation time
 - Current S-only customer price thresholds: 5=29k, 10=28k, 20=27k, 40=26k, 60=26k, 120=25k per portion.
 - Current active subcontractor only serves 5 days/week. Chatbot must not offer 6 days/week as available, even though the public price list includes 6-day packages.
-- Custom day counts such as 15 days lunch-only are not auto-priced. Chatbot should offer listed packages or ask admin for help if the customer insists.
+- Custom fixed-schedule day counts that are multiples of 5 use repeated 5-day blocks. Example: 15 days lunch-only = 3 × Rp 145k = Rp 435k. Non-multiples of 5 must be rejected politely; tell customers to choose a multiple of 5 days.
 - Bulk adjust supported: `PATCH /api/settings/pricing` with `{ adjust: number }` increments all tiers at once
 
 ### Order sizes (S / M)

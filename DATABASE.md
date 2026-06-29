@@ -384,7 +384,7 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 
 ## pricing_tiers
 
-Price per portion at each quantity tier. The `portions` column is the minimum quantity to qualify. Current customer-facing chatbot sales are S-only and should use listed package sizes rather than inventing prices for arbitrary counts.
+Price per portion at each quantity tier. The `portions` column is the minimum quantity to qualify. Current customer-facing chatbot sales are S-only. Fixed-schedule durations must be multiples of 5 days; multiples of 5 can be priced as repeated 5-day blocks, while non-multiples of 5 should be rejected politely.
 
 | Column | Type | Notes |
 |--------|------|-------|

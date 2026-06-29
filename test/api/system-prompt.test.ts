@@ -46,7 +46,7 @@ describe("customer chatbot system prompt", () => {
     expect(prompt).not.toContain("Mau ukuran S");
   });
 
-  test("does not allow invented prices for custom day counts", async () => {
+  test("prices custom fixed schedules that are multiples of five as 5-day blocks", async () => {
     const prompt = await buildSystemPrompt({
       casual: false,
       customerState: "new",
@@ -60,8 +60,11 @@ describe("customer chatbot system prompt", () => {
       activeOrder: null,
     });
 
-    expect(prompt).toContain("for example 15 hari siang only");
-    expect(prompt).toContain("do not invent a price");
-    expect(prompt).toContain("call ask_admin_for_help");
+    expect(prompt).toContain("multiple of 5 days");
+    expect(prompt).toContain("15 hari lunch only = 3 × paket 5 hari lunch only");
+    expect(prompt).toContain("3 × Rp 145.000 = *Rp 435.000*");
+    expect(prompt).toContain("not a multiple of 5 days");
+    expect(prompt).toContain("reject that duration politely");
+    expect(prompt).toContain("jumlah hari harus kelipatan 5");
   });
 });
