@@ -402,42 +402,11 @@ Standard commands (always use these spellings):
 
 ## Automated tests
 
-Jest test suite lives in `test/`. Uses `next/jest` (`nextJest()` config helper), `testEnvironment: "node"`, and `jest.mock()` for all external dependencies (Supabase, Claude, WhatsApp). No real network calls.
+Jest suite in `test/`. Uses `next/jest`, `testEnvironment: "node"`, `jest.mock()` for all externals (Supabase, Claude, WhatsApp). No real network calls.
 
-Current coverage (107 tests across 18 suites):
+Suites: `webhook`, `orders`, `orders-post`, `customers-delete`, `customers-post`, `inbox`, `assistant`, `assistant-execute`, `assistant-history`, `delivery-proofs`, `accounting`, `accounting-accounts`, `accounting-reports`, `addable-customers`, `settings`.
 
-Phase 1 — webhook safety paths and basic API coverage:
-- `test/webhook.test.ts` — 8 tests: idempotency, kill switch, blacklist, human escalation, rate limit, circuit breaker, Claude 529 retry, Claude non-retryable error
-- `test/api/orders.test.ts` — 7 tests: `mark_paid`, `update_size "m"`, invalid size returns 400, `update_fields` writes only allowlisted columns (drops total_price/status/price_per_portion), `update_fields` invalid size → 400, `update_status "paused"` succeeds, `update_status "active"` → 400
-- `test/api/settings.test.ts` — 2 tests: upsert setting key, update message template
-
-Phase 2 — business logic and data integrity:
-- `test/api/orders-post.test.ts` — 6 tests: total_price = package_size × price_per_portion (+ address slots default to 1), per-meal address slots persisted (lunch 1, dinner 2), size defaults to "s", missing start_date returns 400, scheduled order derives package_size from schedule sum, scheduled delivery rows stamped with per-meal address slot
-- `test/api/customers-delete.test.ts` — 3 tests: deletion order (proofs → deliveries → orders → customer), early exit on proof detach error, unauthenticated returns 401
-- `test/api/inbox.test.ts` — 4 tests: Haiku polishes answer and clears pending flag, blank admin_answer returns 400, unknown customer returns 404, no pending flag returns 400
-
-Phase 3 — admin assistant:
-- `test/api/assistant.test.ts` — 8 tests: auth guard, invalid body, read-only tool loop, write-tool interception returns pendingAction, batch pendingAction for multiple WhatsApp sends, turn cap, unauthenticated returns 401
-- `test/api/assistant-execute.test.ts` — 8 tests: auth guard, invalid tool rejected, mark_order_paid success + side effects, update_customer_field allowlist, disallowed field returns 400, order not found returns 404, image sends upload URL content to Meta and send by media ID, batch image sends execute every image
-
-Phase 4 — assistant chat history:
-- `test/api/assistant-history.test.ts` — 10 tests: conversations list/create auth + data, [id] messages + delete auth + data, saveTurn title derivation on first message vs subsequent
-
-Phase 5 — delivery proofs:
-- `test/api/delivery-proofs.test.ts` — 5 tests: POST stamps `received_at` to selected date, POST missing customer_id returns 400, PATCH send sets `manually_sent` + side fields, PATCH unmatch, unauthenticated GET/POST return 401
-
-Phase 6 — accounting reports & chart-of-accounts management:
-- `test/api/accounting.test.ts` — 5 tests: manual journal POST auth/balance/unknown-account/valid-insert
-- `test/api/accounting-accounts.test.ts` — 8 tests: POST create (auth, invalid code, invalid type, duplicate code, normal_balance derived from type for Asset/Expense vs Liability), PATCH (auth, empty patch 400, toggle `is_active`)
-- `test/api/accounting-reports.test.ts` — 8 tests: reports auth + invalid type, trial_balance net-on-normal-side + balanced, pnl netIncome, balance_sheet earnings-into-equity + balanced; ledger missing/unknown account, running-balance computation
-
-Phase 7 — add customer to daily sheet:
-- `test/api/addable-customers.test.ts` — 2 tests: unauthenticated returns 401, returns only customers with an active package (one-offs impossible) with the order attached
-
-Phase 8 — create + list customers:
-- `test/api/customers-post.test.ts` — 7 tests: POST unauthenticated returns 401, missing phone_number returns 400, missing address returns 400, duplicate phone returns 409 with `existingId`, valid insert trims phone + carries optional address_2 + only allowlisted fields reach the insert; GET default lists only paid customers (queries orders, filters by id), GET `?all=true` returns every customer without the paid filter
-
-A pre-push hook (`.git/hooks/pre-push`) runs `pnpm lint && pnpm typecheck && pnpm test` before every push and blocks if any fails.
+Pre-push hook (`.git/hooks/pre-push`): `pnpm lint && pnpm typecheck && pnpm test` — blocks on any failure.
 
 When adding new API routes or webhook code paths, add a corresponding test in `test/`.
 
@@ -468,11 +437,9 @@ When adding new API routes or webhook code paths, add a corresponding test in `t
 
 ## Known issues / tech debt
 
-- `/api/auth/check-admin` accepts the email from the request body without verifying the caller's session — allows unauthenticated admin email enumeration via 200 vs 403 response. Fix: extract email from a verified Supabase session instead.
-- **Manual delivery proof upload** (`POST /api/deliveries/proofs`, `match_method: "admin_upload"`) saves the proof with `received_at` stamped to the selected delivery date and surfaces it in a "Ready to send" section in the Proof of Delivery tab. The Daily Sheet row's camera/checkmark icon derives from whether a proof exists for that customer+date (DB-backed, survives refresh). Sending moves the proof to a "Manually sent" section (`status: "manually_sent"`). Future: auto-send to customer immediately on upload — call `sendDeliveryPhotoToCustomer(proofId, customerId)` directly in the POST route, skipping the "Ready to send" UI step entirely.
-- `supabase/seed.sql` may still reference the old `"BSD"` delivery area string (not yet split into BSD Baru / BSD Lama); `subcontractors-client.tsx` was updated when Karawaci was added.
-- **Accounting Phase 4 — reverse/void entries (TODO).** No edit allowed on journals (append-only audit principle). Instead add a "Balik jurnal" action that posts a mirror entry (swap debit/credit), linked via a new `reversed_journal_id` column on `journals`. Restrict to `source_type: "manual"` entries — auto-posted (`order_payment`/`delivery`) stay locked. Verify: a reversed pair nets to zero in the trial balance.
-- **Accounting Phase 5 — export + quick expense (TODO).** (a) CSV export for journals/ledger via `?export=true`, matching the `/api/reports/conversions` export pattern. (b) Quick-expense form: pick an expense account + a bank/cash account + amount → auto-build the 2-line balanced journal, so Annie doesn't hand-enter raw debit/credit.
-- **Domain naming refactor — disambiguate "order" (TODO, big, deferred).** Today `order` means the prepaid *package* (the 20-portion quota) everywhere — `orders` table, `/api/orders`, `extract_order`, `new-order-modal`, `total_price`, `price_per_portion`, `package_size` — while the per-day quantity that *deducts* from that quota lives in `daily_deliveries` rows (`portions` per date/meal). There is no clean single word for that daily-draw layer, which causes confusion (a delivery can carry multiple portions, so "delivery" ≠ the portion-draw; "order" is already taken by the package). Two candidate fixes, both deferred:
-  - **(A) Add a word, no rename (low risk, preferred).** Keep `order` = package. Name the daily-draw layer `drawdown` (alt: `redemption`) — it's the quota-accounting concept "draw N portions from prepaid balance on date D". Default draw = schedule; per-day override = explicit row. Balance = quota − Σ drawdowns. Only the new layer gets named; every existing `order` reference stays correct. Optionally decouple display labels: code keeps `order`, customer/UI says "paket" for the package and "pesanan hari ini" for the daily draw.
-  - **(B) Swap the meaning of `order` (high risk).** Rename package → `package_order`, and call the daily draw `order` (matches customer mental model "I order food today"). Blast radius is huge: flips the meaning of the most-used word — `orders` table, all `/api/orders`, `orders-client.tsx`, `extract_order`, `new-order-modal`, tools, customer chat, accounting journal descriptions, docs all need re-audit + a schema split/migration. Note `record_daily_order` already half-uses "order"=daily, so the collision is live today. Grep `order` usage to size before attempting.
+- `/api/auth/check-admin` — no session verification, allows unauthenticated admin email enumeration. Fix: extract email from verified Supabase session instead.
+- `supabase/seed.sql` may still reference old `"BSD"` area string (not yet split into BSD Baru / BSD Lama).
+- **Delivery proof auto-send (TODO):** call `sendDeliveryPhotoToCustomer(proofId, customerId)` directly in the POST route instead of the current "Ready to send" UI step.
+- **Accounting Phase 4 (TODO):** "Balik jurnal" reverse-entry action — post mirror entry (swap debit/credit), link via `reversed_journal_id` on `journals`. `source_type: "manual"` only; auto-posted entries stay locked.
+- **Accounting Phase 5 (TODO):** CSV export for journals/ledger (`?export=true`) + quick-expense form (auto-build 2-line balanced journal from account + amount).
+- **Domain naming refactor (deferred, big):** `order` = prepaid package everywhere; daily portion-draw has no clean name. Preferred fix **(A)**: add `drawdown` as the daily-draw layer name, all existing `order` refs stay. High-risk fix **(B)**: rename package → `package_order`, daily draw → `order` — huge blast radius across tables, routes, tools, chat, accounting descriptions.
