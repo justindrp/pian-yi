@@ -341,7 +341,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   // Fetch order + customer in one query
   const { data: order, error: fetchErr } = await db
     .from("orders")
-    .select("id, customer_id, total_price, package_size, customers(name, phone_number)")
+    .select("id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers(name, phone_number)")
     .eq("id", body.id)
     .single();
   if (fetchErr || !order)
@@ -385,6 +385,42 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       { accountCode: "2100", debit: 0, credit: order.total_price ?? 0 },
     ],
   }).catch((err) => console.error("[mark_paid] journal error:", err));
+
+  // Generate today's delivery row if today falls within the order date range and is a weekday
+  {
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+    const dow = new Date(todayStr).getUTCDay(); // 0=Sun 6=Sat
+    const isWeekday = dow >= 1 && dow <= 5;
+    const inRange =
+      todayStr >= (order.start_date ?? "") &&
+      (!order.end_date || todayStr <= order.end_date);
+
+    if (isWeekday && inRange) {
+      type MealRow = { meal_type: "lunch" | "dinner"; portions: number; address_slot: number };
+      const meals: MealRow[] = [];
+      const pref = order.meal_time_preference;
+      if (pref === "lunch_only" || pref === "default_lunch") {
+        meals.push({ meal_type: "lunch", portions: order.portions_lunch ?? order.portions_per_delivery ?? 1, address_slot: order.lunch_address_slot ?? 1 });
+      } else if (pref === "dinner_only" || pref === "default_dinner") {
+        meals.push({ meal_type: "dinner", portions: order.portions_dinner ?? order.portions_per_delivery ?? 1, address_slot: order.dinner_address_slot ?? 1 });
+      } else if (pref === "both_fixed") {
+        meals.push({ meal_type: "lunch", portions: order.portions_lunch ?? 1, address_slot: order.lunch_address_slot ?? 1 });
+        meals.push({ meal_type: "dinner", portions: order.portions_dinner ?? 1, address_slot: order.dinner_address_slot ?? 1 });
+      }
+      // per_day_decision and custom_schedule: customer decides day-by-day, skip auto-generation
+
+      if (meals.length > 0) {
+        Promise.all(
+          meals.map(({ meal_type, portions, address_slot }) =>
+            db.from("daily_deliveries").upsert(
+              { order_id: body.id, customer_id: order.customer_id, delivery_date: todayStr, meal_type, portions, subcontractor_id: order.subcontractor_id ?? null, status: "scheduled", address_slot },
+              { onConflict: "order_id,delivery_date,meal_type", ignoreDuplicates: true },
+            )
+          )
+        ).catch((err) => console.error("[mark_paid] delivery generation error:", err));
+      }
+    }
+  }
 
   // Send WhatsApp confirmation
   const rawCustomer = order.customers;
