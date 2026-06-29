@@ -14,6 +14,24 @@ type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type CustomerState = Database["public"]["Tables"]["customer_state"]["Row"];
 type CustomerFlags = Database["public"]["Tables"]["customer_flags"]["Row"];
 
+type LedgerRow = {
+  id: string;
+  kind: "package" | "draw";
+  date: string;
+  label: string;
+  meal_type: string | null;
+  change: number;
+  status: string | null;
+  scheduled: boolean;
+  balance: number;
+};
+type LedgerData = {
+  rows: LedgerRow[];
+  totalPackage: number;
+  totalDrawn: number;
+  balance: number;
+};
+
 const PAGE_SIZE = 200;
 const DELIVERY_AREAS = [
   "BSD Baru",
@@ -76,6 +94,16 @@ export default function CustomersClient() {
       const res = await fetch("/api/subcontractors");
       const json = await res.json() as { ok: boolean; data: Array<{ id: string; name: string; is_active: boolean }> };
       return (json.data ?? []).filter((s) => s.is_active);
+    },
+  });
+
+  const { data: ledger, isLoading: ledgerLoading } = useQuery({
+    queryKey: ["customer-ledger", selected?.id],
+    enabled: !!selected,
+    queryFn: async () => {
+      const res = await fetch(`/api/customers/${selected?.id}`);
+      const json = (await res.json()) as { ok: boolean; data: LedgerData };
+      return json.data;
     },
   });
 
@@ -828,6 +856,74 @@ export default function CustomersClient() {
                   rows={3}
                   className="resize-none"
                 />
+              </div>
+
+              {/* Draw ledger — every package credit (+N) and daily draw (−N) */}
+              <div className="pt-2 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    Riwayat pemakaian
+                  </p>
+                  {ledger && (
+                    <span className="text-xs text-gray-500">
+                      sisa{" "}
+                      <span
+                        className={`font-semibold ${ledger.balance < 0 ? "text-red-600" : "text-gray-900"}`}
+                      >
+                        {ledger.balance}
+                      </span>{" "}
+                      porsi
+                    </span>
+                  )}
+                </div>
+                {ledgerLoading ? (
+                  <p className="text-xs text-gray-400">Memuat…</p>
+                ) : !ledger || ledger.rows.length === 0 ? (
+                  <p className="text-xs text-gray-400">Belum ada transaksi.</p>
+                ) : (
+                  <div className="border border-gray-100 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 text-gray-500">
+                        <tr>
+                          <th className="text-left font-medium px-2 py-1.5">Tanggal</th>
+                          <th className="text-left font-medium px-2 py-1.5">Keterangan</th>
+                          <th className="text-right font-medium px-2 py-1.5">Jumlah</th>
+                          <th className="text-right font-medium px-2 py-1.5">Sisa</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ledger.rows.map((r) => (
+                          <tr
+                            key={r.id}
+                            className={`border-t border-gray-50 ${r.scheduled ? "text-gray-400" : "text-gray-700"}`}
+                          >
+                            <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(r.date)}</td>
+                            <td className="px-2 py-1.5">
+                              {r.kind === "package" ? (
+                                <span className="font-medium text-gray-900">{r.label}</span>
+                              ) : (
+                                <span className="capitalize">
+                                  {r.meal_type ?? "draw"}
+                                  {r.scheduled ? " · terjadwal" : ""}
+                                </span>
+                              )}
+                            </td>
+                            <td
+                              className={`px-2 py-1.5 text-right font-medium tabular-nums ${r.change < 0 ? "text-red-600" : "text-green-600"}`}
+                            >
+                              {r.change > 0 ? `+${r.change}` : r.change}
+                            </td>
+                            <td
+                              className={`px-2 py-1.5 text-right tabular-nums ${r.balance < 0 ? "text-red-600" : ""}`}
+                            >
+                              {r.balance}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {(selected as Customer & { converted_at?: string | null })?.converted_at && (
