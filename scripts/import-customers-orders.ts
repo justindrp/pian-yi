@@ -77,10 +77,48 @@ function nameKeys(name: string): string[] {
   return [...new Set([lower, noParen, base])].filter((k) => k.length > 0);
 }
 
+// Sheet-name → canonical DB-name aliases for unambiguous variants
+// (area suffixes, truncations, typos). Only mappings with a single clear DB
+// target are listed; ambiguous names (3 Jennifers, 2 Shellas, "Kevin") are left
+// unmatched on purpose so they surface in the warning list instead of mis-merging.
+const NAME_ALIASES: Record<string, string> = {
+  defi: "defi lugito",
+  "febby bsd": "febby",
+  "hanna bsd": "hanna",
+  "steven gs": "steven",
+  "vina bsd": "vina",
+  "lani bsd": "lani diana",
+  lani: "lani diana",
+  nadita: "nadita putri",
+  tio: "tio jason",
+  diva: "diva felicia",
+  dewita: "maria dewita",
+  farrel: "farrell suryadi",
+  katriel: "katriel scenny",
+  "katriel m": "katriel scenny",
+  aurellia: "aurellia hanzelita",
+  "aurellia h": "aurellia hanzelita",
+  frikri: "fikri",
+  kressensia: "krissensia",
+  nathaza: "nathaza caroline",
+  "natalia s": "natalia saroso",
+  melviina: "melvina",
+  "zhoe bez": "zhoe",
+  "zhoe allogio": "zhoe",
+  "devi ipeka": "devi",
+  "devi park serpong": "devi",
+  rima: "rima/herlina",
+};
+
 function matchId(map: Map<string, string>, name: string): string | undefined {
   for (const k of nameKeys(name)) {
     const id = map.get(k);
     if (id) return id;
+    const alias = NAME_ALIASES[k];
+    if (alias) {
+      const aliasId = map.get(alias);
+      if (aliasId) return aliasId;
+    }
   }
   return undefined;
 }
@@ -360,55 +398,73 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
   }
 
   // 5. compute + apply
+  // Write rules (owner decisions):
+  //  - pkg == 0  → SKIP (no recorded purchase; can't compute, leave DB untouched)
+  //  - pkg > MAX → SKIP (implausible package size = sheet typo, e.g. 2010)
+  //  - else      → WRITE remaining = pkg − delivered (may be NEGATIVE = over-drawn)
+  const SUSPICIOUS_PKG = 500; // largest legit package is ~143; above this = typo
   const ids = new Set<string>([...purchased.keys(), ...delivered.keys()]);
   const report: {
-    name: string; pkg: number; deliv: number; remaining: number; old: number; neg: boolean; noOrder: boolean;
+    name: string; pkg: number; deliv: number; remaining: number; old: number; written: boolean;
   }[] = [];
+  const noPurchase: string[] = [];
+  const suspicious: string[] = [];
+  const negatives: { name: string; remaining: number }[] = [];
   let updated = 0;
   for (const id of ids) {
     const pkg = purchased.get(id)?.porsi ?? 0;
     const total = purchased.get(id)?.total ?? 0;
     const deliv = delivered.get(id) ?? 0;
     const price = pkg > 0 ? Math.round(total / pkg) : 0;
-    const rawRemaining = pkg - deliv;
-    const remaining = Math.max(0, rawRemaining);
+    const remaining = pkg - deliv; // may be negative — owner wants the real balance
     const info = custById.get(id);
+    const name = info?.name ?? id;
     const ordId = orderByCustomer.get(id);
-    report.push({
-      name: info?.name ?? id,
-      pkg, deliv, remaining,
-      old: info?.oldRemaining ?? 0,
-      neg: rawRemaining < 0,
-      noOrder: !ordId,
-    });
-    if (!dryRun) {
-      await db.from("customers").update({ portions_remaining: remaining, avg_price_per_portion: price }).eq("id", id);
-      if (ordId) {
-        await db.from("orders").update({
-          package_size: pkg,
-          portions_remaining: remaining,
-          price_per_portion: price,
-          total_price: total,
-        }).eq("id", ordId);
+
+    let written = false;
+    if (pkg === 0) {
+      noPurchase.push(name);
+    } else if (pkg > SUSPICIOUS_PKG) {
+      suspicious.push(`${name} (pkg=${pkg})`);
+    } else {
+      written = true;
+      if (remaining < 0) negatives.push({ name, remaining });
+      if (!dryRun) {
+        await db.from("customers").update({ portions_remaining: remaining, avg_price_per_portion: price }).eq("id", id);
+        if (ordId) {
+          await db.from("orders").update({
+            package_size: pkg,
+            portions_remaining: remaining,
+            price_per_portion: price,
+            total_price: total,
+          }).eq("id", ordId);
+        }
+        updated++;
       }
-      updated++;
     }
+    report.push({ name, pkg, deliv, remaining, old: info?.oldRemaining ?? 0, written });
   }
 
   // 6. print
   report.sort((a, b) => a.name.localeCompare(b.name));
   const pad = (s: string | number, n: number) => String(s).padEnd(n);
   console.log(`\n${pad("Customer", 26)}${pad("Pkg", 6)}${pad("Deliv", 7)}${pad("Remain", 8)}${pad("(was)", 7)}`);
-  console.log("─".repeat(54));
+  console.log("─".repeat(56));
   for (const r of report) {
-    const flag = r.neg ? "  ⚠ over-delivered" : r.noOrder ? "  (no order row)" : "";
+    const flag = !r.written ? "  · skipped" : r.remaining < 0 ? "  ⚠ NEGATIVE" : "";
     console.log(`${pad(r.name, 26)}${pad(r.pkg, 6)}${pad(r.deliv, 7)}${pad(r.remaining, 8)}${pad(r.old, 7)}${flag}`);
   }
-  console.log(`\n${report.length} customers computed${dryRun ? "" : `, ${updated} updated`}`);
-  const negs = report.filter((r) => r.neg);
-  if (negs.length) console.warn(`⚠ ${negs.length} over-delivered (delivered > purchased): ${negs.map((r) => r.name).join(", ")}`);
-  if (unmatchedPkg.size) console.warn(`⚠ ${unmatchedPkg.size} package names matched no DB customer: ${[...unmatchedPkg].join(", ")}`);
-  if (unmatchedHar.size) console.warn(`⚠ ${unmatchedHar.size} delivery names matched no DB customer (not deducted): ${[...unmatchedHar].join(", ")}`);
+  console.log(`\n${report.length} computed, ${report.filter((r) => r.written).length} writable${dryRun ? " (DRY RUN — nothing written)" : `, ${updated} updated`}`);
+
+  if (negatives.length) {
+    negatives.sort((a, b) => a.remaining - b.remaining);
+    console.warn(`\n⚠ ${negatives.length} customers with NEGATIVE balance (over-drawn — likely a missing renewal in package_orders):`);
+    for (const n of negatives) console.warn(`    ${n.name}: ${n.remaining}`);
+  }
+  if (noPurchase.length) console.warn(`\n· ${noPurchase.length} skipped — no recorded purchase (left untouched): ${noPurchase.sort().join(", ")}`);
+  if (suspicious.length) console.warn(`\n⚠ ${suspicious.length} skipped — suspicious package size (likely typo): ${suspicious.join(", ")}`);
+  if (unmatchedPkg.size) console.warn(`\n⚠ ${unmatchedPkg.size} package names matched no DB customer: ${[...unmatchedPkg].sort().join(", ")}`);
+  if (unmatchedHar.size) console.warn(`\n⚠ ${unmatchedHar.size} delivery names matched no DB customer (NOT deducted — remaining may be overstated): ${[...unmatchedHar].sort().join(", ")}`);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
