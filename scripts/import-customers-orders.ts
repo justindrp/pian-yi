@@ -250,8 +250,16 @@ async function main() {
   }
   const customersCsvPath = args.customers;
   const ordersCsvPath = args.orders;
+  const skipCustomers = "skip-customers" in args;
+  // Only import deliveries strictly after this date (YYYY-MM-DD). Empty = no filter.
+  const afterDate = (args.after ?? "").trim() || null;
 
-  if (!customersCsvPath) {
+  if (skipCustomers) {
+    if (!ordersCsvPath) {
+      console.error("Usage: --skip-customers requires --orders=<path>");
+      process.exit(1);
+    }
+  } else if (!customersCsvPath) {
     console.error("Usage: pnpm tsx scripts/import-customers-orders.ts --customers=<path> [--orders=<path>]");
     process.exit(1);
   }
@@ -275,7 +283,9 @@ async function main() {
   }
 
   // ── Parse CSVs ───────────────────────────────────────────────────────────
-  const rawCustomers = (await parseCsv(customersCsvPath)).map(normalizeCustomerRow).filter(Boolean) as CustomerRow[];
+  const rawCustomers = skipCustomers
+    ? []
+    : ((await parseCsv(customersCsvPath)).map(normalizeCustomerRow).filter(Boolean) as CustomerRow[]);
   const rawOrders = ordersCsvPath
     ? ((await parseCsv(ordersCsvPath)).map(normalizeOrderRow).filter(Boolean) as OrderRow[])
     : [];
@@ -319,6 +329,27 @@ async function main() {
 
   let customerCount = 0;
   let orderCount = 0;
+
+  // skip-customers mode: build name→id and order maps from existing DB rows
+  // instead of importing customers/orders, so deliveries can still be matched.
+  if (skipCustomers) {
+    const { data: dbCustomers } = await db.from("customers").select("id, name");
+    for (const c of dbCustomers ?? []) {
+      if (!c.name) continue;
+      const full = c.name.trim().toLowerCase();
+      customerIdByName.set(full, c.id);
+      customerIdByName.set(parseName(c.name).base.toLowerCase(), c.id);
+    }
+    for (const [custId, orders] of existingOrdersByCustomer) {
+      for (const ord of orders ?? []) {
+        const alamatSlug = slugify(ord.delivery_address || ord.area || "");
+        orderIdByKey.set(`${custId}:${alamatSlug}`, ord.id);
+      }
+    }
+    console.log(
+      `skip-customers: loaded ${customerIdByName.size} name keys, ${orderIdByKey.size} order keys from DB`,
+    );
+  }
 
   for (const [baseKey, rows] of groups) {
     const baseName = parseName(rows[0].nama).base;
@@ -457,6 +488,7 @@ async function main() {
   for (const row of rawOrders) {
     const date = parseDate(row.tanggal);
     if (!date) { deliverySkipped++; continue; }
+    if (afterDate && date <= afterDate) { deliverySkipped++; continue; }
 
     const mealType = row.mealType.toLowerCase().includes("dinner") ? "dinner" : "lunch";
     const portions = Number.parseInt(row.jumlah, 10) || 1;
