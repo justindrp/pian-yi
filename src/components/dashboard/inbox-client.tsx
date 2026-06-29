@@ -666,7 +666,7 @@ export default function InboxClient() {
                         <div className="text-xs italic opacity-70">[Image]</div>
                       )
                     ) : (
-                      <p>{msg.content}</p>
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
                     )}
                     <div className="flex items-center gap-1 mt-1 opacity-60 flex-wrap">
                       <span className="text-[10px]">
