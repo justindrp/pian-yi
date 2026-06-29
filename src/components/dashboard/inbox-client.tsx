@@ -50,6 +50,7 @@ export default function InboxClient() {
     { id: string; name: string; phone_number: string }[]
   >([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
   // Ref so the realtime callback always sees the latest value without re-subscribing
@@ -195,9 +196,18 @@ export default function InboxClient() {
     };
   }, [loadThreads, loadMessages, loadFlags, supabase]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on message change only
+  // Scroll to bottom when switching threads; on message updates only if already near bottom
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional deps
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [selectedCustomerId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on message change only
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   async function selectThread(customerId: string) {
@@ -613,7 +623,7 @@ export default function InboxClient() {
           )}
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
             {messages.map((msg) => {
               const isUser = msg.role === "user";
               const msgWithExtras = msg as Conversation & { intent?: string | null; message_type?: string | null; media_id?: string | null };
