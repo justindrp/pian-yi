@@ -399,4 +399,29 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   return NextResponse.json({ ok: true });
 }
 
+export async function DELETE(req: NextRequest): Promise<Response> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+  const body = (await req.json()) as { id?: string };
+  if (!body.id)
+    return NextResponse.json({ ok: false, error: "Missing order id" }, { status: 400 });
+
+  const db = createAdminClient();
+
+  const delDeliveries = await db.from("daily_deliveries").delete().eq("order_id", body.id);
+  if (delDeliveries.error)
+    return NextResponse.json({ ok: false, error: delDeliveries.error.message }, { status: 500 });
+
+  const delOrder = await db.from("orders").delete().eq("id", body.id);
+  if (delOrder.error)
+    return NextResponse.json({ ok: false, error: delOrder.error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}
+
 export const dynamic = "force-dynamic";

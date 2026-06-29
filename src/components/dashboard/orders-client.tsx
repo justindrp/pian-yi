@@ -97,6 +97,7 @@ export default function OrdersClient() {
   const [selected, setSelected] = useState<Order | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const qc = useQueryClient();
 
   const { data: subcontractors } = useQuery({
@@ -142,6 +143,7 @@ export default function OrdersClient() {
   function closeDetail() {
     setSelected(null);
     setEditForm(null);
+    setDeleteConfirmOpen(false);
   }
 
   async function saveFields() {
@@ -189,6 +191,27 @@ export default function OrdersClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: selected.id, action: "update_status", status }),
       });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      closeDetail();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteOrder() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selected.id }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        alert(`Delete failed: ${json.error ?? res.statusText}`);
+        return;
+      }
       qc.invalidateQueries({ queryKey: ["orders"] });
       closeDetail();
     } finally {
@@ -631,6 +654,58 @@ export default function OrdersClient() {
                   </select>
                 </div>
               </div>
+
+              <div className="border-t border-gray-100 pt-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Danger zone
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  disabled={busy}
+                  className="w-full"
+                >
+                  Delete order
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmOpen && selected && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5">
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">
+              Delete order?
+            </h2>
+            <p className="text-xs text-gray-600 mb-4">
+              This will permanently delete the order for{" "}
+              <span className="font-medium text-gray-900">
+                {selected.customers?.name ?? selected.customers?.phone_number ?? "Unknown"}
+              </span>
+              , including its scheduled deliveries. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={busy}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={deleteOrder}
+                disabled={busy}
+              >
+                {busy ? "Deleting..." : "Delete permanently"}
+              </Button>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { PATCH } from "@/app/api/orders/route";
+import { DELETE, PATCH } from "@/app/api/orders/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -53,6 +53,14 @@ function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = 
 function patchRequest(body: unknown) {
   return new NextRequest("http://localhost/api/orders", {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function deleteRequest(body: unknown) {
+  return new NextRequest("http://localhost/api/orders", {
+    method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -211,6 +219,40 @@ describe("PATCH /api/orders", () => {
     const res = await PATCH(
       patchRequest({ id: "order-1", action: "update_status", status: "active" }),
     );
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.ok).toBe(false);
+    expect(db.from).not.toHaveBeenCalledWith("orders");
+  });
+});
+
+describe("DELETE /api/orders", () => {
+  test("T8 — deletes order deliveries before deleting the order", async () => {
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await DELETE(deleteRequest({ id: "order-1" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(db.chains.daily_deliveries.delete).toHaveBeenCalled();
+    expect(db.chains.daily_deliveries.eq).toHaveBeenCalledWith("order_id", "order-1");
+    expect(db.chains.orders.delete).toHaveBeenCalled();
+    expect(db.chains.orders.eq).toHaveBeenCalledWith("id", "order-1");
+
+    const tableOrder = (db.from as jest.Mock).mock.calls.map((c) => c[0]);
+    expect(tableOrder.indexOf("daily_deliveries")).toBeLessThan(
+      tableOrder.indexOf("orders"),
+    );
+  });
+
+  test("T9 — delete without order id returns 400", async () => {
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await DELETE(deleteRequest({}));
     const json = await res.json();
 
     expect(res.status).toBe(400);
