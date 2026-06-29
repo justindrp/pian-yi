@@ -248,7 +248,7 @@ Quick reference: which file handles which feature.
 
 ### Webhook (WhatsApp chatbot)
 - `GET /api/webhook/whatsapp` — Meta webhook verification (hub.challenge handshake)
-- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. Also handles welcome sequence: resolves `{{dapur_list}}`, `{{delivery_areas}}`, `{{price_20}}`, `{{order_deadline}}` placeholders in `welcome_message` setting from live DB data, then sends menu images from active subcontractor rows. The welcome greeting + price list image + each menu image are also logged to `conversations` as `assistant` rows (`model_used: "system"`, image rows use `message_type: "image"` with the URL as content) so they render in the dashboard inbox.
+- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. After each inbound customer message is saved to `conversations`, Haiku auto-summarizes durable customer context via `src/lib/claude/learn-context.ts`, replaces the `[AI learned context]` block in `customers.notes`, and feeds the freshly learned notes into the same bot response when available; failures are logged and never block replying. Also handles welcome sequence: resolves `{{dapur_list}}`, `{{delivery_areas}}`, `{{price_20}}`, `{{order_deadline}}` placeholders in `welcome_message` setting from live DB data, then sends menu images from active subcontractor rows. The welcome greeting + price list image + each menu image are also logged to `conversations` as `assistant` rows (`model_used: "system"`, image rows use `message_type: "image"` with the URL as content) so they render in the dashboard inbox.
 
 ### Auth
 - `POST /api/auth/check-admin` — Check if email exists in `admin_users`. ⚠️ Known issue: no session verification, allows unauthenticated email enumeration.
@@ -284,6 +284,7 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 
 ### Inbox (admin-guided bot responses)
 - `POST /api/inbox/bot-reply` — Admin provides a concise answer → Haiku polishes it → bot sends polished message to customer → clears `pending_bot_response` flag
+- `POST /api/inbox/learn-context` — Manual fallback for the same learned-context summarizer used by the webhook auto-learn path. Requires admin auth and `{ customer_id }`; writes only the `[AI learned context]` block in `customers.notes`.
 
 ### Settings
 - `GET /api/settings` — All settings + pricing tiers + message templates + admin list
