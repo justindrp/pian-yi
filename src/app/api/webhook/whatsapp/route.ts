@@ -154,6 +154,12 @@ export async function processWebhookAsync(
       ),
   ]);
 
+  const { data: stateRow } = await db
+    .from("customer_state")
+    .select("state, menu_shown")
+    .eq("customer_id", customerId)
+    .single();
+
   // Check flags
   const { data: flags } = await db
     .from("customer_flags")
@@ -227,12 +233,6 @@ export async function processWebhookAsync(
 
   // Payment proof: capture image when customer is awaiting payment
   if (message.type === "image" && message.imageId) {
-    const { data: stateRow } = await db
-      .from("customer_state")
-      .select("state")
-      .eq("customer_id", customerId)
-      .single();
-
     if (stateRow?.state === "awaiting_payment") {
       await handlePaymentProofImage(message, customerId, customer.name, message.from);
       await db
@@ -270,18 +270,34 @@ export async function processWebhookAsync(
     text = message.text ?? "";
   }
 
+  // Haiku classification + save customer message now so it always appears in inbox,
+  // even when rate limit / injection / circuit breaker cut the flow short below.
+  const intent = await classifyIntent(text).catch(() => "other");
+  await saveMessage({
+    customerId,
+    role: "user",
+    content: text,
+    messageId: message.messageId,
+    intent,
+    messageType: message.type === "image" ? "image" : "text",
+    mediaId: message.type === "image" ? message.imageId : undefined,
+  });
+  const learnedNotes = await tryLearnCustomerContext(customerId, db);
+
   // Rate limit check
-  const rateCheck = await checkRateLimit(customerId);
-  if (!rateCheck.allowed) {
-    const tmpl = await getTemplate("rate_limit_exceeded");
-    await sendTextMessage(message.from, tmpl);
-    await sendPushToAllAdmins(
-      "Rate limit hit",
-      `${message.from} hit ${rateCheck.reason}`,
-      "/inbox",
-      "medium",
-    );
-    return;
+  if (stateRow?.state !== "awaiting_payment") {
+    const rateCheck = await checkRateLimit(customerId);
+    if (!rateCheck.allowed) {
+      const tmpl = await getTemplate("rate_limit_exceeded");
+      await sendTextMessage(message.from, tmpl);
+      await sendPushToAllAdmins(
+        "Rate limit hit",
+        `${message.from} hit ${rateCheck.reason}`,
+        "/inbox",
+        "medium",
+      );
+      return;
+    }
   }
 
   // Notify admins of every incoming message
@@ -311,19 +327,10 @@ export async function processWebhookAsync(
     return;
   }
 
-  // Haiku classification
-  const intent = await classifyIntent(text).catch(() => "other");
-
   // Load history
   const history = await loadHistory(customerId);
 
   // Customer state
-  const { data: stateRow } = await db
-    .from("customer_state")
-    .select("state, menu_shown")
-    .eq("customer_id", customerId)
-    .single();
-
   // Casual mode coin flip
   const casualProbRaw = await getSetting("casual_mode_probability");
   const casualProb = Number.parseFloat(casualProbRaw) || 0.5;
@@ -425,17 +432,6 @@ export async function processWebhookAsync(
       return;
     }
   }
-
-  await saveMessage({
-    customerId,
-    role: "user",
-    content: text,
-    messageId: message.messageId,
-    intent,
-    messageType: message.type === "image" ? "image" : "text",
-    mediaId: message.type === "image" ? message.imageId : undefined,
-  });
-  const learnedNotes = await tryLearnCustomerContext(customerId, db);
 
   // Load active dapurs and active order quota in parallel
   const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
