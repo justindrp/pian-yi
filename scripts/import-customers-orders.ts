@@ -247,9 +247,16 @@ async function main() {
     const cleaned = a.replace(/^--/, "");
     const idx = cleaned.indexOf("=");
     if (idx !== -1) args[cleaned.slice(0, idx)] = cleaned.slice(idx + 1);
+    else args[cleaned] = ""; // valueless boolean flag (e.g. --skip-customers)
   }
-  const customersCsvPath = args.customers;
-  const ordersCsvPath = args.orders;
+  // Default Google Sheets sources (override with --customers= / --orders=)
+  const DEFAULT_CUSTOMERS_URL =
+    "https://docs.google.com/spreadsheets/d/13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI/edit?gid=1454452383#gid=1454452383";
+  const DEFAULT_ORDERS_URL =
+    "https://docs.google.com/spreadsheets/d/13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI/edit?gid=1975392427#gid=1975392427";
+
+  const customersCsvPath = args.customers ?? DEFAULT_CUSTOMERS_URL;
+  const ordersCsvPath = args.orders ?? DEFAULT_ORDERS_URL;
   const skipCustomers = "skip-customers" in args;
   // Only import deliveries strictly after this date (YYYY-MM-DD). Empty = no filter.
   const afterDate = (args.after ?? "").trim() || null;
