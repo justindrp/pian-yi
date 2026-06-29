@@ -68,6 +68,27 @@ function slugify(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 }
 
+// Candidate match keys for a sheet name: full (lower), parentheticals stripped
+// (e.g. "Elaine (Lunch)" → "elaine"), and the base without a trailing index.
+function nameKeys(name: string): string[] {
+  const lower = name.trim().toLowerCase();
+  const noParen = lower.replace(/\(.*?\)/g, "").replace(/\s+/g, " ").trim();
+  const base = parseName(noParen).base;
+  return [...new Set([lower, noParen, base])].filter((k) => k.length > 0);
+}
+
+function matchId(map: Map<string, string>, name: string): string | undefined {
+  for (const k of nameKeys(name)) {
+    const id = map.get(k);
+    if (id) return id;
+  }
+  return undefined;
+}
+
+function digits(s: string): number {
+  return Number.parseInt(s.replace(/[^0-9]/g, ""), 10) || 0;
+}
+
 // ─── CSV row types ──────────────────────────────────────────────────────────
 
 interface CustomerRow {
@@ -224,6 +245,39 @@ function normalizeOrderRow(raw: Record<string, string>): OrderRow | null {
   };
 }
 
+// package_orders: original prepaid package purchased (the quota the customer paid for).
+// Columns: Tanggal, Jam, Nama, Harga/Porsi, Porsi, Total Harga, Ad
+interface PackageRow {
+  tanggal: string;
+  nama: string;
+  hargaPorsi: string;
+  porsi: string;
+  totalHarga: string;
+}
+
+function normalizePackageRow(raw: Record<string, string>): PackageRow | null {
+  // Exact (case-insensitive) header match — "Porsi" must not collide with "Harga/Porsi".
+  const exact = (keys: string[]): string => {
+    for (const k of keys) {
+      for (const [header, val] of Object.entries(raw)) {
+        if (header.trim().toLowerCase() === k.toLowerCase()) return val ?? "";
+      }
+    }
+    return "";
+  };
+
+  const nama = exact(["nama", "name"]).trim();
+  if (!nama || nama === "#N/A" || nama.toLowerCase() === "nama") return null;
+
+  return {
+    tanggal: exact(["tanggal", "date"]).trim(),
+    nama,
+    hargaPorsi: exact(["harga/porsi", "harga per porsi", "price"]),
+    porsi: exact(["porsi", "portions"]),
+    totalHarga: exact(["total harga", "total"]),
+  };
+}
+
 // ─── Date parsing ───────────────────────────────────────────────────────────
 
 function parseDate(raw: string): string | null {
@@ -237,6 +291,124 @@ function parseDate(raw: string): string | null {
   const iso = raw.match(/^\d{4}-\d{2}-\d{2}/);
   if (iso) return raw.slice(0, 10);
   return null;
+}
+
+// ─── Reconcile ────────────────────────────────────────────────────────────────
+// Recompute every customer's remaining quota from source-of-truth sheets:
+//   package_size      = Σ package_orders.Porsi   (all purchases for that customer)
+//   delivered_to_date = Σ ORDER_HARIAN.Jumlah    (rows dated <= today)
+//   portions_remaining = max(0, package_size − delivered_to_date)
+// Writes customers.portions_remaining/avg_price + the customer's primary order
+// (package_size/portions_remaining/price_per_portion/total_price). Never touches
+// status, customers themselves, or accounting journals. --dry-run writes nothing.
+async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: boolean) {
+  const today = new Date().toISOString().slice(0, 10);
+  console.log(`Reconcile (today=${today})${dryRun ? " — DRY RUN, no writes" : ""}`);
+
+  // 1. name → customerId from DB (full / paren-stripped / base keys)
+  const { data: dbCustomers } = await db
+    .from("customers")
+    .select("id, name, portions_remaining");
+  const idByName = new Map<string, string>();
+  const custById = new Map<string, { name: string; oldRemaining: number }>();
+  for (const c of dbCustomers ?? []) {
+    if (!c.name) continue;
+    custById.set(c.id, { name: c.name, oldRemaining: c.portions_remaining ?? 0 });
+    for (const k of nameKeys(c.name)) idByName.set(k, c.id);
+  }
+
+  // 2. package_orders → Σ porsi + Σ total per customer
+  const pkgRows = (await parseCsv(packagesSrc))
+    .map(normalizePackageRow)
+    .filter(Boolean) as PackageRow[];
+  const purchased = new Map<string, { porsi: number; total: number }>();
+  const unmatchedPkg = new Set<string>();
+  for (const r of pkgRows) {
+    const id = matchId(idByName, r.nama);
+    if (!id) { unmatchedPkg.add(r.nama); continue; }
+    const acc = purchased.get(id) ?? { porsi: 0, total: 0 };
+    acc.porsi += digits(r.porsi);
+    acc.total += digits(r.totalHarga);
+    purchased.set(id, acc);
+  }
+
+  // 3. ORDER_HARIAN → Σ delivered portions (date <= today) per customer
+  const harRows = (await parseCsv(harianSrc))
+    .map(normalizeOrderRow)
+    .filter(Boolean) as OrderRow[];
+  const delivered = new Map<string, number>();
+  const unmatchedHar = new Set<string>();
+  for (const r of harRows) {
+    const date = parseDate(r.tanggal);
+    if (!date || date > today) continue; // future rows don't deduct yet
+    const id = matchId(idByName, r.nama);
+    if (!id) { unmatchedHar.add(r.nama); continue; }
+    delivered.set(id, (delivered.get(id) ?? 0) + (Number.parseInt(r.jumlah, 10) || 0));
+  }
+
+  // 4. oldest active order per customer (the row that carries the balance)
+  const { data: orders } = await db
+    .from("orders")
+    .select("id, customer_id, status, created_at")
+    .in("status", ["active", "pending_payment", "payment_proof_received", "paused"])
+    .order("created_at", { ascending: true });
+  const orderByCustomer = new Map<string, string>();
+  for (const o of orders ?? []) {
+    if (o.customer_id && !orderByCustomer.has(o.customer_id)) {
+      orderByCustomer.set(o.customer_id, o.id);
+    }
+  }
+
+  // 5. compute + apply
+  const ids = new Set<string>([...purchased.keys(), ...delivered.keys()]);
+  const report: {
+    name: string; pkg: number; deliv: number; remaining: number; old: number; neg: boolean; noOrder: boolean;
+  }[] = [];
+  let updated = 0;
+  for (const id of ids) {
+    const pkg = purchased.get(id)?.porsi ?? 0;
+    const total = purchased.get(id)?.total ?? 0;
+    const deliv = delivered.get(id) ?? 0;
+    const price = pkg > 0 ? Math.round(total / pkg) : 0;
+    const rawRemaining = pkg - deliv;
+    const remaining = Math.max(0, rawRemaining);
+    const info = custById.get(id);
+    const ordId = orderByCustomer.get(id);
+    report.push({
+      name: info?.name ?? id,
+      pkg, deliv, remaining,
+      old: info?.oldRemaining ?? 0,
+      neg: rawRemaining < 0,
+      noOrder: !ordId,
+    });
+    if (!dryRun) {
+      await db.from("customers").update({ portions_remaining: remaining, avg_price_per_portion: price }).eq("id", id);
+      if (ordId) {
+        await db.from("orders").update({
+          package_size: pkg,
+          portions_remaining: remaining,
+          price_per_portion: price,
+          total_price: total,
+        }).eq("id", ordId);
+      }
+      updated++;
+    }
+  }
+
+  // 6. print
+  report.sort((a, b) => a.name.localeCompare(b.name));
+  const pad = (s: string | number, n: number) => String(s).padEnd(n);
+  console.log(`\n${pad("Customer", 26)}${pad("Pkg", 6)}${pad("Deliv", 7)}${pad("Remain", 8)}${pad("(was)", 7)}`);
+  console.log("─".repeat(54));
+  for (const r of report) {
+    const flag = r.neg ? "  ⚠ over-delivered" : r.noOrder ? "  (no order row)" : "";
+    console.log(`${pad(r.name, 26)}${pad(r.pkg, 6)}${pad(r.deliv, 7)}${pad(r.remaining, 8)}${pad(r.old, 7)}${flag}`);
+  }
+  console.log(`\n${report.length} customers computed${dryRun ? "" : `, ${updated} updated`}`);
+  const negs = report.filter((r) => r.neg);
+  if (negs.length) console.warn(`⚠ ${negs.length} over-delivered (delivered > purchased): ${negs.map((r) => r.name).join(", ")}`);
+  if (unmatchedPkg.size) console.warn(`⚠ ${unmatchedPkg.size} package names matched no DB customer: ${[...unmatchedPkg].join(", ")}`);
+  if (unmatchedHar.size) console.warn(`⚠ ${unmatchedHar.size} delivery names matched no DB customer (not deducted): ${[...unmatchedHar].join(", ")}`);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -254,10 +426,19 @@ async function main() {
     "https://docs.google.com/spreadsheets/d/13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI/edit?gid=1454452383#gid=1454452383";
   const DEFAULT_ORDERS_URL =
     "https://docs.google.com/spreadsheets/d/13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI/edit?gid=1975392427#gid=1975392427";
+  const DEFAULT_PACKAGES_URL =
+    "https://docs.google.com/spreadsheets/d/13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI/edit?gid=341974326#gid=341974326";
 
   const customersCsvPath = args.customers ?? DEFAULT_CUSTOMERS_URL;
   const ordersCsvPath = args.orders ?? DEFAULT_ORDERS_URL;
   const skipCustomers = "skip-customers" in args;
+
+  // Reconcile mode: recompute remaining quota from package_orders + ORDER_HARIAN.
+  if ("reconcile" in args) {
+    const packagesCsvPath = args.packages ?? DEFAULT_PACKAGES_URL;
+    await runReconcile(packagesCsvPath, ordersCsvPath, "dry-run" in args);
+    return;
+  }
   // Only import deliveries strictly after this date (YYYY-MM-DD). Empty = no filter.
   const afterDate = (args.after ?? "").trim() || null;
 
