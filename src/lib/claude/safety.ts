@@ -35,6 +35,14 @@ export async function checkRateLimit(
   customerId: string,
 ): Promise<{ allowed: boolean; reason?: string }> {
   const db = createAdminClient();
+  const { data: flags } = await db
+    .from("customer_flags")
+    .select("vip_status")
+    .eq("customer_id", customerId)
+    .single();
+
+  if (flags?.vip_status) return { allowed: true };
+
   const { data: row } = await db
     .from("customer_rate_limits")
     .select("*")
@@ -78,7 +86,7 @@ export async function checkRateLimit(
     return { allowed: false, reason: "daily_limit" };
   if ((row.minute_message_count ?? 0) >= 9)
     return { allowed: false, reason: "minute_limit" };
-  if ((row.daily_token_count ?? 0) >= 100_000)
+  if ((row.daily_token_count ?? 0) >= 200_000)
     return { allowed: false, reason: "token_limit" };
 
   await db
