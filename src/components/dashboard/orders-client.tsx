@@ -89,7 +89,17 @@ type EditForm = {
   portions_lunch: string;
   portions_dinner: string;
   portions_per_delivery: string;
+  // Money / quota / dates (raw edits — do not adjust accounting journals)
+  order_type: string;
+  package_size: string;
+  portions_remaining: string;
+  price_per_portion: string;
+  total_price: string;
+  start_date: string;
+  paid_at: string;
 };
+
+const ORDER_TYPES = ["recurring", "scheduled"];
 
 export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("active");
@@ -137,6 +147,13 @@ export default function OrdersClient() {
       portions_dinner: o.portions_dinner == null ? "" : String(o.portions_dinner),
       portions_per_delivery:
         o.portions_per_delivery == null ? "" : String(o.portions_per_delivery),
+      order_type: o.order_type ?? "",
+      package_size: o.package_size == null ? "" : String(o.package_size),
+      portions_remaining: o.portions_remaining == null ? "" : String(o.portions_remaining),
+      price_per_portion: o.price_per_portion == null ? "" : String(o.price_per_portion),
+      total_price: o.total_price == null ? "" : String(o.total_price),
+      start_date: o.start_date ?? "",
+      paid_at: o.paid_at ? o.paid_at.slice(0, 10) : "",
     });
   }
 
@@ -395,24 +412,79 @@ export default function OrdersClient() {
                 <div className="text-xs text-gray-400">
                   {selected.customers?.phone_number}
                 </div>
-                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600 pt-1">
-                  <dt className="text-gray-400">Type</dt>
-                  <dd>{selected.order_type}</dd>
-                  <dt className="text-gray-400">Package</dt>
-                  <dd>{selected.package_size} porsi</dd>
-                  <dt className="text-gray-400">Remaining</dt>
-                  <dd>{selected.portions_remaining}</dd>
-                  <dt className="text-gray-400">Price/porsi</dt>
-                  <dd>Rp {selected.price_per_portion?.toLocaleString("id-ID")}</dd>
-                  <dt className="text-gray-400">Total</dt>
-                  <dd>Rp {selected.total_price?.toLocaleString("id-ID")}</dd>
-                  <dt className="text-gray-400">Start</dt>
-                  <dd>{selected.start_date}</dd>
-                  <dt className="text-gray-400">Created</dt>
-                  <dd>{selected.created_at?.slice(0, 10)}</dd>
-                  <dt className="text-gray-400">Paid</dt>
-                  <dd>{selected.paid_at?.slice(0, 10) ?? "—"}</dd>
-                </dl>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <Label htmlFor="order-type" className="text-xs text-gray-500 block mb-1">Type</Label>
+                    <select
+                      id="order-type"
+                      value={editForm.order_type}
+                      onChange={(e) => setEditForm({ ...editForm, order_type: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                    >
+                      {ORDER_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="order-package" className="text-xs text-gray-500 block mb-1">Package (porsi)</Label>
+                    <Input
+                      id="order-package"
+                      type="number"
+                      value={editForm.package_size}
+                      onChange={(e) => setEditForm({ ...editForm, package_size: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="order-remaining" className="text-xs text-gray-500 block mb-1">Remaining</Label>
+                    <Input
+                      id="order-remaining"
+                      type="number"
+                      value={editForm.portions_remaining}
+                      onChange={(e) => setEditForm({ ...editForm, portions_remaining: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="order-price" className="text-xs text-gray-500 block mb-1">Price/porsi (Rp)</Label>
+                    <Input
+                      id="order-price"
+                      type="number"
+                      value={editForm.price_per_portion}
+                      onChange={(e) => setEditForm({ ...editForm, price_per_portion: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="order-total" className="text-xs text-gray-500 block mb-1">Total (Rp)</Label>
+                    <Input
+                      id="order-total"
+                      type="number"
+                      value={editForm.total_price}
+                      onChange={(e) => setEditForm({ ...editForm, total_price: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="order-start" className="text-xs text-gray-500 block mb-1">Start date</Label>
+                    <Input
+                      id="order-start"
+                      type="date"
+                      value={editForm.start_date}
+                      onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="order-paid" className="text-xs text-gray-500 block mb-1">Paid date</Label>
+                    <Input
+                      id="order-paid"
+                      type="date"
+                      value={editForm.paid_at}
+                      onChange={(e) => setEditForm({ ...editForm, paid_at: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500 block mb-1">Created</span>
+                    <p className="text-sm text-gray-500 py-2">{selected.created_at?.slice(0, 10)}</p>
+                  </div>
+                </div>
               </div>
 
               {/* Editable operational fields */}
