@@ -21,14 +21,30 @@ else
   BUMP="patch"
 fi
 
+EXPECTED_VERSION=$(node -e "
+  const fs = require('fs');
+  const parentPkg = JSON.parse(require('child_process').execFileSync('git', ['show', 'HEAD^:package.json'], { encoding: 'utf8' }));
+  const [major, minor, patch] = parentPkg.version.split('.').map(Number);
+  process.stdout.write('$BUMP' === 'minor'
+    ? \`\${major}.\${minor + 1}.0\`
+    : \`\${major}.\${minor}.\${patch + 1}\`);
+")
+
+CURRENT_VERSION=$(node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  process.stdout.write(pkg.version);
+")
+
+if [ "$CURRENT_VERSION" = "$EXPECTED_VERSION" ]; then
+  exit 0
+fi
+
 # Bump version in package.json without creating a git tag
 node -e "
   const fs = require('fs');
   const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-  const [major, minor, patch] = pkg.version.split('.').map(Number);
-  pkg.version = '$BUMP' === 'minor'
-    ? \`\${major}.\${minor + 1}.0\`
-    : \`\${major}.\${minor}.\${patch + 1}\`;
+  pkg.version = '$EXPECTED_VERSION';
   fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
   console.log('Version bumped to ' + pkg.version);
 "
@@ -36,3 +52,5 @@ node -e "
 # Amend the current commit to include the version bump
 git add package.json
 git commit --amend --no-edit --no-verify -q
+echo "Version bump amended into commit. Run git push again."
+exit 1
