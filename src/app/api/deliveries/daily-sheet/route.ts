@@ -261,6 +261,39 @@ export async function PUT(req: NextRequest): Promise<Response> {
   return NextResponse.json({ ok: true });
 }
 
+export async function DELETE(req: NextRequest): Promise<Response> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+  const body = (await req.json()) as { id?: string };
+  const id = body.id?.trim();
+  if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
+
+  const db = createAdminClient();
+  // Detach delivery proofs (FK has no cascade) before removing the row.
+  const detach = await db
+    .from("delivery_proofs")
+    .update({ matched_delivery_id: null })
+    .eq("matched_delivery_id", id);
+  if (detach.error) {
+    return NextResponse.json({ ok: false, error: detach.error.message }, { status: 500 });
+  }
+
+  const { error } = await db.from("daily_deliveries").delete().eq("id", id);
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  await db.from("edit_log").insert({
+    entity_type: "daily_deliveries",
+    entity_id: id,
+    action: "delete_delivery",
+    changed_by: user.email ?? "",
+    changes: {},
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
 export const dynamic = "force-dynamic";
 
 // Helper: load deadline hour

@@ -55,6 +55,7 @@ export default function CustomersClient() {
     google_maps_link_2: "",
   });
   const [showAdd, setShowAdd] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [addForm, setAddForm] = useState({
     name: "",
@@ -182,6 +183,19 @@ export default function CustomersClient() {
       void queryClient.invalidateQueries({ queryKey: ["customers"] });
       setShowAdd(false);
       setAddForm({ name: "", phone_number: "", area: "", sub_area: "", address: "", address_2: "", google_maps_link: "", subcontractor_id: "" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/customers/${id}`, { method: "DELETE" });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error ?? "Gagal menghapus");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["customers"] });
+      setDeleteConfirmOpen(false);
+      setSelected(null);
     },
   });
 
@@ -838,6 +852,58 @@ export default function CustomersClient() {
                 className="w-full bg-orange-500 hover:bg-orange-600"
               >
                 {saveMutation.isPending ? "Saving..." : "Save changes"}
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteConfirmOpen(true)}
+                className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                Delete customer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete customer confirm */}
+      {deleteConfirmOpen && selected && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="Close"
+            className="absolute inset-0 h-auto w-auto rounded-none bg-black/40 cursor-default hover:bg-black/40"
+            onClick={() => setDeleteConfirmOpen(false)}
+          />
+          <div className="relative w-full max-w-sm bg-white rounded-lg shadow-xl p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-900">Delete customer?</h3>
+            <p className="text-sm text-gray-600">
+              This permanently deletes <span className="font-medium">{selected.name ?? "this customer"}</span>{" "}
+              along with their orders, deliveries, conversations, and state. This cannot be undone.
+            </p>
+            {deleteMutation.isError && (
+              <p className="text-sm text-red-600">
+                {(deleteMutation.error as Error).message}
+              </p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleteMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => deleteMutation.mutate(selected.id)}
+                disabled={deleteMutation.isPending}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {deleteMutation.isPending ? "Deleting..." : "Delete permanently"}
               </Button>
             </div>
           </div>

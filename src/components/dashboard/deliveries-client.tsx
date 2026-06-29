@@ -237,6 +237,7 @@ function SortableDeliveryRow({
   onUpdatePortions,
   onUpdateSub,
   onUpdateAddressSlot,
+  onDelete,
   uploadState,
   onUploadProof,
 }: {
@@ -247,6 +248,7 @@ function SortableDeliveryRow({
   onUpdatePortions: (customerId: string, mealType: "lunch" | "dinner", portions: number) => void;
   onUpdateSub: (customerId: string, mealType: "lunch" | "dinner", subId: string | null) => void;
   onUpdateAddressSlot: (customerId: string, mealType: "lunch" | "dinner", slot: number) => void;
+  onDelete: () => void;
   uploadState: "idle" | "uploading" | "done" | "error";
   onUploadProof: (file: File) => void;
 }) {
@@ -274,9 +276,18 @@ function SortableDeliveryRow({
         />
       </td>
       <td className="px-2 py-2">
-        <div className="font-medium text-gray-900 text-sm">
-          {row.customers?.name ?? row.customer_id.slice(0, 8)}
-          {row.orders?.size === "m" && <span className="ml-1 text-xs bg-orange-100 text-orange-700 px-1 rounded">M</span>}
+        <div className="font-medium text-gray-900 text-sm flex items-center gap-1">
+          <span>{row.customers?.name ?? row.customer_id.slice(0, 8)}</span>
+          {row.orders?.size === "m" && <span className="text-xs bg-orange-100 text-orange-700 px-1 rounded">M</span>}
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="Delete delivery"
+            onClick={onDelete}
+            className="ml-auto text-gray-300 hover:text-red-600 h-auto w-auto p-0.5 text-xs"
+          >
+            ✕
+          </Button>
         </div>
         <div className="flex items-center gap-1 text-xs text-gray-400">
           <span>
@@ -327,6 +338,7 @@ export default function DeliveriesClient() {
   const [date, setDate] = useState(tomorrow());
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeliveryRow | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [uploadStates, setUploadStates] = useState<Record<string, "idle" | "uploading" | "done" | "error">>({});
   const [showAdd, setShowAdd] = useState(false);
@@ -438,6 +450,25 @@ export default function DeliveriesClient() {
       await fetch("/api/deliveries/proofs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "unmatch" }) });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
+  });
+
+  const deleteRow = useMutation({
+    mutationFn: async (row: DeliveryRow) => {
+      // Unsaved local row (no DB id) — just drop from state, no fetch.
+      if (!row.id) return;
+      const res = await fetch("/api/deliveries/daily-sheet", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: row.id }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error ?? "Gagal menghapus");
+    },
+    onSuccess: (_data, row) => {
+      setRows((prev) => prev.filter((r) => !(r.customer_id === row.customer_id && r.meal_type === row.meal_type)));
+      setDeleteTarget(null);
+      qc.invalidateQueries({ queryKey: ["daily-sheet", date] });
+    },
   });
 
   function updateRow(customerId: string, mealType: "lunch" | "dinner", field: keyof DeliveryRow, value: unknown) {
@@ -645,6 +676,7 @@ export default function DeliveriesClient() {
                                       onUpdatePortions={(cid, mt, portions) => updateRow(cid, mt, "portions", portions)}
                                       onUpdateSub={(cid, mt, subId) => updateRow(cid, mt, "subcontractor_id", subId)}
                                       onUpdateAddressSlot={(cid, mt, slot) => updateRow(cid, mt, "address_slot", slot)}
+                                      onDelete={() => setDeleteTarget(r)}
                                       uploadState={uploadStates[`${r.customer_id}-${r.meal_type}`] ?? (proofCustomerIds.has(r.customer_id) ? "done" : "idle")}
                                       onUploadProof={(file) => handleUploadProof(r.customer_id, r.meal_type, r.subcontractor_id, file)}
                                     />
@@ -674,7 +706,18 @@ export default function DeliveriesClient() {
                                   <Checkbox checked={!r.skip} onCheckedChange={(checked) => updateRow(r.customer_id, meal, "skip", !checked)} />
                                 </td>
                                 <td className="px-2 py-2">
-                                  <div className="font-medium text-gray-900 text-sm">{r.customers?.name ?? r.customer_id.slice(0, 8)}</div>
+                                  <div className="font-medium text-gray-900 text-sm flex items-center gap-1">
+                                    <span>{r.customers?.name ?? r.customer_id.slice(0, 8)}</span>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      aria-label="Delete delivery"
+                                      onClick={() => setDeleteTarget(r)}
+                                      className="ml-auto text-gray-300 hover:text-red-600 h-auto w-auto p-0.5 text-xs"
+                                    >
+                                      ✕
+                                    </Button>
+                                  </div>
                                   <div className="flex items-center gap-1 text-xs text-gray-400">
                                     <span>
                                       {r.address_slot === 2
@@ -873,6 +916,24 @@ export default function DeliveriesClient() {
             <div className="flex gap-2">
               <Button type="button" onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">{save.isPending ? "Saving..." : "Simpan"}</Button>
               <Button type="button" variant="outline" onClick={() => setShowConfirm(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-96 space-y-4">
+            <h2 className="font-semibold text-gray-900">Hapus pengiriman?</h2>
+            <p className="text-sm text-gray-500">
+              Hapus {deleteTarget.meal_type === "lunch" ? "makan siang" : "makan malam"} untuk{" "}
+              <span className="font-medium">{deleteTarget.customers?.name ?? "pelanggan ini"}</span> pada {date}.
+              {deleteTarget.id ? " Baris ini akan dihapus permanen dari sheet." : " Baris ini belum disimpan."}
+            </p>
+            {deleteRow.isError && <p className="text-sm text-red-600">{(deleteRow.error as Error).message}</p>}
+            <div className="flex gap-2">
+              <Button type="button" onClick={() => deleteRow.mutate(deleteTarget)} disabled={deleteRow.isPending} className="flex-1 py-2 bg-red-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">{deleteRow.isPending ? "Menghapus..." : "Hapus"}</Button>
+              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteRow.isPending} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
             </div>
           </div>
         </div>
