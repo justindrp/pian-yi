@@ -71,18 +71,19 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 
 ### Pricing
 
-- Stored in `pricing_tiers` table, never hardcoded
+- Customer-facing chatbot prompt has the current Paket Personal S price list spelled out in `src/lib/claude/prompts/system.ts`; keep this in sync with `pricing_tiers` and `price_list_image_url`.
 - Existing orders lock in `price_per_portion` at order creation time
-- Tiers: 1=31k, 2=30k, 5=29k, 10=28k, 20=27k, 40=26k, 80=25k (current values)
+- Current S-only customer price thresholds: 5=29k, 10=28k, 20=27k, 40=26k, 60=26k, 120=25k per portion.
+- Current active subcontractor only serves 5 days/week. Chatbot must not offer 6 days/week as available, even though the public price list includes 6-day packages.
+- Custom day counts such as 15 days lunch-only are not auto-priced. Chatbot should offer listed packages or ask admin for help if the customer insists.
 - Bulk adjust supported: `PATCH /api/settings/pricing` with `{ adjust: number }` increments all tiers at once
 
 ### Order sizes (S / M)
 
 - Every order has a `size` column (`text`, default `'s'`, constraint `IN ('s', 'm')`) added in migration 043
 - **S** = standard tier price, no surcharge
-- **M** = standard tier price + Rp 2,000/portion — baked into `price_per_portion` at order creation time (webhook and admin modal both apply the surcharge before inserting)
+- **M** = historical/admin-only option. The current customer-facing chatbot must not ask S/M and must create webhook orders as `size: "s"` with no M surcharge.
 - The surcharge is stored, never derived; editing `size` on a historical order does NOT recalculate `price_per_portion` or `total_price`
-- Chatbot asks the size question after gathering portions (Q4 for fixed-schedule, Q2 for bebas); default is S if customer doesn't specify
 - Admin can change `size` on any order via the inline select in the Orders table — calls `PATCH /api/orders` with `{ action: "update_size", id, size }`, updates only the `size` column
 
 ### Delivery

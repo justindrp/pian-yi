@@ -106,6 +106,11 @@ export async function POST(req: NextRequest): Promise<Response> {
           start_date: { type: "string" },
           end_date: { type: "string" },
           subcontractor_id: { type: "string" },
+          size: {
+            type: "string",
+            enum: ["s"],
+            description: "Package size. Current customer-facing chatbot orders must use s; do not ask the customer about M.",
+          },
         },
         required: [
           "customer_name",
@@ -114,6 +119,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           "address",
           "maps_link",
           "area",
+          "size",
           ...(dapurOptions.length > 0 ? ["subcontractor_id"] : []),
         ],
       },

@@ -507,8 +507,8 @@ export async function processWebhookAsync(
           },
           size: {
             type: "string",
-            enum: ["s", "m"],
-            description: "Package size — s for standard, m for +Rp 2.000/porsi",
+            enum: ["s"],
+            description: "Package size. Current customer-facing chatbot orders must use s; do not ask the customer about M.",
           },
         },
         required: [
@@ -855,8 +855,7 @@ async function handleToolUse(
       .limit(1)
       .single();
 
-    const surcharge = input.size === "m" ? 2000 : 0;
-    const pricePerPortion = (tier?.price_per_portion ?? 0) + surcharge;
+    const pricePerPortion = tier?.price_per_portion ?? 0;
     const totalPrice = pricePerPortion * input.package_size;
 
     await db.from("orders").insert({
@@ -877,7 +876,7 @@ async function handleToolUse(
         | null,
       start_date: (input.start_date ?? null) as string,
       end_date: input.end_date ?? null,
-      size: (input.size ?? "s") as "s" | "m",
+      size: "s",
       subcontractor_id: input.subcontractor_id ?? null,
       status: "pending_payment",
       confirmed_at: new Date().toISOString(),

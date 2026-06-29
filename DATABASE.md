@@ -384,7 +384,7 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 
 ## pricing_tiers
 
-Price per portion at each quantity tier. The `portions` column is the minimum quantity to qualify.
+Price per portion at each quantity tier. The `portions` column is the minimum quantity to qualify. Current customer-facing chatbot sales are S-only and should use listed package sizes rather than inventing prices for arbitrary counts.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -392,7 +392,7 @@ Price per portion at each quantity tier. The `portions` column is the minimum qu
 | price_per_portion | integer | Price in IDR per portion at this tier |
 | updated_at | timestamp | |
 
-Current tiers: 1→32k, 2→31k, 5→30k, 10→29k, 20→28k, 40→27k, 80→26k
+Current tiers: 5→29k, 10→28k, 20→27k, 40→26k, 60→26k, 120→25k
 
 ---
 
@@ -439,7 +439,7 @@ Key-value store for all configurable business settings. Edited via the Settings 
 
 Notable keys: `business_name`, `chatbot_enabled`, `welcome_message`, `price_list_image_url`, `bank_name`, `bank_account_number`, `bank_account_name`, `order_deadline_hour`, `order_deadline_daily_hour`, `casual_mode_probability`, `typing_delay_base_seconds`, `escalation_keywords`, `instagram_handle`
 
-`welcome_message` supports four template placeholders resolved at send time: `{{dapur_list}}` (active subcontractor names), `{{delivery_areas}}` (unique delivery areas from active subcontractors), `{{price_20}}` (20-portion tier price formatted as e.g. `27RB`), `{{order_deadline}}` (order_deadline_hour formatted as e.g. `16.00`).
+`welcome_message` supports four template placeholders resolved at send time: `{{dapur_list}}` (active subcontractor names), `{{delivery_areas}}` (unique delivery areas from active subcontractors), `{{price_20}}` (20-portion tier price formatted as e.g. `27RB`), `{{order_deadline}}` (order_deadline_hour formatted as e.g. `16.00`). `price_list_image_url` is sent automatically to new WhatsApp contacts before the AI reply; keep it synced with the current Paket Personal S price list.
 
 ---
 

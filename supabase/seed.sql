@@ -19,8 +19,8 @@ INSERT INTO settings (key, value, description) VALUES
   ('chatbot_enabled', 'true', 'Kill switch for AI chatbot');
 
 INSERT INTO pricing_tiers (portions, price_per_portion) VALUES
-  (1, 30000), (2, 29000), (5, 28000), (10, 27000),
-  (20, 26000), (40, 25000), (80, 24000);
+  (5, 29000), (10, 28000), (20, 27000),
+  (40, 26000), (60, 26000), (120, 25000);
 
 INSERT INTO message_templates (key, template, description) VALUES
   ('subcontractor_libur', 'Halo kak, mohon maaf dapur kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi', 'When subcontractor is unavailable'),

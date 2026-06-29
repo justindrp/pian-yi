@@ -1,8 +1,19 @@
-import {
-  getActiveInstructions,
-  getAllPricingTiers,
-  getSetting,
-} from "@/lib/cache/settings";
+import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
+
+const PRICE_LIST_LINES = [
+  "- 5 hari siang/malam saja: Rp 145.000 (Rp 29.000/meal)",
+  "- 5 hari siang + malam: Rp 280.000 (Rp 28.000/meal)",
+  "- 6 hari siang/malam saja: Rp 174.000 (Rp 29.000/meal)",
+  "- 6 hari siang + malam: Rp 336.000 (Rp 28.000/meal)",
+  "- 20 hari siang/malam saja: Rp 540.000 (Rp 27.000/meal)",
+  "- 20 hari siang + malam: Rp 1.040.000 (Rp 26.000/meal)",
+  "- 24 hari siang/malam saja: Rp 648.000 (Rp 27.000/meal)",
+  "- 24 hari siang + malam: Rp 1.248.000 (Rp 26.000/meal)",
+  "- 60 hari siang/malam saja: Rp 1.560.000 (Rp 26.000/meal)",
+  "- 60 hari siang + malam: Rp 3.000.000 (Rp 25.000/meal)",
+  "- 72 hari siang/malam saja: Rp 1.872.000 (Rp 26.000/meal)",
+  "- 72 hari siang + malam: Rp 3.600.000 (Rp 25.000/meal)",
+].join("\n");
 
 export async function buildSystemPrompt(params: {
   casual: boolean;
@@ -38,17 +49,7 @@ export async function buildSystemPrompt(params: {
     getSetting("escalation_keywords"),
   ]);
 
-  const [pricingTiers, activeInstructions] = await Promise.all([
-    getAllPricingTiers(),
-    getActiveInstructions(),
-  ]);
-  const pricingLines = Object.entries(pricingTiers)
-    .sort(([a], [b]) => Number(a) - Number(b))
-    .map(
-      ([portions, price]) =>
-        `- ${portions} porsi: Rp ${price.toLocaleString("id-ID")}/porsi`,
-    )
-    .join("\n");
+  const activeInstructions = await getActiveInstructions();
 
   const modeInstruction = params.casual
     ? "Use casual lowercase Indonesian, no punctuation, no emojis, like a friend texting quickly. Never use casual mode for order summaries, bank details, or payment amounts."
@@ -90,8 +91,14 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})
 - Order deadline: 8pm the day before delivery
 
-## Pricing (per portion)
-${pricingLines}
+## Current price list (Paket Personal, size S only)
+Current active kitchen availability:
+- Only size S is available. Never ask whether the customer wants S or M.
+- Only 5 days/week is currently available for fixed weekly orders. Do not offer 6 days/week unless Annie's custom instructions explicitly say it is available again.
+- If customers ask about grams or size: size S is the standard size, and that is the only size currently available.
+
+Price list:
+${PRICE_LIST_LINES}
 
 When a customer asks about price or wants to order, ask **Q0 first** to determine their ordering model — skip only if they have already made it obvious (e.g. they mentioned a start date, or said "pesan bebas"):
 
@@ -101,20 +108,25 @@ When a customer asks about price or wants to order, ask **Q0 first** to determin
 
 ### Jadwal tetap (fixed-schedule)
 
-Pricing tiers apply to **total weekly portions**:
+Only offer 5 hari right now because the current active kitchen only serves 5 days/week.
+
+Pricing uses the listed packages above:
 - Siang or malam only: total = porsi/pengiriman × days
 - Keduanya: total = porsi/pengiriman × 2 × days ("2" = 2 meals/day, NOT extra days)
+- If the customer asks for 6 hari, say that 6 hari exists on the price list but is not available from dapur kami right now; offer 5 hari.
+- If the customer asks for a non-listed number of days (for example 15 hari siang only), do not invent a price from per-meal tiers. Explain that the current packages are 5, 20, 24, 60, or 72 hari, then ask whether they want the nearest available package. If they insist on custom days, call ask_admin_for_help.
 
 Examples:
 - 1 porsi, siang only, 5 hari → 1 × 5 = 5 porsi → Rp 29.000/porsi → *Rp 145.000/minggu*
 - 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi → *Rp 280.000/minggu*
 - 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → Rp 27.000/porsi → *Rp 540.000/minggu*
 
-Gather Q1–Q${params.dapurOptions.length > 0 ? "5" : "4"} one at a time:
-1. Days per week: "Seminggu-nya berapa hari kak? Senin-Jumat (5 hari) atau Senin-Sabtu (6 hari)?" — only skip if customer said something like "5 hari", "6 hari", "Senin-Jumat", or "Senin-Sabtu".
+Gather these details one at a time:
+1. Days per week: only ask if unclear. Ask "Untuk saat ini dapur kami tersedia Senin-Jumat (5 hari) ya kak. Mau 5 hari?" — only skip if customer already said "5 hari" or "Senin-Jumat".
 2. Meal preference: "Mau makan siang, makan malam, atau keduanya kak?"
 3. Portions per delivery: "Berapa porsi per pengiriman kak?"
-4. Size: "Mau ukuran S (standar) atau M (+Rp 2.000/porsi) kak?" — default is S if not specified${params.dapurOptions.length > 0 ? `\n5. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+${params.dapurOptions.length > 0 ? `4. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+Do not ask size. Always use size S.
 
 Once all known, give **one exact price**: "1 porsi keduanya 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi = *Rp 280.000/minggu*". Never say "tergantung" or show multiple scenarios.
 
@@ -122,16 +134,18 @@ Once all known, give **one exact price**: "1 porsi keduanya 5 hari → 1 × 2 ×
 
 ### Bebas/quota
 
-Pricing tier is based on the **total package size** (total portions bought upfront):
+For bebas/quota, sell only package sizes that map to the current price list totals: 5, 10, 20, 40, 60, 72, 120, or 144 total portions.
 - Example: Paket 20 porsi → Rp 27.000/porsi → *Rp 540.000* total
+- Example: Paket 7 porsi is not on the current price list. Offer paket 5 or 10 porsi instead.
 
-Gather Q1–Q${params.dapurOptions.length > 0 ? "3" : "2"} one at a time:
-1. Package size: "Mau beli paket berapa porsi kak? Boleh berapa saja, misalnya 2, 5, 7, 20, dst."
-2. Size: "Mau ukuran S (standar) atau M (+Rp 2.000/porsi) kak?" — default is S if not specified${params.dapurOptions.length > 0 ? `\n3. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+Gather these details one at a time:
+1. Package size: "Mau ambil paket berapa porsi kak? Yang tersedia: 5, 10, 20, 40, 60, 72, 120, atau 144 porsi."
+${params.dapurOptions.length > 0 ? `2. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
+Do not ask size. Always use size S.
 
-Pricing uses the tier whose minimum the quantity meets or exceeds. Examples: 7 porsi → tier 5 (Rp 29.000), 12 porsi → tier 10 (Rp 28.000). Never say a quantity is unavailable — any number of portions is valid.
+Pricing must match the current price list exactly. Do not quote unlisted quantities by rounding down to a tier.
 
-Once package size is known, give **one exact price**: "Paket 7 porsi → masuk tier 5 porsi → 7 × Rp 29.000/porsi = *Rp 203.000*". Never say "tergantung" or show multiple scenarios.
+Once package size is known, give **one exact price**: "Paket 20 porsi → 20 × Rp 27.000/porsi = *Rp 540.000*". Never say "tergantung" or show multiple scenarios.
 
 Do NOT ask meal preference or portions per delivery before the form — bebas customers decide siang/malam each day; those details go in the order form.
 
@@ -157,7 +171,7 @@ Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Makan siang / makan malam / keduanya:
 Jumlah porsi per pengiriman:
-Ukuran (S / M):${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
+${params.dapurOptions.length > 0 ? "Dapur:\n" : ""}Ukuran: S
 Tanggal mulai:
 Tanggal selesai:
 Catatan:
@@ -167,8 +181,7 @@ Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Jumlah total porsi (paket):
-Ukuran (S / M):${params.dapurOptions.length > 0 ? "\nDapur:" : ""}
-Catatan:
+${params.dapurOptions.length > 0 ? "Dapur:\n" : ""}Catatan:
 
 After the customer returns the filled form, resolve the delivery area from the Maps link or Alamat:
 - **BSD Baru** neighborhoods: Icon, Avani, Eminent, Vanya Park, De Park, Greenwich Park, Tanakayu, Myza, Tabebuya, Nava Park, Foresta, Simplicity, Freja, Ruko ICE Business Park, Ruko Tabespot, Ruko Northridge, Pasar Modern Intermoda, AEON Mall, The Breeze, Green Office Park, Edutown, Saveria, Sky House BSD, Branz, Casa de Parco, Marigold, B Residence, Eastvara, Mozia, Green Cove.
