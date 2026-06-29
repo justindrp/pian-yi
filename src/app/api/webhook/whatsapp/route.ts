@@ -1,9 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
+import { classifyAddress } from "@/lib/claude/classify-address";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { loadHistory, saveMessage } from "@/lib/claude/conversation";
-import { classifyAddress } from "@/lib/claude/classify-address";
+import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
@@ -179,6 +180,7 @@ export async function processWebhookAsync(
       messageType: message.type === "image" ? "image" : "text",
       mediaId: message.type === "image" ? message.imageId : undefined,
     });
+    await tryLearnCustomerContext(customerId, db);
     await sendPushToAllAdmins(
       "New message from escalated customer",
       `${message.from}: ${escalatedText.slice(0, 80)}`,
@@ -209,6 +211,7 @@ export async function processWebhookAsync(
       messageType: message.type === "image" ? "image" : "text",
       mediaId: message.type === "image" ? message.imageId : undefined,
     });
+    await tryLearnCustomerContext(customerId, db);
     await sendPushToAllAdmins(
       "New message (awaiting bot reply)",
       `${message.from}: ${pendingText.slice(0, 80)}`,
@@ -394,6 +397,7 @@ export async function processWebhookAsync(
         messageType: message.type === "image" ? "image" : "text",
         mediaId: message.type === "image" ? message.imageId : undefined,
       });
+      await tryLearnCustomerContext(customerId, db);
 
       // Send welcome sequence and log each outbound message to the inbox so the
       // greeting and menu images are visible in the dashboard conversation view.
@@ -421,6 +425,17 @@ export async function processWebhookAsync(
       return;
     }
   }
+
+  await saveMessage({
+    customerId,
+    role: "user",
+    content: text,
+    messageId: message.messageId,
+    intent,
+    messageType: message.type === "image" ? "image" : "text",
+    mediaId: message.type === "image" ? message.imageId : undefined,
+  });
+  const learnedNotes = await tryLearnCustomerContext(customerId, db);
 
   // Load active dapurs and active order quota in parallel
   const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
@@ -464,7 +479,7 @@ export async function processWebhookAsync(
     casual,
     customerState: stateRow?.state ?? "new",
     customerName: customer.name,
-    customerNotes: customer.notes,
+    customerNotes: learnedNotes ?? customer.notes,
     detectedMapsLink,
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,
@@ -638,17 +653,6 @@ export async function processWebhookAsync(
     }
   }
 
-  // Save messages
-  await saveMessage({
-    customerId,
-    role: "user",
-    content: text,
-    messageId: message.messageId,
-    intent,
-    messageType: message.type === "image" ? "image" : "text",
-    mediaId: message.type === "image" ? message.imageId : undefined,
-  });
-
   if (replyText) {
     await saveMessage({
       customerId,
@@ -805,6 +809,7 @@ async function handlePaymentProofImage(
     messageId: message.messageId,
     messageType: "image",
   });
+  await tryLearnCustomerContext(customerId, db);
 
   const confirmMsg =
     "Terima kasih kak! Bukti pembayaran sudah kami terima ya. Kami akan segera memverifikasi pembayaranmu dan menghubungimu kembali.";
