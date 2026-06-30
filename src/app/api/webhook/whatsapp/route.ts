@@ -441,6 +441,123 @@ export async function processWebhookAsync(
     }
   }
 
+  await processSavedCustomerMessage({
+    customerId,
+    customerName: customer.name,
+    customerNotes: learnedNotes ?? customer.notes,
+    phone: message.from,
+    stateRow,
+    text,
+    messageId: message.messageId,
+  });
+
+  // Mark processed
+  await db
+    .from("processed_messages")
+    .update({ processed_at: new Date().toISOString() })
+    .eq("message_id", message.messageId);
+}
+
+export async function processSavedCustomerMessage(params: {
+  customerId: string;
+  customerName: string | null;
+  customerNotes: string | null;
+  phone: string;
+  stateRow:
+    | {
+        state: string | null;
+        menu_shown: boolean | null;
+      }
+    | null
+    | undefined;
+  text: string;
+  messageId?: string | null;
+}): Promise<void> {
+  const {
+    customerId,
+    customerName,
+    customerNotes,
+    phone,
+    stateRow,
+    text,
+    messageId,
+  } = params;
+  const db = createAdminClient();
+
+  // Rate limit check
+  if (stateRow?.state !== "awaiting_payment") {
+    const rateCheck = await checkRateLimit(customerId);
+    if (!rateCheck.allowed) {
+      const tmpl = await getTemplate("rate_limit_exceeded");
+      await sendTextMessage(phone, tmpl);
+      await sendPushToAllAdmins(
+        "Rate limit hit",
+        `${phone} hit ${rateCheck.reason}`,
+        "/inbox",
+        "medium",
+      );
+      return;
+    }
+  }
+
+  // Notify admins of every incoming message
+  const displayName = customerName ?? phone;
+  await sendPushToAllAdmins(
+    `New message from ${displayName}`,
+    text.slice(0, 100),
+    "/inbox",
+    "low",
+  );
+
+  // Prompt injection
+  if (detectInjection(text)) {
+    const tmpl = await getTemplate("chatbot_unavailable");
+    await sendTextMessage(phone, tmpl);
+    await db
+      .from("customer_flags")
+      .update({ is_suspicious: true })
+      .eq("customer_id", customerId);
+    return;
+  }
+
+  // Circuit breaker check
+  if (isCircuitOpen()) {
+    const tmpl = await getTemplate("chatbot_unavailable");
+    await sendTextMessage(phone, tmpl);
+    return;
+  }
+
+  // Load history
+  const history = await loadHistory(customerId);
+
+  // Customer state
+  // Casual mode coin flip
+  const casualProbRaw = await getSetting("casual_mode_probability");
+  const casualProb = Number.parseFloat(casualProbRaw) || 0.5;
+  const casual = Math.random() < casualProb;
+
+  // Detect Maps link in current message or history so we can inject it explicitly
+  const mapsLinkRegex =
+    /https?:\/\/(?:maps\.app\.goo\.gl|maps\.google\.com\/maps|goo\.gl\/maps)\S*/;
+  let detectedMapsLink: string | null = text.match(mapsLinkRegex)?.[0] ?? null;
+  if (!detectedMapsLink) {
+    for (const msg of history) {
+      if (msg.role !== "user") continue;
+      const msgText = Array.isArray(msg.content)
+        ? msg.content
+            .map((b) =>
+              typeof b === "object" && "text" in b ? b.text : "",
+            )
+            .join(" ")
+        : String(msg.content);
+      const found = msgText.match(mapsLinkRegex)?.[0];
+      if (found) {
+        detectedMapsLink = found;
+        break;
+      }
+    }
+  }
+
   // Load active dapurs and active order quota in parallel
   const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
     db
@@ -483,8 +600,8 @@ export async function processWebhookAsync(
   const systemPrompt = await buildSystemPrompt({
     casual,
     customerState: stateRow?.state ?? "new",
-    customerName: customer.name,
-    customerNotes: learnedNotes ?? customer.notes,
+    customerName,
+    customerNotes,
     detectedMapsLink,
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,
@@ -629,7 +746,7 @@ export async function processWebhookAsync(
       "high",
     ).catch(console.error);
     const tmpl = await getTemplate("chatbot_unavailable");
-    await sendTextMessage(message.from, tmpl);
+    await sendTextMessage(phone, tmpl);
     return;
   }
 
@@ -651,7 +768,7 @@ export async function processWebhookAsync(
       console.warn("[webhook] echo detected for customer", customerId);
       await sendPushToAllAdmins(
         "Echo detected",
-        `Customer ${message.from}`,
+        `Customer ${phone}`,
         "/inbox",
         "medium",
       );
@@ -678,7 +795,7 @@ export async function processWebhookAsync(
 
   // Handle tool use
   if (toolUse) {
-    await handleToolUse(toolUse, customerId, message.from, customer.name);
+    await handleToolUse(toolUse, customerId, phone, customerName);
   }
 
   // Update customer state based on stop reason
@@ -697,16 +814,12 @@ export async function processWebhookAsync(
       Number.parseFloat(await getSetting("typing_delay_max_seconds")) || 12;
     const delay = calcTypingDelay(replyText.length, base, perChar, max);
 
-    await sendTypingIndicator(message.from, message.messageId);
+    if (messageId) {
+      await sendTypingIndicator(phone, messageId);
+    }
     await sleep(delay);
-    await sendTextMessage(message.from, replyText);
+    await sendTextMessage(phone, replyText);
   }
-
-  // Mark processed
-  await db
-    .from("processed_messages")
-    .update({ processed_at: new Date().toISOString() })
-    .eq("message_id", message.messageId);
 }
 
 async function handleSubcontractorMessage(

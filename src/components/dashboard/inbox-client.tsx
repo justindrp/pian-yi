@@ -99,6 +99,15 @@ export default function InboxClient() {
   const supabase = useMemo(() => createClient(), []);
   // Ref so the realtime callback always sees the latest value without re-subscribing
   const selectedCustomerIdRef = useRef<string | null>(null);
+  const replayStateRef = useRef<{
+    customerId: string | null;
+    wasBlocked: boolean | null;
+    attemptedForLatestUserMessage: boolean;
+  }>({
+    customerId: null,
+    wasBlocked: null,
+    attemptedForLatestUserMessage: false,
+  });
 
   const loadThreads = useCallback(async () => {
     const { data } = await supabase
@@ -213,6 +222,51 @@ export default function InboxClient() {
   useEffect(() => {
     selectedCustomerIdRef.current = selectedCustomerId;
   }, [selectedCustomerId]);
+
+  useEffect(() => {
+    const latestMessage = messages.at(-1) ?? null;
+    const isBlocked = !!(flags?.pending_bot_response || flags?.escalated_to_human);
+
+    if (!selectedCustomerId || !flags) {
+      replayStateRef.current = {
+        customerId: selectedCustomerId,
+        wasBlocked: null,
+        attemptedForLatestUserMessage: false,
+      };
+      return;
+    }
+
+    if (replayStateRef.current.customerId !== selectedCustomerId) {
+      replayStateRef.current = {
+        customerId: selectedCustomerId,
+        wasBlocked: isBlocked,
+        attemptedForLatestUserMessage: false,
+      };
+      return;
+    }
+
+    const shouldReplay =
+      replayStateRef.current.wasBlocked === true &&
+      !isBlocked &&
+      latestMessage?.role === "user" &&
+      !replayStateRef.current.attemptedForLatestUserMessage;
+
+    replayStateRef.current.wasBlocked = isBlocked;
+
+    if (!shouldReplay) {
+      if (latestMessage?.role !== "user") {
+        replayStateRef.current.attemptedForLatestUserMessage = false;
+      }
+      return;
+    }
+
+    replayStateRef.current.attemptedForLatestUserMessage = true;
+    void fetch("/api/inbox/replay-latest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId }),
+    }).then(() => loadMessages(selectedCustomerId));
+  }, [flags, loadMessages, messages, selectedCustomerId]);
 
   useEffect(() => {
     if (!headerMenuOpen) return;
