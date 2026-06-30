@@ -45,6 +45,7 @@ These must be used as the primary way to configure their respective services. Av
 ## Workflow
 
 - After every code change, commit and push the current branch unless the user explicitly says not to.
+- Before every commit, update root `CLAUDE.md` and root `DATABASE.md` to reflect the latest relevant project and schema/behavior changes included in that commit.
 - A git hook bumps the app version on every commit and amends the commit, so pushes often need a second attempt using the new HEAD SHA.
 
 When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks so the actions are reproducible and auditable.
