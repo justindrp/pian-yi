@@ -42,6 +42,10 @@ These must be used as the primary way to configure their respective services. Av
 - **GitHub CLI** (`gh`) + **GitHub MCP** — for repo creation, branches, PRs, secrets, Actions, deploy keys
 - **Vercel CLI** + **Vercel MCP** — installed but NOT used for hosting this project (we deploy to Railway). May be used for documentation lookup or future preview deployments.
 
+## Workflow
+
+- After every code change, commit and push the current branch unless the user explicitly says not to.
+
 When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks so the actions are reproducible and auditable.
 
 ## Architectural principles
