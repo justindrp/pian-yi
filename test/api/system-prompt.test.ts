@@ -35,6 +35,7 @@ describe("customer chatbot system prompt", () => {
       dapurOptions: [],
       dapurMenuTexts: [],
       servedAreas: ["BSD Baru"],
+      neighborhoods: {},
       activeOrder: null,
     });
 
@@ -57,6 +58,7 @@ describe("customer chatbot system prompt", () => {
       dapurOptions: [],
       dapurMenuTexts: [],
       servedAreas: ["BSD Baru"],
+      neighborhoods: {},
       activeOrder: null,
     });
 

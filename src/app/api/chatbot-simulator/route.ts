@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest, NextResponse } from "next/server";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
+import { getNeighborhoods } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -50,6 +51,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
   ].sort();
 
+  const neighborhoods = await getNeighborhoods();
+
   const activeOrder = body.hasActiveOrder
     ? {
         id: "sim-order",
@@ -70,6 +73,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     dapurOptions,
     dapurMenuTexts,
     servedAreas,
+    neighborhoods,
     activeOrder,
   });
 

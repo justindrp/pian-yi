@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
-import { getSetting, getTemplate } from "@/lib/cache/settings";
+import { getNeighborhoods, getSetting, getTemplate } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { loadHistory, saveMessage } from "@/lib/claude/conversation";
@@ -460,6 +460,7 @@ export async function processWebhookAsync(
     .filter((s) => !!s.menu_image_url && !!s.menu_text)
     .map((s) => ({ nickname: s.customer_nickname, menuText: s.menu_text as string }));
   const servedAreas = [...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? []))].sort();
+  const neighborhoods = await getNeighborhoods();
   const activeOrder = activeOrderRow
     ? {
         id: activeOrderRow.id,
@@ -481,6 +482,7 @@ export async function processWebhookAsync(
     dapurOptions,
     dapurMenuTexts,
     servedAreas,
+    neighborhoods,
     activeOrder,
   });
 

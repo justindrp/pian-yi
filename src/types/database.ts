@@ -93,6 +93,27 @@ export type Database = {
         }
         Relationships: []
       }
+      area_neighborhoods: {
+        Row: {
+          area: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          area: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          area?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       assistant_conversations: {
         Row: {
           created_at: string

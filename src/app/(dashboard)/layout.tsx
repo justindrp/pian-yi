@@ -20,6 +20,7 @@ const allNavItems = [
   { href: "/chatbot-training", label: "Chatbot Training", ownerOnly: false },
   { href: "/accounting", label: "Accounting", ownerOnly: true },
   { href: "/reports", label: "Reports", ownerOnly: false },
+  { href: "/areas", label: "Areas", ownerOnly: false },
   { href: "/settings", label: "Settings", ownerOnly: false },
   { href: "/broadcasts", label: "Broadcasts", ownerOnly: false },
   { href: "/guide", label: "Panduan", ownerOnly: false },

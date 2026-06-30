@@ -5,6 +5,7 @@ interface CacheData {
   pricingTiers: Record<number, number>;
   templates: Record<string, string>;
   activeInstructions: string[];
+  neighborhoods: Record<string, string[]>;
   loadedAt: number;
 }
 
@@ -14,7 +15,7 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 async function load(): Promise<CacheData> {
   const db = createAdminClient();
 
-  const [settingsRes, pricingRes, templatesRes, instructionsRes] =
+  const [settingsRes, pricingRes, templatesRes, instructionsRes, neighborhoodsRes] =
     await Promise.all([
       db.from("settings").select("key, value"),
       db.from("pricing_tiers").select("portions, price_per_portion"),
@@ -23,6 +24,7 @@ async function load(): Promise<CacheData> {
         .from("chatbot_instructions")
         .select("instruction")
         .eq("is_active", true),
+      db.from("area_neighborhoods").select("area, name").order("name"),
     ]);
 
   const settings: Record<string, string> = {};
@@ -39,11 +41,18 @@ async function load(): Promise<CacheData> {
     (r) => r.instruction,
   );
 
+  const neighborhoods: Record<string, string[]> = {};
+  for (const row of neighborhoodsRes.data ?? []) {
+    if (!neighborhoods[row.area]) neighborhoods[row.area] = [];
+    neighborhoods[row.area].push(row.name);
+  }
+
   return {
     settings,
     pricingTiers,
     templates,
     activeInstructions,
+    neighborhoods,
     loadedAt: Date.now(),
   };
 }
@@ -97,6 +106,11 @@ export async function getAllTemplates(): Promise<Record<string, string>> {
 export async function getActiveInstructions(): Promise<string[]> {
   const c = await getCache();
   return c.activeInstructions;
+}
+
+export async function getNeighborhoods(): Promise<Record<string, string[]>> {
+  const c = await getCache();
+  return c.neighborhoods;
 }
 
 export function invalidateCache(): void {

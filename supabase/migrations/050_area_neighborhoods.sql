@@ -1,0 +1,63 @@
+create table area_neighborhoods (
+  id uuid primary key default gen_random_uuid(),
+  area text not null,
+  name text not null,
+  created_at timestamptz not null default now(),
+  unique (area, name)
+);
+
+-- Seed BSD Baru from hardcoded system prompt list
+insert into area_neighborhoods (area, name) values
+  ('BSD Baru', 'Icon'),
+  ('BSD Baru', 'Avani'),
+  ('BSD Baru', 'Eminent'),
+  ('BSD Baru', 'Vanya Park'),
+  ('BSD Baru', 'De Park'),
+  ('BSD Baru', 'Greenwich Park'),
+  ('BSD Baru', 'Tanakayu'),
+  ('BSD Baru', 'Myza'),
+  ('BSD Baru', 'Tabebuya'),
+  ('BSD Baru', 'Nava Park'),
+  ('BSD Baru', 'Foresta'),
+  ('BSD Baru', 'Simplicity'),
+  ('BSD Baru', 'Freja'),
+  ('BSD Baru', 'Ruko ICE Business Park'),
+  ('BSD Baru', 'Ruko Tabespot'),
+  ('BSD Baru', 'Ruko Northridge'),
+  ('BSD Baru', 'Pasar Modern Intermoda'),
+  ('BSD Baru', 'AEON Mall'),
+  ('BSD Baru', 'The Breeze'),
+  ('BSD Baru', 'Green Office Park'),
+  ('BSD Baru', 'Edutown'),
+  ('BSD Baru', 'Saveria'),
+  ('BSD Baru', 'Sky House BSD'),
+  ('BSD Baru', 'Branz'),
+  ('BSD Baru', 'Casa de Parco'),
+  ('BSD Baru', 'Marigold'),
+  ('BSD Baru', 'B Residence'),
+  ('BSD Baru', 'Eastvara'),
+  ('BSD Baru', 'Mozia'),
+  ('BSD Baru', 'Green Cove');
+
+-- Seed BSD Lama from hardcoded system prompt list
+insert into area_neighborhoods (area, name) values
+  ('BSD Lama', 'Nusa Loka'),
+  ('BSD Lama', 'Griya Loka'),
+  ('BSD Lama', 'Kencana Loka'),
+  ('BSD Lama', 'Giri Loka 1'),
+  ('BSD Lama', 'Giri Loka 2'),
+  ('BSD Lama', 'Giri Loka 3'),
+  ('BSD Lama', 'Taman Giri Loka'),
+  ('BSD Lama', 'Taman Tekno'),
+  ('BSD Lama', 'De Latinos'),
+  ('BSD Lama', 'Anggrek Loka'),
+  ('BSD Lama', 'Ruko Tol Boulevard'),
+  ('BSD Lama', 'Ruko Versailles'),
+  ('BSD Lama', 'Puspita Loka'),
+  ('BSD Lama', 'Provence Parkland'),
+  ('BSD Lama', 'Vermont Parkland'),
+  ('BSD Lama', 'Pasar Modern BSD'),
+  ('BSD Lama', 'The Green'),
+  ('BSD Lama', 'Treepark Serpong'),
+  ('BSD Lama', 'Teraskota'),
+  ('BSD Lama', 'BSD Plaza');
