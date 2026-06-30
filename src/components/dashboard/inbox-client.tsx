@@ -82,6 +82,7 @@ export default function InboxClient() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [learningContext, setLearningContext] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [learnedContextStatus, setLearnedContextStatus] = useState<
     string | null
   >(null);
@@ -212,6 +213,15 @@ export default function InboxClient() {
   useEffect(() => {
     selectedCustomerIdRef.current = selectedCustomerId;
   }, [selectedCustomerId]);
+
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+
+    const closeMenu = () => setHeaderMenuOpen(false);
+    document.addEventListener("click", closeMenu);
+
+    return () => document.removeEventListener("click", closeMenu);
+  }, [headerMenuOpen]);
 
   // Set up realtime channel once — never torn down when thread selection changes
   useEffect(() => {
@@ -640,17 +650,17 @@ export default function InboxClient() {
           className={`flex-1 flex flex-col min-w-0 ${mobileView === "list" ? "hidden md:flex" : "flex"}`}
         >
           {/* Header */}
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="px-5 py-3 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-2 min-w-0 flex-1">
               <button
                 type="button"
                 onClick={() => setMobileView("list")}
-                className="md:hidden text-gray-500 text-lg leading-none pr-1"
+                className="md:hidden text-gray-500 text-lg leading-none pr-1 pt-0.5"
                 aria-label="Back to list"
               >
                 ‹
               </button>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   {renaming ? (
                     <div className="relative">
@@ -723,22 +733,23 @@ export default function InboxClient() {
                       </button>
                     </>
                   )}
+                </div>
+                <div className="mt-1 flex items-center gap-2 min-w-0 flex-wrap text-xs text-gray-400">
+                  <p>{maskPhone(selectedThread.customer.phone_number)}</p>
+                  <span className="text-gray-200">•</span>
                   <span
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${selectedThread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                    className={`px-1.5 py-0.5 rounded font-medium ${selectedThread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
                   >
                     {selectedThread.menuShown
-                      ? "menu images sent ✓"
+                      ? "menu images sent"
                       : "menu images not sent"}
                   </span>
                   <span
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${stageBadgeClass(customerStage)}`}
+                    className={`px-1.5 py-0.5 rounded font-medium ${stageBadgeClass(customerStage)}`}
                   >
                     {customerStage.replace(/_/g, " ")}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400">
-                  {maskPhone(selectedThread.customer.phone_number)}
-                </p>
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 flex-wrap">
@@ -748,7 +759,7 @@ export default function InboxClient() {
                   onChange={(e) =>
                     setStageDraft(e.target.value as PipelineStage)
                   }
-                  className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700"
+                  className="h-8 min-w-32 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700"
                   disabled={applyingStage}
                   aria-label="Pipeline stage"
                 >
@@ -766,54 +777,74 @@ export default function InboxClient() {
                   disabled={applyingStage || stageDraft === customerStage}
                   className="border-violet-200 text-violet-700 hover:bg-violet-50"
                 >
-                  {applyingStage ? "Applying..." : "Set stage"}
+                  {applyingStage ? "Applying..." : "Save stage"}
                 </Button>
               </div>
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
-                onClick={learnConversationContext}
-                disabled={learningContext}
-                className="border-blue-200 text-blue-700 hover:bg-blue-50"
-              >
-                {learningContext ? "Learning..." : "Learn chat"}
-              </Button>
-              {!flags?.pending_bot_response && !flags?.escalated_to_human && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={activateBotWaiting}
-                  className="border-amber-200 text-amber-700 hover:bg-amber-50"
-                >
-                  Guide bot
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant="outline"
                 size="sm"
                 onClick={toggleEscalation}
                 className={
                   flags?.escalated_to_human
-                    ? "border-green-200 text-green-700 hover:bg-green-100"
-                    : "border-orange-200 text-orange-700 hover:bg-orange-100"
+                    ? "bg-green-600 text-white hover:bg-green-700"
+                    : "bg-orange-500 text-white hover:bg-orange-600"
                 }
               >
                 {flags?.escalated_to_human ? "Resume bot" : "Take over"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setDeleteConfirmOpen(true)}
-                aria-label="Delete customer"
-                title="Delete customer and chat history"
-                className="border-red-200 text-red-600 hover:bg-red-50"
-              >
-                Delete
-              </Button>
+              <div className="relative">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHeaderMenuOpen((open) => !open);
+                  }}
+                  aria-expanded={headerMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  More
+                </Button>
+                {headerMenuOpen ? (
+                  <div className="absolute right-0 top-full z-20 mt-2 w-44 rounded-md border border-gray-200 bg-white p-1 shadow-lg">
+                    <button
+                      type="button"
+                      className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      onClick={() => {
+                        setHeaderMenuOpen(false);
+                        void learnConversationContext();
+                      }}
+                      disabled={learningContext}
+                    >
+                      {learningContext ? "Learning..." : "Learn chat"}
+                    </button>
+                    {!flags?.pending_bot_response &&
+                    !flags?.escalated_to_human ? (
+                      <button
+                        type="button"
+                        className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => {
+                          setHeaderMenuOpen(false);
+                          void activateBotWaiting();
+                        }}
+                      >
+                        Guide bot
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                      onClick={() => {
+                        setHeaderMenuOpen(false);
+                        setDeleteConfirmOpen(true);
+                      }}
+                    >
+                      Delete customer
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
