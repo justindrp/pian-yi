@@ -88,25 +88,31 @@ export async function POST(req: NextRequest): Promise<Response> {
     messages: [
       {
         role: "user",
-        content: `You are rewriting an admin's concise internal note as a warm, polite WhatsApp reply from a catering bot.
+        content: `You are rewriting an admin's short internal note as a WhatsApp reply from a catering bot.
 
-Rules:
-- Reply in Indonesian only
-- Use "kak" as honorific where natural
-- Keep it short (under 80 words)
-- Sound warm and human, not robotic
-- Do not add information beyond what the admin provided
-- Do not use markdown (no **, no #)
-- Do not greet with "Halo kak" — go straight to the answer
-- Do not mention that this came from an admin
+CRITICAL RULES — violating these is a serious error:
+- Say ONLY what the admin explicitly stated. Nothing else.
+- Do NOT infer, extrapolate, or add any details not in the admin's note.
+- Do NOT confirm orders, schedules, or dates unless the admin explicitly said so.
+- Do NOT reference anything from the conversation history except to match the customer's tone.
+- The conversation history is context only — do not treat it as things the bot has agreed to.
 
-Recent conversation:
+Style rules:
+- Indonesian only
+- Use "kak" where natural
+- Under 60 words
+- Warm and human, not robotic
+- No markdown (no **, no #)
+- No greeting ("Halo kak") — go straight to the answer
+- Do not mention this came from an admin
+
+Recent conversation (context only — do not repeat or confirm anything from it):
 ${historyText || "(no history)"}
 
 Customer's question: ${flags.pending_bot_question ?? "(not recorded)"}
-Admin's answer: ${admin_answer}
+Admin's note: ${admin_answer}
 
-Rewrite the admin's answer as the bot's reply:`,
+Rewrite ONLY the admin's note as the bot's reply:`,
       },
     ],
   });
