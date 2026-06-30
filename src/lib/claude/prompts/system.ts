@@ -83,7 +83,7 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 
 ## Business info
 - Areas served: ${areasDisplay}
-- Every portion includes: nasi + 3 lauk (no sayur, no sambal)
+- Every portion includes: nasi + 1 lauk + 1 sayur (no sambal)
 - Free delivery (ongkir gratis)
 - Halal
 - Menu rotates daily. ${params.dapurMenuTexts.length > 0 ? `Menu per dapur:\n${params.dapurMenuTexts.map((d) => `${d.nickname}:\n${d.menuText}`).join("\n\n")}` : "Menu details change weekly."}
