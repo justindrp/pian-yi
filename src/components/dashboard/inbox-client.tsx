@@ -20,7 +20,22 @@ interface Thread {
   menuShown: boolean;
 }
 
-function getInboxImageSrc(msg: Conversation & { message_type?: string | null; media_id?: string | null }) {
+const PIPELINE_STAGES = [
+  { value: "browsing", label: "Browsing" },
+  { value: "ordering", label: "Ordering" },
+  { value: "awaiting_payment", label: "Awaiting payment" },
+  { value: "payment_proof_received", label: "Proof received" },
+  { value: "active_subscription", label: "Active subscriber" },
+] as const;
+
+type PipelineStage = (typeof PIPELINE_STAGES)[number]["value"];
+
+function getInboxImageSrc(
+  msg: Conversation & {
+    message_type?: string | null;
+    media_id?: string | null;
+  },
+) {
   if (msg.message_type !== "image") return null;
   if (msg.media_id) return `/api/inbox/media/${msg.media_id}`;
   if (!msg.content?.startsWith("https://")) return null;
@@ -58,11 +73,18 @@ export default function InboxClient() {
     pending_bot_response: boolean;
     pending_bot_question: string | null;
   } | null>(null);
+  const [customerStage, setCustomerStage] = useState<
+    PipelineStage | "new" | "lapsed" | "churned"
+  >("new");
+  const [stageDraft, setStageDraft] = useState<PipelineStage>("browsing");
+  const [applyingStage, setApplyingStage] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [learningContext, setLearningContext] = useState(false);
-  const [learnedContextStatus, setLearnedContextStatus] = useState<string | null>(null);
+  const [learnedContextStatus, setLearnedContextStatus] = useState<
+    string | null
+  >(null);
   const [learnedContext, setLearnedContext] = useState<string | null>(null);
   const [contextCollapsed, setContextCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -122,7 +144,9 @@ export default function InboxClient() {
     async (customerId: string) => {
       const { data: flagData } = await supabase
         .from("customer_flags")
-        .select("escalated_to_human, pending_bot_response, pending_bot_question")
+        .select(
+          "escalated_to_human, pending_bot_response, pending_bot_question",
+        )
         .eq("customer_id", customerId)
         .single();
       setFlags(
@@ -158,6 +182,28 @@ export default function InboxClient() {
         .eq("id", customerId)
         .single();
       setLearnedContext(extractLearnedContext(data?.notes ?? null));
+    },
+    [supabase],
+  );
+
+  const loadCustomerStage = useCallback(
+    async (customerId: string) => {
+      const { data } = await supabase
+        .from("customer_state")
+        .select("state")
+        .eq("customer_id", customerId)
+        .single();
+      const stage = (data?.state ?? "new") as
+        | PipelineStage
+        | "new"
+        | "lapsed"
+        | "churned";
+      setCustomerStage(stage);
+      if (PIPELINE_STAGES.some((option) => option.value === stage)) {
+        setStageDraft(stage as PipelineStage);
+      } else {
+        setStageDraft("browsing");
+      }
     },
     [supabase],
   );
@@ -236,7 +282,12 @@ export default function InboxClient() {
     setLearnedContextStatus(null);
     setLearnedContext(null);
     setMobileView("chat");
-    await Promise.all([loadMessages(customerId), loadFlags(customerId), loadLearnedContext(customerId)]);
+    await Promise.all([
+      loadMessages(customerId),
+      loadFlags(customerId),
+      loadLearnedContext(customerId),
+      loadCustomerStage(customerId),
+    ]);
   }
 
   async function toggleEscalation() {
@@ -248,7 +299,10 @@ export default function InboxClient() {
     const res = await fetch("/api/inbox/takeover", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: selectedCustomerId, escalated: newVal }),
+      body: JSON.stringify({
+        customer_id: selectedCustomerId,
+        escalated: newVal,
+      }),
     });
     if (!res.ok) {
       setFlags(prevFlags);
@@ -260,10 +314,16 @@ export default function InboxClient() {
 
   async function activateBotWaiting() {
     if (!selectedCustomerId || !flags) return;
-    const lastCustomerMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastCustomerMsg = [...messages]
+      .reverse()
+      .find((m) => m.role === "user");
     const question = lastCustomerMsg?.content ?? null;
     const prevFlags = flags;
-    const nextFlags = { ...flags, pending_bot_response: true, pending_bot_question: question };
+    const nextFlags = {
+      ...flags,
+      pending_bot_response: true,
+      pending_bot_question: question,
+    };
     setFlags(nextFlags);
     const res = await fetch("/api/inbox/pending-bot-response", {
       method: "POST",
@@ -288,11 +348,15 @@ export default function InboxClient() {
     });
     setLearningContext(false);
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       setLearnedContextStatus(body?.error ?? "Failed to learn context");
       return;
     }
-    const body = (await res.json().catch(() => null)) as { summary?: string } | null;
+    const body = (await res.json().catch(() => null)) as {
+      summary?: string;
+    } | null;
     setLearnedContext(body?.summary ?? null);
     setLearnedContextStatus("Learned context saved");
   }
@@ -304,7 +368,9 @@ export default function InboxClient() {
         .select("id, name, phone_number")
         .not("name", "is", null)
         .order("name");
-      setAllCustomers((data ?? []) as { id: string; name: string; phone_number: string }[]);
+      setAllCustomers(
+        (data ?? []) as { id: string; name: string; phone_number: string }[],
+      );
     }
     setRenameQuery("");
     setRenaming(true);
@@ -334,11 +400,17 @@ export default function InboxClient() {
     const res = await fetch("/api/inbox/bot-reply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: selectedCustomerId, admin_answer: botReply.trim(), preview_only: true }),
+      body: JSON.stringify({
+        customer_id: selectedCustomerId,
+        admin_answer: botReply.trim(),
+        preview_only: true,
+      }),
     });
     setSendingBotReply(false);
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       alert(`Failed to generate preview: ${body?.error ?? res.statusText}`);
       return;
     }
@@ -352,17 +424,27 @@ export default function InboxClient() {
     const res = await fetch("/api/inbox/bot-reply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: selectedCustomerId, polished_text: botReplyPreview }),
+      body: JSON.stringify({
+        customer_id: selectedCustomerId,
+        polished_text: botReplyPreview,
+      }),
     });
     setConfirmingBotReply(false);
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       alert(`Failed to send: ${body?.error ?? res.statusText}`);
       return;
     }
     setBotReply("");
     setBotReplyPreview(null);
-    if (flags) setFlags({ ...flags, pending_bot_response: false, pending_bot_question: null });
+    if (flags)
+      setFlags({
+        ...flags,
+        pending_bot_response: false,
+        pending_bot_question: null,
+      });
     await loadMessages(selectedCustomerId);
   }
 
@@ -425,7 +507,9 @@ export default function InboxClient() {
     });
 
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       alert(`Failed to send: ${body?.error ?? res.statusText}`);
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setSending(false);
@@ -461,15 +545,45 @@ export default function InboxClient() {
     const form = new FormData();
     form.append("customer_id", selectedCustomerId);
     form.append("file", imageFile);
-    const res = await fetch("/api/inbox/manual-image", { method: "POST", body: form });
+    const res = await fetch("/api/inbox/manual-image", {
+      method: "POST",
+      body: form,
+    });
     setSendingImage(false);
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       alert(`Failed to send image: ${body?.error ?? res.statusText}`);
       return;
     }
     cancelImage();
     await loadMessages(selectedCustomerId);
+  }
+
+  async function applyPipelineStage() {
+    if (!selectedCustomerId || applyingStage) return;
+    setApplyingStage(true);
+    const previousStage = customerStage;
+    setCustomerStage(stageDraft);
+    const res = await fetch("/api/inbox/pipeline-stage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_id: selectedCustomerId,
+        stage: stageDraft,
+      }),
+    });
+    setApplyingStage(false);
+    if (!res.ok) {
+      setCustomerStage(previousStage);
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      alert(`Failed to update stage: ${body?.error ?? res.statusText}`);
+      return;
+    }
+    await loadThreads();
   }
 
   const selectedThread = threads.find(
@@ -479,7 +593,9 @@ export default function InboxClient() {
   return (
     <div className="flex h-[calc(100vh-7rem)] bg-white rounded-xl border border-gray-100 overflow-hidden">
       {/* Thread list */}
-      <div className={`w-full md:w-72 flex-shrink-0 border-r border-gray-100 overflow-y-auto ${mobileView === "chat" ? "hidden md:block" : "block"}`}>
+      <div
+        className={`w-full md:w-72 flex-shrink-0 border-r border-gray-100 overflow-y-auto ${mobileView === "chat" ? "hidden md:block" : "block"}`}
+      >
         <div className="p-4 border-b border-gray-100">
           <h1 className="text-sm font-semibold text-gray-900">Inbox</h1>
         </div>
@@ -498,7 +614,9 @@ export default function InboxClient() {
                   maskPhone(thread.customer.phone_number)}
               </span>
               <div className="flex items-center gap-1">
-                <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${thread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+                <span
+                  className={`text-[9px] px-1 py-0.5 rounded font-medium ${thread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}
+                >
                   {thread.menuShown ? "images ✓" : "no images"}
                 </span>
                 {thread.unread && (
@@ -518,7 +636,9 @@ export default function InboxClient() {
 
       {/* Conversation detail */}
       {selectedThread ? (
-        <div className={`flex-1 flex flex-col min-w-0 ${mobileView === "list" ? "hidden md:flex" : "flex"}`}>
+        <div
+          className={`flex-1 flex flex-col min-w-0 ${mobileView === "list" ? "hidden md:flex" : "flex"}`}
+        >
           {/* Header */}
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
@@ -549,7 +669,9 @@ export default function InboxClient() {
                       {(() => {
                         const results = renameQuery.trim()
                           ? allCustomers.filter((c) =>
-                              c.name.toLowerCase().includes(renameQuery.toLowerCase()),
+                              c.name
+                                .toLowerCase()
+                                .includes(renameQuery.toLowerCase()),
                             )
                           : allCustomers;
                         return results.length > 0 ? (
@@ -583,14 +705,35 @@ export default function InboxClient() {
                         className="text-gray-300 hover:text-gray-500 flex-shrink-0"
                         aria-label="Rename customer"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Rename customer">
-                          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          role="img"
+                          aria-label="Rename customer"
+                        >
+                          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                         </svg>
                       </button>
                     </>
                   )}
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${selectedThread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                    {selectedThread.menuShown ? "menu images sent ✓" : "menu images not sent"}
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${selectedThread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                  >
+                    {selectedThread.menuShown
+                      ? "menu images sent ✓"
+                      : "menu images not sent"}
+                  </span>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${stageBadgeClass(customerStage)}`}
+                  >
+                    {customerStage.replace(/_/g, " ")}
                   </span>
                 </div>
                 <p className="text-xs text-gray-400">
@@ -599,6 +742,33 @@ export default function InboxClient() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <select
+                  value={stageDraft}
+                  onChange={(e) =>
+                    setStageDraft(e.target.value as PipelineStage)
+                  }
+                  className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700"
+                  disabled={applyingStage}
+                  aria-label="Pipeline stage"
+                >
+                  {PIPELINE_STAGES.map((stage) => (
+                    <option key={stage.value} value={stage.value}>
+                      {stage.label}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={applyPipelineStage}
+                  disabled={applyingStage || stageDraft === customerStage}
+                  className="border-violet-200 text-violet-700 hover:bg-violet-50"
+                >
+                  {applyingStage ? "Applying..." : "Set stage"}
+                </Button>
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -625,7 +795,11 @@ export default function InboxClient() {
                 variant="outline"
                 size="sm"
                 onClick={toggleEscalation}
-                className={flags?.escalated_to_human ? "border-green-200 text-green-700 hover:bg-green-100" : "border-orange-200 text-orange-700 hover:bg-orange-100"}
+                className={
+                  flags?.escalated_to_human
+                    ? "border-green-200 text-green-700 hover:bg-green-100"
+                    : "border-orange-200 text-orange-700 hover:bg-orange-100"
+                }
               >
                 {flags?.escalated_to_human ? "Resume bot" : "Take over"}
               </Button>
@@ -670,10 +844,17 @@ export default function InboxClient() {
           )}
 
           {/* Messages */}
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto p-4 space-y-2"
+          >
             {messages.map((msg) => {
               const isUser = msg.role === "user";
-              const msgWithExtras = msg as Conversation & { intent?: string | null; message_type?: string | null; media_id?: string | null };
+              const msgWithExtras = msg as Conversation & {
+                intent?: string | null;
+                message_type?: string | null;
+                media_id?: string | null;
+              };
               const imageSrc = getInboxImageSrc(msgWithExtras);
               return (
                 <div
@@ -715,9 +896,11 @@ export default function InboxClient() {
                               : "👤"}
                         </span>
                       )}
-                      {isUser && msgWithExtras.intent && msgWithExtras.intent !== "other" && (
-                        <IntentBadge intent={msgWithExtras.intent} />
-                      )}
+                      {isUser &&
+                        msgWithExtras.intent &&
+                        msgWithExtras.intent !== "other" && (
+                          <IntentBadge intent={msgWithExtras.intent} />
+                        )}
                     </div>
                   </div>
                 </div>
@@ -732,16 +915,24 @@ export default function InboxClient() {
               <div className="flex items-start gap-2">
                 <span className="text-amber-600 text-sm mt-0.5">⏳</span>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-amber-800">Bot is waiting for your answer</p>
+                  <p className="text-xs font-medium text-amber-800">
+                    Bot is waiting for your answer
+                  </p>
                   {flags.pending_bot_question && (
-                    <p className="text-xs text-amber-700 mt-0.5 italic">"{flags.pending_bot_question}"</p>
+                    <p className="text-xs text-amber-700 mt-0.5 italic">
+                      "{flags.pending_bot_question}"
+                    </p>
                   )}
                 </div>
               </div>
               {botReplyPreview ? (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-amber-800">AI will send this:</p>
-                  <p className="text-sm text-amber-900 bg-white border border-amber-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{botReplyPreview}</p>
+                  <p className="text-xs font-medium text-amber-800">
+                    AI will send this:
+                  </p>
+                  <p className="text-sm text-amber-900 bg-white border border-amber-200 rounded-lg px-3 py-2 whitespace-pre-wrap">
+                    {botReplyPreview}
+                  </p>
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -802,7 +993,9 @@ export default function InboxClient() {
                     className="h-20 w-20 object-cover rounded-lg border border-gray-200 flex-shrink-0"
                   />
                   <div className="flex flex-col gap-2 min-w-0 flex-1">
-                    <p className="text-xs text-gray-500 truncate">{imageFile?.name}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {imageFile?.name}
+                    </p>
                     <div className="flex gap-2">
                       <Button
                         type="button"
@@ -922,9 +1115,7 @@ function extractLearnedContext(notes: string | null): string | null {
   const start = notes.indexOf(LEARNED_CONTEXT_START);
   const end = notes.indexOf(LEARNED_CONTEXT_END);
   if (start === -1 || end === -1 || end <= start) return null;
-  const content = notes
-    .slice(start + LEARNED_CONTEXT_START.length, end)
-    .trim();
+  const content = notes.slice(start + LEARNED_CONTEXT_START.length, end).trim();
   return content || null;
 }
 
@@ -936,8 +1127,24 @@ function IntentBadge({ intent }: { intent: string }) {
     payment: "bg-purple-100 text-purple-700",
   };
   return (
-    <span className={`text-[9px] px-1 rounded ${colors[intent] ?? "bg-gray-200 text-gray-600"}`}>
+    <span
+      className={`text-[9px] px-1 rounded ${colors[intent] ?? "bg-gray-200 text-gray-600"}`}
+    >
       {intent}
     </span>
   );
+}
+
+function stageBadgeClass(stage: string) {
+  const colors: Record<string, string> = {
+    new: "bg-gray-100 text-gray-600",
+    browsing: "bg-blue-50 text-blue-600",
+    ordering: "bg-yellow-50 text-yellow-700",
+    awaiting_payment: "bg-orange-50 text-orange-700",
+    payment_proof_received: "bg-indigo-50 text-indigo-700",
+    active_subscription: "bg-green-50 text-green-700",
+    lapsed: "bg-red-50 text-red-600",
+    churned: "bg-red-100 text-red-700",
+  };
+  return colors[stage] ?? "bg-gray-100 text-gray-600";
 }
