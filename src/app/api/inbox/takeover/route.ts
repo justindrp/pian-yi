@@ -26,6 +26,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       escalated_to_human: escalated,
       escalation_reason: escalated ? "Manual takeover" : null,
       last_human_activity_at: escalated ? new Date().toISOString() : null,
+      pending_bot_response: false,
+      pending_bot_question: null,
     });
 
   if (error) {
