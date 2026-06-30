@@ -92,7 +92,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/inbox/manual-image", () => {
-  test("T1 — uploads to Meta by ID, inserts conversation row, stamps last_human_activity_at", async () => {
+  test("T1 — uploads to Meta by ID, inserts conversation row, clears pending bot reply, stamps last_human_activity_at", async () => {
     const db = makeDbMock({
       customers: { data: { phone_number: "+6281234567890" }, error: null },
       conversations: { data: { id: "conv-1" }, error: null },
@@ -122,7 +122,11 @@ describe("POST /api/inbox/manual-image", () => {
 
     // Must stamp last_human_activity_at
     expect(db.chains.customer_flags.update).toHaveBeenCalledWith(
-      expect.objectContaining({ last_human_activity_at: expect.any(String) }),
+      expect.objectContaining({
+        last_human_activity_at: expect.any(String),
+        pending_bot_response: false,
+        pending_bot_question: null,
+      }),
     );
   });
 

@@ -93,7 +93,11 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   await db
     .from("customer_flags")
-    .update({ last_human_activity_at: new Date().toISOString() })
+    .update({
+      last_human_activity_at: new Date().toISOString(),
+      pending_bot_response: false,
+      pending_bot_question: null,
+    })
     .eq("customer_id", customerId);
 
   return NextResponse.json({ ok: true, row });
