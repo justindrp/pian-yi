@@ -49,6 +49,16 @@ These must be used as the primary way to configure their respective services. Av
 
 When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks so the actions are reproducible and auditable.
 
+## Recent updates (June 30, 2026, last 4 hours)
+
+- `12:52 +0700` Deliveries dashboard: sent proof cards now have a resend action in the Proof of Delivery tab.
+- `13:07 +0700` Inbox delivery-proof images now render through `GET /api/inbox/delivery-proofs/[...path]`, so private storage proofs display correctly in the dashboard thread.
+- `14:09 +0700` Admin inbox now supports pipeline stage override via `POST /api/inbox/pipeline-stage`. Valid stages: `browsing`, `ordering`, `awaiting_payment`, `payment_proof_received`, `active_subscription`. Payment-related overrides also sync the latest order status when possible.
+- `14:35 +0700` Manual text replies and manual image sends now clear `customer_flags.pending_bot_response`, so the thread does not stay stuck in "awaiting bot reply" after an admin handles it.
+- `14:47 +0700` Human takeover now also clears `pending_bot_response` when an admin takes over a thread.
+- `15:03 +0700` Admins can replay the latest saved customer text after unblocking a thread via `POST /api/inbox/replay-latest`. Replay is skipped for blacklisted customers, blocked threads, welcome-only threads, non-text latest messages, or empty content.
+- Webhook/payment follow-up rule: `awaiting_payment` messages bypass the normal chatbot rate-limit gate so payment and proof-of-payment follow-up can continue even after a customer has hit the usual limit.
+
 ## Architectural principles
 
 1. **HTTP 200 first, process after** — webhook returns 200 to Meta immediately, then processes async
@@ -258,7 +268,7 @@ Quick reference: which file handles which feature.
 
 ### Webhook (WhatsApp chatbot)
 - `GET /api/webhook/whatsapp` — Meta webhook verification (hub.challenge handshake)
-- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. After each inbound customer message is saved to `conversations`, Haiku auto-summarizes durable customer context via `src/lib/claude/learn-context.ts`, replaces the `[AI learned context]` block in `customers.notes`, and feeds the freshly learned notes into the same bot response when available; failures are logged and never block replying. Also handles welcome sequence: resolves `{{dapur_list}}`, `{{delivery_areas}}`, `{{price_20}}`, `{{order_deadline}}` placeholders in `welcome_message` setting from live DB data, then sends menu images from active subcontractor rows. The welcome greeting + price list image + each menu image are also logged to `conversations` as `assistant` rows (`model_used: "system"`, image rows use `message_type: "image"` with the URL as content) so they render in the dashboard inbox.
+- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. After each inbound customer message is saved to `conversations`, Haiku auto-summarizes durable customer context via `src/lib/claude/learn-context.ts`, replaces the `[AI learned context]` block in `customers.notes`, and feeds the freshly learned notes into the same bot response when available; failures are logged and never block replying. Also handles welcome sequence: resolves `{{dapur_list}}`, `{{delivery_areas}}`, `{{price_20}}`, `{{order_deadline}}` placeholders in `welcome_message` setting from live DB data, then sends menu images from active subcontractor rows. The welcome greeting + price list image + each menu image are also logged to `conversations` as `assistant` rows (`model_used: "system"`, image rows use `message_type: "image"` with the URL as content) so they render in the dashboard inbox. `awaiting_payment` messages intentionally bypass the normal rate-limit gate so payment follow-up and proof handling still run.
 
 ### Auth
 - `POST /api/auth/check-admin` — Check if email exists in `admin_users`. ⚠️ Known issue: no session verification, allows unauthenticated email enumeration.
@@ -294,7 +304,10 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 
 ### Inbox (admin-guided bot responses)
 - `POST /api/inbox/bot-reply` — Admin provides a concise answer → Haiku polishes it → bot sends polished message to customer → clears `pending_bot_response` flag
+- `GET /api/inbox/delivery-proofs/[...path]` — Auth-gated proxy for proof images stored in Supabase Storage; used by the inbox UI so proof attachments render without exposing the storage bucket directly.
 - `POST /api/inbox/learn-context` — Manual fallback for the same learned-context summarizer used by the webhook auto-learn path. Requires admin auth and `{ customer_id }`; writes only the `[AI learned context]` block in `customers.notes`.
+- `POST /api/inbox/pipeline-stage` — Admin override for the customer pipeline stage. Updates `customer_state.state`; payment-related stages also reconcile the latest order status (`pending_payment`, `payment_proof_received`, `active`) when an order exists.
+- `POST /api/inbox/replay-latest` — Re-run the latest saved inbound customer text through the normal chatbot flow after a thread is unblocked. Requires auth and `{ customer_id }`.
 
 ### Settings
 - `GET /api/settings` — All settings + pricing tiers + message templates + admin list
