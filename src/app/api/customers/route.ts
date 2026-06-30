@@ -103,17 +103,27 @@ export async function POST(req: Request): Promise<Response> {
       { status: 409 },
     );
 
+  const area = body.area?.trim() || null;
+  const ROUTE_BY_AREA: Record<string, number> = {
+    "Alam Sutera": 1,
+    "BSD Lama": 1,
+    "Gading Serpong": 2,
+    "BSD Baru": 2,
+  };
+  const deliveryRoute = area ? (ROUTE_BY_AREA[area] ?? null) : null;
+
   const { data, error } = await db
     .from("customers")
     .insert({
       phone_number: phone,
       name: body.name?.trim() || null,
-      area: body.area?.trim() || null,
+      area,
       sub_area: body.sub_area?.trim() || null,
       address,
       address_2: body.address_2?.trim() || null,
       google_maps_link: body.google_maps_link?.trim() || null,
       subcontractor_id: body.subcontractor_id || null,
+      delivery_route: deliveryRoute,
     })
     .select("id, name, phone_number, area, sub_area, address, address_2, subcontractor_id")
     .single();
