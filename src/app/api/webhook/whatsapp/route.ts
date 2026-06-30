@@ -413,12 +413,20 @@ export async function processWebhookAsync(
         await saveMessage({ customerId, role: "assistant", content: resolvedWelcome, modelUsed: "system" });
       }
       if (priceListUrl) {
-        await sendImageByUrl(message.from, priceListUrl, "Harga & Area Pengiriman");
+        try {
+          await sendImageByUrl(message.from, priceListUrl, "Harga & Area Pengiriman");
+        } catch (e) {
+          console.error("[welcome] price list send failed:", e);
+        }
         await saveMessage({ customerId, role: "assistant", content: priceListUrl, messageType: "image", modelUsed: "system" });
       }
       for (const sub of welcomeSubs ?? []) {
         if (sub.menu_image_url) {
-          await sendImageByUrl(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
+          try {
+            await sendImageByUrl(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
+          } catch (e) {
+            console.error("[welcome] menu image send failed:", e);
+          }
           await saveMessage({ customerId, role: "assistant", content: sub.menu_image_url, messageType: "image", modelUsed: "system" });
         }
       }
