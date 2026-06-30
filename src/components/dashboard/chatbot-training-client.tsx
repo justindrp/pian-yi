@@ -26,7 +26,7 @@ async function fetchInstructions(): Promise<Instruction[]> {
 }
 
 export default function ChatbotTrainingClient() {
-  const [tab, setTab] = useState<"chat" | "list" | "simulator">("chat");
+  const [tab, setTab] = useState<"chat" | "context" | "simulator">("chat");
 
   return (
     <div>
@@ -52,14 +52,14 @@ export default function ChatbotTrainingClient() {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setTab("list")}
+            onClick={() => setTab("context")}
             className={
-              tab === "list"
+              tab === "context"
                 ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white rounded-none"
                 : "text-gray-600 rounded-none"
             }
           >
-            Instructions
+            Konteks
           </Button>
           <Button
             type="button"
@@ -79,8 +79,8 @@ export default function ChatbotTrainingClient() {
 
       {tab === "chat" ? (
         <TrainingChat />
-      ) : tab === "list" ? (
-        <InstructionList />
+      ) : tab === "context" ? (
+        <ContextTab />
       ) : (
         <ChatbotSimulator />
       )}
@@ -208,22 +208,89 @@ function TrainingChat() {
   );
 }
 
-function InstructionList() {
+interface CustomerSummary {
+  id: string;
+  name: string | null;
+  phone_number: string;
+}
+
+interface CustomerDetail {
+  id: string;
+  name: string | null;
+  phone_number: string;
+  notes: string | null;
+  meal_time_preference: string | null;
+  custom_schedule: unknown;
+  ad_creative: string | null;
+  promo_used: string | null;
+  converted_at: string | null;
+  customer_state: { state: string } | null;
+  customer_flags: {
+    escalated_to_human: boolean;
+    pending_bot_response: boolean;
+    is_blacklisted: boolean;
+    vip_status: boolean;
+    is_suspicious: boolean;
+  } | null;
+}
+
+function parseNotes(notes: string | null): { aiContext: string | null; manualNotes: string | null } {
+  if (!notes) return { aiContext: null, manualNotes: null };
+  const match = notes.match(/\[AI learned context\]([\s\S]*?)\[\/AI learned context\]/);
+  if (!match) return { aiContext: null, manualNotes: notes.trim() || null };
+  const aiContext = match[1].trim();
+  const manualNotes = notes.replace(/\[AI learned context\][\s\S]*?\[\/AI learned context\]/, "").trim() || null;
+  return { aiContext, manualNotes };
+}
+
+function ContextTab() {
+  const [sub, setSub] = useState<"global" | "customer">("global");
+  return (
+    <div>
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setSub("global")}
+          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${sub === "global" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+        >
+          Global
+        </button>
+        <button
+          type="button"
+          onClick={() => setSub("customer")}
+          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${sub === "customer" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+        >
+          Per Pelanggan
+        </button>
+      </div>
+      {sub === "global" ? <GlobalContext /> : <CustomerContext />}
+    </div>
+  );
+}
+
+function GlobalContext() {
   const qc = useQueryClient();
-  const { data: instructions, isLoading } = useQuery({
+  const { data: promptData, isLoading: promptLoading } = useQuery({
+    queryKey: ["context-preview"],
+    queryFn: async () => {
+      const res = await fetch("/api/context/preview");
+      return (await res.json()) as { ok: boolean; prompt: string };
+    },
+  });
+
+  const { data: instructions, isLoading: instLoading } = useQuery({
     queryKey: ["chatbot-instructions"],
     queryFn: fetchInstructions,
   });
+
   const [editing, setEditing] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newText, setNewText] = useState("");
 
   const patch = useMutation({
-    mutationFn: async (body: {
-      id: string;
-      instruction?: string;
-      is_active?: boolean;
-    }) => {
+    mutationFn: async (body: { id: string; instruction?: string; is_active?: boolean }) => {
       await fetch("/api/chatbot-instructions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -250,133 +317,425 @@ function InstructionList() {
     },
   });
 
-  if (isLoading) return <div className="text-gray-400 text-sm">Loading...</div>;
+  const add = useMutation({
+    mutationFn: async (text: string) => {
+      await fetch("/api/chatbot-instructions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: text }),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["chatbot-instructions"] });
+      setAdding(false);
+      setNewText("");
+    },
+  });
 
   return (
-    <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
-          <tr>
-            <th className="px-4 py-3 text-left">Instruction</th>
-            <th className="px-4 py-3 text-left w-24">Active</th>
-            <th className="px-4 py-3 text-left w-32">Created</th>
-            <th className="px-4 py-3 text-left w-28">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {(instructions ?? []).map((inst) => (
-            <tr key={inst.id}>
-              <td className="px-4 py-3">
-                {editing === inst.id ? (
-                  <div className="flex gap-2">
-                    <Textarea
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      rows={3}
-                      className="flex-1"
-                    />
-                    <div className="flex flex-col gap-1">
-                      <Button
+    <div className="space-y-6">
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-gray-700">System Prompt</h2>
+          <span className="text-xs text-gray-400">Preview — konteks pelanggan dikosongkan</span>
+        </div>
+        {promptLoading ? (
+          <div className="text-gray-400 text-sm">Loading...</div>
+        ) : (
+          <pre className="whitespace-pre-wrap text-xs font-mono bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-96 text-gray-700">
+            {promptData?.prompt}
+          </pre>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-gray-700">Instruksi Custom Annie</h2>
+          {!adding && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setAdding(true)}
+              className="bg-blue-600 hover:bg-blue-700 h-7 text-xs"
+            >
+              + Tambah
+            </Button>
+          )}
+        </div>
+
+        {adding && (
+          <div className="mb-3 flex gap-2">
+            <Textarea
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+              rows={2}
+              className="flex-1"
+              placeholder="Tulis instruksi baru..."
+              autoFocus
+            />
+            <div className="flex flex-col gap-1">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => add.mutate(newText)}
+                disabled={!newText.trim() || add.isPending}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Simpan
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => { setAdding(false); setNewText(""); }}
+              >
+                Batal
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {instLoading ? (
+          <div className="text-gray-400 text-sm">Loading...</div>
+        ) : (
+          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-3 text-left">Instruksi</th>
+                  <th className="px-4 py-3 text-left w-24">Aktif</th>
+                  <th className="px-4 py-3 text-left w-32">Dibuat</th>
+                  <th className="px-4 py-3 text-left w-28">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {(instructions ?? []).map((inst) => (
+                  <tr key={inst.id}>
+                    <td className="px-4 py-3">
+                      {editing === inst.id ? (
+                        <div className="flex gap-2">
+                          <Textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            rows={3}
+                            className="flex-1"
+                          />
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => patch.mutate({ id: inst.id, instruction: editText })}
+                              className="bg-blue-600 hover:bg-blue-700"
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setEditing(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-700 line-clamp-2">{inst.instruction}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
                         type="button"
-                        size="sm"
-                        onClick={() =>
-                          patch.mutate({ id: inst.id, instruction: editText })
-                        }
-                        className="bg-blue-600 hover:bg-blue-700"
+                        onClick={() => patch.mutate({ id: inst.id, is_active: !inst.is_active })}
+                        className={`w-10 h-5 rounded-full transition-colors ${inst.is_active ? "bg-blue-600" : "bg-gray-200"} relative`}
                       >
-                        Save
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setEditing(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-gray-700 line-clamp-2">
-                    {inst.instruction}
-                  </p>
+                        <span
+                          className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${inst.is_active ? "translate-x-5" : "translate-x-0.5"}`}
+                        />
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">
+                      {new Date(inst.created_at).toLocaleDateString("id-ID")}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setEditing(inst.id); setEditText(inst.instruction); }}
+                          className="text-blue-500 hover:text-blue-700 h-auto py-0 px-1"
+                        >
+                          Edit
+                        </Button>
+                        {confirmDelete === inst.id ? (
+                          <span className="flex gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => del.mutate(inst.id)}
+                              className="text-red-500 h-auto py-0 px-1"
+                            >
+                              Hapus
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setConfirmDelete(null)}
+                              className="text-gray-400 h-auto py-0 px-1"
+                            >
+                              Batal
+                            </Button>
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setConfirmDelete(inst.id)}
+                            className="text-red-400 hover:text-red-600 h-auto py-0 px-1"
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {(instructions ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                      Belum ada instruksi. Gunakan tab Conversational untuk menambah.
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className="px-4 py-3">
-                <button
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CustomerContext() {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [editNotes, setEditNotes] = useState("");
+  const [editingNotes, setEditingNotes] = useState(false);
+
+  const { data: customers } = useQuery({
+    queryKey: ["customers-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/customers?all=true");
+      const json = (await res.json()) as { ok: boolean; data: CustomerSummary[] };
+      return json.data;
+    },
+  });
+
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ["context-customer", selectedId],
+    queryFn: async () => {
+      const res = await fetch(`/api/context/customer/${selectedId}`);
+      const json = (await res.json()) as { ok: boolean; data: CustomerDetail };
+      return json.data;
+    },
+    enabled: !!selectedId,
+  });
+
+  const saveNotes = useMutation({
+    mutationFn: async (notes: string) => {
+      await fetch(`/api/customers/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["context-customer", selectedId] });
+      setEditingNotes(false);
+    },
+  });
+
+  const filtered = (customers ?? []).filter((c) => {
+    const q = search.toLowerCase();
+    return (c.name ?? "").toLowerCase().includes(q) || c.phone_number.includes(q);
+  });
+
+  function selectCustomer(c: CustomerSummary) {
+    setSelectedId(c.id);
+    setSearch(c.name ?? c.phone_number);
+    setOpen(false);
+    setEditingNotes(false);
+  }
+
+  const { aiContext, manualNotes } = parseNotes(detail?.notes ?? null);
+
+  return (
+    <div className="space-y-4 max-w-xl">
+      <div className="relative">
+        <Input
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setOpen(true); if (!e.target.value) setSelectedId(null); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Cari nama atau nomor HP..."
+        />
+        {open && filtered.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+            {filtered.slice(0, 20).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                onMouseDown={() => selectCustomer(c)}
+              >
+                <span className="font-medium">{c.name ?? "(tanpa nama)"}</span>
+                <span className="text-gray-400 ml-2 text-xs">{c.phone_number}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selectedId && detailLoading && (
+        <div className="text-gray-400 text-sm">Loading...</div>
+      )}
+
+      {selectedId && detail && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+          <div>
+            <p className="font-semibold text-gray-900">{detail.name ?? "(tanpa nama)"}</p>
+            <p className="text-xs text-gray-400">{detail.phone_number}</p>
+          </div>
+
+          {detail.customer_state && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Pipeline</p>
+              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">
+                {detail.customer_state.state}
+              </span>
+            </div>
+          )}
+
+          {detail.customer_flags && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Flags</p>
+              <div className="flex flex-wrap gap-1">
+                {detail.customer_flags.is_blacklisted && (
+                  <span className="px-2 py-0.5 bg-red-50 text-red-700 text-xs rounded-full">Blacklisted</span>
+                )}
+                {detail.customer_flags.escalated_to_human && (
+                  <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs rounded-full">Escalated</span>
+                )}
+                {detail.customer_flags.pending_bot_response && (
+                  <span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 text-xs rounded-full">Waiting bot reply</span>
+                )}
+                {detail.customer_flags.vip_status && (
+                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full">VIP</span>
+                )}
+                {detail.customer_flags.is_suspicious && (
+                  <span className="px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded-full">Suspicious</span>
+                )}
+                {!detail.customer_flags.is_blacklisted &&
+                  !detail.customer_flags.escalated_to_human &&
+                  !detail.customer_flags.pending_bot_response &&
+                  !detail.customer_flags.vip_status &&
+                  !detail.customer_flags.is_suspicious && (
+                    <span className="text-xs text-gray-400">Tidak ada flag aktif</span>
+                  )}
+              </div>
+            </div>
+          )}
+
+          {detail.meal_time_preference && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Preferensi makan</p>
+              <p className="text-sm text-gray-700">{detail.meal_time_preference}</p>
+            </div>
+          )}
+
+          {(detail.ad_creative || detail.promo_used || detail.converted_at) && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Konversi</p>
+              <div className="text-xs text-gray-600 space-y-0.5">
+                {detail.ad_creative && <p>Ad creative: {detail.ad_creative}</p>}
+                {detail.promo_used && <p>Promo: {detail.promo_used}</p>}
+                {detail.converted_at && (
+                  <p>Converted: {new Date(detail.converted_at).toLocaleDateString("id-ID")}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs text-gray-500">Catatan</p>
+              {!editingNotes && (
+                <Button
                   type="button"
-                  onClick={() =>
-                    patch.mutate({ id: inst.id, is_active: !inst.is_active })
-                  }
-                  className={`w-10 h-5 rounded-full transition-colors ${inst.is_active ? "bg-blue-600" : "bg-gray-200"} relative`}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setEditingNotes(true); setEditNotes(detail.notes ?? ""); }}
+                  className="text-blue-500 h-auto py-0 px-1 text-xs"
                 >
-                  <span
-                    className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${inst.is_active ? "translate-x-5" : "translate-x-0.5"}`}
-                  />
-                </button>
-              </td>
-              <td className="px-4 py-3 text-gray-400 text-xs">
-                {new Date(inst.created_at).toLocaleDateString("id-ID")}
-              </td>
-              <td className="px-4 py-3">
+                  Edit
+                </Button>
+              )}
+            </div>
+
+            {editingNotes ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  rows={6}
+                  className="text-sm"
+                  autoFocus
+                />
                 <div className="flex gap-2">
                   <Button
                     type="button"
-                    variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setEditing(inst.id);
-                      setEditText(inst.instruction);
-                    }}
-                    className="text-blue-500 hover:text-blue-700 h-auto py-0 px-1"
+                    onClick={() => saveNotes.mutate(editNotes)}
+                    disabled={saveNotes.isPending}
+                    className="bg-blue-600 hover:bg-blue-700"
                   >
-                    Edit
+                    {saveNotes.isPending ? "Menyimpan..." : "Simpan"}
                   </Button>
-                  {confirmDelete === inst.id ? (
-                    <span className="flex gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => del.mutate(inst.id)}
-                        className="text-red-500 h-auto py-0 px-1"
-                      >
-                        Hapus
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmDelete(null)}
-                        className="text-gray-400 h-auto py-0 px-1"
-                      >
-                        Batal
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setConfirmDelete(inst.id)}
-                      className="text-red-400 hover:text-red-600 h-auto py-0 px-1"
-                    >
-                      Delete
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditingNotes(false)}
+                  >
+                    Batal
+                  </Button>
                 </div>
-              </td>
-            </tr>
-          ))}
-          {(instructions ?? []).length === 0 && (
-            <tr>
-              <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                No instructions yet. Use Conversational mode to add some.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {aiContext && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                    <p className="text-xs text-blue-500 font-medium mb-1">AI learned context</p>
+                    <p className="text-xs text-blue-800 whitespace-pre-wrap">{aiContext}</p>
+                  </div>
+                )}
+                {manualNotes && (
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{manualNotes}</p>
+                )}
+                {!aiContext && !manualNotes && (
+                  <p className="text-xs text-gray-400">Belum ada catatan.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

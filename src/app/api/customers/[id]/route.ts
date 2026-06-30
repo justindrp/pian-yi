@@ -122,9 +122,18 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = (await req.json()) as { name?: string };
-  const name = body.name?.trim();
-  if (!name) {
+  const body = (await req.json()) as { name?: string; notes?: string };
+  const update: { name?: string; notes?: string } = {};
+  if (body.name !== undefined) update.name = body.name.trim();
+  if (body.notes !== undefined) update.notes = body.notes;
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json(
+      { ok: false, error: "Nothing to update" },
+      { status: 400 },
+    );
+  }
+  if ("name" in update && !update.name) {
     return NextResponse.json(
       { ok: false, error: "Missing name" },
       { status: 400 },
@@ -132,7 +141,7 @@ export async function PATCH(
   }
 
   const db = createAdminClient();
-  const { error } = await db.from("customers").update({ name }).eq("id", id);
+  const { error } = await db.from("customers").update(update).eq("id", id);
   if (error) {
     return NextResponse.json(
       { ok: false, error: error.message },
