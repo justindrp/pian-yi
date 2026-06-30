@@ -2,29 +2,46 @@ import { NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
-import { saveMessage } from "@/lib/claude/conversation";
+import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { sendImageMessageById, sendTextMessage, uploadMediaToMeta } from "@/lib/whatsapp/client";
+import {
+  sendImageMessageById,
+  sendTextMessage,
+  uploadMediaToMeta,
+} from "@/lib/whatsapp/client";
 
 const ALLOWED_CUSTOMER_FIELDS = new Set(["name", "address", "area", "notes"]);
 
 export async function POST(request: Request) {
   const session = await getSessionWithRole();
   if (!session) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
-  let body: { tool?: string; input?: Record<string, unknown>; conversationId?: string };
+  let body: {
+    tool?: string;
+    input?: Record<string, unknown>;
+    conversationId?: string;
+  };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid JSON" },
+      { status: 400 },
+    );
   }
 
   const { tool, input, conversationId } = body;
   if (!tool || !input || (tool !== "batch" && !WRITE_TOOLS.has(tool))) {
-    return NextResponse.json({ ok: false, error: "Invalid or disallowed tool" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid or disallowed tool" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -40,32 +57,51 @@ export async function POST(request: Request) {
   }
 
   async function sendAssistantText(phone: string, message: string) {
-    await sendTextMessage(phone, message);
+    const messageId = await sendTextMessage(phone, message);
     const { data: cust } = await db
       .from("customers")
       .select("id")
       .eq("phone_number", phone)
       .maybeSingle();
     if (cust?.id) {
-      await saveMessage({ customerId: cust.id, role: "assistant", content: message, modelUsed: "human" });
+      const conversationId = await saveMessage({
+        customerId: cust.id,
+        role: "assistant",
+        content: message,
+        modelUsed: "human",
+      });
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: messageId,
+        status: "sent",
+      });
     }
   }
 
-  async function sendAssistantImage(phone: string, imageUrl: string, caption: string) {
+  async function sendAssistantImage(
+    phone: string,
+    imageUrl: string,
+    caption: string,
+  ) {
     const mediaId = await uploadImageUrlToMeta(imageUrl);
-    await sendImageMessageById(phone, mediaId, caption);
+    const messageId = await sendImageMessageById(phone, mediaId, caption);
     const { data: cust } = await db
       .from("customers")
       .select("id")
       .eq("phone_number", phone)
       .maybeSingle();
     if (cust?.id) {
-      await saveMessage({
+      const conversationId = await saveMessage({
         customerId: cust.id,
         role: "assistant",
         content: imageUrl,
         messageType: "image",
         modelUsed: "human",
+      });
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: messageId,
+        status: "sent",
       });
     }
   }
@@ -74,16 +110,25 @@ export async function POST(request: Request) {
     case "batch": {
       const actions = input.actions;
       if (!Array.isArray(actions) || actions.length === 0) {
-        return NextResponse.json({ ok: false, error: "actions required" }, { status: 400 });
+        return NextResponse.json(
+          { ok: false, error: "actions required" },
+          { status: 400 },
+        );
       }
 
       for (const action of actions) {
         if (!isWriteAction(action)) {
-          return NextResponse.json({ ok: false, error: "Invalid batch action" }, { status: 400 });
+          return NextResponse.json(
+            { ok: false, error: "Invalid batch action" },
+            { status: 400 },
+          );
         }
         switch (action.tool) {
           case "send_whatsapp_message":
-            await sendAssistantText(action.input.phone_number as string, action.input.message as string);
+            await sendAssistantText(
+              action.input.phone_number as string,
+              action.input.message as string,
+            );
             break;
           case "send_whatsapp_image":
             await sendAssistantImage(
@@ -94,7 +139,10 @@ export async function POST(request: Request) {
             break;
           default:
             return NextResponse.json(
-              { ok: false, error: `Tool '${action.tool}' cannot be batched yet` },
+              {
+                ok: false,
+                error: `Tool '${action.tool}' cannot be batched yet`,
+              },
               { status: 400 },
             );
         }
@@ -107,11 +155,16 @@ export async function POST(request: Request) {
       const orderId = input.order_id as string;
       const { data: order, error: fetchErr } = await db
         .from("orders")
-        .select("id, total_price, package_size, customer_id, customers(name, phone_number)")
+        .select(
+          "id, total_price, package_size, customer_id, customers(name, phone_number)",
+        )
         .eq("id", orderId)
         .single();
       if (fetchErr || !order) {
-        return NextResponse.json({ ok: false, error: "Order not found" }, { status: 404 });
+        return NextResponse.json(
+          { ok: false, error: "Order not found" },
+          { status: 404 },
+        );
       }
 
       const { error: updateErr } = await db
@@ -119,25 +172,39 @@ export async function POST(request: Request) {
         .update({ status: "active", paid_at: new Date().toISOString() })
         .eq("id", orderId);
       if (updateErr) {
-        return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: updateErr.message },
+          { status: 500 },
+        );
       }
 
       // Conversion tracking (fire-and-forget)
       const convCustomerId = order.customer_id;
       if (convCustomerId) {
         Promise.resolve(
-          db.from("customers").select("converted_at").eq("id", convCustomerId).single(),
-        ).then(({ data: cust }) => {
-          if (cust && !cust.converted_at) {
-            const pkgSize = order.package_size ?? 0;
-            return db.from("customers").update({
-              converted_at: new Date().toISOString(),
-              total_portions: pkgSize,
-              total_payment: order.total_price ?? 0,
-              package: pkgSize > 0 ? `${pkgSize} porsi` : null,
-            }).eq("id", convCustomerId);
-          }
-        }).catch((err: unknown) => console.error("[execute/mark_paid] conversion error:", err));
+          db
+            .from("customers")
+            .select("converted_at")
+            .eq("id", convCustomerId)
+            .single(),
+        )
+          .then(({ data: cust }) => {
+            if (cust && !cust.converted_at) {
+              const pkgSize = order.package_size ?? 0;
+              return db
+                .from("customers")
+                .update({
+                  converted_at: new Date().toISOString(),
+                  total_portions: pkgSize,
+                  total_payment: order.total_price ?? 0,
+                  package: pkgSize > 0 ? `${pkgSize} porsi` : null,
+                })
+                .eq("id", convCustomerId);
+            }
+          })
+          .catch((err: unknown) =>
+            console.error("[execute/mark_paid] conversion error:", err),
+          );
       }
 
       // Journal: Dr Bank BCA / Cr Uang Muka Pelanggan (fire-and-forget)
@@ -151,11 +218,15 @@ export async function POST(request: Request) {
           { accountCode: "1002", debit: order.total_price ?? 0, credit: 0 },
           { accountCode: "2100", debit: 0, credit: order.total_price ?? 0 },
         ],
-      }).catch((err) => console.error("[execute/mark_paid] journal error:", err));
+      }).catch((err) =>
+        console.error("[execute/mark_paid] journal error:", err),
+      );
 
       // WhatsApp confirmation
       const rawCustomer = order.customers;
-      const customer = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer) as {
+      const customer = (
+        Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
+      ) as {
         name: string | null;
         phone_number: string;
       } | null;
@@ -163,14 +234,25 @@ export async function POST(request: Request) {
         const firstName = (customer.name ?? "").split(" ")[0] || "kak";
         const msg = `Halo kak ${firstName}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉`;
         try {
-          await saveMessage({ customerId: order.customer_id, role: "assistant", content: msg });
-          await sendTextMessage(customer.phone_number, msg);
+          const conversationId = await saveMessage({
+            customerId: order.customer_id,
+            role: "assistant",
+            content: msg,
+          });
+          const messageId = await sendTextMessage(customer.phone_number, msg);
+          await updateMessageReceipt({
+            conversationId,
+            whatsappMessageId: messageId,
+            status: "sent",
+          });
         } catch (err) {
           console.error("[execute/mark_paid] WhatsApp send failed:", err);
         }
       }
 
-      return reply("Pesanan sudah ditandai lunas dan pesan konfirmasi WhatsApp sudah dikirim.");
+      return reply(
+        "Pesanan sudah ditandai lunas dan pesan konfirmasi WhatsApp sudah dikirim.",
+      );
     }
 
     case "cancel_order": {
@@ -184,7 +266,10 @@ export async function POST(request: Request) {
         .eq("id", orderId)
         .single();
       if (fetchErr || !order) {
-        return NextResponse.json({ ok: false, error: "Order not found" }, { status: 404 });
+        return NextResponse.json(
+          { ok: false, error: "Order not found" },
+          { status: 404 },
+        );
       }
 
       const { error: updateErr } = await db
@@ -192,12 +277,17 @@ export async function POST(request: Request) {
         .update({ status: "cancelled_by_admin" })
         .eq("id", orderId);
       if (updateErr) {
-        return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: updateErr.message },
+          { status: 500 },
+        );
       }
 
       if (notifyCustomer) {
         const rawCustomer = order.customers;
-        const customer = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer) as {
+        const customer = (
+          Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
+        ) as {
           name: string | null;
           phone_number: string;
         } | null;
@@ -206,8 +296,17 @@ export async function POST(request: Request) {
           const reasonText = reason ? ` Alasan: ${reason}.` : "";
           const msg = `Halo kak ${firstName}, mohon maaf pesanan kamu terpaksa kami batalkan.${reasonText} Silakan hubungi kami jika ada pertanyaan ya kak.`;
           try {
-            await saveMessage({ customerId: order.customer_id, role: "assistant", content: msg });
-            await sendTextMessage(customer.phone_number, msg);
+            const conversationId = await saveMessage({
+              customerId: order.customer_id,
+              role: "assistant",
+              content: msg,
+            });
+            const messageId = await sendTextMessage(customer.phone_number, msg);
+            await updateMessageReceipt({
+              conversationId,
+              whatsappMessageId: messageId,
+              status: "sent",
+            });
           } catch (err) {
             console.error("[execute/cancel_order] WhatsApp send failed:", err);
           }
@@ -238,7 +337,10 @@ export async function POST(request: Request) {
       const value = input.value as string;
 
       if (!ALLOWED_CUSTOMER_FIELDS.has(field)) {
-        return NextResponse.json({ ok: false, error: `Field '${field}' is not editable` }, { status: 400 });
+        return NextResponse.json(
+          { ok: false, error: `Field '${field}' is not editable` },
+          { status: 400 },
+        );
       }
 
       const { error: updateErr } = await db
@@ -247,24 +349,34 @@ export async function POST(request: Request) {
         .update({ [field]: value } as any)
         .eq("id", customerId);
       if (updateErr) {
-        return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: updateErr.message },
+          { status: 500 },
+        );
       }
 
       return reply(`Field ${field} customer sudah diperbarui.`);
     }
 
     default:
-      return NextResponse.json({ ok: false, error: "Unknown tool" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Unknown tool" },
+        { status: 400 },
+      );
   }
 }
 
-function isWriteAction(value: unknown): value is { tool: string; input: Record<string, unknown> } {
+function isWriteAction(
+  value: unknown,
+): value is { tool: string; input: Record<string, unknown> } {
   if (!value || typeof value !== "object") return false;
   const action = value as { tool?: unknown; input?: unknown };
-  return typeof action.tool === "string"
-    && WRITE_TOOLS.has(action.tool)
-    && !!action.input
-    && typeof action.input === "object";
+  return (
+    typeof action.tool === "string" &&
+    WRITE_TOOLS.has(action.tool) &&
+    !!action.input &&
+    typeof action.input === "object"
+  );
 }
 
 async function uploadImageUrlToMeta(imageUrl: string): Promise<string> {
@@ -272,7 +384,8 @@ async function uploadImageUrlToMeta(imageUrl: string): Promise<string> {
   if (!res.ok) {
     throw new Error(`Failed to download image: ${res.status}`);
   }
-  const contentType = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+  const contentType =
+    res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
   if (!contentType.startsWith("image/")) {
     throw new Error(`URL did not return an image (${contentType})`);
   }

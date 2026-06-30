@@ -32,13 +32,28 @@ export interface WhatsAppWebhookPayload {
           timestamp: string;
           text?: { body: string };
           image?: { id: string; caption?: string; mime_type?: string };
-          location?: { latitude: number; longitude: number; name?: string; address?: string };
+          location?: {
+            latitude: number;
+            longitude: number;
+            name?: string;
+            address?: string;
+          };
         }>;
         statuses?: unknown[];
       };
       field: string;
     }>;
   }>;
+}
+
+export interface WhatsAppStatusUpdate {
+  messageId: string;
+  status: string;
+  timestamp?: string;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export function parseMessage(
@@ -67,4 +82,27 @@ export function getPhoneNumberId(payload: WhatsAppWebhookPayload): string {
   return (
     payload.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id ?? ""
   );
+}
+
+export function parseStatusUpdates(
+  payload: WhatsAppWebhookPayload,
+): WhatsAppStatusUpdate[] {
+  const statuses = payload.entry?.[0]?.changes?.[0]?.value?.statuses;
+  if (!Array.isArray(statuses)) return [];
+
+  return statuses.flatMap((status): WhatsAppStatusUpdate[] => {
+    if (!isObject(status)) return [];
+    const messageId = status.id;
+    const state = status.status;
+    if (typeof messageId !== "string" || typeof state !== "string") return [];
+
+    return [
+      {
+        messageId,
+        status: state,
+        timestamp:
+          typeof status.timestamp === "string" ? status.timestamp : undefined,
+      },
+    ];
+  });
 }

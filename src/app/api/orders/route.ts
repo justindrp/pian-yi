@@ -1,15 +1,21 @@
 import { type NextRequest, NextResponse } from "next/server";
-import type { Database } from "@/types/database";
+import { createJournalEntry } from "@/lib/accounting/journal";
+import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { saveMessage } from "@/lib/claude/conversation";
 import { sendTextMessage } from "@/lib/whatsapp/client";
-import { createJournalEntry } from "@/lib/accounting/journal";
+import type { Database } from "@/types/database";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
@@ -24,10 +30,13 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (status) query = query.eq("status", status);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
   return NextResponse.json({ ok: true, data });
 }
-
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -35,7 +44,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const body = (await req.json()) as {
     customer_id: string;
@@ -72,7 +84,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     !body.portions_per_delivery ||
     !body.area
   ) {
-    return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing required fields" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -85,7 +100,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (body.order_type === "recurring") {
     if (!body.start_date || !body.meal_time_preference || !body.package_size) {
       return NextResponse.json(
-        { ok: false, error: "start_date, meal_time_preference, and package_size are required for recurring orders" },
+        {
+          ok: false,
+          error:
+            "start_date, meal_time_preference, and package_size are required for recurring orders",
+        },
         { status: 400 },
       );
     }
@@ -118,7 +137,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       .select("id, order_type, status, total_price")
       .single();
 
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error)
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
     return NextResponse.json({ ok: true, data: order });
   }
 
@@ -126,7 +149,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   const schedule = body.delivery_schedule;
   if (!schedule || schedule.length === 0) {
     return NextResponse.json(
-      { ok: false, error: "delivery_schedule is required for scheduled orders" },
+      {
+        ok: false,
+        error: "delivery_schedule is required for scheduled orders",
+      },
       { status: 400 },
     );
   }
@@ -161,7 +187,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (insertErr || !order)
-    return NextResponse.json({ ok: false, error: insertErr?.message ?? "Insert failed" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: insertErr?.message ?? "Insert failed" },
+      { status: 500 },
+    );
 
   // Fetch subcontractor cost for COGS journals
   let subCost = 0;
@@ -213,7 +242,9 @@ export async function POST(req: NextRequest): Promise<Response> {
           { accountCode: "2100", debit: revenueAmount, credit: 0 },
           { accountCode: "4001", debit: 0, credit: revenueAmount },
         ],
-      }).catch((err) => console.error("[new_order] revenue journal error:", err));
+      }).catch((err) =>
+        console.error("[new_order] revenue journal error:", err),
+      );
 
       if (subCost > 0) {
         const cogsAmount = row.portions * subCost;
@@ -226,7 +257,9 @@ export async function POST(req: NextRequest): Promise<Response> {
             { accountCode: "5001", debit: cogsAmount, credit: 0 },
             { accountCode: "2001", debit: 0, credit: cogsAmount },
           ],
-        }).catch((err) => console.error("[new_order] cogs journal error:", err));
+        }).catch((err) =>
+          console.error("[new_order] cogs journal error:", err),
+        );
       }
     }
 
@@ -247,7 +280,10 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const body = (await req.json()) as {
     id: string;
@@ -263,15 +299,28 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       body.action !== "update_fields" &&
       body.action !== "update_status")
   )
-    return NextResponse.json({ ok: false, error: "Invalid request" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid request" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
 
   if (body.action === "update_size") {
     if (body.size !== "s" && body.size !== "m")
-      return NextResponse.json({ ok: false, error: "Invalid size" }, { status: 400 });
-    const { error } = await db.from("orders").update({ size: body.size }).eq("id", body.id);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid size" },
+        { status: 400 },
+      );
+    const { error } = await db
+      .from("orders")
+      .update({ size: body.size })
+      .eq("id", body.id);
+    if (error)
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
     return NextResponse.json({ ok: true });
   }
 
@@ -283,19 +332,30 @@ export async function PATCH(req: NextRequest): Promise<Response> {
 
     // Allowlisted operational fields only — never money/quota/status/server columns.
     if ("area" in f) update.area = String(f.area);
-    if ("delivery_address" in f) update.delivery_address = String(f.delivery_address);
-    if ("maps_link" in f) update.maps_link = f.maps_link ? String(f.maps_link) : null;
+    if ("delivery_address" in f)
+      update.delivery_address = String(f.delivery_address);
+    if ("maps_link" in f)
+      update.maps_link = f.maps_link ? String(f.maps_link) : null;
     if ("subcontractor_id" in f)
-      update.subcontractor_id = f.subcontractor_id ? String(f.subcontractor_id) : null;
+      update.subcontractor_id = f.subcontractor_id
+        ? String(f.subcontractor_id)
+        : null;
     if ("meal_time_preference" in f)
-      update.meal_time_preference = f.meal_time_preference ? String(f.meal_time_preference) : null;
-    if ("end_date" in f) update.end_date = f.end_date ? String(f.end_date) : null;
+      update.meal_time_preference = f.meal_time_preference
+        ? String(f.meal_time_preference)
+        : null;
+    if ("end_date" in f)
+      update.end_date = f.end_date ? String(f.end_date) : null;
     if ("portions_lunch" in f)
       update.portions_lunch =
-        f.portions_lunch === null || f.portions_lunch === "" ? null : Number(f.portions_lunch);
+        f.portions_lunch === null || f.portions_lunch === ""
+          ? null
+          : Number(f.portions_lunch);
     if ("portions_dinner" in f)
       update.portions_dinner =
-        f.portions_dinner === null || f.portions_dinner === "" ? null : Number(f.portions_dinner);
+        f.portions_dinner === null || f.portions_dinner === ""
+          ? null
+          : Number(f.portions_dinner);
     if ("portions_per_delivery" in f)
       update.portions_per_delivery = Number(f.portions_per_delivery);
     if ("lunch_address_slot" in f)
@@ -304,28 +364,41 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       update.dinner_address_slot = Number(f.dinner_address_slot) === 2 ? 2 : 1;
     if ("size" in f) {
       if (f.size !== "s" && f.size !== "m")
-        return NextResponse.json({ ok: false, error: "Invalid size" }, { status: 400 });
+        return NextResponse.json(
+          { ok: false, error: "Invalid size" },
+          { status: 400 },
+        );
       update.size = f.size;
     }
     // Money/quota/date fields — editable per owner request. NOTE: raw edits here
     // do NOT re-post or adjust accounting journals; books can drift.
     if ("order_type" in f) update.order_type = String(f.order_type);
     if ("package_size" in f) update.package_size = Number(f.package_size);
-    if ("portions_remaining" in f) update.portions_remaining = Number(f.portions_remaining);
-    if ("price_per_portion" in f) update.price_per_portion = Number(f.price_per_portion);
+    if ("portions_remaining" in f)
+      update.portions_remaining = Number(f.portions_remaining);
+    if ("price_per_portion" in f)
+      update.price_per_portion = Number(f.price_per_portion);
     if ("total_price" in f) update.total_price = Number(f.total_price);
-    if ("start_date" in f && f.start_date) update.start_date = String(f.start_date);
+    if ("start_date" in f && f.start_date)
+      update.start_date = String(f.start_date);
     if ("paid_at" in f) update.paid_at = f.paid_at ? String(f.paid_at) : null;
 
     const { error } = await db.from("orders").update(update).eq("id", body.id);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error)
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
     return NextResponse.json({ ok: true });
   }
 
   if (body.action === "update_status") {
     const SAFE_STATUSES = ["paused", "completed", "cancelled_by_admin"];
     if (!body.status || !SAFE_STATUSES.includes(body.status))
-      return NextResponse.json({ ok: false, error: "Invalid status" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid status" },
+        { status: 400 },
+      );
     const now = new Date().toISOString();
     const update: Database["public"]["Tables"]["orders"]["Update"] = {
       status: body.status,
@@ -334,18 +407,27 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     if (body.status === "completed") update.completed_at = now;
     if (body.status === "cancelled_by_admin") update.cancelled_at = now;
     const { error } = await db.from("orders").update(update).eq("id", body.id);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error)
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
     return NextResponse.json({ ok: true });
   }
 
   // Fetch order + customer in one query
   const { data: order, error: fetchErr } = await db
     .from("orders")
-    .select("id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers(name, phone_number)")
+    .select(
+      "id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers(name, phone_number)",
+    )
     .eq("id", body.id)
     .single();
   if (fetchErr || !order)
-    return NextResponse.json({ ok: false, error: "Order not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Order not found" },
+      { status: 404 },
+    );
 
   // Update order status
   const { error: updateErr } = await db
@@ -353,24 +435,38 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .update({ status: "active", paid_at: new Date().toISOString() })
     .eq("id", body.id);
   if (updateErr)
-    return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: updateErr.message },
+      { status: 500 },
+    );
 
   // Record conversion on first payment (fire-and-forget)
   const convCustomerId = order.customer_id;
   if (convCustomerId) {
     Promise.resolve(
-      db.from("customers").select("converted_at").eq("id", convCustomerId).single(),
-    ).then(({ data: cust }) => {
-      if (cust && !cust.converted_at) {
-        const pkgSize = order.package_size ?? 0;
-        return db.from("customers").update({
-          converted_at: new Date().toISOString(),
-          total_portions: pkgSize,
-          total_payment: order.total_price ?? 0,
-          package: pkgSize > 0 ? `${pkgSize} porsi` : null,
-        }).eq("id", convCustomerId);
-      }
-    }).catch((err: unknown) => console.error("[mark_paid] conversion record error:", err));
+      db
+        .from("customers")
+        .select("converted_at")
+        .eq("id", convCustomerId)
+        .single(),
+    )
+      .then(({ data: cust }) => {
+        if (cust && !cust.converted_at) {
+          const pkgSize = order.package_size ?? 0;
+          return db
+            .from("customers")
+            .update({
+              converted_at: new Date().toISOString(),
+              total_portions: pkgSize,
+              total_payment: order.total_price ?? 0,
+              package: pkgSize > 0 ? `${pkgSize} porsi` : null,
+            })
+            .eq("id", convCustomerId);
+        }
+      })
+      .catch((err: unknown) =>
+        console.error("[mark_paid] conversion record error:", err),
+      );
   }
 
   // Journal: Dr Bank BCA / Cr Uang Muka Pelanggan (full order value)
@@ -388,7 +484,9 @@ export async function PATCH(req: NextRequest): Promise<Response> {
 
   // Generate today's delivery row if today falls within the order date range and is a weekday
   {
-    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+    const todayStr = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Jakarta",
+    });
     const dow = new Date(todayStr).getUTCDay(); // 0=Sun 6=Sat
     const isWeekday = dow >= 1 && dow <= 5;
     const inRange =
@@ -396,16 +494,36 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       (!order.end_date || todayStr <= order.end_date);
 
     if (isWeekday && inRange) {
-      type MealRow = { meal_type: "lunch" | "dinner"; portions: number; address_slot: number };
+      type MealRow = {
+        meal_type: "lunch" | "dinner";
+        portions: number;
+        address_slot: number;
+      };
       const meals: MealRow[] = [];
       const pref = order.meal_time_preference;
       if (pref === "lunch_only" || pref === "default_lunch") {
-        meals.push({ meal_type: "lunch", portions: order.portions_lunch ?? order.portions_per_delivery ?? 1, address_slot: order.lunch_address_slot ?? 1 });
+        meals.push({
+          meal_type: "lunch",
+          portions: order.portions_lunch ?? order.portions_per_delivery ?? 1,
+          address_slot: order.lunch_address_slot ?? 1,
+        });
       } else if (pref === "dinner_only" || pref === "default_dinner") {
-        meals.push({ meal_type: "dinner", portions: order.portions_dinner ?? order.portions_per_delivery ?? 1, address_slot: order.dinner_address_slot ?? 1 });
+        meals.push({
+          meal_type: "dinner",
+          portions: order.portions_dinner ?? order.portions_per_delivery ?? 1,
+          address_slot: order.dinner_address_slot ?? 1,
+        });
       } else if (pref === "both_fixed") {
-        meals.push({ meal_type: "lunch", portions: order.portions_lunch ?? 1, address_slot: order.lunch_address_slot ?? 1 });
-        meals.push({ meal_type: "dinner", portions: order.portions_dinner ?? 1, address_slot: order.dinner_address_slot ?? 1 });
+        meals.push({
+          meal_type: "lunch",
+          portions: order.portions_lunch ?? 1,
+          address_slot: order.lunch_address_slot ?? 1,
+        });
+        meals.push({
+          meal_type: "dinner",
+          portions: order.portions_dinner ?? 1,
+          address_slot: order.dinner_address_slot ?? 1,
+        });
       }
       // per_day_decision and custom_schedule: customer decides day-by-day, skip auto-generation
 
@@ -413,28 +531,58 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         Promise.all(
           meals.map(({ meal_type, portions, address_slot }) =>
             db.from("daily_deliveries").upsert(
-              { order_id: body.id, customer_id: order.customer_id, delivery_date: todayStr, meal_type, portions, subcontractor_id: order.subcontractor_id ?? null, status: "scheduled", address_slot },
-              { onConflict: "order_id,delivery_date,meal_type", ignoreDuplicates: true },
-            )
-          )
-        ).catch((err) => console.error("[mark_paid] delivery generation error:", err));
+              {
+                order_id: body.id,
+                customer_id: order.customer_id,
+                delivery_date: todayStr,
+                meal_type,
+                portions,
+                subcontractor_id: order.subcontractor_id ?? null,
+                status: "scheduled",
+                address_slot,
+              },
+              {
+                onConflict: "order_id,delivery_date,meal_type",
+                ignoreDuplicates: true,
+              },
+            ),
+          ),
+        ).catch((err) =>
+          console.error("[mark_paid] delivery generation error:", err),
+        );
       }
     }
   }
 
   // Send WhatsApp confirmation
   const rawCustomer = order.customers;
-  const customer = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer) as {
+  const customer = (
+    Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
+  ) as {
     name: string | null;
     phone_number: string;
   } | null;
-  console.log("[mark_paid] customer:", JSON.stringify(customer), "customer_id:", order.customer_id);
+  console.log(
+    "[mark_paid] customer:",
+    JSON.stringify(customer),
+    "customer_id:",
+    order.customer_id,
+  );
   if (customer?.phone_number && order.customer_id) {
     const firstName = (customer.name ?? "").split(" ")[0] || "kak";
     const msg = `Halo kak ${firstName}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉`;
     try {
-      await saveMessage({ customerId: order.customer_id, role: "assistant", content: msg });
-      await sendTextMessage(customer.phone_number, msg);
+      const conversationId = await saveMessage({
+        customerId: order.customer_id,
+        role: "assistant",
+        content: msg,
+      });
+      const messageId = await sendTextMessage(customer.phone_number, msg);
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: messageId,
+        status: "sent",
+      });
       console.log("[mark_paid] WhatsApp sent to", customer.phone_number);
     } catch (err) {
       console.error("[mark_paid] WhatsApp send failed:", err);
@@ -450,21 +598,36 @@ export async function DELETE(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const body = (await req.json()) as { id?: string };
   if (!body.id)
-    return NextResponse.json({ ok: false, error: "Missing order id" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing order id" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
 
-  const delDeliveries = await db.from("daily_deliveries").delete().eq("order_id", body.id);
+  const delDeliveries = await db
+    .from("daily_deliveries")
+    .delete()
+    .eq("order_id", body.id);
   if (delDeliveries.error)
-    return NextResponse.json({ ok: false, error: delDeliveries.error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: delDeliveries.error.message },
+      { status: 500 },
+    );
 
   const delOrder = await db.from("orders").delete().eq("id", body.id);
   if (delOrder.error)
-    return NextResponse.json({ ok: false, error: delOrder.error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: delOrder.error.message },
+      { status: 500 },
+    );
 
   return NextResponse.json({ ok: true });
 }

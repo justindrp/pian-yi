@@ -1,9 +1,18 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
-import { getNeighborhoods, getSetting, getTemplate } from "@/lib/cache/settings";
+import {
+  getNeighborhoods,
+  getSetting,
+  getTemplate,
+} from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
-import { loadHistory, saveMessage } from "@/lib/claude/conversation";
+import {
+  loadHistory,
+  saveMessage,
+  updateMessageReceipt,
+  type WhatsAppMessageStatus,
+} from "@/lib/claude/conversation";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
@@ -20,12 +29,38 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
-import { downloadMedia, sendImageByUrl, sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
+import {
+  downloadMedia,
+  sendImageByUrl,
+  sendTextMessage,
+  sendTypingIndicator,
+} from "@/lib/whatsapp/client";
 import {
   parseMessage,
+  parseStatusUpdates,
   type WhatsAppWebhookPayload,
 } from "@/lib/whatsapp/types";
 import { verifySignature } from "@/lib/whatsapp/webhook";
+
+function normalizeWhatsAppStatus(status: string): WhatsAppMessageStatus | null {
+  switch (status) {
+    case "sent":
+    case "delivered":
+    case "read":
+    case "failed":
+      return status;
+    default:
+      return null;
+  }
+}
+
+function toStatusTimestamp(timestamp?: string): string {
+  const unixSeconds = Number(timestamp);
+  if (!Number.isFinite(unixSeconds)) {
+    return new Date().toISOString();
+  }
+  return new Date(unixSeconds * 1000).toISOString();
+}
 
 export async function GET(req: NextRequest): Promise<Response> {
   const { searchParams } = new URL(req.url);
@@ -58,6 +93,20 @@ export async function POST(req: NextRequest): Promise<Response> {
 export async function processWebhookAsync(
   payload: WhatsAppWebhookPayload,
 ): Promise<void> {
+  const statusUpdates = parseStatusUpdates(payload);
+  if (statusUpdates.length > 0) {
+    for (const statusUpdate of statusUpdates) {
+      const normalizedStatus = normalizeWhatsAppStatus(statusUpdate.status);
+      if (!normalizedStatus) continue;
+      await updateMessageReceipt({
+        messageId: statusUpdate.messageId,
+        status: normalizedStatus,
+        statusUpdatedAt: toStatusTimestamp(statusUpdate.timestamp),
+      });
+    }
+    return;
+  }
+
   const message = parseMessage(payload);
   if (!message) return;
 
@@ -163,7 +212,9 @@ export async function processWebhookAsync(
   // Check flags
   const { data: flags } = await db
     .from("customer_flags")
-    .select("escalated_to_human, is_blacklisted, pending_bot_response, pending_bot_question")
+    .select(
+      "escalated_to_human, is_blacklisted, pending_bot_response, pending_bot_question",
+    )
     .eq("customer_id", customerId)
     .single();
 
@@ -176,7 +227,9 @@ export async function processWebhookAsync(
         : message.type === "image"
           ? "[Image]"
           : `[${message.type}]`;
-    const escalatedIntent = await classifyIntent(escalatedText).catch(() => "other");
+    const escalatedIntent = await classifyIntent(escalatedText).catch(
+      () => "other",
+    );
     await saveMessage({
       customerId,
       role: "user",
@@ -207,7 +260,9 @@ export async function processWebhookAsync(
         : message.type === "image"
           ? "[Image]"
           : `[${message.type}]`;
-    const pendingIntent = await classifyIntent(pendingText).catch(() => "other");
+    const pendingIntent = await classifyIntent(pendingText).catch(
+      () => "other",
+    );
     await saveMessage({
       customerId,
       role: "user",
@@ -234,7 +289,12 @@ export async function processWebhookAsync(
   // Payment proof: capture image when customer is awaiting payment
   if (message.type === "image" && message.imageId) {
     if (stateRow?.state === "awaiting_payment") {
-      await handlePaymentProofImage(message, customerId, customer.name, message.from);
+      await handlePaymentProofImage(
+        message,
+        customerId,
+        customer.name,
+        message.from,
+      );
       await db
         .from("processed_messages")
         .update({ processed_at: new Date().toISOString() })
@@ -252,11 +312,14 @@ export async function processWebhookAsync(
   // Non-text messages
   let text: string;
   if (message.type === "location") {
-    const parts = [message.locationName, message.locationAddress].filter(Boolean);
+    const parts = [message.locationName, message.locationAddress].filter(
+      Boolean,
+    );
     let zoneNote = "";
     const { locationLat: lat, locationLng: lng } = message;
     if (lat !== undefined && lng !== undefined) {
-      const inBsd = lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
+      const inBsd =
+        lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
       if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
     }
     text = `[Lokasi dibagikan: ${parts.join(", ")}${zoneNote}]`;
@@ -334,19 +397,25 @@ export async function processWebhookAsync(
   // Casual mode coin flip
   const casualProbRaw = await getSetting("casual_mode_probability");
   const casualProb = Number.parseFloat(casualProbRaw) || 0.5;
-  const casual = Math.random() < casualProb;
+  const _casual = Math.random() < casualProb;
 
   // Detect Maps link in current message or history so we can inject it explicitly
-  const mapsLinkRegex = /https?:\/\/(?:maps\.app\.goo\.gl|maps\.google\.com\/maps|goo\.gl\/maps)\S*/;
+  const mapsLinkRegex =
+    /https?:\/\/(?:maps\.app\.goo\.gl|maps\.google\.com\/maps|goo\.gl\/maps)\S*/;
   let detectedMapsLink: string | null = text.match(mapsLinkRegex)?.[0] ?? null;
   if (!detectedMapsLink) {
     for (const msg of history) {
       if (msg.role !== "user") continue;
       const msgText = Array.isArray(msg.content)
-        ? msg.content.map((b) => (typeof b === "object" && "text" in b ? b.text : "")).join(" ")
+        ? msg.content
+            .map((b) => (typeof b === "object" && "text" in b ? b.text : ""))
+            .join(" ")
         : String(msg.content);
       const found = msgText.match(mapsLinkRegex)?.[0];
-      if (found) { detectedMapsLink = found; break; }
+      if (found) {
+        detectedMapsLink = found;
+        break;
+      }
     }
   }
 
@@ -361,15 +430,31 @@ export async function processWebhookAsync(
       .select("customer_id");
 
     if (claimed && claimed.length > 0) {
-      const [welcomeText, priceListUrl, deadlineHour, { data: welcomeSubs }, { data: tier20 }] = await Promise.all([
+      const [
+        welcomeText,
+        priceListUrl,
+        deadlineHour,
+        { data: welcomeSubs },
+        { data: tier20 },
+      ] = await Promise.all([
         getSetting("welcome_message"),
         getSetting("price_list_image_url"),
         getSetting("order_deadline_hour"),
-        db.from("subcontractors").select("customer_nickname, menu_image_url, delivery_areas").eq("is_active", true).not("menu_image_url", "is", null),
-        db.from("pricing_tiers").select("price_per_portion").eq("portions", 20).maybeSingle(),
+        db
+          .from("subcontractors")
+          .select("customer_nickname, menu_image_url, delivery_areas")
+          .eq("is_active", true)
+          .not("menu_image_url", "is", null),
+        db
+          .from("pricing_tiers")
+          .select("price_per_portion")
+          .eq("portions", 20)
+          .maybeSingle(),
       ]);
 
-      const activeDapurs = (welcomeSubs ?? []).filter((s) => s.customer_nickname);
+      const activeDapurs = (welcomeSubs ?? []).filter(
+        (s) => s.customer_nickname,
+      );
       const n = activeDapurs.length;
       const dapurListText =
         n === 0
@@ -378,21 +463,31 @@ export async function processWebhookAsync(
             ? `Kami ada 1 dapur dengan 1 menu:\n• ${activeDapurs[0].customer_nickname}`
             : `Kami ada ${n} dapur dengan ${n} menu berbeda:\n${activeDapurs.map((s) => `• ${s.customer_nickname}`).join("\n")}`;
 
-      const uniqueAreas = [...new Set(activeDapurs.flatMap((s) => (s as { delivery_areas?: string[] | null }).delivery_areas ?? []))].sort();
+      const uniqueAreas = [
+        ...new Set(
+          activeDapurs.flatMap(
+            (s) =>
+              (s as { delivery_areas?: string[] | null }).delivery_areas ?? [],
+          ),
+        ),
+      ].sort();
       const areasText =
         uniqueAreas.length <= 1
           ? (uniqueAreas[0] ?? "")
           : `${uniqueAreas.slice(0, -1).join(", ")}, dan ${uniqueAreas[uniqueAreas.length - 1]}`;
 
-      const price20Text = tier20 ? `${Math.round(tier20.price_per_portion / 1000)}RB` : "";
+      const price20Text = tier20
+        ? `${Math.round(tier20.price_per_portion / 1000)}RB`
+        : "";
       const deadlineText = deadlineHour ? `${deadlineHour}.00` : "";
 
-      const resolvedWelcome = (welcomeText ?? "")
-        .replace("{{dapur_list}}", dapurListText)
-        .replace("{{delivery_areas}}", areasText)
-        .replace("{{price_20}}", price20Text)
-        .replace("{{order_deadline}}", deadlineText)
-        .trim() || dapurListText;
+      const resolvedWelcome =
+        (welcomeText ?? "")
+          .replace("{{dapur_list}}", dapurListText)
+          .replace("{{delivery_areas}}", areasText)
+          .replace("{{price_20}}", price20Text)
+          .replace("{{order_deadline}}", deadlineText)
+          .trim() || dapurListText;
 
       // Save the incoming message first so it sorts before the welcome replies.
       await saveMessage({
@@ -409,25 +504,75 @@ export async function processWebhookAsync(
       // Send welcome sequence and log each outbound message to the inbox so the
       // greeting and menu images are visible in the dashboard conversation view.
       if (resolvedWelcome) {
-        await sendTextMessage(message.from, resolvedWelcome);
-        await saveMessage({ customerId, role: "assistant", content: resolvedWelcome, modelUsed: "system" });
+        const conversationId = await saveMessage({
+          customerId,
+          role: "assistant",
+          content: resolvedWelcome,
+          modelUsed: "system",
+        });
+        const whatsappMessageId = await sendTextMessage(
+          message.from,
+          resolvedWelcome,
+        );
+        await updateMessageReceipt({
+          conversationId,
+          whatsappMessageId,
+          status: "sent",
+        });
       }
       if (priceListUrl) {
         try {
-          await sendImageByUrl(message.from, priceListUrl, "Harga & Area Pengiriman");
+          const conversationId = await saveMessage({
+            customerId,
+            role: "assistant",
+            content: priceListUrl,
+            messageType: "image",
+            modelUsed: "system",
+          });
+          const whatsappMessageId = await sendImageByUrl(
+            message.from,
+            priceListUrl,
+            "Harga & Area Pengiriman",
+          );
+          await updateMessageReceipt({
+            conversationId,
+            whatsappMessageId,
+            status: "sent",
+          });
         } catch (e) {
-          console.error("[welcome] price list send failed — url:", priceListUrl?.slice(0, 120), "error:", e);
+          console.error(
+            "[welcome] price list send failed — url:",
+            priceListUrl?.slice(0, 120),
+            "error:",
+            e,
+          );
         }
-        await saveMessage({ customerId, role: "assistant", content: priceListUrl, messageType: "image", modelUsed: "system" });
       }
       for (const sub of welcomeSubs ?? []) {
         if (sub.menu_image_url) {
           try {
-            await sendImageByUrl(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
+            const conversationId = await saveMessage({
+              customerId,
+              role: "assistant",
+              content: sub.menu_image_url,
+              messageType: "image",
+              modelUsed: "system",
+            });
+            const whatsappMessageId = await sendImageByUrl(
+              message.from,
+              sub.menu_image_url,
+              sub.customer_nickname
+                ? `Menu ${sub.customer_nickname}`
+                : "Menu Dapur",
+            );
+            await updateMessageReceipt({
+              conversationId,
+              whatsappMessageId,
+              status: "sent",
+            });
           } catch (e) {
             console.error("[welcome] menu image send failed:", e);
           }
-          await saveMessage({ customerId, role: "assistant", content: sub.menu_image_url, messageType: "image", modelUsed: "system" });
         }
       }
 
@@ -545,9 +690,7 @@ export async function processSavedCustomerMessage(params: {
       if (msg.role !== "user") continue;
       const msgText = Array.isArray(msg.content)
         ? msg.content
-            .map((b) =>
-              typeof b === "object" && "text" in b ? b.text : "",
-            )
+            .map((b) => (typeof b === "object" && "text" in b ? b.text : ""))
             .join(" ")
         : String(msg.content);
       const found = msgText.match(mapsLinkRegex)?.[0];
@@ -562,12 +705,16 @@ export async function processSavedCustomerMessage(params: {
   const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
     db
       .from("subcontractors")
-      .select("id, customer_nickname, menu_image_url, menu_text, delivery_areas")
+      .select(
+        "id, customer_nickname, menu_image_url, menu_text, delivery_areas",
+      )
       .eq("is_active", true)
       .not("customer_nickname", "is", null),
     db
       .from("orders")
-      .select("id, portions_remaining, package_size, portions_per_delivery, meal_time_preference")
+      .select(
+        "id, portions_remaining, package_size, portions_per_delivery, meal_time_preference",
+      )
       .eq("customer_id", customerId)
       .eq("status", "active")
       .order("created_at", { ascending: false })
@@ -575,7 +722,15 @@ export async function processSavedCustomerMessage(params: {
       .maybeSingle(),
   ]);
   const rawSubs = (activeSubs ?? []).filter(
-    (s): s is { id: string; customer_nickname: string; menu_image_url: string | null; menu_text: string | null; delivery_areas: string[] | null } => s.customer_nickname !== null,
+    (
+      s,
+    ): s is {
+      id: string;
+      customer_nickname: string;
+      menu_image_url: string | null;
+      menu_text: string | null;
+      delivery_areas: string[] | null;
+    } => s.customer_nickname !== null,
   );
   // Only offer a dapur if its menu image has been uploaded
   const dapurOptions = rawSubs
@@ -583,8 +738,13 @@ export async function processSavedCustomerMessage(params: {
     .map((s) => ({ id: s.id, nickname: s.customer_nickname }));
   const dapurMenuTexts = rawSubs
     .filter((s) => !!s.menu_image_url && !!s.menu_text)
-    .map((s) => ({ nickname: s.customer_nickname, menuText: s.menu_text as string }));
-  const servedAreas = [...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? []))].sort();
+    .map((s) => ({
+      nickname: s.customer_nickname,
+      menuText: s.menu_text as string,
+    }));
+  const servedAreas = [
+    ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
+  ].sort();
   const neighborhoods = await getNeighborhoods();
   const activeOrder = activeOrderRow
     ? {
@@ -626,10 +786,37 @@ export async function processSavedCustomerMessage(params: {
           portions_lunch: { type: "number" },
           portions_dinner: { type: "number" },
           address: { type: "string" },
-          maps_link: { type: "string", description: "Google Maps link provided by the customer" },
-          area: { type: "string", enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Karawaci"] },
-          sub_area: { type: "string", description: "Sub-location within the area: district name for houses, apartment name for apartments, building name for offices" },
-          meal_time_preference: { type: "string", enum: ["lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule"] },
+          maps_link: {
+            type: "string",
+            description: "Google Maps link provided by the customer",
+          },
+          area: {
+            type: "string",
+            enum: [
+              "BSD Baru",
+              "BSD Lama",
+              "Gading Serpong",
+              "Alam Sutera",
+              "Karawaci",
+            ],
+          },
+          sub_area: {
+            type: "string",
+            description:
+              "Sub-location within the area: district name for houses, apartment name for apartments, building name for offices",
+          },
+          meal_time_preference: {
+            type: "string",
+            enum: [
+              "lunch_only",
+              "dinner_only",
+              "both_fixed",
+              "per_day_decision",
+              "default_lunch",
+              "default_dinner",
+              "custom_schedule",
+            ],
+          },
           custom_schedule: { type: "object" },
           start_date: {
             type: "string",
@@ -637,16 +824,19 @@ export async function processSavedCustomerMessage(params: {
           },
           end_date: {
             type: "string",
-            description: "ISO date string YYYY-MM-DD — the customer's requested last delivery date",
+            description:
+              "ISO date string YYYY-MM-DD — the customer's requested last delivery date",
           },
           subcontractor_id: {
             type: "string",
-            description: "UUID of the chosen dapur (from the dapur ID mapping in the system prompt)",
+            description:
+              "UUID of the chosen dapur (from the dapur ID mapping in the system prompt)",
           },
           size: {
             type: "string",
             enum: ["s"],
-            description: "Package size. Current customer-facing chatbot orders must use s; do not ask the customer about M.",
+            description:
+              "Package size. Current customer-facing chatbot orders must use s; do not ask the customer about M.",
           },
         },
         required: [
@@ -670,7 +860,8 @@ export async function processSavedCustomerMessage(params: {
         properties: {
           delivery_date: {
             type: "string",
-            description: "ISO date string YYYY-MM-DD — the requested delivery date (tomorrow unless customer specifies otherwise)",
+            description:
+              "ISO date string YYYY-MM-DD — the requested delivery date (tomorrow unless customer specifies otherwise)",
           },
           meal_type: {
             type: "string",
@@ -678,7 +869,8 @@ export async function processSavedCustomerMessage(params: {
           },
           portions: {
             type: "number",
-            description: "Total portions to deduct from quota (e.g. 2 for 1-portion keduanya order — 1 lunch + 1 dinner)",
+            description:
+              "Total portions to deduct from quota (e.g. 2 for 1-portion keduanya order — 1 lunch + 1 dinner)",
           },
           notes: { type: "string" },
         },
@@ -692,7 +884,11 @@ export async function processSavedCustomerMessage(params: {
       input_schema: {
         type: "object",
         properties: {
-          question: { type: "string", description: "The customer's question or the situation the bot is unsure about" },
+          question: {
+            type: "string",
+            description:
+              "The customer's question or the situation the bot is unsure about",
+          },
         },
         required: ["question"],
       },
@@ -761,6 +957,8 @@ export async function processSavedCustomerMessage(params: {
 
   if (!replyText && !toolUse) return;
 
+  let replyConversationId: string | null = null;
+
   // Echo detection
   if (replyText) {
     const isEcho = await detectEcho(customerId, replyText);
@@ -777,7 +975,7 @@ export async function processSavedCustomerMessage(params: {
   }
 
   if (replyText) {
-    await saveMessage({
+    const savedReplyId = await saveMessage({
       customerId,
       role: "assistant",
       content: replyText,
@@ -785,6 +983,7 @@ export async function processSavedCustomerMessage(params: {
       inputTokens: claudeResponse.usage.input_tokens,
       outputTokens: claudeResponse.usage.output_tokens,
     });
+    replyConversationId = savedReplyId;
   }
 
   // Update token count
@@ -818,7 +1017,12 @@ export async function processSavedCustomerMessage(params: {
       await sendTypingIndicator(phone, messageId);
     }
     await sleep(delay);
-    await sendTextMessage(phone, replyText);
+    const whatsappMessageId = await sendTextMessage(phone, replyText);
+    await updateMessageReceipt({
+      conversationId: replyConversationId,
+      whatsappMessageId,
+      status: "sent",
+    });
   }
 }
 
@@ -835,7 +1039,10 @@ async function handleSubcontractorMessage(
     try {
       imageBuffer = await downloadMedia(message.imageId);
     } catch (err) {
-      console.error("[webhook] failed to download media:", (err as Error).message);
+      console.error(
+        "[webhook] failed to download media:",
+        (err as Error).message,
+      );
       return;
     }
 
@@ -844,7 +1051,10 @@ async function handleSubcontractorMessage(
     const storagePath = `${subcontractorId}/${today}/${message.messageId}.jpg`;
     const { error: uploadErr } = await db.storage
       .from("delivery-proofs")
-      .upload(storagePath, imageBuffer, { contentType: "image/jpeg", upsert: false });
+      .upload(storagePath, imageBuffer, {
+        contentType: "image/jpeg",
+        upsert: false,
+      });
 
     if (uploadErr) {
       console.error("[webhook] storage upload failed:", uploadErr.message);
@@ -898,15 +1108,26 @@ async function handlePaymentProofImage(
       const storagePath = `${customerId}/${today}/${message.messageId}.jpg`;
       const { error: uploadErr } = await db.storage
         .from("payment-proofs")
-        .upload(storagePath, imageBuffer, { contentType: "image/jpeg", upsert: false });
+        .upload(storagePath, imageBuffer, {
+          contentType: "image/jpeg",
+          upsert: false,
+        });
       if (!uploadErr) {
-        const { data: urlData } = db.storage.from("payment-proofs").getPublicUrl(storagePath);
+        const { data: urlData } = db.storage
+          .from("payment-proofs")
+          .getPublicUrl(storagePath);
         imageUrl = urlData.publicUrl;
       } else {
-        console.error("[webhook] payment proof upload failed:", uploadErr.message);
+        console.error(
+          "[webhook] payment proof upload failed:",
+          uploadErr.message,
+        );
       }
     } catch (err) {
-      console.error("[webhook] payment proof download failed:", (err as Error).message);
+      console.error(
+        "[webhook] payment proof download failed:",
+        (err as Error).message,
+      );
     }
   }
 
@@ -918,7 +1139,10 @@ async function handlePaymentProofImage(
 
   await db
     .from("customer_state")
-    .update({ state: "payment_proof_received", updated_at: new Date().toISOString() })
+    .update({
+      state: "payment_proof_received",
+      updated_at: new Date().toISOString(),
+    })
     .eq("customer_id", customerId);
 
   await saveMessage({
@@ -932,8 +1156,18 @@ async function handlePaymentProofImage(
 
   const confirmMsg =
     "Terima kasih kak! Bukti pembayaran sudah kami terima ya. Kami akan segera memverifikasi pembayaranmu dan menghubungimu kembali.";
-  await saveMessage({ customerId, role: "assistant", content: confirmMsg, modelUsed: "human" });
-  await sendTextMessage(phone, confirmMsg);
+  const conversationId = await saveMessage({
+    customerId,
+    role: "assistant",
+    content: confirmMsg,
+    modelUsed: "human",
+  });
+  const whatsappMessageId = await sendTextMessage(phone, confirmMsg);
+  await updateMessageReceipt({
+    conversationId,
+    whatsappMessageId,
+    status: "sent",
+  });
 
   await sendPushToAllAdmins(
     `Bukti bayar diterima — ${customerName ?? phone}`,
@@ -1015,7 +1249,10 @@ async function handleToolUse(
     const oldRemaining = existingCustomer?.portions_remaining ?? 0;
     const oldAvg = existingCustomer?.avg_price_per_portion ?? 0;
     const newRemaining = oldRemaining + input.package_size;
-    const newAvg = Math.round((oldRemaining * oldAvg + input.package_size * pricePerPortion) / newRemaining);
+    const newAvg = Math.round(
+      (oldRemaining * oldAvg + input.package_size * pricePerPortion) /
+        newRemaining,
+    );
 
     // Classify address type then update customer record
     const addressType = await classifyAddress(input.address);
@@ -1030,7 +1267,9 @@ async function handleToolUse(
         portions_remaining: newRemaining,
         avg_price_per_portion: newAvg,
         ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
-        ...(input.subcontractor_id ? { subcontractor_id: input.subcontractor_id } : {}),
+        ...(input.subcontractor_id
+          ? { subcontractor_id: input.subcontractor_id }
+          : {}),
       })
       .eq("id", customerId);
 
@@ -1050,8 +1289,18 @@ async function handleToolUse(
     ]);
     const displayName = input.customer_name.split(" ")[0];
     const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
-    await saveMessage({ customerId, role: "assistant", content: paymentMsg, modelUsed: "sonnet-4-6" });
-    await sendTextMessage(phone, paymentMsg);
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: paymentMsg,
+      modelUsed: "sonnet-4-6",
+    });
+    const whatsappMessageId = await sendTextMessage(phone, paymentMsg);
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId,
+      status: "sent",
+    });
   } else if (tool.name === "record_daily_order") {
     const input = tool.input as {
       delivery_date: string;
@@ -1063,9 +1312,29 @@ async function handleToolUse(
     // Prefer the order whose meal_time_preference matches the requested meal type.
     // Falls back to newest active order for customers with a single combined order.
     const mealPrefs: Record<"lunch" | "dinner" | "both", string[]> = {
-      lunch: ["lunch_only", "both_fixed", "per_day_decision", "default_lunch", "custom_schedule"],
-      dinner: ["dinner_only", "both_fixed", "per_day_decision", "default_dinner", "custom_schedule"],
-      both: ["lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule"],
+      lunch: [
+        "lunch_only",
+        "both_fixed",
+        "per_day_decision",
+        "default_lunch",
+        "custom_schedule",
+      ],
+      dinner: [
+        "dinner_only",
+        "both_fixed",
+        "per_day_decision",
+        "default_dinner",
+        "custom_schedule",
+      ],
+      both: [
+        "lunch_only",
+        "dinner_only",
+        "both_fixed",
+        "per_day_decision",
+        "default_lunch",
+        "default_dinner",
+        "custom_schedule",
+      ],
     };
     const { data: matchedOrder } = await db
       .from("orders")
@@ -1089,12 +1358,18 @@ async function handleToolUse(
     const order = matchedOrder ?? fallbackOrder;
 
     if (!order) {
-      console.error("[webhook] record_daily_order: no active order for customer", customerId);
+      console.error(
+        "[webhook] record_daily_order: no active order for customer",
+        customerId,
+      );
       return;
     }
 
     if (order.portions_remaining <= 0) {
-      console.warn("[webhook] record_daily_order: quota exhausted for order", order.id);
+      console.warn(
+        "[webhook] record_daily_order: quota exhausted for order",
+        order.id,
+      );
       return;
     }
 
@@ -1111,7 +1386,12 @@ async function handleToolUse(
 
     await db
       .from("orders")
-      .update({ portions_remaining: Math.max(0, order.portions_remaining - input.portions) })
+      .update({
+        portions_remaining: Math.max(
+          0,
+          order.portions_remaining - input.portions,
+        ),
+      })
       .eq("id", order.id);
 
     const { data: custQuota } = await db
@@ -1122,7 +1402,12 @@ async function handleToolUse(
     if (custQuota) {
       await db
         .from("customers")
-        .update({ portions_remaining: Math.max(0, custQuota.portions_remaining - input.portions) })
+        .update({
+          portions_remaining: Math.max(
+            0,
+            custQuota.portions_remaining - input.portions,
+          ),
+        })
         .eq("id", customerId);
     }
 
@@ -1136,10 +1421,16 @@ async function handleToolUse(
     const input = tool.input as { question: string };
     await db
       .from("customer_flags")
-      .update({ pending_bot_response: true, pending_bot_question: input.question })
+      .update({
+        pending_bot_response: true,
+        pending_bot_question: input.question,
+      })
       .eq("customer_id", customerId);
 
-    await sendTextMessage(phone, "Mohon tunggu sebentar kak, kami sedang cek dulu ya 🙏");
+    await sendTextMessage(
+      phone,
+      "Mohon tunggu sebentar kak, kami sedang cek dulu ya 🙏",
+    );
 
     await sendPushToAllAdmins(
       `Butuh jawaban — ${customerName ?? phone}`,

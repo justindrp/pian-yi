@@ -1,6 +1,6 @@
 import { getSetting } from "@/lib/cache/settings";
 import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
-import { saveMessage } from "@/lib/claude/conversation";
+import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendImageByUrl } from "@/lib/whatsapp/client";
@@ -19,9 +19,7 @@ async function getTodayDeliveries(
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
     .from("daily_deliveries")
-    .select(
-      "id, customer_id, meal_type, customers(name, phone_number, area)",
-    )
+    .select("id, customer_id, meal_type, customers(name, phone_number, area)")
     .eq("subcontractor_id", subcontractorId)
     .eq("delivery_date", today)
     .in("status", ["scheduled", "delivered_on_time", "delivered_late"]);
@@ -193,12 +191,17 @@ export async function sendDeliveryPhotoToCustomer(
   if (!signedData?.signedUrl) return;
 
   const caption = `Halo ${customerName}, pesanan ${mealType} hari ini sudah sampai ya 🍱 Selamat menikmati! 😊`;
-  await sendImageByUrl(phone, signedData.signedUrl, caption);
-  await saveMessage({
+  const conversationId = await saveMessage({
     customerId,
     role: "assistant",
     content: proof.image_url,
     messageType: "image",
     modelUsed: "human",
+  });
+  const messageId = await sendImageByUrl(phone, signedData.signedUrl, caption);
+  await updateMessageReceipt({
+    conversationId,
+    whatsappMessageId: messageId,
+    status: "sent",
   });
 }

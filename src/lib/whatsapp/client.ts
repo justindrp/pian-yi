@@ -3,14 +3,30 @@ import FormData from "form-data";
 import sharp from "sharp";
 
 const BASE_URL = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}`;
+type MetaSendResponse = {
+  messages?: Array<{
+    id?: string;
+  }>;
+};
 
 const headers = () => ({
   Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
   "Content-Type": "application/json",
 });
 
-export async function sendTextMessage(to: string, text: string): Promise<void> {
-  await axios.post(
+function getSentMessageId(data: MetaSendResponse): string {
+  const messageId = data.messages?.[0]?.id;
+  if (!messageId) {
+    throw new Error("WhatsApp send response missing message id");
+  }
+  return messageId;
+}
+
+export async function sendTextMessage(
+  to: string,
+  text: string,
+): Promise<string> {
+  const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
       messaging_product: "whatsapp",
@@ -21,14 +37,15 @@ export async function sendTextMessage(to: string, text: string): Promise<void> {
     },
     { headers: headers() },
   );
+  return getSentMessageId(res.data);
 }
 
 export async function sendImageMessage(
   to: string,
   imageUrl: string,
   caption: string,
-): Promise<void> {
-  await axios.post(
+): Promise<string> {
+  const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
       messaging_product: "whatsapp",
@@ -39,18 +56,26 @@ export async function sendImageMessage(
     },
     { headers: headers() },
   );
+  return getSentMessageId(res.data);
 }
 
-export async function uploadMediaToMeta(buffer: Buffer, mimeType: string): Promise<string> {
+export async function uploadMediaToMeta(
+  buffer: Buffer,
+  mimeType: string,
+): Promise<string> {
   const form = new FormData();
   form.append("messaging_product", "whatsapp");
   const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
-  form.append("file", buffer, { contentType: mimeType, filename: `image.${ext}` });
-  const res = await axios.post<{ id: string }>(
-    `${BASE_URL}/media`,
-    form,
-    { headers: { ...form.getHeaders(), Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } },
-  );
+  form.append("file", buffer, {
+    contentType: mimeType,
+    filename: `image.${ext}`,
+  });
+  const res = await axios.post<{ id: string }>(`${BASE_URL}/media`, form, {
+    headers: {
+      ...form.getHeaders(),
+      Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+    },
+  });
   return res.data.id;
 }
 
@@ -58,8 +83,8 @@ export async function sendImageMessageById(
   to: string,
   mediaId: string,
   caption: string,
-): Promise<void> {
-  await axios.post(
+): Promise<string> {
+  const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
       messaging_product: "whatsapp",
@@ -70,6 +95,7 @@ export async function sendImageMessageById(
     },
     { headers: headers() },
   );
+  return getSentMessageId(res.data);
 }
 
 export async function downloadMedia(mediaId: string): Promise<Buffer> {
@@ -89,7 +115,10 @@ export async function downloadMedia(mediaId: string): Promise<Buffer> {
   return Buffer.from(dlRes.data as ArrayBuffer);
 }
 
-export async function sendTypingIndicator(_to: string, messageId: string): Promise<void> {
+export async function sendTypingIndicator(
+  _to: string,
+  messageId: string,
+): Promise<void> {
   // Mark as read and show typing indicator in one request (per Meta API docs)
   await axios
     .post(
@@ -105,12 +134,18 @@ export async function sendTypingIndicator(_to: string, messageId: string): Promi
     .catch(() => {});
 }
 
-export async function sendImageByUrl(to: string, imageUrl: string, caption: string): Promise<void> {
+export async function sendImageByUrl(
+  to: string,
+  imageUrl: string,
+  caption: string,
+): Promise<string> {
   const res = await fetch(imageUrl);
   if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
   const raw = Buffer.from(await res.arrayBuffer());
   // Compress to JPEG ≤4MB so Meta's 5MB upload limit is never hit
-  const compressed = await sharp(raw).jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+  const compressed = await sharp(raw)
+    .jpeg({ quality: 85, mozjpeg: true })
+    .toBuffer();
   const mediaId = await uploadMediaToMeta(compressed, "image/jpeg");
-  await sendImageMessageById(to, mediaId, caption);
+  return sendImageMessageById(to, mediaId, caption);
 }

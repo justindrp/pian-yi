@@ -57,6 +57,34 @@ function getInboxImageSrc(
   return msg.content;
 }
 
+function getReceiptLabel(status: string | null) {
+  switch (status) {
+    case "read":
+      return "Read";
+    case "delivered":
+      return "Delivered";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    default:
+      return null;
+  }
+}
+
+function getReceiptClass(status: string | null) {
+  switch (status) {
+    case "read":
+      return "text-emerald-100";
+    case "delivered":
+      return "text-orange-100";
+    case "failed":
+      return "text-red-100";
+    default:
+      return "text-orange-100";
+  }
+}
+
 export default function InboxClient() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
@@ -583,6 +611,8 @@ export default function InboxClient() {
       media_id: null,
       input_tokens: null,
       output_tokens: null,
+      whatsapp_status: "sent",
+      whatsapp_status_updated_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimistic]);
 
@@ -993,8 +1023,12 @@ export default function InboxClient() {
                 intent?: string | null;
                 message_type?: string | null;
                 media_id?: string | null;
+                whatsapp_status?: string | null;
               };
               const imageSrc = getInboxImageSrc(msgWithExtras);
+              const receiptLabel = !isUser
+                ? getReceiptLabel(msgWithExtras.whatsapp_status ?? null)
+                : null;
               return (
                 <div
                   key={msg.id}
@@ -1040,6 +1074,15 @@ export default function InboxClient() {
                         msgWithExtras.intent !== "other" && (
                           <IntentBadge intent={msgWithExtras.intent} />
                         )}
+                      {!isUser && receiptLabel && (
+                        <span
+                          className={`text-[10px] ${getReceiptClass(
+                            msgWithExtras.whatsapp_status ?? null,
+                          )}`}
+                        >
+                          {receiptLabel}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

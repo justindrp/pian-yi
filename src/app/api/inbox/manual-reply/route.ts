@@ -9,14 +9,20 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const body = (await req.json()) as { customer_id: string; text: string };
   const { customer_id, text } = body;
 
   if (!customer_id || !text?.trim()) {
-    return NextResponse.json({ ok: false, error: "customer_id and text required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "customer_id and text required" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -28,7 +34,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (custErr || !customer) {
-    return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Customer not found" },
+      { status: 404 },
+    );
   }
 
   const { data: row, error: insertErr } = await db
@@ -38,15 +47,30 @@ export async function POST(req: NextRequest): Promise<Response> {
       role: "assistant",
       content: text.trim(),
       model_used: "human",
+      message_type: "text",
     })
     .select()
     .single();
 
   if (insertErr) {
-    return NextResponse.json({ ok: false, error: insertErr.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: insertErr.message },
+      { status: 500 },
+    );
   }
 
-  await sendTextMessage(customer.phone_number, text.trim());
+  const messageId = await sendTextMessage(customer.phone_number, text.trim());
+
+  const { data: updatedRow } = await db
+    .from("conversations")
+    .update({
+      message_id: messageId,
+      whatsapp_status: "sent",
+      whatsapp_status_updated_at: new Date().toISOString(),
+    })
+    .eq("id", row.id)
+    .select()
+    .single();
 
   await db
     .from("customer_flags")
@@ -57,7 +81,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     })
     .eq("customer_id", customer_id);
 
-  return NextResponse.json({ ok: true, row });
+  return NextResponse.json({ ok: true, row: updatedRow ?? row });
 }
 
 export const dynamic = "force-dynamic";

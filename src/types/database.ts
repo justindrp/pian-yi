@@ -292,6 +292,8 @@ export type Database = {
           model_used: string | null
           output_tokens: number | null
           role: string
+          whatsapp_status: string | null
+          whatsapp_status_updated_at: string | null
         }
         Insert: {
           content: string
@@ -306,6 +308,8 @@ export type Database = {
           model_used?: string | null
           output_tokens?: number | null
           role: string
+          whatsapp_status?: string | null
+          whatsapp_status_updated_at?: string | null
         }
         Update: {
           content?: string
@@ -320,6 +324,8 @@ export type Database = {
           model_used?: string | null
           output_tokens?: number | null
           role?: string
+          whatsapp_status?: string | null
+          whatsapp_status_updated_at?: string | null
         }
         Relationships: [
           {

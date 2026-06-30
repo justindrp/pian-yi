@@ -12,7 +12,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const form = await req.formData();
@@ -21,13 +24,22 @@ export async function POST(req: NextRequest): Promise<Response> {
   const caption = (form.get("caption") as string | null)?.trim() ?? "";
 
   if (!customerId || typeof customerId !== "string") {
-    return NextResponse.json({ ok: false, error: "customer_id required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "customer_id required" },
+      { status: 400 },
+    );
   }
   if (!file || !(file instanceof File)) {
-    return NextResponse.json({ ok: false, error: "file required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "file required" },
+      { status: 400 },
+    );
   }
   if (!file.type.startsWith("image/")) {
-    return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "File must be an image" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -39,7 +51,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (custErr || !customer) {
-    return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Customer not found" },
+      { status: 404 },
+    );
   }
 
   let image: UploadedImage;
@@ -55,10 +70,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   // Upload to Supabase for conversation history display
   const { error: uploadErr } = await db.storage
     .from("menu-images")
-    .upload(storagePath, image.buffer, { contentType: image.contentType, upsert: false });
+    .upload(storagePath, image.buffer, {
+      contentType: image.contentType,
+      upsert: false,
+    });
 
   if (uploadErr) {
-    return NextResponse.json({ ok: false, error: uploadErr.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: uploadErr.message },
+      { status: 500 },
+    );
   }
 
   const {
@@ -67,9 +88,14 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // Upload to Meta's media endpoint so they serve from their own CDN (link-based sending fails silently)
   let mediaId: string;
+  let messageId: string;
   try {
     mediaId = await uploadMediaToMeta(image.buffer, image.contentType);
-    await sendImageMessageById(customer.phone_number, mediaId, caption);
+    messageId = await sendImageMessageById(
+      customer.phone_number,
+      mediaId,
+      caption,
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "WhatsApp send failed";
     return NextResponse.json({ ok: false, error: msg }, { status: 502 });
@@ -81,14 +107,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       customer_id: customerId,
       role: "assistant",
       content: publicUrl,
+      message_id: messageId,
       message_type: "image",
       model_used: "human",
+      whatsapp_status: "sent",
+      whatsapp_status_updated_at: new Date().toISOString(),
     })
     .select()
     .single();
 
   if (insertErr) {
-    return NextResponse.json({ ok: false, error: insertErr.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: insertErr.message },
+      { status: 500 },
+    );
   }
 
   await db

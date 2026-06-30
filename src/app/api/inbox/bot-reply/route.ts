@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
-import { saveMessage } from "@/lib/claude/conversation";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -11,7 +11,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const body = (await req.json()) as {
@@ -23,10 +26,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   const { customer_id, admin_answer, polished_text, preview_only } = body;
 
   if (!customer_id) {
-    return NextResponse.json({ ok: false, error: "customer_id required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "customer_id required" },
+      { status: 400 },
+    );
   }
   if (!admin_answer?.trim() && !polished_text?.trim()) {
-    return NextResponse.json({ ok: false, error: "admin_answer or polished_text required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "admin_answer or polished_text required" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -38,7 +47,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (custErr || !customer) {
-    return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Customer not found" },
+      { status: 404 },
+    );
   }
 
   const { data: flags, error: flagErr } = await db
@@ -48,17 +60,28 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (flagErr || !flags?.pending_bot_response) {
-    return NextResponse.json({ ok: false, error: "No pending bot response for this customer" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "No pending bot response for this customer" },
+      { status: 400 },
+    );
   }
 
   // If admin confirmed a pre-approved polished_text, send directly without re-polishing
   if (polished_text?.trim()) {
-    await sendTextMessage(customer.phone_number, polished_text.trim());
-    await saveMessage({
+    const conversationId = await saveMessage({
       customerId: customer_id,
       role: "assistant",
       content: polished_text.trim(),
       modelUsed: HAIKU_MODEL,
+    });
+    const messageId = await sendTextMessage(
+      customer.phone_number,
+      polished_text.trim(),
+    );
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId: messageId,
+      status: "sent",
     });
     await db
       .from("customer_flags")
@@ -118,19 +141,26 @@ Rewrite ONLY the admin's note as the bot's reply:`,
   });
 
   const result =
-    polishResult.content[0].type === "text" ? polishResult.content[0].text.trim() : (admin_answer ?? "");
+    polishResult.content[0].type === "text"
+      ? polishResult.content[0].text.trim()
+      : (admin_answer ?? "");
 
   // Preview mode: return polished text without sending
   if (preview_only) {
     return NextResponse.json({ ok: true, preview: result });
   }
 
-  await sendTextMessage(customer.phone_number, result);
-  await saveMessage({
+  const conversationId = await saveMessage({
     customerId: customer_id,
     role: "assistant",
     content: result,
     modelUsed: HAIKU_MODEL,
+  });
+  const messageId = await sendTextMessage(customer.phone_number, result);
+  await updateMessageReceipt({
+    conversationId,
+    whatsappMessageId: messageId,
+    status: "sent",
   });
   await db
     .from("customer_flags")

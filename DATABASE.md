@@ -111,7 +111,7 @@ Custom instructions Annie adds via the Chatbot Training page. Active ones are ap
 
 ## conversations
 
-Full chat history between customers and the bot. Append-only — never updated or deleted.
+Full chat history between customers and the bot. Rows are inserted once; only WhatsApp delivery metadata (`message_id`, `whatsapp_status`, `whatsapp_status_updated_at`) may be backfilled or advanced later when an outbound send completes or Meta posts a receipt webhook.
 
 Inbox thread ordering and the `Unread` filter both derive from the latest `conversations` row per customer. A thread is considered unread in the dashboard when that latest row has `role = "user"`.
 
@@ -121,13 +121,15 @@ Inbox thread ordering and the `Unread` filter both derive from the latest `conve
 | customer_id | uuid | FK → customers |
 | role | text | "user" or "assistant" |
 | content | text | Message text. For image rows, this is usually the public image URL displayed by the Inbox |
-| message_id | text | WhatsApp message ID (for user messages) |
+| message_id | text | WhatsApp message ID. Inbound rows save this immediately; outbound rows backfill it after Meta accepts the send so status webhooks can match the row |
 | message_type | text | "text" or "image" |
 | media_id | text | WhatsApp media ID for inbound media; used by `/api/inbox/media/[mediaId]` proxy. Outbound/manual image rows usually keep this null and store the public URL in `content` |
 | intent | text | Haiku classification (e.g. "ordering", "inquiry") |
 | model_used | text | Which Claude model replied, "human" for manual/admin-assistant sends, or "system" for automated welcome/menu rows |
 | input_tokens | integer | Tokens consumed on input (assistant turns) |
 | output_tokens | integer | Tokens produced on output (assistant turns) |
+| whatsapp_status | text | Latest outbound WhatsApp receipt state for assistant rows: "sent", "delivered", "read", or "failed" |
+| whatsapp_status_updated_at | timestamptz | When `whatsapp_status` last changed |
 | created_at | timestamp | |
 
 ---
