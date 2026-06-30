@@ -248,6 +248,7 @@ One row per delivery event. Created when a customer requests a delivery for a sp
 ## delivery_proofs
 
 Photos sent by subcontractors via WhatsApp as proof of delivery. Haiku matches each photo to a daily delivery.
+Admins can also upload a proof directly from each row in the Deliveries sheet; the mobile table reserves a dedicated action column so the camera uploader stays fully visible on narrow screens.
 
 | Column | Type | Notes |
 |--------|------|-------|

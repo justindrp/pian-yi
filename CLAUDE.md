@@ -52,6 +52,7 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 
 ## Recent updates (June 30, 2026, last 4 hours)
 
+- `15:32 +0700` Deliveries dashboard mobile sheet: widened the delivery-proof upload action cell and tightened the small-screen dapur select so the camera uploader no longer clips off-screen.
 - `12:52 +0700` Deliveries dashboard: sent proof cards now have a resend action in the Proof of Delivery tab.
 - `13:07 +0700` Inbox delivery-proof images now render through `GET /api/inbox/delivery-proofs/[...path]`, so private storage proofs display correctly in the dashboard thread.
 - `14:09 +0700` Admin inbox now supports pipeline stage override via `POST /api/inbox/pipeline-stage`. Valid stages: `browsing`, `ordering`, `awaiting_payment`, `payment_proof_received`, `active_subscription`. Payment-related overrides also sync the latest order status when possible.

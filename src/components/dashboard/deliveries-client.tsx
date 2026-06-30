@@ -195,7 +195,7 @@ function UploadButton({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <td className="px-1 py-2">
+    <td className="w-10 min-w-[2.5rem] px-2 py-2 text-right">
       <input
         ref={inputRef}
         type="file"
@@ -212,7 +212,7 @@ function UploadButton({
         variant="ghost"
         onClick={() => inputRef.current?.click()}
         disabled={uploadState === "uploading"}
-        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-40 h-auto p-0"
+        className="h-7 w-7 shrink-0 p-0 text-gray-400 hover:text-gray-600 disabled:opacity-40"
         title="Upload delivery proof"
       >
         {uploadState === "uploading" && <span className="text-[10px] text-gray-400">...</span>}
@@ -319,7 +319,7 @@ function SortableDeliveryRow({
           value={row.subcontractor_id ?? NO_SUB}
           onValueChange={(v) => onUpdateSub(row.customer_id, row.meal_type, v === NO_SUB ? null : v)}
         >
-          <SelectTrigger className="text-xs border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto h-auto">
+          <SelectTrigger className="h-auto w-12 rounded border-gray-200 px-1 py-0.5 text-xs sm:w-auto">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -643,7 +643,7 @@ export default function DeliveriesClient() {
                           <th className="px-2 py-2 text-left">Customer</th>
                           <th className="px-2 py-2 text-left">Portions</th>
                           <th className="px-2 py-2 text-left">Dapur</th>
-                          <th className="px-1 py-2 w-8" />
+                          <th className="px-2 py-2 w-10 min-w-[2.5rem]" />
                         </tr>
                       </thead>
                       {([1, 2] as const).map((route) => {
@@ -748,7 +748,7 @@ export default function DeliveriesClient() {
                                     value={r.subcontractor_id ?? NO_SUB}
                                     onValueChange={(v) => updateRow(r.customer_id, meal, "subcontractor_id", v === NO_SUB ? null : v)}
                                   >
-                                    <SelectTrigger className="text-xs border-gray-200 rounded px-1 py-0.5 w-14 sm:w-auto h-auto">
+                                    <SelectTrigger className="h-auto w-12 rounded border-gray-200 px-1 py-0.5 text-xs sm:w-auto">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
