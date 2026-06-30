@@ -416,7 +416,7 @@ export async function processWebhookAsync(
         try {
           await sendImageByUrl(message.from, priceListUrl, "Harga & Area Pengiriman");
         } catch (e) {
-          console.error("[welcome] price list send failed:", e);
+          console.error("[welcome] price list send failed — url:", priceListUrl?.slice(0, 120), "error:", e);
         }
         await saveMessage({ customerId, role: "assistant", content: priceListUrl, messageType: "image", modelUsed: "system" });
       }
