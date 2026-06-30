@@ -14,11 +14,19 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as { customer_id: string; admin_answer: string };
-  const { customer_id, admin_answer } = body;
+  const body = (await req.json()) as {
+    customer_id: string;
+    admin_answer?: string;
+    polished_text?: string;
+    preview_only?: boolean;
+  };
+  const { customer_id, admin_answer, polished_text, preview_only } = body;
 
-  if (!customer_id || !admin_answer?.trim()) {
-    return NextResponse.json({ ok: false, error: "customer_id and admin_answer required" }, { status: 400 });
+  if (!customer_id) {
+    return NextResponse.json({ ok: false, error: "customer_id required" }, { status: 400 });
+  }
+  if (!admin_answer?.trim() && !polished_text?.trim()) {
+    return NextResponse.json({ ok: false, error: "admin_answer or polished_text required" }, { status: 400 });
   }
 
   const db = createAdminClient();
@@ -33,32 +41,46 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
   }
 
-  const [flagResult, historyResult] = await Promise.all([
-    db
-      .from("customer_flags")
-      .select("pending_bot_response, pending_bot_question")
-      .eq("customer_id", customer_id)
-      .single(),
-    db
-      .from("conversations")
-      .select("role, content, message_type")
-      .eq("customer_id", customer_id)
-      .eq("message_type", "text")
-      .order("created_at", { ascending: false })
-      .limit(8),
-  ]);
+  const { data: flags, error: flagErr } = await db
+    .from("customer_flags")
+    .select("pending_bot_response, pending_bot_question")
+    .eq("customer_id", customer_id)
+    .single();
 
-  if (flagResult.error || !flagResult.data?.pending_bot_response) {
+  if (flagErr || !flags?.pending_bot_response) {
     return NextResponse.json({ ok: false, error: "No pending bot response for this customer" }, { status: 400 });
   }
 
-  const flags = flagResult.data;
+  // If admin confirmed a pre-approved polished_text, send directly without re-polishing
+  if (polished_text?.trim()) {
+    await sendTextMessage(customer.phone_number, polished_text.trim());
+    await saveMessage({
+      customerId: customer_id,
+      role: "assistant",
+      content: polished_text.trim(),
+      modelUsed: HAIKU_MODEL,
+    });
+    await db
+      .from("customer_flags")
+      .update({ pending_bot_response: false, pending_bot_question: null })
+      .eq("customer_id", customer_id);
+    return NextResponse.json({ ok: true, sent: polished_text.trim() });
+  }
+
+  // Polish admin's raw answer via Haiku
+  const historyResult = await db
+    .from("conversations")
+    .select("role, content, message_type")
+    .eq("customer_id", customer_id)
+    .eq("message_type", "text")
+    .order("created_at", { ascending: false })
+    .limit(8);
+
   const recentMessages = (historyResult.data ?? []).reverse();
   const historyText = recentMessages
     .map((m) => `${m.role === "user" ? "Customer" : "Bot"}: ${m.content}`)
     .join("\n");
 
-  // Polish admin's raw answer into warm Indonesian bot voice via Haiku
   const anthropic = getAnthropicClient();
   const polishResult = await anthropic.messages.create({
     model: HAIKU_MODEL,
@@ -89,24 +111,27 @@ Rewrite the admin's answer as the bot's reply:`,
     ],
   });
 
-  const polishedText =
-    polishResult.content[0].type === "text" ? polishResult.content[0].text.trim() : admin_answer;
+  const result =
+    polishResult.content[0].type === "text" ? polishResult.content[0].text.trim() : (admin_answer ?? "");
 
-  await sendTextMessage(customer.phone_number, polishedText);
+  // Preview mode: return polished text without sending
+  if (preview_only) {
+    return NextResponse.json({ ok: true, preview: result });
+  }
 
+  await sendTextMessage(customer.phone_number, result);
   await saveMessage({
     customerId: customer_id,
     role: "assistant",
-    content: polishedText,
+    content: result,
     modelUsed: HAIKU_MODEL,
   });
-
   await db
     .from("customer_flags")
     .update({ pending_bot_response: false, pending_bot_question: null })
     .eq("customer_id", customer_id);
 
-  return NextResponse.json({ ok: true, sent: polishedText });
+  return NextResponse.json({ ok: true, sent: result });
 }
 
 export const dynamic = "force-dynamic";
