@@ -857,6 +857,17 @@ export default function DeliveriesClient() {
                     <div className="text-xs text-gray-600">{p.customers?.name ?? "Unknown"}</div>
                     <div className="text-xs text-gray-400">{p.sent_to_customer_at ? new Date(p.sent_to_customer_at).toLocaleTimeString("id-ID") : ""}</div>
                     {p.sent_by && <div className="text-xs text-gray-400">by {p.sent_by}</div>}
+                    {p.matched_customer_id && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => sendProof.mutate({ id: p.id, customer_id: p.matched_customer_id! })}
+                        disabled={sendProof.isPending}
+                        className="mt-2 w-full px-2 py-1 text-xs border-gray-200 text-gray-500 rounded-lg h-auto"
+                      >
+                        Resend
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -874,6 +885,17 @@ export default function DeliveriesClient() {
                     <div className="text-xs text-gray-600">{p.customers?.name ?? "Unknown"}</div>
                     <div className="text-xs text-gray-400">Confidence: {p.match_confidence ? `${Math.round(p.match_confidence * 100)}%` : "—"}</div>
                     <div className="text-xs text-gray-400">{p.sent_to_customer_at ? new Date(p.sent_to_customer_at).toLocaleTimeString("id-ID") : ""}</div>
+                    {p.matched_customer_id && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => sendProof.mutate({ id: p.id, customer_id: p.matched_customer_id! })}
+                        disabled={sendProof.isPending}
+                        className="mt-2 w-full px-2 py-1 text-xs border-gray-200 text-gray-500 rounded-lg h-auto"
+                      >
+                        Resend
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
