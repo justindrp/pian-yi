@@ -103,6 +103,7 @@ const ORDER_TYPES = ["recurring", "scheduled"];
 
 export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("active");
+  const [search, setSearch] = useState("");
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [selected, setSelected] = useState<Order | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
@@ -245,6 +246,15 @@ export default function OrdersClient() {
     },
   });
 
+  const filteredOrders = (orders ?? []).filter((o) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      o.customers?.name?.toLowerCase().includes(q) ||
+      o.customers?.phone_number?.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div>
       {showNewOrder && (
@@ -264,6 +274,13 @@ export default function OrdersClient() {
         >
           + Order Baru
         </Button>
+        <Input
+          type="search"
+          placeholder="Cari nama / no HP…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-48 h-8 text-sm"
+        />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -300,7 +317,7 @@ export default function OrdersClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {(orders ?? []).map((o) => (
+              {filteredOrders.map((o) => (
                 // biome-ignore lint/a11y/useSemanticElements: interactive table row
                 <tr
                   key={o.id}
@@ -357,7 +374,7 @@ export default function OrdersClient() {
                   </td>
                 </tr>
               ))}
-              {(orders ?? []).length === 0 && (
+              {filteredOrders.length === 0 && (
                 <tr>
                   <td
                     colSpan={8}
