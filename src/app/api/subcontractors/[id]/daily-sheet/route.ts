@@ -22,7 +22,7 @@ export async function GET(
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, customers(name, area, sub_area, address, google_maps_link, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, customers(name, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date)

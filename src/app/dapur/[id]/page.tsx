@@ -41,6 +41,10 @@ type Customer = {
   sub_area: string | null;
   address: string | null;
   google_maps_link: string | null;
+  area_2: string | null;
+  sub_area_2: string | null;
+  address_2: string | null;
+  google_maps_link_2: string | null;
   delivery_route: number | null;
 };
 
@@ -49,12 +53,18 @@ type Delivery = {
   meal_type: string;
   portions: number;
   notes: string | null;
+  address_slot: number | null;
   customers: Customer | null;
 };
 
 function DeliveryCard({ d }: { d: Delivery }) {
   const c = d.customers;
-  const location = [c?.area, c?.sub_area].filter(Boolean).join(" · ");
+  const slot = d.address_slot ?? 1;
+  const area = slot === 2 ? (c?.area_2 ?? c?.area) : c?.area;
+  const subArea = slot === 2 ? (c?.sub_area_2 ?? c?.sub_area) : c?.sub_area;
+  const address = slot === 2 ? (c?.address_2 ?? c?.address) : c?.address;
+  const mapsLink = slot === 2 ? (c?.google_maps_link_2 ?? c?.google_maps_link) : c?.google_maps_link;
+  const location = [area, subArea].filter(Boolean).join(" · ");
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
@@ -65,10 +75,10 @@ function DeliveryCard({ d }: { d: Delivery }) {
         </span>
       </div>
       {location && <div className="text-sm text-gray-500">{location}</div>}
-      {c?.address && <div className="text-sm text-gray-700">{c.address}</div>}
-      {c?.google_maps_link && (
+      {address && <div className="text-sm text-gray-700">{address}</div>}
+      {mapsLink && (
         <a
-          href={c.google_maps_link}
+          href={mapsLink}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-block text-sm text-blue-600 underline"
@@ -115,7 +125,7 @@ export default async function DapurPage({
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, customers(name, area, sub_area, address, google_maps_link, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, customers(name, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date)
