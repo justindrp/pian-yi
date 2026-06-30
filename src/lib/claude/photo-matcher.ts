@@ -190,7 +190,7 @@ export async function sendDeliveryPhotoToCustomer(
 
   if (!signedData?.signedUrl) return;
 
-  const caption = `Halo ${customerName}, pesanan ${mealType} hari ini sudah sampai ya 🍱 Selamat menikmati! 😊`;
+  const caption = `Halo ${customerName}, pesanan ${mealType} hari ini sudah sampai ya 🍱 Selamat menikmati!\n\nBalas pesan ini dengan "ok" supaya besok bisa dikirim foto lagi ya kak 😊`;
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
