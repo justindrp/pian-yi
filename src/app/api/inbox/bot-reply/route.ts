@@ -33,15 +33,30 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
   }
 
-  const { data: flags, error: flagErr } = await db
-    .from("customer_flags")
-    .select("pending_bot_response, pending_bot_question")
-    .eq("customer_id", customer_id)
-    .single();
+  const [flagResult, historyResult] = await Promise.all([
+    db
+      .from("customer_flags")
+      .select("pending_bot_response, pending_bot_question")
+      .eq("customer_id", customer_id)
+      .single(),
+    db
+      .from("conversations")
+      .select("role, content, message_type")
+      .eq("customer_id", customer_id)
+      .eq("message_type", "text")
+      .order("created_at", { ascending: false })
+      .limit(8),
+  ]);
 
-  if (flagErr || !flags?.pending_bot_response) {
+  if (flagResult.error || !flagResult.data?.pending_bot_response) {
     return NextResponse.json({ ok: false, error: "No pending bot response for this customer" }, { status: 400 });
   }
+
+  const flags = flagResult.data;
+  const recentMessages = (historyResult.data ?? []).reverse();
+  const historyText = recentMessages
+    .map((m) => `${m.role === "user" ? "Customer" : "Bot"}: ${m.content}`)
+    .join("\n");
 
   // Polish admin's raw answer into warm Indonesian bot voice via Haiku
   const anthropic = getAnthropicClient();
@@ -62,6 +77,9 @@ Rules:
 - Do not use markdown (no **, no #)
 - Do not greet with "Halo kak" — go straight to the answer
 - Do not mention that this came from an admin
+
+Recent conversation:
+${historyText || "(no history)"}
 
 Customer's question: ${flags.pending_bot_question ?? "(not recorded)"}
 Admin's answer: ${admin_answer}

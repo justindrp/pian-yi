@@ -240,13 +240,15 @@ export default function InboxClient() {
 
   async function activateBotWaiting() {
     if (!selectedCustomerId || !flags) return;
+    const lastCustomerMsg = [...messages].reverse().find((m) => m.role === "user");
+    const question = lastCustomerMsg?.content ?? null;
     const prevFlags = flags;
-    const nextFlags = { ...flags, pending_bot_response: true, pending_bot_question: null };
+    const nextFlags = { ...flags, pending_bot_response: true, pending_bot_question: question };
     setFlags(nextFlags);
     const res = await fetch("/api/inbox/pending-bot-response", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: selectedCustomerId }),
+      body: JSON.stringify({ customer_id: selectedCustomerId, question }),
     });
     if (!res.ok) {
       setFlags(prevFlags);
