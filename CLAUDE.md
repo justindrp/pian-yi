@@ -52,6 +52,7 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 
 ## Recent updates (June 30, 2026, last 4 hours)
 
+- `16:05 +0700` Inbox thread list now has `All`, `Unread`, and `Unanswered` filters. `Unread` follows the latest-message-is-customer heuristic, while `Unanswered` highlights threads with `customer_flags.pending_bot_response` or human takeover active.
 - `15:32 +0700` Deliveries dashboard mobile sheet: widened the delivery-proof upload action cell and tightened the small-screen dapur select so the camera uploader no longer clips off-screen.
 - `12:52 +0700` Deliveries dashboard: sent proof cards now have a resend action in the Proof of Delivery tab.
 - `13:07 +0700` Inbox delivery-proof images now render through `GET /api/inbox/delivery-proofs/[...path]`, so private storage proofs display correctly in the dashboard thread.
@@ -305,6 +306,7 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 - `POST /api/deliveries/proofs` — Upload proof photo (admin upload); stamps `received_at` to the admin-selected delivery date so it lands on the right day, inserts with `status: "admin_uploaded"` and `matched_customer_id`; surfaces in the "Ready to send" section of the Proof of Delivery tab.
 
 ### Inbox (admin-guided bot responses)
+- Dashboard inbox thread list supports three client-side filters: `All`, `Unread`, and `Unanswered`. `Unread` means the latest conversation row is a customer (`role: "user"`) message; `Unanswered` means `customer_flags.pending_bot_response = true` or `customer_flags.escalated_to_human = true`.
 - `POST /api/inbox/bot-reply` — Admin provides a concise answer → Haiku polishes it → bot sends polished message to customer → clears `pending_bot_response` flag
 - `GET /api/inbox/delivery-proofs/[...path]` — Auth-gated proxy for proof images stored in Supabase Storage; used by the inbox UI so proof attachments render without exposing the storage bucket directly.
 - `POST /api/inbox/learn-context` — Manual fallback for the same learned-context summarizer used by the webhook auto-learn path. Requires admin auth and `{ customer_id }`; writes only the `[AI learned context]` block in `customers.notes`.

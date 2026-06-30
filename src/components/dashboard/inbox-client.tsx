@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  filterThreads,
+  type InboxFilter,
+} from "@/components/dashboard/inbox-filters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +22,7 @@ interface Thread {
   lastMessage: Conversation;
   unread: boolean;
   menuShown: boolean;
+  unanswered: boolean;
 }
 
 const PIPELINE_STAGES = [
@@ -54,6 +59,7 @@ function getInboxImageSrc(
 
 export default function InboxClient() {
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     null,
   );
@@ -130,20 +136,34 @@ export default function InboxClient() {
         lastMessage: row,
         unread: row.role === "user",
         menuShown: false,
+        unanswered: false,
       });
     }
 
     if (grouped.length > 0) {
       const customerIds = grouped.map((t) => t.customer.id);
-      const { data: stateData } = await supabase
-        .from("customer_state")
-        .select("customer_id, menu_shown")
-        .in("customer_id", customerIds);
+      const [{ data: stateData }, { data: flagData }] = await Promise.all([
+        supabase
+          .from("customer_state")
+          .select("customer_id, menu_shown")
+          .in("customer_id", customerIds),
+        supabase
+          .from("customer_flags")
+          .select("customer_id, escalated_to_human, pending_bot_response")
+          .in("customer_id", customerIds),
+      ]);
       const menuShownMap = new Map(
         (stateData ?? []).map((s) => [s.customer_id, s.menu_shown ?? false]),
       );
+      const unansweredMap = new Map(
+        (flagData ?? []).map((flag) => [
+          flag.customer_id,
+          !!(flag.escalated_to_human || flag.pending_bot_response),
+        ]),
+      );
       for (const thread of grouped) {
         thread.menuShown = menuShownMap.get(thread.customer.id) ?? false;
+        thread.unanswered = unansweredMap.get(thread.customer.id) ?? false;
       }
     }
 
@@ -225,7 +245,9 @@ export default function InboxClient() {
 
   useEffect(() => {
     const latestMessage = messages.at(-1) ?? null;
-    const isBlocked = !!(flags?.pending_bot_response || flags?.escalated_to_human);
+    const isBlocked = !!(
+      flags?.pending_bot_response || flags?.escalated_to_human
+    );
 
     if (!selectedCustomerId || !flags) {
       replayStateRef.current = {
@@ -653,6 +675,7 @@ export default function InboxClient() {
   const selectedThread = threads.find(
     (t) => t.customer.id === selectedCustomerId,
   );
+  const visibleThreads = filterThreads(threads, inboxFilter);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -662,8 +685,30 @@ export default function InboxClient() {
       >
         <div className="p-4 border-b border-gray-100">
           <h1 className="text-sm font-semibold text-gray-900">Inbox</h1>
+          <div className="mt-3 flex gap-1 rounded-lg bg-gray-100 p-1">
+            {(
+              [
+                ["all", "All"],
+                ["unread", "Unread"],
+                ["unanswered", "Unanswered"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setInboxFilter(value)}
+                className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                  inboxFilter === value
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        {threads.map((thread) => (
+        {visibleThreads.map((thread) => (
           <button
             type="button"
             key={thread.customer.id}
@@ -678,6 +723,11 @@ export default function InboxClient() {
                   maskPhone(thread.customer.phone_number)}
               </span>
               <div className="flex items-center gap-1">
+                {thread.unanswered && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
+                    unanswered
+                  </span>
+                )}
                 <span
                   className={`text-[9px] px-1 py-0.5 rounded font-medium ${thread.menuShown ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}
                 >
@@ -693,8 +743,12 @@ export default function InboxClient() {
             </p>
           </button>
         ))}
-        {threads.length === 0 && (
-          <p className="text-xs text-gray-400 p-4">No conversations yet.</p>
+        {visibleThreads.length === 0 && (
+          <p className="text-xs text-gray-400 p-4">
+            {threads.length === 0
+              ? "No conversations yet."
+              : "No conversations match this filter."}
+          </p>
         )}
       </div>
 

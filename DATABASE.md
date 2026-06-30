@@ -113,6 +113,8 @@ Custom instructions Annie adds via the Chatbot Training page. Active ones are ap
 
 Full chat history between customers and the bot. Append-only — never updated or deleted.
 
+Inbox thread ordering and the `Unread` filter both derive from the latest `conversations` row per customer. A thread is considered unread in the dashboard when that latest row has `role = "user"`.
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
@@ -133,6 +135,8 @@ Full chat history between customers and the bot. Append-only — never updated o
 ## customer_flags
 
 One row per customer. Holds boolean flags and escalation state. Users cannot edit this table directly.
+
+The dashboard Inbox `Unanswered` filter is derived from this table: a thread is considered unanswered when either `pending_bot_response` or `escalated_to_human` is true.
 
 | Column | Type | Notes |
 |--------|------|-------|
