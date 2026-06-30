@@ -20,7 +20,7 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
-import { downloadMedia, sendImageMessage, sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
+import { downloadMedia, sendImageByUrl, sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
 import {
   parseMessage,
   type WhatsAppWebhookPayload,
@@ -413,12 +413,12 @@ export async function processWebhookAsync(
         await saveMessage({ customerId, role: "assistant", content: resolvedWelcome, modelUsed: "system" });
       }
       if (priceListUrl) {
-        await sendImageMessage(message.from, priceListUrl, "Harga & Area Pengiriman");
+        await sendImageByUrl(message.from, priceListUrl, "Harga & Area Pengiriman");
         await saveMessage({ customerId, role: "assistant", content: priceListUrl, messageType: "image", modelUsed: "system" });
       }
       for (const sub of welcomeSubs ?? []) {
         if (sub.menu_image_url) {
-          await sendImageMessage(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
+          await sendImageByUrl(message.from, sub.menu_image_url, sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur");
           await saveMessage({ customerId, role: "assistant", content: sub.menu_image_url, messageType: "image", modelUsed: "system" });
         }
       }

@@ -103,3 +103,12 @@ export async function sendTypingIndicator(_to: string, messageId: string): Promi
     )
     .catch(() => {});
 }
+
+export async function sendImageByUrl(to: string, imageUrl: string, caption: string): Promise<void> {
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+  const contentType = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const mediaId = await uploadMediaToMeta(buffer, contentType);
+  await sendImageMessageById(to, mediaId, caption);
+}
