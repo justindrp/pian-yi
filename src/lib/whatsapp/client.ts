@@ -1,5 +1,6 @@
 import axios from "axios";
 import FormData from "form-data";
+import sharp from "sharp";
 
 const BASE_URL = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}`;
 
@@ -107,8 +108,9 @@ export async function sendTypingIndicator(_to: string, messageId: string): Promi
 export async function sendImageByUrl(to: string, imageUrl: string, caption: string): Promise<void> {
   const res = await fetch(imageUrl);
   if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
-  const contentType = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-  const buffer = Buffer.from(await res.arrayBuffer());
-  const mediaId = await uploadMediaToMeta(buffer, contentType);
+  const raw = Buffer.from(await res.arrayBuffer());
+  // Compress to JPEG ≤4MB so Meta's 5MB upload limit is never hit
+  const compressed = await sharp(raw).jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+  const mediaId = await uploadMediaToMeta(compressed, "image/jpeg");
   await sendImageMessageById(to, mediaId, caption);
 }
