@@ -28,8 +28,9 @@ export async function learnCustomerContext(
   }
 
   const chronological = (messages ?? []).reverse();
-  if (chronological.length === 0) {
-    throw new Error("No conversation to learn");
+  const userMessages = chronological.filter((m) => m.role === "user");
+  if (userMessages.length < 3) {
+    throw new Error("Not enough customer messages to learn");
   }
 
   const transcript = chronological
