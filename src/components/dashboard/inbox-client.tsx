@@ -19,6 +19,23 @@ interface Thread {
   menuShown: boolean;
 }
 
+function getInboxImageSrc(msg: Conversation & { message_type?: string | null; media_id?: string | null }) {
+  if (msg.message_type !== "image") return null;
+  if (msg.media_id) return `/api/inbox/media/${msg.media_id}`;
+  if (!msg.content?.startsWith("https://")) return null;
+
+  const deliveryProofPath = msg.content.split("/delivery-proofs/")[1];
+  if (deliveryProofPath) {
+    const encodedPath = deliveryProofPath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    return `/api/inbox/delivery-proofs/${encodedPath}`;
+  }
+
+  return msg.content;
+}
+
 export default function InboxClient() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
@@ -656,6 +673,7 @@ export default function InboxClient() {
             {messages.map((msg) => {
               const isUser = msg.role === "user";
               const msgWithExtras = msg as Conversation & { intent?: string | null; message_type?: string | null; media_id?: string | null };
+              const imageSrc = getInboxImageSrc(msgWithExtras);
               return (
                 <div
                   key={msg.id}
@@ -669,18 +687,10 @@ export default function InboxClient() {
                     }`}
                   >
                     {msgWithExtras.message_type === "image" ? (
-                      msgWithExtras.media_id ? (
+                      imageSrc ? (
                         // biome-ignore lint/performance/noImgElement: media served via API route — next/image impractical
                         <img
-                          src={`/api/inbox/media/${msgWithExtras.media_id}`}
-                          alt="Media"
-                          className="max-w-full rounded-lg"
-                          style={{ maxHeight: 300 }}
-                        />
-                      ) : msg.content?.startsWith("https://") ? (
-                        // biome-ignore lint/performance/noImgElement: external WhatsApp media URL — next/image impractical
-                        <img
-                          src={msg.content}
+                          src={imageSrc}
                           alt="Media"
                           className="max-w-full rounded-lg"
                           style={{ maxHeight: 300 }}
