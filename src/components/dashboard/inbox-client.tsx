@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
@@ -763,12 +764,18 @@ export default function InboxClient() {
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <Input
+                  <Textarea
                     value={botReply}
                     onChange={(e) => setBotReply(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && previewBotReply()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        void previewBotReply();
+                      }
+                    }}
                     placeholder="Type your answer (AI will polish it)..."
-                    className="flex-1 border-amber-200 focus-visible:ring-amber-400"
+                    rows={3}
+                    className="flex-1 min-h-0 resize-none border-amber-200 focus-visible:ring-amber-400"
                   />
                   <Button
                     type="button"
@@ -837,14 +844,18 @@ export default function InboxClient() {
                 >
                   📎
                 </Button>
-                <Input
+                <Textarea
                   value={manualReply}
                   onChange={(e) => setManualReply(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && !e.shiftKey && sendManualReply()
-                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      void sendManualReply();
+                    }
+                  }}
                   placeholder="Type a message..."
-                  className="flex-1"
+                  rows={3}
+                  className="flex-1 min-h-0 resize-none"
                 />
                 <Button
                   type="button"
