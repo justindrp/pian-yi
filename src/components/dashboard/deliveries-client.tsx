@@ -172,7 +172,8 @@ function buildRouteMealSummary(rows: DeliveryRow[], route: number, meal: "lunch"
   const mealRows = getRouteMealRows(rows.filter((r) => !r.skip), route, meal);
   const dateStr = new Date(date).toLocaleDateString("id-ID", { day: "numeric", month: "long" });
   const mealLabel = meal === "lunch" ? "Lunch" : "Dinner";
-  let text = `🛵 *Rute ${route} ${mealLabel} - ${dateStr}*\n\n`;
+  const totalPortions = mealRows.reduce((s, r) => s + r.portions, 0);
+  let text = `🛵 *Rute ${route} ${mealLabel} - ${dateStr} = ${totalPortions} porsi*\n\n`;
   mealRows.forEach((r, i) => {
     const c = r.customers;
     const useSlot2 = r.address_slot === 2;
