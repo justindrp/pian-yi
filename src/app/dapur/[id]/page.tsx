@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { DatePicker } from "./date-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -173,9 +174,12 @@ export default async function DapurPage({
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Pian Yi Catering</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{formatDateID(date)}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Pian Yi Catering</h1>
+            <p className="text-gray-500 text-sm mt-0.5">{formatDateID(date)}</p>
+          </div>
+          <DatePicker id={id} date={date} />
         </div>
 
         {/* Summary */}
