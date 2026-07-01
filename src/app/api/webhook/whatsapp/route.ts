@@ -303,8 +303,21 @@ export async function processWebhookAsync(
     }
 
     if (!message.imageCaption) {
+      await saveMessage({
+        customerId,
+        role: "user",
+        content: "[Image]",
+        messageId: message.messageId,
+        intent: "other",
+        messageType: "image",
+        mediaId: message.imageId,
+      });
       const tmpl = await getTemplate("text_only");
       await sendTextMessage(message.from, tmpl);
+      await db
+        .from("processed_messages")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("message_id", message.messageId);
       return;
     }
   }
