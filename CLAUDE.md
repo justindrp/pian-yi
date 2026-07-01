@@ -45,13 +45,14 @@ These must be used as the primary way to configure their respective services. Av
 ## Workflow
 
 - After every code change, commit and push the current branch unless the user explicitly says not to.
-- Before every commit, update root `CLAUDE.md` and root `DATABASE.md` to reflect the latest relevant project and schema/behavior changes included in that commit.
+- **REQUIRED before every commit, no exceptions:** Update root `CLAUDE.md` (Recent updates section + any affected API/behavior docs) and root `DATABASE.md` (if schema changed) in the same commit as the code change. Never commit code without updating these files. If you skipped this, make a follow-up commit immediately.
 - A git hook bumps the app version on every commit and amends the commit, so pushes often need a second attempt using the new HEAD SHA.
 
 When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks so the actions are reproducible and auditable.
 
-## Recent updates (June 30, 2026, last 4 hours)
+## Recent updates (July 1, 2026)
 
+- `13:49 +0700` Webhook now saves caption-less customer images to `conversations` before sending the text-only reply. Previously these dropped silently and never appeared in the inbox.
 - `16:18 +0700` Inbox assistant messages now persist WhatsApp `message_id` plus `whatsapp_status` / `whatsapp_status_updated_at`, and `POST /api/webhook/whatsapp` now applies Meta `sent` / `delivered` / `read` / `failed` status webhooks so the dashboard can show read receipts.
 - `16:05 +0700` Inbox thread list now has `All`, `Unread`, and `Unanswered` filters. `Unread` follows the latest-message-is-customer heuristic, while `Unanswered` highlights threads with `customer_flags.pending_bot_response` or human takeover active.
 - `15:32 +0700` Deliveries dashboard mobile sheet: widened the delivery-proof upload action cell and tightened the small-screen dapur select so the camera uploader no longer clips off-screen.
