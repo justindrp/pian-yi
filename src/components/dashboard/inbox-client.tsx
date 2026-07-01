@@ -655,6 +655,25 @@ export default function InboxClient() {
     setImagePreviewUrl(null);
   }
 
+  useEffect(() => {
+    if (!flags?.escalated_to_human) return;
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (!item.type.startsWith("image/")) continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+        e.preventDefault();
+        setImageFile(file);
+        setImagePreviewUrl(URL.createObjectURL(file));
+        break;
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [flags?.escalated_to_human]);
+
   async function sendImage() {
     if (!selectedCustomerId || !imageFile) return;
     setSendingImage(true);
