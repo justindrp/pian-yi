@@ -330,8 +330,12 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 - `POST /api/subcontractors` — Create a new subcontractor
 - `PATCH /api/subcontractors/[id]` — Update allowlisted fields (name, nickname, phone, areas, notes, cost, menu_text, etc.)
 - `POST /api/subcontractors/[id]/menu-image` — Upload menu image to `menu-images` bucket → save URL to subcontractor row
+- `GET /api/subcontractors/[id]/daily-sheet` — **Dapur Sheet** API: public (no auth), returns tomorrow's `daily_deliveries` for this subcontractor with lunch/dinner × rute1/rute2 summary. Supports `?date=YYYY-MM-DD`. Respects `address_slot` so slot-2 customers show their secondary address.
 - `POST /api/subcontractors/off-days` — Add an off day for a subcontractor
 - `DELETE /api/subcontractors/off-days` — Remove an off day
+
+### Dapur Sheet
+A public, auth-free mobile page at `/dapur/[subcontractor-uuid]` shared with each subcontractor so they can see tomorrow's delivery orders without a dashboard login. Shows a lunch/dinner × Rute 1 (diantar Pian Yi) / Rute 2 (diantar subcontractor) portion summary, then per-order cards with name, area, sub_area, address (slot-aware), Maps link, notes, and portions. Supports `?date=YYYY-MM-DD` for non-default dates. Thenie's link: `/dapur/52cd5e62-da09-49c9-939c-2f1246566c40`.
 
 ### Chatbot training
 - `POST /api/training-chat` — Annie chats with Sonnet to craft system instructions; auto-saves on `[SAVE_INSTRUCTION]` marker in response
