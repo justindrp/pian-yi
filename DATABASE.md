@@ -222,6 +222,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | promo_used | text | Promo code or campaign description (manual) |
 | converted_to_subscription | boolean | Whether customer converted to a recurring subscription (default false) |
 | notes | text | Internal notes about this customer |
+| linked_order_id | uuid | FK → orders, nullable. If set, this customer's daily draws come from someone else's order/quota instead of their own (e.g. a kid drawing from a parent's package) |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 

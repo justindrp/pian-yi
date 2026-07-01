@@ -478,6 +478,7 @@ export type Database = {
           google_maps_link: string | null
           google_maps_link_2: string | null
           id: string
+          linked_order_id: string | null
           meal_time_preference: string | null
           name: string | null
           notes: string | null
@@ -512,6 +513,7 @@ export type Database = {
           google_maps_link?: string | null
           google_maps_link_2?: string | null
           id?: string
+          linked_order_id?: string | null
           meal_time_preference?: string | null
           name?: string | null
           notes?: string | null
@@ -546,6 +548,7 @@ export type Database = {
           google_maps_link?: string | null
           google_maps_link_2?: string | null
           id?: string
+          linked_order_id?: string | null
           meal_time_preference?: string | null
           name?: string | null
           notes?: string | null
@@ -561,6 +564,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "customers_linked_order_id_fkey"
+            columns: ["linked_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "customers_subcontractor_id_fkey"
             columns: ["subcontractor_id"]

@@ -14,7 +14,7 @@ export async function GET(req: Request): Promise<Response> {
   const all = new URL(req.url).searchParams.get("all") === "true";
 
   const columns =
-    "id, name, phone_number, area, sub_area, address, address_2, subcontractor_id";
+    "id, name, phone_number, area, sub_area, address, address_2, subcontractor_id, linked_order_id";
 
   // `?all=true` returns every customer (e.g. the new-order modal, which must let
   // an admin start the first order for a just-created customer who has no paid
@@ -28,7 +28,22 @@ export async function GET(req: Request): Promise<Response> {
       .order("name");
     if (error)
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, data });
+
+    // Attach each customer's own active order id, so the UI can offer
+    // "draw from another customer's balance" without a separate lookup.
+    const { data: activeOrders } = await db
+      .from("orders")
+      .select("id, customer_id")
+      .in("status", ["active", "paused"]);
+    const activeOrderByCustomer = new Map(
+      (activeOrders ?? []).map((o) => [o.customer_id, o.id]),
+    );
+    const withActiveOrder = (data ?? []).map((c) => ({
+      ...c,
+      active_order_id: activeOrderByCustomer.get(c.id) ?? null,
+    }));
+
+    return NextResponse.json({ ok: true, data: withActiveOrder });
   }
 
   const PAID_STATUSES = [
@@ -80,6 +95,7 @@ export async function POST(req: Request): Promise<Response> {
     address_2?: string;
     google_maps_link?: string;
     subcontractor_id?: string;
+    linked_order_id?: string;
   };
 
   const phone = body.phone_number?.trim();
@@ -123,9 +139,12 @@ export async function POST(req: Request): Promise<Response> {
       address_2: body.address_2?.trim() || null,
       google_maps_link: body.google_maps_link?.trim() || null,
       subcontractor_id: body.subcontractor_id || null,
+      linked_order_id: body.linked_order_id || null,
       delivery_route: deliveryRoute,
     })
-    .select("id, name, phone_number, area, sub_area, address, address_2, subcontractor_id")
+    .select(
+      "id, name, phone_number, area, sub_area, address, address_2, subcontractor_id, linked_order_id",
+    )
     .single();
 
   if (error)

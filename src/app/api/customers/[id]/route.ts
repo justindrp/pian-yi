@@ -122,10 +122,15 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = (await req.json()) as { name?: string; notes?: string };
-  const update: { name?: string; notes?: string } = {};
+  const body = (await req.json()) as {
+    name?: string;
+    notes?: string;
+    linked_order_id?: string | null;
+  };
+  const update: { name?: string; notes?: string; linked_order_id?: string | null } = {};
   if (body.name !== undefined) update.name = body.name.trim();
   if (body.notes !== undefined) update.notes = body.notes;
+  if (body.linked_order_id !== undefined) update.linked_order_id = body.linked_order_id || null;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json(

@@ -27,7 +27,9 @@ export async function GET(): Promise<Response> {
     .eq("order_type", "recurring");
 
   const orderByCustomer = new Map<string, NonNullable<typeof orders>[number]>();
+  const orderById = new Map<string, NonNullable<typeof orders>[number]>();
   for (const o of orders ?? []) {
+    orderById.set(o.id, o);
     if (o.customer_id && !orderByCustomer.has(o.customer_id)) {
       orderByCustomer.set(o.customer_id, o);
     }
@@ -36,16 +38,22 @@ export async function GET(): Promise<Response> {
   const { data: customers, error } = await db
     .from("customers")
     .select(
-      "id, name, phone_number, area, sub_area, address, google_maps_link, address_2, area_2, sub_area_2, google_maps_link_2, subcontractor_id, delivery_route, delivery_position",
+      "id, name, phone_number, area, sub_area, address, google_maps_link, address_2, area_2, sub_area_2, google_maps_link_2, subcontractor_id, delivery_route, delivery_position, linked_order_id",
     )
     .order("name");
 
   if (error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  // Only customers with an active package can be added (draws come from a package).
+  // Own active order takes priority; otherwise fall back to the order this
+  // customer is linked to (e.g. a kid drawing from a parent's package).
   const data = (customers ?? [])
-    .map((c) => ({ ...c, active_order: orderByCustomer.get(c.id) }))
+    .map((c) => ({
+      ...c,
+      active_order:
+        orderByCustomer.get(c.id) ??
+        (c.linked_order_id ? orderById.get(c.linked_order_id) : undefined),
+    }))
     .filter((c): c is typeof c & { active_order: NonNullable<typeof c.active_order> } => c.active_order != null);
 
   return NextResponse.json({ ok: true, data });

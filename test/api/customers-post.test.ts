@@ -125,6 +125,7 @@ describe("GET /api/customers", () => {
 
   test("G2 — ?all=true returns every customer without the paid filter", async () => {
     const db = makeDbMock({
+      orders: { data: [], error: null },
       customers: { data: [{ id: "cust-1", name: "Alice" }, { id: "cust-2", name: "Elaine" }], error: null },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
@@ -133,10 +134,11 @@ describe("GET /api/customers", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    // No paid-status pre-query and no id filter — a just-created, order-less
-    // customer (Elaine) is included.
-    expect(db.from).not.toHaveBeenCalledWith("orders");
+    // No id filter on customers — a just-created, order-less customer
+    // (Elaine) is included. Orders is still queried, to attach each
+    // customer's own active_order_id (used for the "draws from" link).
     expect(db.chains.customers.in).not.toHaveBeenCalled();
     expect(json.data).toHaveLength(2);
+    expect(json.data[0]).toHaveProperty("active_order_id", null);
   });
 });

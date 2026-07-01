@@ -71,6 +71,7 @@ export default function CustomersClient() {
     area_2: "",
     sub_area_2: "",
     google_maps_link_2: "",
+    linked_order_id: "",
   });
   const [showAdd, setShowAdd] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -84,6 +85,7 @@ export default function CustomersClient() {
     address_2: "",
     google_maps_link: "",
     subcontractor_id: "",
+    linked_order_id: "",
   });
   const queryClient = useQueryClient();
   const supabase = createClient();
@@ -94,6 +96,18 @@ export default function CustomersClient() {
       const res = await fetch("/api/subcontractors");
       const json = await res.json() as { ok: boolean; data: Array<{ id: string; name: string; is_active: boolean }> };
       return (json.data ?? []).filter((s) => s.is_active);
+    },
+  });
+
+  const { data: linkableCustomers } = useQuery({
+    queryKey: ["customers-linkable"],
+    queryFn: async () => {
+      const res = await fetch("/api/customers?all=true");
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: Array<{ id: string; name: string | null; active_order_id: string | null }>;
+      };
+      return (json.data ?? []).filter((c) => c.active_order_id);
     },
   });
 
@@ -163,6 +177,7 @@ export default function CustomersClient() {
       area_2: string;
       sub_area_2: string;
       google_maps_link_2: string;
+      linked_order_id: string;
     }) => {
       if (!selected) return;
       const { error } = await supabase
@@ -186,6 +201,7 @@ export default function CustomersClient() {
           area_2: form.area_2 || null,
           sub_area_2: form.sub_area_2 || null,
           google_maps_link_2: form.google_maps_link_2 || null,
+          linked_order_id: form.linked_order_id || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", selected.id);
@@ -210,7 +226,7 @@ export default function CustomersClient() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["customers"] });
       setShowAdd(false);
-      setAddForm({ name: "", phone_number: "", area: "", sub_area: "", address: "", address_2: "", google_maps_link: "", subcontractor_id: "" });
+      setAddForm({ name: "", phone_number: "", area: "", sub_area: "", address: "", address_2: "", google_maps_link: "", subcontractor_id: "", linked_order_id: "" });
     },
   });
 
@@ -268,6 +284,7 @@ export default function CustomersClient() {
       area_2: (customer as unknown as { area_2?: string | null }).area_2 ?? "",
       sub_area_2: (customer as unknown as { sub_area_2?: string | null }).sub_area_2 ?? "",
       google_maps_link_2: (customer as unknown as { google_maps_link_2?: string | null }).google_maps_link_2 ?? "",
+      linked_order_id: (customer as unknown as { linked_order_id?: string | null }).linked_order_id ?? "",
     });
   }
 
@@ -557,6 +574,20 @@ export default function CustomersClient() {
                 ))}
               </select>
             </div>
+            <div>
+              <Label htmlFor="add-linked-order" className="text-xs text-gray-500 block mb-1">Draws From Another Customer&apos;s Balance</Label>
+              <select
+                id="add-linked-order"
+                value={addForm.linked_order_id}
+                onChange={(e) => setAddForm({ ...addForm, linked_order_id: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="">— Own package (default) —</option>
+                {(linkableCustomers ?? []).map((c) => (
+                  <option key={c.id} value={c.active_order_id ?? ""}>{c.name ?? c.id}</option>
+                ))}
+              </select>
+            </div>
 
             {addError && <p className="text-xs text-red-600">{addError}</p>}
 
@@ -687,6 +718,27 @@ export default function CustomersClient() {
                   {(subcontractors ?? []).map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="customer-linked-order" className="text-xs text-gray-500 block mb-1">
+                  Draws From Another Customer&apos;s Balance
+                </Label>
+                <select
+                  id="customer-linked-order"
+                  value={editForm.linked_order_id}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, linked_order_id: e.target.value })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">— Own package (default) —</option>
+                  {(linkableCustomers ?? [])
+                    .filter((c) => c.id !== selected?.id)
+                    .map((c) => (
+                      <option key={c.id} value={c.active_order_id ?? ""}>{c.name ?? c.id}</option>
+                    ))}
                 </select>
               </div>
 
