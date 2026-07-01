@@ -112,6 +112,13 @@ function tomorrow() {
   return d.toISOString().slice(0, 10);
 }
 
+const LAST_DATE_KEY = "deliveries-last-date";
+
+function getInitialDate() {
+  if (typeof window === "undefined") return tomorrow();
+  return localStorage.getItem(LAST_DATE_KEY) ?? tomorrow();
+}
+
 function isPastDeadline(date: string) {
   const [y, m, d] = date.split("-").map(Number);
   const deadline = new Date(y, m - 1, d - 1, 20, 0, 0);
@@ -339,7 +346,7 @@ function SortableDeliveryRow({
 
 export default function DeliveriesClient() {
   const [tab, setTab] = useState<"sheet" | "proofs">("sheet");
-  const [date, setDate] = useState(tomorrow());
+  const [date, setDate] = useState(getInitialDate);
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeliveryRow | null>(null);
@@ -598,7 +605,15 @@ export default function DeliveriesClient() {
           <Button type="button" variant="ghost" onClick={() => setTab("sheet")} className={`px-4 py-1.5 rounded-none h-auto ${tab === "sheet" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}>Daily Sheet</Button>
           <Button type="button" variant="ghost" onClick={() => setTab("proofs")} className={`px-4 py-1.5 rounded-none h-auto ${tab === "proofs" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}>Proof of Delivery</Button>
         </div>
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-gray-200 rounded-lg px-3 py-1.5 text-sm ml-auto h-auto w-auto" />
+        <Input
+          type="date"
+          value={date}
+          onChange={(e) => {
+            setDate(e.target.value);
+            localStorage.setItem(LAST_DATE_KEY, e.target.value);
+          }}
+          className="border-gray-200 rounded-lg px-3 py-1.5 text-sm ml-auto h-auto w-auto"
+        />
       </div>
 
       {tab === "sheet" && (
