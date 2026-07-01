@@ -52,6 +52,7 @@ When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks 
 
 ## Recent updates (July 1, 2026)
 
+- `17:57 +0700` System prompt contextual-reply rule now distinguishes post-delivery "ok" (responds with enjoy-food message) from generic affirmative "ok" (responds with "Ada yang bisa kami bantu?").
 - `13:49 +0700` Webhook now saves caption-less customer images to `conversations` before sending the text-only reply. Previously these dropped silently and never appeared in the inbox.
 - `16:18 +0700` Inbox assistant messages now persist WhatsApp `message_id` plus `whatsapp_status` / `whatsapp_status_updated_at`, and `POST /api/webhook/whatsapp` now applies Meta `sent` / `delivered` / `read` / `failed` status webhooks so the dashboard can show read receipts.
 - `16:05 +0700` Inbox thread list now has `All`, `Unread`, and `Unanswered` filters. `Unread` follows the latest-message-is-customer heuristic, while `Unanswered` highlights threads with `customer_flags.pending_bot_response` or human takeover active.
