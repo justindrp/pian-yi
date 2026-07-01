@@ -168,22 +168,25 @@ function buildSubcontractorSummary(rows: DeliveryRow[], subs: Sub[], subId: stri
   return text;
 }
 
-function buildRouteSummary(rows: DeliveryRow[], route: number, date: string): string {
-  const routeRows = rows.filter((r) => r.customers?.delivery_route === route && !r.skip);
-  const customerIds = getRouteSortedIds(rows.filter((r) => !r.skip), route);
+function buildRouteMealSummary(rows: DeliveryRow[], route: number, meal: "lunch" | "dinner", date: string): string {
+  const mealRows = getRouteMealRows(rows.filter((r) => !r.skip), route, meal);
   const dateStr = new Date(date).toLocaleDateString("id-ID", { day: "numeric", month: "long" });
-  let text = `🛵 *Rute ${route} - ${dateStr}*\n`;
-  let stop = 1;
-  for (const custId of customerIds) {
-    const custRows = routeRows.filter((r) => r.customer_id === custId);
-    if (!custRows.length) continue;
-    const cust = custRows[0].customers;
-    const meals = custRows.map((r) => `${r.meal_type === "lunch" ? "makan siang" : "makan malam"} ${r.portions} porsi`).join(" + ");
-    text += `${stop}. ${cust?.name ?? "?"} - ${cust?.area ?? ""}${cust?.sub_area ? ` (${cust.sub_area})` : ""} - ${meals}\n`;
-    stop++;
-  }
-  text += `\nTotal stops: ${stop - 1}`;
-  return text;
+  const mealLabel = meal === "lunch" ? "Lunch" : "Dinner";
+  let text = `🛵 *Rute ${route} ${mealLabel} - ${dateStr}*\n\n`;
+  mealRows.forEach((r, i) => {
+    const c = r.customers;
+    const useSlot2 = r.address_slot === 2;
+    const area = useSlot2 ? (c?.area_2 ?? c?.area ?? "") : (c?.area ?? "");
+    const subArea = useSlot2 ? (c?.sub_area_2 ?? "") : (c?.sub_area ?? "");
+    const address = useSlot2 ? (c?.address_2 ?? c?.address ?? "") : (c?.address ?? "");
+    const mapsLink = useSlot2 ? (c?.google_maps_link_2 ?? c?.google_maps_link ?? "") : (c?.google_maps_link ?? "");
+    text += `${i + 1}. ${c?.name ?? "?"}\n`;
+    text += `${area}${subArea ? `\n${subArea}` : ""}\n`;
+    text += `${address}\n`;
+    if (mapsLink) text += `${mapsLink}\n`;
+    text += `${r.portions} porsi\n\n`;
+  });
+  return text.trim();
 }
 
 function UploadButton({
@@ -776,22 +779,24 @@ export default function DeliveriesClient() {
           {/* Copy buttons */}
           {rows.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
-              {([1, 2] as const).map((route) => {
-                const key = `route-${route}`;
-                const hasRows = rows.some((r) => r.customers?.delivery_route === route && !r.skip);
-                if (!hasRows) return null;
-                return (
-                  <Button
-                    key={key}
-                    type="button"
-                    variant="outline"
-                    onClick={() => copyText(key, buildRouteSummary(rows, route, date))}
-                    className="px-3 py-1.5 border-blue-200 bg-blue-50 text-blue-700 text-sm rounded-lg hover:bg-blue-100 h-auto"
-                  >
-                    {copiedKey === key ? "Copied!" : `Copy Route ${route}`}
-                  </Button>
-                );
-              })}
+              {([1, 2] as const).flatMap((route) =>
+                (["lunch", "dinner"] as const).map((meal) => {
+                  const key = `route-${route}-${meal}`;
+                  const hasRows = rows.some((r) => r.customers?.delivery_route === route && r.meal_type === meal && !r.skip);
+                  if (!hasRows) return null;
+                  return (
+                    <Button
+                      key={key}
+                      type="button"
+                      variant="outline"
+                      onClick={() => copyText(key, buildRouteMealSummary(rows, route, meal, date))}
+                      className="px-3 py-1.5 border-blue-200 bg-blue-50 text-blue-700 text-sm rounded-lg hover:bg-blue-100 h-auto"
+                    >
+                      {copiedKey === key ? "Copied!" : `Copy Route ${route} ${meal === "lunch" ? "Lunch" : "Dinner"}`}
+                    </Button>
+                  );
+                })
+              )}
               {uniqueSubs.map((subId) => {
                 const sub = (subs ?? []).find((s: Sub) => s.id === subId);
                 const key = `sub-${subId}`;
