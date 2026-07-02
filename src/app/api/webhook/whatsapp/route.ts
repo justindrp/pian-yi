@@ -268,7 +268,7 @@ export async function processWebhookAsync(
     await tryLearnCustomerContext(customerId, db);
     await sendPushToAllAdmins(
       "New message from escalated customer",
-      `${message.from}: ${escalatedText.slice(0, 80)}`,
+      `${customer.name ?? message.from}: ${escalatedText.slice(0, 80)}`,
       "/inbox",
       "medium",
     );
