@@ -62,6 +62,29 @@ function toStatusTimestamp(timestamp?: string): string {
   return new Date(unixSeconds * 1000).toISOString();
 }
 
+function formatLocationMessage(message: {
+  locationName?: string;
+  locationAddress?: string;
+  locationLat?: number;
+  locationLng?: number;
+}): string {
+  const parts = [message.locationName, message.locationAddress].filter(
+    Boolean,
+  );
+  const { locationLat: lat, locationLng: lng } = message;
+  let zoneNote = "";
+  let mapsLink = "";
+  if (lat !== undefined && lng !== undefined) {
+    const inBsd = lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
+    if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
+    mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+  }
+  const label = parts.length > 0 ? parts.join(", ") : "Lokasi dibagikan";
+  return mapsLink
+    ? `[Lokasi dibagikan: ${label}${zoneNote}]\n${mapsLink}`
+    : `[Lokasi dibagikan: ${label}${zoneNote}]`;
+}
+
 export async function GET(req: NextRequest): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get("hub.mode");
@@ -226,7 +249,9 @@ export async function processWebhookAsync(
         ? (message.text ?? "")
         : message.type === "image"
           ? "[Image]"
-          : `[${message.type}]`;
+          : message.type === "location"
+            ? formatLocationMessage(message)
+            : `[${message.type}]`;
     const escalatedIntent = await classifyIntent(escalatedText).catch(
       () => "other",
     );
@@ -259,7 +284,9 @@ export async function processWebhookAsync(
         ? (message.text ?? "")
         : message.type === "image"
           ? "[Image]"
-          : `[${message.type}]`;
+          : message.type === "location"
+            ? formatLocationMessage(message)
+            : `[${message.type}]`;
     const pendingIntent = await classifyIntent(pendingText).catch(
       () => "other",
     );
@@ -325,17 +352,7 @@ export async function processWebhookAsync(
   // Non-text messages
   let text: string;
   if (message.type === "location") {
-    const parts = [message.locationName, message.locationAddress].filter(
-      Boolean,
-    );
-    let zoneNote = "";
-    const { locationLat: lat, locationLng: lng } = message;
-    if (lat !== undefined && lng !== undefined) {
-      const inBsd =
-        lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
-      if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
-    }
-    text = `[Lokasi dibagikan: ${parts.join(", ")}${zoneNote}]`;
+    text = formatLocationMessage(message);
   } else if (message.type === "image" && message.imageCaption) {
     text = message.imageCaption;
   } else if (message.type !== "text") {

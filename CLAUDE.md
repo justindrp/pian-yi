@@ -50,6 +50,10 @@ CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI c
 
 When performing infrastructure work, prefer CLI calls over manual UI clicks so the actions are reproducible and auditable.
 
+## Recent updates (July 2, 2026)
+
+- `16:35 +0700` Fixed: WhatsApp location messages sent while `pending_bot_response` or `escalated_to_human` was set fell through to a generic `[${message.type}]` fallback, discarding lat/lng and showing literal `[location]` in the inbox. All three code paths (normal, pending, escalated) now share `formatLocationMessage()`, which saves a Google Maps link (`https://www.google.com/maps?q=lat,lng`) alongside the shared/named address text. Inbox chat bubbles now linkify any `http(s)://` URL in message content (`renderContentWithLinks()` in `inbox-client.tsx`), so the Maps link renders clickable. Messages saved before this fix keep their literal `[location]` text — the original coordinates were never persisted and can't be recovered.
+
 ## Recent updates (July 1, 2026)
 
 - `19:48 +0700` Customers gain a `linked_order_id` field (migration 052): a customer can now draw daily portions from another customer's order/balance instead of their own — e.g. two kids both drawing from a dad's single package. Set once on the customer record (Customers page "Draws From Another Customer's Balance" dropdown, both add and edit forms); `GET /api/deliveries/addable-customers` resolves to the linked order automatically so admins don't pick an order per delivery. `GET /api/customers?all=true` now also returns each customer's own `active_order_id` to power the linking dropdown.

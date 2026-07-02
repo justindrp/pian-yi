@@ -57,6 +57,33 @@ function getInboxImageSrc(
   return msg.content;
 }
 
+const URL_PATTERN = /(https?:\/\/\S+)/g;
+
+function renderContentWithLinks(content: string | null | undefined) {
+  if (!content) return content;
+  const parts = content.split(URL_PATTERN);
+  return parts.map((part, i) => {
+    const isLink = part.startsWith("http://") || part.startsWith("https://");
+    return (
+      // biome-ignore lint/suspicious/noArrayIndexKey: static split of a single message, order never changes
+      <span key={i}>
+        {isLink ? (
+          <a
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline break-all"
+          >
+            {part}
+          </a>
+        ) : (
+          part
+        )}
+      </span>
+    );
+  });
+}
+
 function getReceiptLabel(status: string | null) {
   switch (status) {
     case "read":
@@ -1073,7 +1100,9 @@ export default function InboxClient() {
                         <div className="text-xs italic opacity-70">[Image]</div>
                       )
                     ) : (
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <p className="whitespace-pre-wrap">
+                        {renderContentWithLinks(msg.content)}
+                      </p>
                     )}
                     <div className="flex items-center gap-1 mt-1 opacity-60 flex-wrap">
                       <span className="text-[10px]">
