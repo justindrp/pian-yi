@@ -34,13 +34,13 @@ Two end users:
 - **Styling**: Tailwind CSS + shadcn/ui components
 - **State management**: TanStack Query for server state, React Context for app state
 
-## Required CLIs and MCPs
+## Required CLIs
 
-These must be used as the primary way to configure their respective services. Avoid the web dashboard where the CLI/MCP can do the job.
+CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI can do job.
 
-- **Supabase CLI** + **Supabase MCP** — for migrations, RLS policies, seed data, type generation, local development, project management
-- **GitHub CLI** (`gh`) + **GitHub MCP** — for repo creation, branches, PRs, secrets, Actions, deploy keys
-- **Vercel CLI** + **Vercel MCP** — installed but NOT used for hosting this project (we deploy to Railway). May be used for documentation lookup or future preview deployments.
+- **Supabase CLI** — migrations, RLS policies, seed data, type gen, local dev, project mgmt
+- **GitHub CLI** (`gh`) — repo creation, branches, PRs, secrets, Actions, deploy keys
+- **Railway CLI** — hosting, deploys, env vars, logs (this is where pian-yi actually runs)
 
 ## Workflow
 
@@ -48,7 +48,7 @@ These must be used as the primary way to configure their respective services. Av
 - **REQUIRED before every commit, no exceptions:** Update root `CLAUDE.md` (Recent updates section + any affected API/behavior docs) and root `DATABASE.md` (if schema changed) in the same commit as the code change. Never commit code without updating these files. If you skipped this, make a follow-up commit immediately.
 - A git hook bumps the app version on every commit and amends the commit, so pushes often need a second attempt using the new HEAD SHA.
 
-When performing infrastructure work, prefer CLI/MCP calls over manual UI clicks so the actions are reproducible and auditable.
+When performing infrastructure work, prefer CLI calls over manual UI clicks so the actions are reproducible and auditable.
 
 ## Recent updates (July 1, 2026)
 
@@ -465,7 +465,7 @@ When adding new API routes or webhook code paths, add a corresponding test in `t
 - Never mention subcontractor names in customer-facing strings
 - Never delete from `processed_messages`, `edit_log`, or `conversation_logs` tables
 - Never disable RLS on Supabase tables in production
-- Never deploy this project to Vercel — Railway only (Vercel CLI/MCP is installed for other purposes)
+- Never deploy this project to Vercel — Railway only
 - Never create `middleware.ts` — Next.js 16 uses `proxy.ts` with `export function proxy()` (or default export)
 
 ## Known issues / tech debt
