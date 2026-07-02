@@ -34,6 +34,19 @@ People who can log in to the dashboard. Email is the primary key (matches Supaba
 
 ---
 
+## area_neighborhoods
+
+Named neighborhoods within each delivery area, used by `/api/settings/neighborhoods` for area-picker autocomplete. RLS enabled (authenticated-only policy, migration 053); only accessed server-side via the admin client.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| area | text | One of the 5 delivery areas |
+| name | text | Neighborhood name, unique per (area, name) |
+| created_at | timestamp | |
+
+---
+
 ## assistant_conversations
 
 A dashboard Admin Assistant chat thread. Shared across all admins (not per-user). This is separate from customer WhatsApp chat history in `conversations`.
