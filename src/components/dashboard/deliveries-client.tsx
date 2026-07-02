@@ -1,23 +1,24 @@
 "use client";
 
 import {
+  closestCenter,
   DndContext,
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
-  SortableContext,
   arrayMove,
+  SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -56,7 +57,13 @@ interface DeliveryRow {
     delivery_route: number | null;
     delivery_position: number | null;
   };
-  orders?: { portions_lunch: number; portions_dinner: number; portions_per_delivery: number; meal_time_preference: string; size?: string };
+  orders?: {
+    portions_lunch: number;
+    portions_dinner: number;
+    portions_per_delivery: number;
+    meal_time_preference: string;
+    size?: string;
+  };
 }
 
 interface Proof {
@@ -73,7 +80,10 @@ interface Proof {
   matched_customer_id: string | null;
 }
 
-interface Sub { id: string; name: string }
+interface Sub {
+  id: string;
+  name: string;
+}
 
 interface AddableCustomer {
   id: string;
@@ -130,34 +140,72 @@ function getRouteSortedIds(rows: DeliveryRow[], route: number): string[] {
   const seen = new Set<string>();
   return rows
     .filter((r) => r.customers?.delivery_route === route)
-    .sort((a, b) => (a.customers?.delivery_position ?? 0) - (b.customers?.delivery_position ?? 0))
+    .sort(
+      (a, b) =>
+        (a.customers?.delivery_position ?? 0) -
+        (b.customers?.delivery_position ?? 0),
+    )
     .reduce<string[]>((acc, r) => {
-      if (!seen.has(r.customer_id)) { seen.add(r.customer_id); acc.push(r.customer_id); }
+      if (!seen.has(r.customer_id)) {
+        seen.add(r.customer_id);
+        acc.push(r.customer_id);
+      }
       return acc;
     }, []);
 }
 
-function getRouteMealRows(rows: DeliveryRow[], route: number, meal: "lunch" | "dinner"): DeliveryRow[] {
+function getRouteMealRows(
+  rows: DeliveryRow[],
+  route: number,
+  meal: "lunch" | "dinner",
+): DeliveryRow[] {
   return rows
-    .filter((r) => r.meal_type === meal && r.customers?.delivery_route === route)
-    .sort((a, b) => (a.customers?.delivery_position ?? 0) - (b.customers?.delivery_position ?? 0));
+    .filter(
+      (r) => r.meal_type === meal && r.customers?.delivery_route === route,
+    )
+    .sort(
+      (a, b) =>
+        (a.customers?.delivery_position ?? 0) -
+        (b.customers?.delivery_position ?? 0),
+    );
 }
 
-function getUnassignedMealRows(rows: DeliveryRow[], meal: "lunch" | "dinner"): DeliveryRow[] {
-  return rows.filter((r) => r.meal_type === meal && !r.customers?.delivery_route);
+function getUnassignedMealRows(
+  rows: DeliveryRow[],
+  meal: "lunch" | "dinner",
+): DeliveryRow[] {
+  return rows.filter(
+    (r) => r.meal_type === meal && !r.customers?.delivery_route,
+  );
 }
 
-function buildSubcontractorSummary(rows: DeliveryRow[], subs: Sub[], subId: string, date: string): string {
+function buildSubcontractorSummary(
+  rows: DeliveryRow[],
+  subs: Sub[],
+  subId: string,
+  date: string,
+): string {
   const sub = subs.find((s) => s.id === subId);
   const subRows = rows.filter((r) => r.subcontractor_id === subId && !r.skip);
   const lunch = subRows
     .filter((r) => r.meal_type === "lunch")
-    .sort((a, b) => (a.customers?.delivery_position ?? 0) - (b.customers?.delivery_position ?? 0));
+    .sort(
+      (a, b) =>
+        (a.customers?.delivery_position ?? 0) -
+        (b.customers?.delivery_position ?? 0),
+    );
   const dinner = subRows
     .filter((r) => r.meal_type === "dinner")
-    .sort((a, b) => (a.customers?.delivery_position ?? 0) - (b.customers?.delivery_position ?? 0));
+    .sort(
+      (a, b) =>
+        (a.customers?.delivery_position ?? 0) -
+        (b.customers?.delivery_position ?? 0),
+    );
   const total = subRows.reduce((s, r) => s + r.portions, 0);
-  const dateStr = new Date(date).toLocaleDateString("id-ID", { day: "numeric", month: "long" });
+  const dateStr = new Date(date).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+  });
   let text = `🍱 *Pengiriman ${sub?.name ?? subId} - ${dateStr}*\n`;
   if (lunch.length) {
     text += "\n*LUNCH*\n";
@@ -175,9 +223,21 @@ function buildSubcontractorSummary(rows: DeliveryRow[], subs: Sub[], subId: stri
   return text;
 }
 
-function buildRouteMealSummary(rows: DeliveryRow[], route: number, meal: "lunch" | "dinner", date: string): string {
-  const mealRows = getRouteMealRows(rows.filter((r) => !r.skip), route, meal);
-  const dateStr = new Date(date).toLocaleDateString("id-ID", { day: "numeric", month: "long" });
+function buildRouteMealSummary(
+  rows: DeliveryRow[],
+  route: number,
+  meal: "lunch" | "dinner",
+  date: string,
+): string {
+  const mealRows = getRouteMealRows(
+    rows.filter((r) => !r.skip),
+    route,
+    meal,
+  );
+  const dateStr = new Date(date).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+  });
   const mealLabel = meal === "lunch" ? "Lunch" : "Dinner";
   const totalPortions = mealRows.reduce((s, r) => s + r.portions, 0);
   let text = `🛵 *Rute ${route} ${mealLabel} - ${dateStr} = ${totalPortions} porsi*\n\n`;
@@ -186,8 +246,12 @@ function buildRouteMealSummary(rows: DeliveryRow[], route: number, meal: "lunch"
     const useSlot2 = r.address_slot === 2;
     const area = useSlot2 ? (c?.area_2 ?? c?.area ?? "") : (c?.area ?? "");
     const subArea = useSlot2 ? (c?.sub_area_2 ?? "") : (c?.sub_area ?? "");
-    const address = useSlot2 ? (c?.address_2 ?? c?.address ?? "") : (c?.address ?? "");
-    const mapsLink = useSlot2 ? (c?.google_maps_link_2 ?? c?.google_maps_link ?? "") : (c?.google_maps_link ?? "");
+    const address = useSlot2
+      ? (c?.address_2 ?? c?.address ?? "")
+      : (c?.address ?? "");
+    const mapsLink = useSlot2
+      ? (c?.google_maps_link_2 ?? c?.google_maps_link ?? "")
+      : (c?.google_maps_link ?? "");
     text += `${i + 1}. ${c?.name ?? "?"}\n`;
     text += `${area}${subArea ? `\n${subArea}` : ""}\n`;
     text += `${address}\n`;
@@ -226,13 +290,27 @@ function UploadButton({
         className="h-7 w-7 shrink-0 p-0 text-gray-400 hover:text-gray-600 disabled:opacity-40"
         title="Upload delivery proof"
       >
-        {uploadState === "uploading" && <span className="text-[10px] text-gray-400">...</span>}
-        {uploadState === "done" && <span className="text-[11px] text-green-500">✓</span>}
-        {uploadState === "error" && <span className="text-[11px] text-red-500">!</span>}
+        {uploadState === "uploading" && (
+          <span className="text-[10px] text-gray-400">...</span>
+        )}
+        {uploadState === "done" && (
+          <span className="text-[11px] text-green-500">✓</span>
+        )}
+        {uploadState === "error" && (
+          <span className="text-[11px] text-red-500">!</span>
+        )}
         {uploadState === "idle" && (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 0 2-2l2-2h8l2 2h4a2 2 0 0 1 2 2z"/>
-            <circle cx="12" cy="13" r="4"/>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 0 2-2l2-2h8l2 2h4a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="13" r="4" />
           </svg>
         )}
       </Button>
@@ -255,15 +333,38 @@ function SortableDeliveryRow({
   row: DeliveryRow;
   position: number;
   subs: Sub[];
-  onUpdateSkip: (customerId: string, mealType: "lunch" | "dinner", skip: boolean) => void;
-  onUpdatePortions: (customerId: string, mealType: "lunch" | "dinner", portions: number) => void;
-  onUpdateSub: (customerId: string, mealType: "lunch" | "dinner", subId: string | null) => void;
-  onUpdateAddressSlot: (customerId: string, mealType: "lunch" | "dinner", slot: number) => void;
+  onUpdateSkip: (
+    customerId: string,
+    mealType: "lunch" | "dinner",
+    skip: boolean,
+  ) => void;
+  onUpdatePortions: (
+    customerId: string,
+    mealType: "lunch" | "dinner",
+    portions: number,
+  ) => void;
+  onUpdateSub: (
+    customerId: string,
+    mealType: "lunch" | "dinner",
+    subId: string | null,
+  ) => void;
+  onUpdateAddressSlot: (
+    customerId: string,
+    mealType: "lunch" | "dinner",
+    slot: number,
+  ) => void;
   onDelete: () => void;
   uploadState: "idle" | "uploading" | "done" | "error";
   onUploadProof: (file: File) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row.customer_id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: row.customer_id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -272,24 +373,45 @@ function SortableDeliveryRow({
 
   return (
     <tr ref={setNodeRef} style={style} className={row.skip ? "opacity-40" : ""}>
-      <td className="px-2 py-2 text-gray-300 cursor-grab touch-none" {...attributes} {...listeners}>
-        <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true">
-          <circle cx="4" cy="4" r="1.5" /><circle cx="8" cy="4" r="1.5" />
-          <circle cx="4" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" />
-          <circle cx="4" cy="12" r="1.5" /><circle cx="8" cy="12" r="1.5" />
+      <td
+        className="px-2 py-2 text-gray-300 cursor-grab touch-none"
+        {...attributes}
+        {...listeners}
+      >
+        <svg
+          width="12"
+          height="16"
+          viewBox="0 0 12 16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <circle cx="4" cy="4" r="1.5" />
+          <circle cx="8" cy="4" r="1.5" />
+          <circle cx="4" cy="8" r="1.5" />
+          <circle cx="8" cy="8" r="1.5" />
+          <circle cx="4" cy="12" r="1.5" />
+          <circle cx="8" cy="12" r="1.5" />
         </svg>
       </td>
-      <td className="px-2 py-2 text-gray-300 text-xs w-5 tabular-nums">{position}</td>
+      <td className="px-2 py-2 text-gray-300 text-xs w-5 tabular-nums">
+        {position}
+      </td>
       <td className="px-2 py-2">
         <Checkbox
           checked={!row.skip}
-          onCheckedChange={(checked) => onUpdateSkip(row.customer_id, row.meal_type, !checked)}
+          onCheckedChange={(checked) =>
+            onUpdateSkip(row.customer_id, row.meal_type, !checked)
+          }
         />
       </td>
       <td className="px-2 py-2">
         <div className="font-medium text-gray-900 text-sm flex items-center gap-1">
           <span>{row.customers?.name ?? row.customer_id.slice(0, 8)}</span>
-          {row.orders?.size === "m" && <span className="text-xs bg-orange-100 text-orange-700 px-1 rounded">M</span>}
+          {row.orders?.size === "m" && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-1 rounded">
+              M
+            </span>
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -310,7 +432,13 @@ function SortableDeliveryRow({
             <Button
               type="button"
               variant="ghost"
-              onClick={() => onUpdateAddressSlot(row.customer_id, row.meal_type, row.address_slot === 2 ? 1 : 2)}
+              onClick={() =>
+                onUpdateAddressSlot(
+                  row.customer_id,
+                  row.meal_type,
+                  row.address_slot === 2 ? 1 : 2,
+                )
+              }
               className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded h-auto py-0"
             >
               {row.address_slot === 2 ? "A2" : "A1"}
@@ -320,22 +448,50 @@ function SortableDeliveryRow({
       </td>
       <td className="px-2 py-2">
         <div className="flex items-center gap-1">
-          <Button type="button" variant="outline" onClick={() => onUpdatePortions(row.customer_id, row.meal_type, Math.max(1, row.portions - 1))} className="w-5 h-5 rounded border text-xs p-0">-</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              onUpdatePortions(
+                row.customer_id,
+                row.meal_type,
+                Math.max(1, row.portions - 1),
+              )
+            }
+            className="w-5 h-5 rounded border text-xs p-0"
+          >
+            -
+          </Button>
           <span className="w-6 text-center text-sm">{row.portions}</span>
-          <Button type="button" variant="outline" onClick={() => onUpdatePortions(row.customer_id, row.meal_type, row.portions + 1)} className="w-5 h-5 rounded border text-xs p-0">+</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              onUpdatePortions(row.customer_id, row.meal_type, row.portions + 1)
+            }
+            className="w-5 h-5 rounded border text-xs p-0"
+          >
+            +
+          </Button>
         </div>
       </td>
       <td className="px-2 py-2">
         <Select
           value={row.subcontractor_id ?? NO_SUB}
-          onValueChange={(v) => onUpdateSub(row.customer_id, row.meal_type, v === NO_SUB ? null : v)}
+          onValueChange={(v) =>
+            onUpdateSub(row.customer_id, row.meal_type, v === NO_SUB ? null : v)
+          }
         >
           <SelectTrigger className="h-auto w-12 rounded border-gray-200 px-1 py-0.5 text-xs sm:w-auto">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NO_SUB}>—</SelectItem>
-            {subs.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+            {subs.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </td>
@@ -351,7 +507,9 @@ export default function DeliveriesClient() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeliveryRow | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [uploadStates, setUploadStates] = useState<Record<string, "idle" | "uploading" | "done" | "error">>({});
+  const [uploadStates, setUploadStates] = useState<
+    Record<string, "idle" | "uploading" | "done" | "error">
+  >({});
   const [showAdd, setShowAdd] = useState(false);
   const [addSearch, setAddSearch] = useState("");
   const [addCustomer, setAddCustomer] = useState<AddableCustomer | null>(null);
@@ -363,14 +521,16 @@ export default function DeliveriesClient() {
 
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   const { data: sheetData, isLoading: sheetLoading } = useQuery({
     queryKey: ["daily-sheet", date],
     queryFn: async () => {
       const res = await fetch(`/api/deliveries/daily-sheet?date=${date}`);
-      const json = await res.json() as { ok: boolean; data: DeliveryRow[] };
+      const json = (await res.json()) as { ok: boolean; data: DeliveryRow[] };
       return json.data;
     },
   });
@@ -379,7 +539,7 @@ export default function DeliveriesClient() {
     queryKey: ["subcontractors"],
     queryFn: async () => {
       const res = await fetch("/api/subcontractors");
-      const json = await res.json() as { ok: boolean; data: Sub[] };
+      const json = (await res.json()) as { ok: boolean; data: Sub[] };
       return json.data;
     },
   });
@@ -388,7 +548,10 @@ export default function DeliveriesClient() {
     queryKey: ["addable-customers"],
     queryFn: async () => {
       const res = await fetch("/api/deliveries/addable-customers");
-      const json = await res.json() as { ok: boolean; data: AddableCustomer[] };
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: AddableCustomer[];
+      };
       return json.data;
     },
     enabled: showAdd,
@@ -398,7 +561,7 @@ export default function DeliveriesClient() {
     queryKey: ["delivery-proofs", date],
     queryFn: async () => {
       const res = await fetch(`/api/deliveries/proofs?date=${date}`);
-      const json = await res.json() as { ok: boolean; data: Proof[] };
+      const json = (await res.json()) as { ok: boolean; data: Proof[] };
       return json.data;
     },
     refetchInterval: tab === "proofs" ? 15000 : false,
@@ -406,15 +569,27 @@ export default function DeliveriesClient() {
 
   useEffect(() => {
     if (sheetData) {
-      setRows(sheetData.map((r) => ({ ...r, skip: r.status === "skipped", address_slot: r.address_slot ?? 1 })));
+      setRows(
+        sheetData.map((r) => ({
+          ...r,
+          skip: r.status === "skipped",
+          address_slot: r.address_slot ?? 1,
+        })),
+      );
     }
   }, [sheetData]);
 
   const generate = useMutation({
     mutationFn: async () => {
-      await fetch("/api/deliveries/daily-sheet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date }) });
+      await fetch("/api/deliveries/daily-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["daily-sheet", date] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["daily-sheet", date] });
+    },
   });
 
   const save = useMutation({
@@ -425,11 +600,16 @@ export default function DeliveriesClient() {
         body: JSON.stringify({ date, rows }),
       });
     },
-    onSuccess: () => { setShowConfirm(false); qc.invalidateQueries({ queryKey: ["daily-sheet", date] }); },
+    onSuccess: () => {
+      setShowConfirm(false);
+      qc.invalidateQueries({ queryKey: ["daily-sheet", date] });
+    },
   });
 
   const reorder = useMutation({
-    mutationFn: async (updates: { id: string; delivery_position: number }[]) => {
+    mutationFn: async (
+      updates: { id: string; delivery_position: number }[],
+    ) => {
       await fetch("/api/customers/reorder", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -439,28 +619,53 @@ export default function DeliveriesClient() {
   });
 
   const sendProof = useMutation({
-    mutationFn: async ({ id, customer_id }: { id: string; customer_id: string }) => {
-      await fetch("/api/deliveries/proofs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "send", customer_id }) });
+    mutationFn: async ({
+      id,
+      customer_id,
+    }: {
+      id: string;
+      customer_id: string;
+    }) => {
+      await fetch("/api/deliveries/proofs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "send", customer_id }),
+      });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
   });
 
   const sendAll = useMutation({
     mutationFn: async (toSend: Proof[]) => {
       for (const p of toSend) {
         if (p.matched_customer_id) {
-          await fetch("/api/deliveries/proofs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: p.id, action: "send", customer_id: p.matched_customer_id }) });
+          await fetch("/api/deliveries/proofs", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: p.id,
+              action: "send",
+              customer_id: p.matched_customer_id,
+            }),
+          });
         }
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
   });
 
   const unmatchProof = useMutation({
     mutationFn: async (id: string) => {
-      await fetch("/api/deliveries/proofs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action: "unmatch" }) });
+      await fetch("/api/deliveries/proofs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "unmatch" }),
+      });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
   });
 
   const deleteRow = useMutation({
@@ -476,19 +681,38 @@ export default function DeliveriesClient() {
       if (!res.ok || !json.ok) throw new Error(json.error ?? "Gagal menghapus");
     },
     onSuccess: (_data, row) => {
-      setRows((prev) => prev.filter((r) => !(r.customer_id === row.customer_id && r.meal_type === row.meal_type)));
+      setRows((prev) =>
+        prev.filter(
+          (r) =>
+            !(
+              r.customer_id === row.customer_id && r.meal_type === row.meal_type
+            ),
+        ),
+      );
       setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ["daily-sheet", date] });
     },
   });
 
-  function updateRow(customerId: string, mealType: "lunch" | "dinner", field: keyof DeliveryRow, value: unknown) {
-    setRows((prev) => prev.map((r) =>
-      r.customer_id === customerId && r.meal_type === mealType ? { ...r, [field]: value } : r,
-    ));
+  function updateRow(
+    customerId: string,
+    mealType: "lunch" | "dinner",
+    field: keyof DeliveryRow,
+    value: unknown,
+  ) {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.customer_id === customerId && r.meal_type === mealType
+          ? { ...r, [field]: value }
+          : r,
+      ),
+    );
   }
 
-  function defaultPortionsFor(c: AddableCustomer | null, meal: "lunch" | "dinner"): number {
+  function defaultPortionsFor(
+    c: AddableCustomer | null,
+    meal: "lunch" | "dinner",
+  ): number {
     const o = c?.active_order;
     if (!o) return 1;
     const slot = meal === "lunch" ? o.portions_lunch : o.portions_dinner;
@@ -515,8 +739,14 @@ export default function DeliveriesClient() {
 
   function confirmAddRow() {
     if (!addCustomer) return;
-    if (rows.some((r) => r.customer_id === addCustomer.id && r.meal_type === addMeal)) {
-      alert(`${addCustomer.name ?? addCustomer.phone_number} sudah ada di daftar ${addMeal} untuk tanggal ini.`);
+    if (
+      rows.some(
+        (r) => r.customer_id === addCustomer.id && r.meal_type === addMeal,
+      )
+    ) {
+      alert(
+        `${addCustomer.name ?? addCustomer.phone_number} sudah ada di daftar ${addMeal} untuk tanggal ini.`,
+      );
       return;
     }
     const { active_order, ...cust } = addCustomer;
@@ -552,7 +782,10 @@ export default function DeliveriesClient() {
         if (!r.customers || r.customers.delivery_route !== route) return r;
         const newPos = posMap.get(r.customer_id);
         if (newPos === undefined) return r;
-        return { ...r, customers: { ...r.customers, delivery_position: newPos } };
+        return {
+          ...r,
+          customers: { ...r.customers, delivery_position: newPos },
+        };
       }),
     );
     reorder.mutate(reorderedIds.map((id, i) => ({ id, delivery_position: i })));
@@ -560,19 +793,38 @@ export default function DeliveriesClient() {
 
   const lunchRows = rows.filter((r) => r.meal_type === "lunch");
   const dinnerRows = rows.filter((r) => r.meal_type === "dinner");
-  const uniqueSubs = [...new Set(rows.filter((r) => r.subcontractor_id).map((r) => r.subcontractor_id as string))];
+  const uniqueSubs = [
+    ...new Set(
+      rows
+        .filter((r) => r.subcontractor_id)
+        .map((r) => r.subcontractor_id as string),
+    ),
+  ];
 
   const autoSent = (proofs ?? []).filter((p) => p.status === "auto_sent");
-  const adminUploaded = (proofs ?? []).filter((p) => p.status === "admin_uploaded");
-  const manuallySent = (proofs ?? []).filter((p) => p.status === "manually_sent");
+  const adminUploaded = (proofs ?? []).filter(
+    (p) => p.status === "admin_uploaded",
+  );
+  const manuallySent = (proofs ?? []).filter(
+    (p) => p.status === "manually_sent",
+  );
   const needsReview = (proofs ?? []).filter((p) => p.status === "needs_review");
   const unmatched = (proofs ?? []).filter((p) => p.status === "unmatched");
 
-  const proofCustomerIds = new Set((proofs ?? []).map((p) => p.matched_customer_id));
+  const proofCustomerIds = new Set(
+    (proofs ?? []).map((p) => p.matched_customer_id),
+  );
 
-  const activeSubs = (subs ?? []).filter((s: Sub & { is_active?: boolean }) => s.is_active !== false);
+  const activeSubs = (subs ?? []).filter(
+    (s: Sub & { is_active?: boolean }) => s.is_active !== false,
+  );
 
-  async function handleUploadProof(customerId: string, mealType: "lunch" | "dinner", subcontractorId: string | null, file: File) {
+  async function handleUploadProof(
+    customerId: string,
+    mealType: "lunch" | "dinner",
+    subcontractorId: string | null,
+    file: File,
+  ) {
     const key = `${customerId}-${mealType}`;
     setUploadStates((prev) => ({ ...prev, [key]: "uploading" }));
     try {
@@ -581,10 +833,17 @@ export default function DeliveriesClient() {
       fd.append("customer_id", customerId);
       if (subcontractorId) fd.append("subcontractor_id", subcontractorId);
       fd.append("date", date);
-      const res = await fetch("/api/deliveries/proofs", { method: "POST", body: fd });
-      const json = await res.json() as { ok: boolean };
-      setUploadStates((prev) => ({ ...prev, [key]: json.ok ? "done" : "error" }));
-      if (json.ok) qc.invalidateQueries({ queryKey: ["delivery-proofs", date] });
+      const res = await fetch("/api/deliveries/proofs", {
+        method: "POST",
+        body: fd,
+      });
+      const json = (await res.json()) as { ok: boolean };
+      setUploadStates((prev) => ({
+        ...prev,
+        [key]: json.ok ? "done" : "error",
+      }));
+      if (json.ok)
+        qc.invalidateQueries({ queryKey: ["delivery-proofs", date] });
     } catch {
       setUploadStates((prev) => ({ ...prev, [key]: "error" }));
     }
@@ -602,8 +861,22 @@ export default function DeliveriesClient() {
       <div className="flex items-center gap-4 mb-4">
         <h1 className="text-xl font-semibold text-gray-900">Deliveries</h1>
         <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
-          <Button type="button" variant="ghost" onClick={() => setTab("sheet")} className={`px-4 py-1.5 rounded-none h-auto ${tab === "sheet" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}>Daily Sheet</Button>
-          <Button type="button" variant="ghost" onClick={() => setTab("proofs")} className={`px-4 py-1.5 rounded-none h-auto ${tab === "proofs" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}>Proof of Delivery</Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setTab("sheet")}
+            className={`px-4 py-1.5 rounded-none h-auto ${tab === "sheet" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}
+          >
+            Daily Sheet
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setTab("proofs")}
+            className={`px-4 py-1.5 rounded-none h-auto ${tab === "proofs" ? "bg-gray-900 text-white hover:bg-gray-900 hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}
+          >
+            Proof of Delivery
+          </Button>
         </div>
         <Input
           type="date"
@@ -620,7 +893,8 @@ export default function DeliveriesClient() {
         <div>
           {isPastDeadline(date) && (
             <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-              ⚠️ Deadline sudah lewat. Perubahan ini harus dikomunikasikan langsung ke subcontractor.
+              ⚠️ Deadline sudah lewat. Perubahan ini harus dikomunikasikan
+              langsung ke subcontractor.
             </div>
           )}
 
@@ -628,30 +902,71 @@ export default function DeliveriesClient() {
           <div className="flex gap-4 mb-4">
             <div className="bg-white border border-gray-100 rounded-lg px-4 py-3 text-sm">
               <div className="text-gray-500 text-xs">Total Lunch</div>
-              <div className="font-semibold text-gray-900">{lunchRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
+              <div className="font-semibold text-gray-900">
+                {lunchRows
+                  .filter((r) => !r.skip)
+                  .reduce((s, r) => s + r.portions, 0)}{" "}
+                porsi
+              </div>
             </div>
             <div className="bg-white border border-gray-100 rounded-lg px-4 py-3 text-sm">
               <div className="text-gray-500 text-xs">Total Dinner</div>
-              <div className="font-semibold text-gray-900">{dinnerRows.filter((r) => !r.skip).reduce((s, r) => s + r.portions, 0)} porsi</div>
+              <div className="font-semibold text-gray-900">
+                {dinnerRows
+                  .filter((r) => !r.skip)
+                  .reduce((s, r) => s + r.portions, 0)}{" "}
+                porsi
+              </div>
             </div>
             <div className="flex gap-2 ml-auto">
-              <Button type="button" variant="outline" onClick={() => rows.length === 0 ? generate.mutate() : qc.invalidateQueries({ queryKey: ["daily-sheet", date] })} disabled={generate.isPending} className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40 h-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  rows.length === 0
+                    ? generate.mutate()
+                    : qc.invalidateQueries({ queryKey: ["daily-sheet", date] })
+                }
+                disabled={generate.isPending}
+                className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40 h-auto"
+              >
                 {generate.isPending ? "Refreshing..." : "Refresh"}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setShowAdd(true)} className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 h-auto">+ Add customer</Button>
-              <Button type="button" onClick={() => setShowConfirm(true)} disabled={rows.length === 0} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 h-auto">Save</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAdd(true)}
+                title="Add customer"
+                aria-label="Add customer"
+                className="px-3 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 h-auto"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setShowConfirm(true)}
+                disabled={rows.length === 0}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 h-auto"
+              >
+                Save
+              </Button>
             </div>
           </div>
 
           {sheetLoading ? (
             <div className="text-gray-400 text-sm">Loading...</div>
           ) : rows.length === 0 ? (
-            <div className="text-gray-400 text-sm text-center py-12">No deliveries for this date. Click Refresh to load from active orders.</div>
+            <div className="text-gray-400 text-sm text-center py-12">
+              No deliveries for this date. Click Refresh to load from active
+              orders.
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(["lunch", "dinner"] as const).map((meal) => (
                 <div key={meal}>
-                  <h2 className="font-medium text-gray-700 text-sm mb-2 uppercase tracking-wide">{meal}</h2>
+                  <h2 className="font-medium text-gray-700 text-sm mb-2 uppercase tracking-wide">
+                    {meal}
+                  </h2>
                   <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-400 text-xs">
@@ -673,7 +988,10 @@ export default function DeliveriesClient() {
                           <Fragment key={route}>
                             <tbody>
                               <tr className="bg-gray-50 border-t border-gray-100">
-                                <td colSpan={7} className="px-3 py-1.5 text-xs font-medium text-gray-500">
+                                <td
+                                  colSpan={7}
+                                  className="px-3 py-1.5 text-xs font-medium text-gray-500"
+                                >
                                   {ROUTE_LABELS[route]}
                                 </td>
                               </tr>
@@ -683,7 +1001,10 @@ export default function DeliveriesClient() {
                               collisionDetection={closestCenter}
                               onDragEnd={(e) => handleDragEnd(e, route)}
                             >
-                              <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
+                              <SortableContext
+                                items={sortedIds}
+                                strategy={verticalListSortingStrategy}
+                              >
                                 <tbody className="divide-y divide-gray-50">
                                   {routeRows.map((r, i) => (
                                     <SortableDeliveryRow
@@ -691,13 +1012,40 @@ export default function DeliveriesClient() {
                                       row={r}
                                       position={i + 1}
                                       subs={activeSubs}
-                                      onUpdateSkip={(cid, mt, skip) => updateRow(cid, mt, "skip", skip)}
-                                      onUpdatePortions={(cid, mt, portions) => updateRow(cid, mt, "portions", portions)}
-                                      onUpdateSub={(cid, mt, subId) => updateRow(cid, mt, "subcontractor_id", subId)}
-                                      onUpdateAddressSlot={(cid, mt, slot) => updateRow(cid, mt, "address_slot", slot)}
+                                      onUpdateSkip={(cid, mt, skip) =>
+                                        updateRow(cid, mt, "skip", skip)
+                                      }
+                                      onUpdatePortions={(cid, mt, portions) =>
+                                        updateRow(cid, mt, "portions", portions)
+                                      }
+                                      onUpdateSub={(cid, mt, subId) =>
+                                        updateRow(
+                                          cid,
+                                          mt,
+                                          "subcontractor_id",
+                                          subId,
+                                        )
+                                      }
+                                      onUpdateAddressSlot={(cid, mt, slot) =>
+                                        updateRow(cid, mt, "address_slot", slot)
+                                      }
                                       onDelete={() => setDeleteTarget(r)}
-                                      uploadState={uploadStates[`${r.customer_id}-${r.meal_type}`] ?? (proofCustomerIds.has(r.customer_id) ? "done" : "idle")}
-                                      onUploadProof={(file) => handleUploadProof(r.customer_id, r.meal_type, r.subcontractor_id, file)}
+                                      uploadState={
+                                        uploadStates[
+                                          `${r.customer_id}-${r.meal_type}`
+                                        ] ??
+                                        (proofCustomerIds.has(r.customer_id)
+                                          ? "done"
+                                          : "idle")
+                                      }
+                                      onUploadProof={(file) =>
+                                        handleUploadProof(
+                                          r.customer_id,
+                                          r.meal_type,
+                                          r.subcontractor_id,
+                                          file,
+                                        )
+                                      }
                                     />
                                   ))}
                                 </tbody>
@@ -711,22 +1059,41 @@ export default function DeliveriesClient() {
                         <>
                           <tbody>
                             <tr className="bg-gray-50 border-t border-gray-100">
-                              <td colSpan={7} className="px-3 py-1.5 text-xs font-medium text-gray-400 italic">
+                              <td
+                                colSpan={7}
+                                className="px-3 py-1.5 text-xs font-medium text-gray-400 italic"
+                              >
                                 Unassigned route
                               </td>
                             </tr>
                           </tbody>
                           <tbody className="divide-y divide-gray-50">
                             {getUnassignedMealRows(rows, meal).map((r) => (
-                              <tr key={r.customer_id} className={r.skip ? "opacity-40" : ""}>
+                              <tr
+                                key={r.customer_id}
+                                className={r.skip ? "opacity-40" : ""}
+                              >
                                 <td className="px-2 py-2 w-6" />
                                 <td className="px-2 py-2 w-5" />
                                 <td className="px-2 py-2">
-                                  <Checkbox checked={!r.skip} onCheckedChange={(checked) => updateRow(r.customer_id, meal, "skip", !checked)} />
+                                  <Checkbox
+                                    checked={!r.skip}
+                                    onCheckedChange={(checked) =>
+                                      updateRow(
+                                        r.customer_id,
+                                        meal,
+                                        "skip",
+                                        !checked,
+                                      )
+                                    }
+                                  />
                                 </td>
                                 <td className="px-2 py-2">
                                   <div className="font-medium text-gray-900 text-sm flex items-center gap-1">
-                                    <span>{r.customers?.name ?? r.customer_id.slice(0, 8)}</span>
+                                    <span>
+                                      {r.customers?.name ??
+                                        r.customer_id.slice(0, 8)}
+                                    </span>
                                     <Button
                                       type="button"
                                       variant="ghost"
@@ -747,7 +1114,14 @@ export default function DeliveriesClient() {
                                       <Button
                                         type="button"
                                         variant="ghost"
-                                        onClick={() => updateRow(r.customer_id, meal, "address_slot", r.address_slot === 2 ? 1 : 2)}
+                                        onClick={() =>
+                                          updateRow(
+                                            r.customer_id,
+                                            meal,
+                                            "address_slot",
+                                            r.address_slot === 2 ? 1 : 2,
+                                          )
+                                        }
                                         className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded h-auto py-0"
                                       >
                                         {r.address_slot === 2 ? "A2" : "A1"}
@@ -757,28 +1131,81 @@ export default function DeliveriesClient() {
                                 </td>
                                 <td className="px-2 py-2">
                                   <div className="flex items-center gap-1">
-                                    <Button type="button" variant="outline" onClick={() => updateRow(r.customer_id, meal, "portions", Math.max(1, r.portions - 1))} className="w-5 h-5 rounded border text-xs p-0">-</Button>
-                                    <span className="w-6 text-center text-sm">{r.portions}</span>
-                                    <Button type="button" variant="outline" onClick={() => updateRow(r.customer_id, meal, "portions", r.portions + 1)} className="w-5 h-5 rounded border text-xs p-0">+</Button>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() =>
+                                        updateRow(
+                                          r.customer_id,
+                                          meal,
+                                          "portions",
+                                          Math.max(1, r.portions - 1),
+                                        )
+                                      }
+                                      className="w-5 h-5 rounded border text-xs p-0"
+                                    >
+                                      -
+                                    </Button>
+                                    <span className="w-6 text-center text-sm">
+                                      {r.portions}
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() =>
+                                        updateRow(
+                                          r.customer_id,
+                                          meal,
+                                          "portions",
+                                          r.portions + 1,
+                                        )
+                                      }
+                                      className="w-5 h-5 rounded border text-xs p-0"
+                                    >
+                                      +
+                                    </Button>
                                   </div>
                                 </td>
                                 <td className="px-2 py-2">
                                   <Select
                                     value={r.subcontractor_id ?? NO_SUB}
-                                    onValueChange={(v) => updateRow(r.customer_id, meal, "subcontractor_id", v === NO_SUB ? null : v)}
+                                    onValueChange={(v) =>
+                                      updateRow(
+                                        r.customer_id,
+                                        meal,
+                                        "subcontractor_id",
+                                        v === NO_SUB ? null : v,
+                                      )
+                                    }
                                   >
                                     <SelectTrigger className="h-auto w-12 rounded border-gray-200 px-1 py-0.5 text-xs sm:w-auto">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value={NO_SUB}>—</SelectItem>
-                                      {activeSubs.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                      {activeSubs.map((s) => (
+                                        <SelectItem key={s.id} value={s.id}>
+                                          {s.name}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </td>
                                 <UploadButton
-                                  uploadState={uploadStates[`${r.customer_id}-${meal}`] ?? (proofCustomerIds.has(r.customer_id) ? "done" : "idle")}
-                                  onUpload={(file) => handleUploadProof(r.customer_id, meal, r.subcontractor_id, file)}
+                                  uploadState={
+                                    uploadStates[`${r.customer_id}-${meal}`] ??
+                                    (proofCustomerIds.has(r.customer_id)
+                                      ? "done"
+                                      : "idle")
+                                  }
+                                  onUpload={(file) =>
+                                    handleUploadProof(
+                                      r.customer_id,
+                                      meal,
+                                      r.subcontractor_id,
+                                      file,
+                                    )
+                                  }
                                 />
                               </tr>
                             ))}
@@ -798,20 +1225,32 @@ export default function DeliveriesClient() {
               {([1, 2] as const).flatMap((route) =>
                 (["lunch", "dinner"] as const).map((meal) => {
                   const key = `route-${route}-${meal}`;
-                  const hasRows = rows.some((r) => r.customers?.delivery_route === route && r.meal_type === meal && !r.skip);
+                  const hasRows = rows.some(
+                    (r) =>
+                      r.customers?.delivery_route === route &&
+                      r.meal_type === meal &&
+                      !r.skip,
+                  );
                   if (!hasRows) return null;
                   return (
                     <Button
                       key={key}
                       type="button"
                       variant="outline"
-                      onClick={() => copyText(key, buildRouteMealSummary(rows, route, meal, date))}
+                      onClick={() =>
+                        copyText(
+                          key,
+                          buildRouteMealSummary(rows, route, meal, date),
+                        )
+                      }
                       className="px-3 py-1.5 border-blue-200 bg-blue-50 text-blue-700 text-sm rounded-lg hover:bg-blue-100 h-auto"
                     >
-                      {copiedKey === key ? "Copied!" : `Copy Route ${route} ${meal === "lunch" ? "Lunch" : "Dinner"}`}
+                      {copiedKey === key
+                        ? "Copied!"
+                        : `Copy Route ${route} ${meal === "lunch" ? "Lunch" : "Dinner"}`}
                     </Button>
                   );
-                })
+                }),
               )}
               {uniqueSubs.map((subId) => {
                 const sub = (subs ?? []).find((s: Sub) => s.id === subId);
@@ -821,10 +1260,22 @@ export default function DeliveriesClient() {
                     key={key}
                     type="button"
                     variant="outline"
-                    onClick={() => copyText(key, buildSubcontractorSummary(rows, subs ?? [], subId, date))}
+                    onClick={() =>
+                      copyText(
+                        key,
+                        buildSubcontractorSummary(
+                          rows,
+                          subs ?? [],
+                          subId,
+                          date,
+                        ),
+                      )
+                    }
                     className="px-3 py-1.5 border-gray-200 text-sm rounded-lg hover:bg-gray-50 h-auto"
                   >
-                    {copiedKey === key ? "Copied!" : `Copy for ${sub?.name ?? subId}`}
+                    {copiedKey === key
+                      ? "Copied!"
+                      : `Copy for ${sub?.name ?? subId}`}
                   </Button>
                 );
               })}
@@ -838,11 +1289,16 @@ export default function DeliveriesClient() {
           {adminUploaded.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h2 className="font-medium text-gray-700 text-sm">Ready to send ({adminUploaded.length})</h2>
+                <h2 className="font-medium text-gray-700 text-sm">
+                  Ready to send ({adminUploaded.length})
+                </h2>
                 <Button
                   type="button"
                   onClick={() => sendAll.mutate(adminUploaded)}
-                  disabled={sendAll.isPending || adminUploaded.every((p) => !p.matched_customer_id)}
+                  disabled={
+                    sendAll.isPending ||
+                    adminUploaded.every((p) => !p.matched_customer_id)
+                  }
                   className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40 h-auto"
                 >
                   {sendAll.isPending ? "Sending..." : "Send All"}
@@ -850,13 +1306,32 @@ export default function DeliveriesClient() {
               </div>
               <div className="space-y-2">
                 {adminUploaded.map((p) => (
-                  <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-4">
+                  <div
+                    key={p.id}
+                    className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-4"
+                  >
                     {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
-                    {p.signed_url && <img src={p.signed_url} alt="proof" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />}
-                    <div className="flex-1 text-sm text-gray-700">{p.customers?.name ?? p.matched_customer_id?.slice(0, 8) ?? "Unknown"}</div>
+                    {p.signed_url && (
+                      <img
+                        src={p.signed_url}
+                        alt="proof"
+                        className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 text-sm text-gray-700">
+                      {p.customers?.name ??
+                        p.matched_customer_id?.slice(0, 8) ??
+                        "Unknown"}
+                    </div>
                     <Button
                       type="button"
-                      onClick={() => p.matched_customer_id && sendProof.mutate({ id: p.id, customer_id: p.matched_customer_id })}
+                      onClick={() =>
+                        p.matched_customer_id &&
+                        sendProof.mutate({
+                          id: p.id,
+                          customer_id: p.matched_customer_id,
+                        })
+                      }
                       disabled={!p.matched_customer_id || sendProof.isPending}
                       className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40 h-auto"
                     >
@@ -868,23 +1343,52 @@ export default function DeliveriesClient() {
             </div>
           )}
           <div>
-            <h2 className="font-medium text-gray-700 text-sm mb-2">Manually sent ({manuallySent.length})</h2>
-            {manuallySent.length === 0 ? <p className="text-gray-400 text-sm">None today.</p> : (
+            <h2 className="font-medium text-gray-700 text-sm mb-2">
+              Manually sent ({manuallySent.length})
+            </h2>
+            {manuallySent.length === 0 ? (
+              <p className="text-gray-400 text-sm">None today.</p>
+            ) : (
               <div className="grid grid-cols-3 gap-3">
                 {manuallySent.map((p) => (
-                  <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3">
+                  <div
+                    key={p.id}
+                    className="bg-white border border-gray-100 rounded-xl p-3"
+                  >
                     {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
-                    {p.signed_url && <img src={p.signed_url} alt="proof" className="w-full h-32 object-cover rounded-lg mb-2" />}
-                    <div className="text-xs text-gray-600">{p.customers?.name ?? "Unknown"}</div>
-                    <div className="text-xs text-gray-400">{p.sent_to_customer_at ? new Date(p.sent_to_customer_at).toLocaleTimeString("id-ID") : ""}</div>
-                    {p.sent_by && <div className="text-xs text-gray-400">by {p.sent_by}</div>}
+                    {p.signed_url && (
+                      <img
+                        src={p.signed_url}
+                        alt="proof"
+                        className="w-full h-32 object-cover rounded-lg mb-2"
+                      />
+                    )}
+                    <div className="text-xs text-gray-600">
+                      {p.customers?.name ?? "Unknown"}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {p.sent_to_customer_at
+                        ? new Date(p.sent_to_customer_at).toLocaleTimeString(
+                            "id-ID",
+                          )
+                        : ""}
+                    </div>
+                    {p.sent_by && (
+                      <div className="text-xs text-gray-400">
+                        by {p.sent_by}
+                      </div>
+                    )}
                     {p.matched_customer_id && (
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => {
                           const customerId = p.matched_customer_id;
-                          if (customerId) sendProof.mutate({ id: p.id, customer_id: customerId });
+                          if (customerId)
+                            sendProof.mutate({
+                              id: p.id,
+                              customer_id: customerId,
+                            });
                         }}
                         disabled={sendProof.isPending}
                         className="mt-2 w-full px-2 py-1 text-xs border-gray-200 text-gray-500 rounded-lg h-auto"
@@ -899,23 +1403,53 @@ export default function DeliveriesClient() {
           </div>
 
           <div>
-            <h2 className="font-medium text-gray-700 text-sm mb-2">Auto-matched & sent ({autoSent.length})</h2>
-            {autoSent.length === 0 ? <p className="text-gray-400 text-sm">None today.</p> : (
+            <h2 className="font-medium text-gray-700 text-sm mb-2">
+              Auto-matched & sent ({autoSent.length})
+            </h2>
+            {autoSent.length === 0 ? (
+              <p className="text-gray-400 text-sm">None today.</p>
+            ) : (
               <div className="grid grid-cols-3 gap-3">
                 {autoSent.map((p) => (
-                  <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3">
+                  <div
+                    key={p.id}
+                    className="bg-white border border-gray-100 rounded-xl p-3"
+                  >
                     {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
-                    {p.signed_url && <img src={p.signed_url} alt="proof" className="w-full h-32 object-cover rounded-lg mb-2" />}
-                    <div className="text-xs text-gray-600">{p.customers?.name ?? "Unknown"}</div>
-                    <div className="text-xs text-gray-400">Confidence: {p.match_confidence ? `${Math.round(p.match_confidence * 100)}%` : "—"}</div>
-                    <div className="text-xs text-gray-400">{p.sent_to_customer_at ? new Date(p.sent_to_customer_at).toLocaleTimeString("id-ID") : ""}</div>
+                    {p.signed_url && (
+                      <img
+                        src={p.signed_url}
+                        alt="proof"
+                        className="w-full h-32 object-cover rounded-lg mb-2"
+                      />
+                    )}
+                    <div className="text-xs text-gray-600">
+                      {p.customers?.name ?? "Unknown"}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Confidence:{" "}
+                      {p.match_confidence
+                        ? `${Math.round(p.match_confidence * 100)}%`
+                        : "—"}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {p.sent_to_customer_at
+                        ? new Date(p.sent_to_customer_at).toLocaleTimeString(
+                            "id-ID",
+                          )
+                        : ""}
+                    </div>
                     {p.matched_customer_id && (
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => {
                           const customerId = p.matched_customer_id;
-                          if (customerId) sendProof.mutate({ id: p.id, customer_id: customerId });
+                          if (customerId)
+                            sendProof.mutate({
+                              id: p.id,
+                              customer_id: customerId,
+                            });
                         }}
                         disabled={sendProof.isPending}
                         className="mt-2 w-full px-2 py-1 text-xs border-gray-200 text-gray-500 rounded-lg h-auto"
@@ -930,25 +1464,52 @@ export default function DeliveriesClient() {
           </div>
 
           <div>
-            <h2 className="font-medium text-gray-700 text-sm mb-2">Needs review ({needsReview.length})</h2>
-            {needsReview.length === 0 ? <p className="text-gray-400 text-sm">None pending.</p> : (
+            <h2 className="font-medium text-gray-700 text-sm mb-2">
+              Needs review ({needsReview.length})
+            </h2>
+            {needsReview.length === 0 ? (
+              <p className="text-gray-400 text-sm">None pending.</p>
+            ) : (
               <div className="space-y-3">
                 {needsReview.map((p) => (
-                  <ReviewProofCard key={p.id} proof={p} date={date} onSend={(customer_id) => sendProof.mutate({ id: p.id, customer_id })} onUnmatch={() => unmatchProof.mutate(p.id)} />
+                  <ReviewProofCard
+                    key={p.id}
+                    proof={p}
+                    date={date}
+                    onSend={(customer_id) =>
+                      sendProof.mutate({ id: p.id, customer_id })
+                    }
+                    onUnmatch={() => unmatchProof.mutate(p.id)}
+                  />
                 ))}
               </div>
             )}
           </div>
 
           <div>
-            <h2 className="font-medium text-gray-700 text-sm mb-2">Unmatched ({unmatched.length})</h2>
-            {unmatched.length === 0 ? <p className="text-gray-400 text-sm">None.</p> : (
+            <h2 className="font-medium text-gray-700 text-sm mb-2">
+              Unmatched ({unmatched.length})
+            </h2>
+            {unmatched.length === 0 ? (
+              <p className="text-gray-400 text-sm">None.</p>
+            ) : (
               <div className="grid grid-cols-3 gap-3">
                 {unmatched.map((p) => (
-                  <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3 opacity-60">
+                  <div
+                    key={p.id}
+                    className="bg-white border border-gray-100 rounded-xl p-3 opacity-60"
+                  >
                     {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
-                    {p.signed_url && <img src={p.signed_url} alt="proof" className="w-full h-32 object-cover rounded-lg mb-2" />}
-                    <div className="text-xs text-gray-500">{p.caption ?? "No caption"}</div>
+                    {p.signed_url && (
+                      <img
+                        src={p.signed_url}
+                        alt="proof"
+                        className="w-full h-32 object-cover rounded-lg mb-2"
+                      />
+                    )}
+                    <div className="text-xs text-gray-500">
+                      {p.caption ?? "No caption"}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -960,11 +1521,29 @@ export default function DeliveriesClient() {
       {showConfirm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-4">
-            <h2 className="font-semibold text-gray-900">Simpan pengiriman untuk {date}?</h2>
-            <p className="text-sm text-gray-500">Ini akan mengurangi kuota pelanggan.</p>
+            <h2 className="font-semibold text-gray-900">
+              Simpan pengiriman untuk {date}?
+            </h2>
+            <p className="text-sm text-gray-500">
+              Ini akan mengurangi kuota pelanggan.
+            </p>
             <div className="flex gap-2">
-              <Button type="button" onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">{save.isPending ? "Saving..." : "Simpan"}</Button>
-              <Button type="button" variant="outline" onClick={() => setShowConfirm(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
+              <Button
+                type="button"
+                onClick={() => save.mutate()}
+                disabled={save.isPending}
+                className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto"
+              >
+                {save.isPending ? "Saving..." : "Simpan"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowConfirm(false)}
+                className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto"
+              >
+                Batal
+              </Button>
             </div>
           </div>
         </div>
@@ -975,14 +1554,42 @@ export default function DeliveriesClient() {
           <div className="bg-white rounded-xl p-6 w-96 space-y-4">
             <h2 className="font-semibold text-gray-900">Hapus pengiriman?</h2>
             <p className="text-sm text-gray-500">
-              Hapus {deleteTarget.meal_type === "lunch" ? "makan siang" : "makan malam"} untuk{" "}
-              <span className="font-medium">{deleteTarget.customers?.name ?? "pelanggan ini"}</span> pada {date}.
-              {deleteTarget.id ? " Baris ini akan dihapus permanen dari sheet." : " Baris ini belum disimpan."}
+              Hapus{" "}
+              {deleteTarget.meal_type === "lunch"
+                ? "makan siang"
+                : "makan malam"}{" "}
+              untuk{" "}
+              <span className="font-medium">
+                {deleteTarget.customers?.name ?? "pelanggan ini"}
+              </span>{" "}
+              pada {date}.
+              {deleteTarget.id
+                ? " Baris ini akan dihapus permanen dari sheet."
+                : " Baris ini belum disimpan."}
             </p>
-            {deleteRow.isError && <p className="text-sm text-red-600">{(deleteRow.error as Error).message}</p>}
+            {deleteRow.isError && (
+              <p className="text-sm text-red-600">
+                {(deleteRow.error as Error).message}
+              </p>
+            )}
             <div className="flex gap-2">
-              <Button type="button" onClick={() => deleteRow.mutate(deleteTarget)} disabled={deleteRow.isPending} className="flex-1 py-2 bg-red-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">{deleteRow.isPending ? "Menghapus..." : "Hapus"}</Button>
-              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteRow.isPending} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
+              <Button
+                type="button"
+                onClick={() => deleteRow.mutate(deleteTarget)}
+                disabled={deleteRow.isPending}
+                className="flex-1 py-2 bg-red-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto"
+              >
+                {deleteRow.isPending ? "Menghapus..." : "Hapus"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteRow.isPending}
+                className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto"
+              >
+                Batal
+              </Button>
             </div>
           </div>
         </div>
@@ -992,18 +1599,33 @@ export default function DeliveriesClient() {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Tambah pelanggan ke {date}</h2>
-              <Button type="button" variant="ghost" onClick={resetAdd} className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0">&times;</Button>
+              <h2 className="font-semibold text-gray-900">
+                Tambah pelanggan ke {date}
+              </h2>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={resetAdd}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0"
+              >
+                &times;
+              </Button>
             </div>
 
             {/* Customer combobox */}
             <div className="relative">
-              <span className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</span>
+              <span className="block text-sm font-medium text-gray-700 mb-1">
+                Pelanggan
+              </span>
               <Input
                 type="text"
                 value={addSearch}
                 placeholder="Cari nama atau nomor..."
-                onChange={(e) => { setAddSearch(e.target.value); setAddCustomer(null); setAddDropdownOpen(true); }}
+                onChange={(e) => {
+                  setAddSearch(e.target.value);
+                  setAddCustomer(null);
+                  setAddDropdownOpen(true);
+                }}
                 onFocus={() => setAddDropdownOpen(true)}
                 className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
               />
@@ -1013,20 +1635,32 @@ export default function DeliveriesClient() {
                     ? (addableCustomers ?? [])
                     : (addableCustomers ?? []).filter((c) => {
                         const q = addSearch.toLowerCase();
-                        return (c.name ?? "").toLowerCase().includes(q) || c.phone_number.includes(q);
+                        return (
+                          (c.name ?? "").toLowerCase().includes(q) ||
+                          c.phone_number.includes(q)
+                        );
                       })
-                  ).slice(0, 50).map((c) => (
-                    <li
-                      key={c.id}
-                      onMouseDown={(e) => { e.preventDefault(); selectAddCustomer(c); }}
-                      className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"
-                    >
-                      <span className="text-gray-900">{c.name ?? c.phone_number}</span>
-                      <span className="text-gray-400 text-xs">{c.area}</span>
-                    </li>
-                  ))}
+                  )
+                    .slice(0, 50)
+                    .map((c) => (
+                      <li
+                        key={c.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectAddCustomer(c);
+                        }}
+                        className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"
+                      >
+                        <span className="text-gray-900">
+                          {c.name ?? c.phone_number}
+                        </span>
+                        <span className="text-gray-400 text-xs">{c.area}</span>
+                      </li>
+                    ))}
                   {(addableCustomers ?? []).length === 0 && (
-                    <li className="px-3 py-2 text-sm text-gray-400">Memuat...</li>
+                    <li className="px-3 py-2 text-sm text-gray-400">
+                      Memuat...
+                    </li>
                   )}
                 </ul>
               )}
@@ -1034,12 +1668,20 @@ export default function DeliveriesClient() {
 
             {/* Meal type */}
             <div>
-              <span className="block text-sm font-medium text-gray-700 mb-1">Waktu makan</span>
+              <span className="block text-sm font-medium text-gray-700 mb-1">
+                Waktu makan
+              </span>
               <Select
                 value={addMeal}
-                onValueChange={(v) => { const m = v as "lunch" | "dinner"; setAddMeal(m); setAddPortions(defaultPortionsFor(addCustomer, m)); }}
+                onValueChange={(v) => {
+                  const m = v as "lunch" | "dinner";
+                  setAddMeal(m);
+                  setAddPortions(defaultPortionsFor(addCustomer, m));
+                }}
               >
-                <SelectTrigger className="w-full border-gray-200 rounded-lg text-sm h-auto"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full border-gray-200 rounded-lg text-sm h-auto">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="lunch">Lunch</SelectItem>
                   <SelectItem value="dinner">Dinner</SelectItem>
@@ -1049,33 +1691,74 @@ export default function DeliveriesClient() {
 
             {/* Portions */}
             <div>
-              <span className="block text-sm font-medium text-gray-700 mb-1">Porsi</span>
+              <span className="block text-sm font-medium text-gray-700 mb-1">
+                Porsi
+              </span>
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => setAddPortions((p) => Math.max(1, p - 1))} className="w-7 h-7 rounded border text-sm p-0">-</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAddPortions((p) => Math.max(1, p - 1))}
+                  className="w-7 h-7 rounded border text-sm p-0"
+                >
+                  -
+                </Button>
                 <span className="w-8 text-center text-sm">{addPortions}</span>
-                <Button type="button" variant="outline" onClick={() => setAddPortions((p) => p + 1)} className="w-7 h-7 rounded border text-sm p-0">+</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAddPortions((p) => p + 1)}
+                  className="w-7 h-7 rounded border text-sm p-0"
+                >
+                  +
+                </Button>
               </div>
             </div>
 
             {/* Subcontractor */}
             <div>
-              <span className="block text-sm font-medium text-gray-700 mb-1">Dapur</span>
-              <Select value={addSubId ?? NO_SUB} onValueChange={(v) => setAddSubId(v === NO_SUB ? null : v)}>
-                <SelectTrigger className="w-full border-gray-200 rounded-lg text-sm h-auto"><SelectValue /></SelectTrigger>
+              <span className="block text-sm font-medium text-gray-700 mb-1">
+                Dapur
+              </span>
+              <Select
+                value={addSubId ?? NO_SUB}
+                onValueChange={(v) => setAddSubId(v === NO_SUB ? null : v)}
+              >
+                <SelectTrigger className="w-full border-gray-200 rounded-lg text-sm h-auto">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_SUB}>—</SelectItem>
                   {activeSubs.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="flex gap-2 pt-1">
-              <Button type="button" onClick={confirmAddRow} disabled={!addCustomer} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto">Tambah</Button>
-              <Button type="button" variant="outline" onClick={resetAdd} className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto">Batal</Button>
+              <Button
+                type="button"
+                onClick={confirmAddRow}
+                disabled={!addCustomer}
+                className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40 h-auto"
+              >
+                Tambah
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={resetAdd}
+                className="flex-1 py-2 border-gray-200 text-sm rounded-lg h-auto"
+              >
+                Batal
+              </Button>
             </div>
-            <p className="text-xs text-gray-400">Klik Save setelah menambah untuk menyimpan ke sheet.</p>
+            <p className="text-xs text-gray-400">
+              Klik Save setelah menambah untuk menyimpan ke sheet.
+            </p>
           </div>
         </div>
       )}
@@ -1083,40 +1766,98 @@ export default function DeliveriesClient() {
   );
 }
 
-function ReviewProofCard({ proof, date, onSend, onUnmatch }: { proof: Proof; date: string; onSend: (customerId: string) => void; onUnmatch: () => void }) {
+function ReviewProofCard({
+  proof,
+  date,
+  onSend,
+  onUnmatch,
+}: {
+  proof: Proof;
+  date: string;
+  onSend: (customerId: string) => void;
+  onUnmatch: () => void;
+}) {
   const { data: sheetData } = useQuery({
     queryKey: ["daily-sheet", date],
     queryFn: async () => {
       const res = await fetch(`/api/deliveries/daily-sheet?date=${date}`);
-      const json = await res.json() as { ok: boolean; data: Array<{ customer_id: string; customers?: { name: string | null } }> };
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: Array<{
+          customer_id: string;
+          customers?: { name: string | null };
+        }>;
+      };
       return json.data;
     },
   });
 
-  const [selectedCustomer, setSelectedCustomer] = useState(proof.matched_customer_id ?? "");
-  const customers = [...new Map((sheetData ?? []).map((r) => [r.customer_id, r.customers?.name ?? r.customer_id.slice(0, 8)])).entries()];
+  const [selectedCustomer, setSelectedCustomer] = useState(
+    proof.matched_customer_id ?? "",
+  );
+  const customers = [
+    ...new Map(
+      (sheetData ?? []).map((r) => [
+        r.customer_id,
+        r.customers?.name ?? r.customer_id.slice(0, 8),
+      ]),
+    ).entries(),
+  ];
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 flex gap-4">
       {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
-      {proof.signed_url && <img src={proof.signed_url} alt="proof" className="w-32 h-32 object-cover rounded-lg flex-shrink-0" />}
+      {proof.signed_url && (
+        <img
+          src={proof.signed_url}
+          alt="proof"
+          className="w-32 h-32 object-cover rounded-lg flex-shrink-0"
+        />
+      )}
       <div className="flex-1 space-y-2">
-        <div className="text-xs text-gray-500">From: {proof.subcontractors?.name ?? "Unknown"}</div>
-        {proof.caption && <div className="text-sm text-gray-700">"{proof.caption}"</div>}
-        {proof.match_confidence !== null && (
-          <div className="text-xs text-gray-400">AI confidence: {Math.round((proof.match_confidence ?? 0) * 100)}%</div>
+        <div className="text-xs text-gray-500">
+          From: {proof.subcontractors?.name ?? "Unknown"}
+        </div>
+        {proof.caption && (
+          <div className="text-sm text-gray-700">"{proof.caption}"</div>
         )}
-        <Select value={selectedCustomer || undefined} onValueChange={setSelectedCustomer}>
+        {proof.match_confidence !== null && (
+          <div className="text-xs text-gray-400">
+            AI confidence: {Math.round((proof.match_confidence ?? 0) * 100)}%
+          </div>
+        )}
+        <Select
+          value={selectedCustomer || undefined}
+          onValueChange={setSelectedCustomer}
+        >
           <SelectTrigger className="w-full border-gray-200 rounded-lg px-2 py-1.5 text-sm h-auto">
             <SelectValue placeholder="Select customer..." />
           </SelectTrigger>
           <SelectContent>
-            {customers.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+            {customers.map(([id, name]) => (
+              <SelectItem key={id} value={id}>
+                {name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <div className="flex gap-2">
-          <Button type="button" onClick={() => onSend(selectedCustomer)} disabled={!selectedCustomer} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40 h-auto">Send</Button>
-          <Button type="button" variant="outline" onClick={onUnmatch} className="px-3 py-1.5 border-gray-200 text-xs rounded-lg text-gray-500 h-auto">Can't match</Button>
+          <Button
+            type="button"
+            onClick={() => onSend(selectedCustomer)}
+            disabled={!selectedCustomer}
+            className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40 h-auto"
+          >
+            Send
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onUnmatch}
+            className="px-3 py-1.5 border-gray-200 text-xs rounded-lg text-gray-500 h-auto"
+          >
+            Can't match
+          </Button>
         </div>
       </div>
     </div>
