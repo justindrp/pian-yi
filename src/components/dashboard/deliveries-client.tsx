@@ -882,7 +882,10 @@ export default function DeliveriesClient() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => sendProof.mutate({ id: p.id, customer_id: p.matched_customer_id! })}
+                        onClick={() => {
+                          const customerId = p.matched_customer_id;
+                          if (customerId) sendProof.mutate({ id: p.id, customer_id: customerId });
+                        }}
                         disabled={sendProof.isPending}
                         className="mt-2 w-full px-2 py-1 text-xs border-gray-200 text-gray-500 rounded-lg h-auto"
                       >
@@ -910,7 +913,10 @@ export default function DeliveriesClient() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => sendProof.mutate({ id: p.id, customer_id: p.matched_customer_id! })}
+                        onClick={() => {
+                          const customerId = p.matched_customer_id;
+                          if (customerId) sendProof.mutate({ id: p.id, customer_id: customerId });
+                        }}
                         disabled={sendProof.isPending}
                         className="mt-2 w-full px-2 py-1 text-xs border-gray-200 text-gray-500 rounded-lg h-auto"
                       >

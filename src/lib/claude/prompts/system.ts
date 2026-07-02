@@ -1,4 +1,4 @@
-import { getActiveInstructions, getNeighborhoods, getSetting } from "@/lib/cache/settings";
+import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
 
 const PRICE_LIST_LINES = [
   "- 5 hari siang/malam saja: Rp 145.000 (Rp 29.000/meal)",
