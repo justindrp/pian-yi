@@ -1,3 +1,16 @@
+const ROUTE_BY_AREA: Record<string, number> = {
+  "Alam Sutera": 1,
+  "BSD Lama": 1,
+  "Gading Serpong": 2,
+  "BSD Baru": 2,
+  Karawaci: 2,
+};
+
+export function getDeliveryRoute(area: string | null | undefined): number | null {
+  if (!area) return null;
+  return ROUTE_BY_AREA[area] ?? null;
+}
+
 export function formatIDR(amount: number): string {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",

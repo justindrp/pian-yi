@@ -29,6 +29,7 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
+import { getDeliveryRoute } from "@/lib/utils/format";
 import {
   downloadMedia,
   sendImageByUrl,
@@ -1293,6 +1294,7 @@ async function handleToolUse(
         address: input.address,
         area: input.area,
         sub_area: input.sub_area ?? null,
+        delivery_route: getDeliveryRoute(input.area),
         address_type: addressType,
         portions_remaining: newRemaining,
         avg_price_per_portion: newAvg,

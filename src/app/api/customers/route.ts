@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { getDeliveryRoute } from "@/lib/utils/format";
 
 export async function GET(req: Request): Promise<Response> {
   const supabase = await createClient();
@@ -120,13 +121,7 @@ export async function POST(req: Request): Promise<Response> {
     );
 
   const area = body.area?.trim() || null;
-  const ROUTE_BY_AREA: Record<string, number> = {
-    "Alam Sutera": 1,
-    "BSD Lama": 1,
-    "Gading Serpong": 2,
-    "BSD Baru": 2,
-  };
-  const deliveryRoute = area ? (ROUTE_BY_AREA[area] ?? null) : null;
+  const deliveryRoute = getDeliveryRoute(area);
 
   const { data, error } = await db
     .from("customers")
