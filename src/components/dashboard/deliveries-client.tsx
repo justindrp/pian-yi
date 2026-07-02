@@ -1310,8 +1310,8 @@ export default function DeliveriesClient() {
                     key={p.id}
                     className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-4"
                   >
-                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && (
+                      // biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical
                       <img
                         src={p.signed_url}
                         alt="proof"
@@ -1355,8 +1355,8 @@ export default function DeliveriesClient() {
                     key={p.id}
                     className="bg-white border border-gray-100 rounded-xl p-3"
                   >
-                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && (
+                      // biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical
                       <img
                         src={p.signed_url}
                         alt="proof"
@@ -1415,8 +1415,8 @@ export default function DeliveriesClient() {
                     key={p.id}
                     className="bg-white border border-gray-100 rounded-xl p-3"
                   >
-                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && (
+                      // biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical
                       <img
                         src={p.signed_url}
                         alt="proof"
@@ -1499,8 +1499,8 @@ export default function DeliveriesClient() {
                     key={p.id}
                     className="bg-white border border-gray-100 rounded-xl p-3 opacity-60"
                   >
-                    {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
                     {p.signed_url && (
+                      // biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical
                       <img
                         src={p.signed_url}
                         alt="proof"
@@ -1806,8 +1806,8 @@ function ReviewProofCard({
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 flex gap-4">
-      {/* biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical */}
       {proof.signed_url && (
+        // biome-ignore lint/performance/noImgElement: signed Supabase URL — next/image impractical
         <img
           src={proof.signed_url}
           alt="proof"
