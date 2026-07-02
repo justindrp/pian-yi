@@ -115,6 +115,7 @@ function getReceiptClass(status: string | null) {
 export default function InboxClient() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     null,
   );
@@ -751,7 +752,16 @@ export default function InboxClient() {
   const selectedThread = threads.find(
     (t) => t.customer.id === selectedCustomerId,
   );
-  const visibleThreads = filterThreads(threads, inboxFilter);
+  const filteredByTab = filterThreads(threads, inboxFilter);
+  const query = searchQuery.trim().toLowerCase();
+  const visibleThreads = query
+    ? filteredByTab.filter(
+        (t) =>
+          t.customer.name?.toLowerCase().includes(query) ||
+          t.customer.phone_number.toLowerCase().includes(query) ||
+          t.lastMessage.content.toLowerCase().includes(query),
+      )
+    : filteredByTab;
 
   return (
     <div className="flex h-[calc(100vh-7rem)] bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -761,6 +771,13 @@ export default function InboxClient() {
       >
         <div className="p-4 border-b border-gray-100">
           <h1 className="text-sm font-semibold text-gray-900">Inbox</h1>
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search chats..."
+            className="mt-3 h-8 text-xs"
+            aria-label="Search chats"
+          />
           <div className="mt-3 flex gap-1 rounded-lg bg-gray-100 p-1">
             {(
               [
@@ -823,7 +840,9 @@ export default function InboxClient() {
           <p className="text-xs text-gray-400 p-4">
             {threads.length === 0
               ? "No conversations yet."
-              : "No conversations match this filter."}
+              : query
+                ? "No conversations match this search."
+                : "No conversations match this filter."}
           </p>
         )}
       </div>
