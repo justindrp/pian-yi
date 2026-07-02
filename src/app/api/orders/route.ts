@@ -23,7 +23,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
   let query = db
     .from("orders")
-    .select("*, customers(name, phone_number)")
+    .select("*, customers!orders_customer_id_fkey(name, phone_number)")
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -419,7 +419,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const { data: order, error: fetchErr } = await db
     .from("orders")
     .select(
-      "id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers(name, phone_number)",
+      "id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number)",
     )
     .eq("id", body.id)
     .single();
