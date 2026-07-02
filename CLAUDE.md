@@ -14,7 +14,7 @@ A WhatsApp-based ordering system for Pian Yi Catering, a daily catering business
 
 Two end users:
 
-- **Customers** — interact only via WhatsApp with an AI chatbot powered by Claude Sonnet 4.6
+- **Customers** — interact only via WhatsApp with an AI chatbot powered by Claude Sonnet 5
 - **Admins** (Justin, Annie, Agnes) — interact via a PWA dashboard for operations; Justin and Annie are `owner` role, Agnes is `admin` role (see "User roles" section)
 
 ## Tech stack
@@ -26,7 +26,7 @@ Two end users:
 - **Database**: Supabase (PostgreSQL) with Row Level Security
 - **Auth**: Supabase Auth (magic link email login for admins only)
 - **AI**:
-  - **Sonnet 4.6** (`claude-sonnet-4-6`) for normal tasks (customer chat, order conversations, training mode)
+  - **Sonnet 5** (`claude-sonnet-5`) for normal tasks (customer chat, order conversations, training mode)
   - **Haiku 4.5** (`claude-haiku-4-5`) for lighter tasks (photo matching, classification, sentiment analysis, simple FAQ routing)
 - **Messaging**: Meta WhatsApp Business Cloud API v25.0
 - **Push notifications**: `web-push` library (no Firebase)
@@ -52,6 +52,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 ## Recent updates (July 2, 2026)
 
+- `17:33 +0700` Chatbot and admin assistant upgraded from Sonnet 4.6 to Sonnet 5 (`claude-sonnet-5`). Changed `SONNET_MODEL` fallback in `src/lib/claude/client.ts` plus `CLAUDE_SONNET_MODEL` in `.env.local`, `.env.example`, and Railway prod env. No sampling params (`temperature`/`top_p`/`top_k`) or `thinking` config in use, so no other code changes needed. Sonnet 5 uses a new tokenizer (~30% more tokens for same text) — intro pricing ($2/$10 per MTok through Aug 31, 2026) roughly offsets this, but token budgets in `safety.ts`/`conversation.ts` (4000 input / 1000 output / 3000 system prompt) should be re-verified against actual usage before Sep 1, 2026 when pricing reverts to $3/$15.
 - `16:35 +0700` Fixed: WhatsApp location messages sent while `pending_bot_response` or `escalated_to_human` was set fell through to a generic `[${message.type}]` fallback, discarding lat/lng and showing literal `[location]` in the inbox. All three code paths (normal, pending, escalated) now share `formatLocationMessage()`, which saves a Google Maps link (`https://www.google.com/maps?q=lat,lng`) alongside the shared/named address text. Inbox chat bubbles now linkify any `http(s)://` URL in message content (`renderContentWithLinks()` in `inbox-client.tsx`), so the Maps link renders clickable. Messages saved before this fix keep their literal `[location]` text — the original coordinates were never persisted and can't be recovered.
 
 ## Recent updates (July 1, 2026)
@@ -167,7 +168,7 @@ New admins default to `admin` role. Role is enforced at two layers: nav item hid
 4. **Token budget per request** — max 20 messages from history, max 4000 input tokens, max 1000 output tokens, max 3000 token system prompt
 5. **Loop prevention** — idempotency, circuit breaker (stop calling Claude for 5min if 5 errors in 60s), echo detection (don't send duplicate replies), retry budget (max 3 retries per message)
 6. **Prompt injection defense** — system prompt forbids long/repetitive responses, hard `max_tokens` cap, pattern detection before calling Claude
-7. **Model routing** — Sonnet 4.6 only for full conversational responses; Haiku 4.5 for photo matching, classification, sentiment, and any preprocessing step
+7. **Model routing** — Sonnet 5 only for full conversational responses; Haiku 4.5 for photo matching, classification, sentiment, and any preprocessing step
 8. **Monitoring** — dashboard widgets for spend/tokens, push notifications on anomalies, daily 9am digest email
 9. **Kill switch** — toggle in Settings to disable AI chatbot entirely
 
@@ -249,7 +250,7 @@ pian-yi/
 │   │   │   ├── client.ts
 │   │   │   ├── conversation.ts (history management, token budget)
 │   │   │   ├── prompts/
-│   │   │   │   ├── system.ts (main chatbot prompt for Sonnet 4.6)
+│   │   │   │   ├── system.ts (main chatbot prompt for Sonnet 5)
 │   │   │   │   ├── classifier.ts (Haiku 4.5 classifier)
 │   │   │   │   └── photo-matcher.ts (Haiku 4.5 photo matching)
 │   │   │   └── safety.ts (rate limits, circuit breaker, echo detection)
@@ -280,7 +281,7 @@ Quick reference: which file handles which feature.
 
 ### Webhook (WhatsApp chatbot)
 - `GET /api/webhook/whatsapp` — Meta webhook verification (hub.challenge handshake)
-- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 4.6 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. Meta `statuses[]` webhooks are also handled here and update the matching `conversations.message_id` row with `whatsapp_status` / `whatsapp_status_updated_at` (`sent`, `delivered`, `read`, `failed`). After each inbound customer message is saved to `conversations`, Haiku auto-summarizes durable customer context via `src/lib/claude/learn-context.ts`, replaces the `[AI learned context]` block in `customers.notes`, and feeds the freshly learned notes into the same bot response when available; failures are logged and never block replying. Also handles welcome sequence: resolves `{{dapur_list}}`, `{{delivery_areas}}`, `{{price_20}}`, `{{order_deadline}}` placeholders in `welcome_message` setting from live DB data, then sends menu images from active subcontractor rows. The welcome greeting + price list image + each menu image are also logged to `conversations` as `assistant` rows (`model_used: "system"`, image rows use `message_type: "image"` with the URL as content) so they render in the dashboard inbox.
+- `POST /api/webhook/whatsapp` — **Main chatbot entry point.** Dedup via `processed_messages`, rate-limit check, Sonnet 5 conversation, tools: `extract_order` / `record_daily_order` / `escalate_to_human` / `ask_admin_for_help`. Meta `statuses[]` webhooks are also handled here and update the matching `conversations.message_id` row with `whatsapp_status` / `whatsapp_status_updated_at` (`sent`, `delivered`, `read`, `failed`). After each inbound customer message is saved to `conversations`, Haiku auto-summarizes durable customer context via `src/lib/claude/learn-context.ts`, replaces the `[AI learned context]` block in `customers.notes`, and feeds the freshly learned notes into the same bot response when available; failures are logged and never block replying. Also handles welcome sequence: resolves `{{dapur_list}}`, `{{delivery_areas}}`, `{{price_20}}`, `{{order_deadline}}` placeholders in `welcome_message` setting from live DB data, then sends menu images from active subcontractor rows. The welcome greeting + price list image + each menu image are also logged to `conversations` as `assistant` rows (`model_used: "system"`, image rows use `message_type: "image"` with the URL as content) so they render in the dashboard inbox.
 
 ### Auth
 - `POST /api/auth/check-admin` — Check if email exists in `admin_users`. ⚠️ Known issue: no session verification, allows unauthenticated email enumeration.
@@ -359,7 +360,7 @@ A public, auth-free mobile page at `/dapur/[subcontractor-uuid]` shared with eac
 - `GET /api/reports/conversions` — Meta Ads conversion tracking: summary stats (total, this month, revenue, top creative, organic), per-creative breakdown, paginated conversion log. Supports `?startDate=`, `?endDate=`, `?page=`, `?export=true` (returns all rows for CSV download)
 
 ### Admin Assistant
-- `POST /api/assistant` — Multi-turn agentic chat using Sonnet 4.6. Runs tool loop (max 5 turns) with read tools: `query_customers`, `query_orders`, `query_deliveries`, `query_financials`, `query_metrics`, `search_conversations`, `query_menu_assets`. Write tools (`mark_order_paid`, `cancel_order`, `send_whatsapp_message`, `send_whatsapp_image`, `update_customer_field`) are intercepted — returns `{ ok: true, text, pendingAction }` instead of executing. If Claude proposes multiple WhatsApp send actions in one response (for example menu image + price list image), the route returns one `pendingAction` with `tool: "batch"` and an `actions` array so the admin confirms once and every send is preserved. Body accepts optional `conversationId`; if absent, a new thread is created lazily and returned. Each turn (user msg + reply) is persisted to `assistant_conversations` / `assistant_messages` (shared across all admins). Requires auth.
+- `POST /api/assistant` — Multi-turn agentic chat using Sonnet 5. Runs tool loop (max 5 turns) with read tools: `query_customers`, `query_orders`, `query_deliveries`, `query_financials`, `query_metrics`, `search_conversations`, `query_menu_assets`. Write tools (`mark_order_paid`, `cancel_order`, `send_whatsapp_message`, `send_whatsapp_image`, `update_customer_field`) are intercepted — returns `{ ok: true, text, pendingAction }` instead of executing. If Claude proposes multiple WhatsApp send actions in one response (for example menu image + price list image), the route returns one `pendingAction` with `tool: "batch"` and an `actions` array so the admin confirms once and every send is preserved. Body accepts optional `conversationId`; if absent, a new thread is created lazily and returned. Each turn (user msg + reply) is persisted to `assistant_conversations` / `assistant_messages` (shared across all admins). Requires auth.
 - `POST /api/assistant/execute` — Execute a confirmed write-tool action. Body: `{ tool, input, conversationId? }`. Accepts tools in `WRITE_TOOLS` plus `tool: "batch"` for multiple confirmed WhatsApp sends. `mark_order_paid` side effects: sets status → active, conversion tracking, journal entry (Dr Bank BCA / Cr Uang Muka), WhatsApp confirmation to customer. `send_whatsapp_message` sends text via WhatsApp, then looks up the customer by `phone_number` and logs the message to `conversations` as an `assistant` row (`model_used: "human"`) so it appears in the dashboard inbox. `send_whatsapp_image` downloads the public image URL, uploads the binary to Meta with `uploadMediaToMeta`, sends by `sendImageMessageById` (not by `image.link`, which can fail silently), then logs the public URL to `conversations` as an `assistant` image row (`message_type: "image"`, `model_used: "human"`). `update_customer_field` allowlist: name, address, area, notes. Confirmation reply persisted to the thread when `conversationId` is provided. Requires auth.
 - `GET /api/assistant/conversations` — List all chat threads (`id, title, updated_at`), newest first.
 - `POST /api/assistant/conversations` — Create an empty thread, returns `{ id }`.
