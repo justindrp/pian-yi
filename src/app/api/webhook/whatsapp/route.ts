@@ -17,6 +17,7 @@ import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
+import { validateReply } from "@/lib/claude/validate-reply";
 import {
   checkRateLimit,
   detectEcho,
@@ -1005,12 +1006,95 @@ export async function processSavedCustomerMessage(params: {
     }
   }
 
+  let replyModelUsed = "sonnet-4-6";
+
   if (replyText) {
+    const validationParams = {
+      customerName,
+      customerNotes,
+      customerState: stateRow?.state ?? "new",
+      activeOrder: activeOrder
+        ? {
+            portionsRemaining: activeOrder.portionsRemaining,
+            packageSize: activeOrder.packageSize,
+          }
+        : null,
+    };
+    const validation = await validateReply({ reply: replyText, ...validationParams });
+
+    if (!validation.valid) {
+      console.warn(
+        "[webhook] reply validator rejected first attempt:",
+        validation.unsupportedClaims,
+      );
+
+      let retryText = "";
+      try {
+        const client = getAnthropicClient();
+        const retryResponse = await client.messages.create({
+          model: SONNET_MODEL,
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: [
+            ...history,
+            { role: "user", content: text },
+            { role: "assistant", content: replyText },
+            {
+              role: "user",
+              content: `Balasan sebelumnya berisi klaim yang tidak didukung data: ${validation.unsupportedClaims.join(", ")}. Tulis ulang balasan tanpa menebak — hanya gunakan fakta dari Current context di system prompt. Jika data tidak tersedia, katakan akan dicek dulu.`,
+            },
+          ],
+          tools,
+        });
+        for (const block of retryResponse.content) {
+          if (block.type === "text") retryText = block.text;
+        }
+        await updateTokenCount(
+          customerId,
+          retryResponse.usage.input_tokens + retryResponse.usage.output_tokens,
+        );
+      } catch (err) {
+        console.error(
+          "[webhook] regeneration after validator rejection failed:",
+          (err as Error).message,
+        );
+      }
+
+      const revalidation = retryText
+        ? await validateReply({ reply: retryText, ...validationParams })
+        : { valid: false, unsupportedClaims: ["empty or failed regeneration"] };
+
+      if (revalidation.valid && retryText) {
+        replyText = retryText;
+      } else {
+        console.warn(
+          "[webhook] reply validator rejected second attempt, falling back:",
+          revalidation.unsupportedClaims,
+        );
+        replyText = await getTemplate("reply_validation_fallback");
+        replyModelUsed = "system";
+        await db
+          .from("customer_flags")
+          .update({
+            pending_bot_response: true,
+            pending_bot_question:
+              "Auto-flagged: bot reply blocked twice by hallucination validator, needs review",
+          })
+          .eq("customer_id", customerId);
+        await sendPushToAllAdmins(
+          "Reply blocked — possible hallucination",
+          `${customerName ?? phone}: ${validation.unsupportedClaims.join(", ")}`,
+          "/inbox",
+          "high",
+        );
+      }
+    }
+
     const savedReplyId = await saveMessage({
       customerId,
       role: "assistant",
       content: replyText,
-      modelUsed: "sonnet-4-6",
+      modelUsed: replyModelUsed,
       inputTokens: claudeResponse.usage.input_tokens,
       outputTokens: claudeResponse.usage.output_tokens,
     });

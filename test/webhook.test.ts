@@ -10,6 +10,7 @@ import {
   recordSuccess,
   updateTokenCount,
 } from "@/lib/claude/safety";
+import { validateReply } from "@/lib/claude/validate-reply";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -36,6 +37,9 @@ jest.mock("@/lib/claude/classify-address", () => ({
 }));
 jest.mock("@/lib/claude/photo-matcher", () => ({
   matchDeliveryPhoto: jest.fn().mockResolvedValue(null),
+}));
+jest.mock("@/lib/claude/validate-reply", () => ({
+  validateReply: jest.fn().mockResolvedValue({ valid: true, unsupportedClaims: [] }),
 }));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/push/send");
@@ -155,6 +159,7 @@ beforeEach(() => {
   (recordSuccess as jest.Mock).mockReturnValue(undefined);
   (recordFailure as jest.Mock).mockResolvedValue(undefined);
   (updateTokenCount as jest.Mock).mockResolvedValue(undefined);
+  (validateReply as jest.Mock).mockResolvedValue({ valid: true, unsupportedClaims: [] });
   (loadHistory as jest.Mock).mockResolvedValue([]);
   (saveMessage as jest.Mock).mockResolvedValue(undefined);
   (sendTextMessage as jest.Mock).mockResolvedValue(undefined);
@@ -353,6 +358,74 @@ describe("processWebhookAsync", () => {
 
     expect(db.chains.customers.update).not.toHaveBeenCalledWith(
       expect.objectContaining({ name: expect.any(String) }),
+    );
+  });
+
+  test("T11 — reply validator passes: sends normally, one Sonnet call", async () => {
+    await processWebhookAsync(makePayload("Halo"));
+
+    expect(validateReply).toHaveBeenCalledTimes(1);
+    expect(sendTextMessage).toHaveBeenCalledWith(expect.any(String), "Halo kak!");
+  });
+
+  test("T12 — reply validator rejects once, regenerated reply passes: sends corrected reply", async () => {
+    (validateReply as jest.Mock)
+      .mockResolvedValueOnce({ valid: false, unsupportedClaims: ["invented quota"] })
+      .mockResolvedValueOnce({ valid: true, unsupportedClaims: [] });
+
+    const createFn = jest
+      .fn()
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "Kuota kakak masih 10 porsi ya" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 50, output_tokens: 20 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "Aku cek dulu ya kak" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 60, output_tokens: 15 },
+      });
+    (getAnthropicClient as jest.Mock).mockReturnValue({
+      messages: { create: createFn },
+    });
+
+    await processWebhookAsync(makePayload("Sisa kuota saya berapa?"));
+
+    expect(createFn).toHaveBeenCalledTimes(2);
+    expect(validateReply).toHaveBeenCalledTimes(2);
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      "Aku cek dulu ya kak",
+    );
+  });
+
+  test("T13 — reply validator rejects twice: sends safe fallback and escalates to admin", async () => {
+    (validateReply as jest.Mock).mockResolvedValue({
+      valid: false,
+      unsupportedClaims: ["invented quota"],
+    });
+
+    const createFn = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: "Kuota kakak masih 10 porsi ya" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 50, output_tokens: 20 },
+    });
+    (getAnthropicClient as jest.Mock).mockReturnValue({
+      messages: { create: createFn },
+    });
+
+    await processWebhookAsync(makePayload("Sisa kuota saya berapa?"));
+
+    expect(createFn).toHaveBeenCalledTimes(2);
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      "[reply_validation_fallback]",
+    );
+    expect(sendPushToAllAdmins).toHaveBeenCalledWith(
+      "Reply blocked — possible hallucination",
+      expect.any(String),
+      "/inbox",
+      "high",
     );
   });
 });

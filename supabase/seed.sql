@@ -35,4 +35,5 @@ INSERT INTO message_templates (key, template, description) VALUES
   ('rate_limit_exceeded', 'Halo kak, sistem kami sedang sibuk. Kak Annie akan segera membalas ya 🙏', 'Customer hit rate limit'),
   ('text_only', 'Maaf kak, saya hanya bisa memproses pesan teks ya. Boleh diketik pesannya? 🙏', 'Non-text message received'),
   ('human_escalation', 'Mohon maaf kak, untuk hal ini saya akan hubungkan dengan tim kami ya. Kami akan segera menghubungi kakak. Terima kasih atas kesabarannya! 🙏', 'Escalation to human agent'),
-  ('after_hours', 'Halo kak, karena sudah lewat deadline jam 8 malam, pesanan bisa diproses untuk lusa ya. Mau lanjut? 😊', 'Order after 8pm cutoff');
+  ('after_hours', 'Halo kak, karena sudah lewat deadline jam 8 malam, pesanan bisa diproses untuk lusa ya. Mau lanjut? 😊', 'Order after 8pm cutoff'),
+  ('reply_validation_fallback', 'Bentar ya kak, aku cek dulu sama admin 🙏', 'Sent when the reply validator rejects a bot reply twice in a row (possible hallucinated customer-specific fact)');

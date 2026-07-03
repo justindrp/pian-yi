@@ -50,6 +50,10 @@ CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI c
 
 When performing infrastructure work, prefer CLI calls over manual UI clicks so the actions are reproducible and auditable.
 
+## Recent updates (July 3, 2026)
+
+- `23:22 +0700` Added a hallucination-prevention validator to the chatbot's reply pipeline (`processSavedCustomerMessage` in `POST /api/webhook/whatsapp`), after repeated real incidents of the bot stating customer-specific facts (quota, name, order status) not backed by DB context. New `validateReply()` (`src/lib/claude/validate-reply.ts`) is a Haiku 4.5 call (same JSON-in-prompt pattern as `photo-matcher.ts`) that checks the Sonnet reply against the same "Current context" fields passed into `buildSystemPrompt` (name, notes, quota, state) and flags unsupported customer-specific claims — general FAQ/pricing/menu claims are never flagged. On rejection, the bot regenerates once with a corrective instruction; if the regenerated reply also fails validation, the customer gets a fixed fallback template (`reply_validation_fallback`, migration 054) instead of the raw reply, `customer_flags.pending_bot_response` is set, and admins get a high-priority push so a human follows up. The validator fails open (treats as valid) on any network/parse error so a validator outage never becomes a chatbot outage. Regeneration/validator token usage is counted via the existing `updateTokenCount`. Known gap: address and payment status are not yet structured fields in `buildSystemPrompt`'s context, so the validator cannot catch hallucinations on those two fields today — would need those added to the system prompt first.
+
 ## Recent updates (July 2, 2026)
 
 - `23:35 +0700` Fixed: escalated-customer push notifications (`sendPushToAllAdmins` call in `POST /api/webhook/whatsapp`) showed the raw phone number instead of the customer's name in the body text. Now uses `customer.name ?? message.from` — falls back to the number when the customer has no name yet (name is only populated once they place an order, see existing comment at `route.ts:192`).
