@@ -440,6 +440,13 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       { status: 500 },
     );
 
+  if (order.customer_id) {
+    await db
+      .from("customer_state")
+      .update({ state: "active_subscription" })
+      .eq("customer_id", order.customer_id);
+  }
+
   // Record conversion on first payment (fire-and-forget)
   const convCustomerId = order.customer_id;
   if (convCustomerId) {
