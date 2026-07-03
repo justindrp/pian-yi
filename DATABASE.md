@@ -378,6 +378,9 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 | size | text | Portion size: "s" (standard) or "m" (medium, +Rp 2,000/portion) — default "s" |
 | price_per_portion | integer | Locked-in price in IDR at order time (includes size surcharge if "m") |
 | total_price | integer | Total amount due in IDR |
+| source | text | "purchase" (default) or "free_quota" — free_quota rows are admin-granted goodwill/compensation portions (price_per_portion 0, total_price 0), created via `POST /api/customers/free-quota` |
+| grant_reason | text | Nullable. Why a free_quota order was granted (e.g. "late delivery compensation") |
+| granted_by | text | Nullable. Admin email who granted a free_quota order |
 | addon_cost_per_portion | integer | Extra cost per portion if applicable |
 | lunch_address_slot | smallint | Standing address slot for lunch deliveries: 1 = primary, 2 = secondary (customers.address_2) — default 1. Generated daily_deliveries rows inherit it; per-day sheet flip overrides |
 | dinner_address_slot | smallint | Standing address slot for dinner deliveries: 1 = primary, 2 = secondary — default 1 |

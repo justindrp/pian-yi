@@ -890,6 +890,8 @@ export type Database = {
           dinner_address_slot: number
           end_date: string | null
           followup_sent_at: string | null
+          grant_reason: string | null
+          granted_by: string | null
           id: string
           lunch_address_slot: number
           maps_link: string | null
@@ -906,6 +908,7 @@ export type Database = {
           price_per_portion: number
           reminder_sent_at: string | null
           size: string
+          source: string
           start_date: string
           status: string
           subcontractor_id: string | null
@@ -927,6 +930,8 @@ export type Database = {
           dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
+          grant_reason?: string | null
+          granted_by?: string | null
           id?: string
           lunch_address_slot?: number
           maps_link?: string | null
@@ -943,6 +948,7 @@ export type Database = {
           price_per_portion: number
           reminder_sent_at?: string | null
           size?: string
+          source?: string
           start_date: string
           status?: string
           subcontractor_id?: string | null
@@ -964,6 +970,8 @@ export type Database = {
           dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
+          grant_reason?: string | null
+          granted_by?: string | null
           id?: string
           lunch_address_slot?: number
           maps_link?: string | null
@@ -980,6 +988,7 @@ export type Database = {
           price_per_portion?: number
           reminder_sent_at?: string | null
           size?: string
+          source?: string
           start_date?: string
           status?: string
           subcontractor_id?: string | null

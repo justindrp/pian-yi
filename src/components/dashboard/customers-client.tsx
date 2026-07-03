@@ -76,6 +76,17 @@ export default function CustomersClient() {
   const [showAdd, setShowAdd] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [showGrant, setShowGrant] = useState(false);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const [grantRows, setGrantRows] = useState<
+    { key: string; customer_id: string; customer_name: string; portions: number; date: string; reason: string }[]
+  >([]);
+  const [grantSearch, setGrantSearch] = useState("");
+  const [grantDropdownOpen, setGrantDropdownOpen] = useState(false);
+  const [grantCustomer, setGrantCustomer] = useState<{ id: string; name: string } | null>(null);
+  const [grantPortions, setGrantPortions] = useState(1);
+  const [grantDate, setGrantDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [grantReason, setGrantReason] = useState("");
   const [addForm, setAddForm] = useState({
     name: "",
     phone_number: "",
@@ -108,6 +119,19 @@ export default function CustomersClient() {
         data: Array<{ id: string; name: string | null; active_order_id: string | null }>;
       };
       return (json.data ?? []).filter((c) => c.active_order_id);
+    },
+  });
+
+  const { data: allCustomers } = useQuery({
+    queryKey: ["customers-all"],
+    enabled: showGrant,
+    queryFn: async () => {
+      const res = await fetch("/api/customers?all=true");
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: Array<{ id: string; name: string | null; phone_number: string | null }>;
+      };
+      return json.data ?? [];
     },
   });
 
@@ -230,6 +254,62 @@ export default function CustomersClient() {
     },
   });
 
+  const grantMutation = useMutation({
+    mutationFn: async (rows: typeof grantRows) => {
+      const res = await fetch("/api/customers/free-quota", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grants: rows.map((r) => ({
+            customer_id: r.customer_id,
+            portions: r.portions,
+            date: r.date,
+            reason: r.reason,
+          })),
+        }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Gagal menyimpan kuota gratis");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["customers"] });
+      void queryClient.invalidateQueries({ queryKey: ["customer-ledger"] });
+      setShowGrant(false);
+      setGrantRows([]);
+    },
+  });
+
+  function addGrantRow() {
+    setGrantError(null);
+    if (!grantCustomer) {
+      setGrantError("Pilih pelanggan");
+      return;
+    }
+    if (!grantPortions || grantPortions <= 0) {
+      setGrantError("Porsi harus lebih dari 0");
+      return;
+    }
+    if (!grantReason.trim()) {
+      setGrantError("Alasan wajib diisi");
+      return;
+    }
+    setGrantRows((rows) => [
+      ...rows,
+      {
+        key: `${grantCustomer.id}-${Date.now()}`,
+        customer_id: grantCustomer.id,
+        customer_name: grantCustomer.name,
+        portions: grantPortions,
+        date: grantDate,
+        reason: grantReason.trim(),
+      },
+    ]);
+    setGrantCustomer(null);
+    setGrantSearch("");
+    setGrantPortions(1);
+    setGrantReason("");
+  }
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/customers/${id}`, { method: "DELETE" });
@@ -309,6 +389,7 @@ export default function CustomersClient() {
         <h1 className="text-xl font-semibold text-gray-900">Customers</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-400">{data?.total ?? 0} total</span>
+          <Button type="button" variant="outline" onClick={() => { setGrantError(null); setGrantRows([]); setShowGrant(true); }} className="text-sm rounded-lg">+ Grant free quota</Button>
           <Button type="button" onClick={() => { setAddError(null); setShowAdd(true); }} className="bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">+ Add customer</Button>
         </div>
       </div>
@@ -594,6 +675,127 @@ export default function CustomersClient() {
             <div className="flex gap-2 pt-1">
               <Button type="button" onClick={submitAdd} disabled={createMutation.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">{createMutation.isPending ? "Menyimpan..." : "Simpan"}</Button>
               <Button type="button" variant="outline" onClick={() => setShowAdd(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg">Batal</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grant free quota modal */}
+      {showGrant && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Grant Free Quota</h2>
+              <Button type="button" variant="ghost" onClick={() => setShowGrant(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0">&times;</Button>
+            </div>
+
+            <div className="relative">
+              <Label className="text-xs text-gray-500 block mb-1">Customer</Label>
+              <Input
+                value={grantCustomer ? grantCustomer.name : grantSearch}
+                onChange={(e) => {
+                  setGrantCustomer(null);
+                  setGrantSearch(e.target.value);
+                  setGrantDropdownOpen(true);
+                }}
+                onFocus={() => setGrantDropdownOpen(true)}
+                placeholder="Search by name or phone..."
+              />
+              {grantDropdownOpen && (
+                <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
+                  {(allCustomers ?? [])
+                    .filter((c) => {
+                      const q = grantSearch.toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (c.name ?? "").toLowerCase().includes(q) ||
+                        (c.phone_number ?? "").toLowerCase().includes(q)
+                      );
+                    })
+                    .slice(0, 20)
+                    .map((c) => (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          onMouseDown={() => {
+                            setGrantCustomer({ id: c.id, name: c.name ?? c.phone_number ?? c.id });
+                            setGrantDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-gray-50"
+                        >
+                          {c.name ?? "—"}{" "}
+                          <span className="text-gray-400">{c.phone_number}</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-xs text-gray-500 block mb-1">Portions</Label>
+              <Input
+                type="number"
+                min={1}
+                value={grantPortions}
+                onChange={(e) => setGrantPortions(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500 block mb-1">Date</Label>
+              <Input type="date" value={grantDate} onChange={(e) => setGrantDate(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500 block mb-1">Reason</Label>
+              <Input
+                value={grantReason}
+                onChange={(e) => setGrantReason(e.target.value)}
+                placeholder="e.g. compensation for late delivery"
+              />
+            </div>
+
+            {grantError && <p className="text-xs text-red-600">{grantError}</p>}
+
+            <Button type="button" variant="outline" onClick={addGrantRow} className="w-full text-sm rounded-lg">
+              + Add to batch
+            </Button>
+
+            {grantRows.length > 0 && (
+              <div className="border border-gray-100 rounded-lg divide-y divide-gray-50">
+                {grantRows.map((r) => (
+                  <div key={r.key} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <div>
+                      <span className="font-medium text-gray-900">{r.customer_name}</span>{" "}
+                      <span className="text-gray-500">+{r.portions} porsi · {r.date}</span>
+                      <p className="text-xs text-gray-400">{r.reason}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setGrantRows((rows) => rows.filter((row) => row.key !== r.key))}
+                      className="text-gray-400 hover:text-red-600 text-lg leading-none h-auto w-auto p-0"
+                    >
+                      &times;
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {grantMutation.isError && (
+              <p className="text-xs text-red-600">{(grantMutation.error as Error).message}</p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="button"
+                onClick={() => grantMutation.mutate(grantRows)}
+                disabled={grantRows.length === 0 || grantMutation.isPending}
+                className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40"
+              >
+                {grantMutation.isPending ? "Menyimpan..." : `Save ${grantRows.length || ""} grant${grantRows.length === 1 ? "" : "s"}`}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowGrant(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg">Batal</Button>
             </div>
           </div>
         </div>

@@ -24,7 +24,9 @@ export async function GET(
   const [ordersRes, deliveriesRes] = await Promise.all([
     db
       .from("orders")
-      .select("id, package_size, total_price, price_per_portion, start_date, created_at, status")
+      .select(
+        "id, package_size, total_price, price_per_portion, start_date, created_at, status, source, grant_reason",
+      )
       .eq("customer_id", id),
     db
       .from("daily_deliveries")
@@ -60,7 +62,10 @@ export async function GET(
       id: `pkg-${o.id}`,
       kind: "package",
       date,
-      label: `Paket ${o.package_size ?? 0} porsi`,
+      label:
+        o.source === "free_quota"
+          ? `Kuota gratis: ${o.grant_reason ?? "-"}`
+          : `Paket ${o.package_size ?? 0} porsi`,
       meal_type: null,
       change: o.package_size ?? 0,
       status: o.status,
