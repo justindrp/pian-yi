@@ -88,6 +88,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 - Existing orders lock in `price_per_portion` at order creation time
 - Current S-only customer price thresholds: 5=29k, 10=28k, 20=27k, 40=26k, 60=26k, 120=25k per portion.
 - Current active subcontractor only serves 5 days/week. Chatbot must not offer 6 days/week as available, even though the public price list includes 6-day packages.
+- Splitting a fixed-schedule package's deliveries across two addresses on different days (e.g. 5 hari to address A, 1 extra day to address B) is operationally supported via the per-day address override on the daily sheet, but the extra day must not be folded into a 6-hari package (still unavailable) — chatbot offers 5 hari paket tetap to address A plus the extra day as a separate pesan bebas (one-off) to address B.
 - Custom fixed-schedule day counts that are multiples of 5 use repeated 5-day blocks. Example: 15 days lunch-only = 3 × Rp 145k = Rp 435k. Non-multiples of 5 must be rejected politely; tell customers to choose a multiple of 5 days.
 - Bulk adjust supported: `PATCH /api/settings/pricing` with `{ adjust: number }` increments all tiers at once
 - Bebas/quota package sizes offered by the chatbot: 5, 10, 20, 40, 60, 120 total portions only (72 and 144 removed — see `PRICE_LIST_LINES` / the "Yang tersedia" prompt text in `system.ts`). The 72-hari fixed-schedule price rows are unrelated day-count pricing, not bebas packages.

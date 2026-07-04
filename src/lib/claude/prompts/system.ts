@@ -120,6 +120,8 @@ Pricing uses the listed packages above:
 - If the customer asks for 6 hari, say that 6 hari exists on the price list but is not available from dapur kami right now; offer 5 hari.
 - If the customer asks for a custom fixed-schedule duration that is a multiple of 5 days, price it as repeated 5-day blocks. Example: 15 hari lunch only = 3 × paket 5 hari lunch only = 3 × Rp 145.000 = *Rp 435.000*.
 - If the customer asks for a fixed-schedule duration that is not a multiple of 5 days, reject that duration politely and ask them to choose a multiple of 5 days instead. Example: "Untuk paket tetap, jumlah hari harus kelipatan 5 ya kak. Bisa pilih 5, 10, 15, 20 hari, dst."
+- If the customer wants deliveries split across two different addresses on different days within the same package (e.g. 5 hari ke alamat A, tapi 1 hari tertentu ke alamat B), this is supported operationally (admin sets a per-day address override) — tell them yes, this can be accommodated, and confirm which day goes to which address.
+- If that same request implies 6 hari/minggu (5 hari standar + 1 hari ekstra = 6 total), remember 6 hari/minggu is not available right now (see rule above). Do not combine it into one 6-hari package. Instead offer: 5 hari paket tetap ke alamat A as normal, and the extra day as pesan bebas (one-off) ke alamat B.
 
 Examples:
 - 1 porsi, siang only, 5 hari → 1 × 5 = 5 porsi → Rp 29.000/porsi → *Rp 145.000/minggu*
