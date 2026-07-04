@@ -1,9 +1,43 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { invalidateCache } from "@/lib/cache/settings";
 import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+
+async function saveAsPermanentRule(
+  adminAnswer: string,
+  question: string | null | undefined,
+  adminEmail: string | undefined,
+): Promise<void> {
+  const anthropic = getAnthropicClient();
+  const result = await anthropic.messages.create({
+    model: HAIKU_MODEL,
+    max_tokens: 200,
+    messages: [
+      {
+        role: "user",
+        content: `Rephrase this admin's answer into a general, standalone instruction for a customer-service chatbot's system prompt. It must apply to any future customer asking a similar question, not just this one conversation.
+
+Customer's question: ${question ?? "(not recorded)"}
+Admin's answer: ${adminAnswer}
+
+Output ONLY the instruction in Indonesian, one or two sentences, no preamble.`,
+      },
+    ],
+  });
+  const instruction =
+    result.content[0].type === "text" ? result.content[0].text.trim() : "";
+  if (!instruction) return;
+
+  const db = createAdminClient();
+  await db.from("chatbot_instructions").insert({
+    instruction,
+    created_by: adminEmail,
+  });
+  invalidateCache();
+}
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -22,8 +56,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     admin_answer?: string;
     polished_text?: string;
     preview_only?: boolean;
+    save_as_rule?: boolean;
   };
-  const { customer_id, admin_answer, polished_text, preview_only } = body;
+  const { customer_id, admin_answer, polished_text, preview_only, save_as_rule } =
+    body;
 
   if (!customer_id) {
     return NextResponse.json(
@@ -87,6 +123,13 @@ export async function POST(req: NextRequest): Promise<Response> {
       .from("customer_flags")
       .update({ pending_bot_response: false, pending_bot_question: null })
       .eq("customer_id", customer_id);
+    if (save_as_rule && admin_answer?.trim()) {
+      await saveAsPermanentRule(
+        admin_answer.trim(),
+        flags.pending_bot_question,
+        user.email,
+      );
+    }
     return NextResponse.json({ ok: true, sent: polished_text.trim() });
   }
 
@@ -166,6 +209,13 @@ Rewrite ONLY the admin's note as the bot's reply:`,
     .from("customer_flags")
     .update({ pending_bot_response: false, pending_bot_question: null })
     .eq("customer_id", customer_id);
+  if (save_as_rule && admin_answer?.trim()) {
+    await saveAsPermanentRule(
+      admin_answer.trim(),
+      flags.pending_bot_question,
+      user.email,
+    );
+  }
 
   return NextResponse.json({ ok: true, sent: result });
 }

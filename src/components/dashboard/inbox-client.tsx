@@ -123,6 +123,7 @@ export default function InboxClient() {
   const [manualReply, setManualReply] = useState("");
   const [botReply, setBotReply] = useState("");
   const [botReplyPreview, setBotReplyPreview] = useState<string | null>(null);
+  const [saveBotReplyAsRule, setSaveBotReplyAsRule] = useState(false);
   const [confirmingBotReply, setConfirmingBotReply] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendingBotReply, setSendingBotReply] = useState(false);
@@ -569,6 +570,8 @@ export default function InboxClient() {
       body: JSON.stringify({
         customer_id: selectedCustomerId,
         polished_text: botReplyPreview,
+        admin_answer: botReply.trim(),
+        save_as_rule: saveBotReplyAsRule,
       }),
     });
     setConfirmingBotReply(false);
@@ -581,6 +584,7 @@ export default function InboxClient() {
     }
     setBotReply("");
     setBotReplyPreview(null);
+    setSaveBotReplyAsRule(false);
     if (flags)
       setFlags({
         ...flags,
@@ -1182,6 +1186,15 @@ export default function InboxClient() {
                   <p className="text-sm text-amber-900 bg-white border border-amber-200 rounded-lg px-3 py-2 whitespace-pre-wrap">
                     {botReplyPreview}
                   </p>
+                  <label className="flex items-center gap-2 text-xs text-amber-800">
+                    <input
+                      type="checkbox"
+                      checked={saveBotReplyAsRule}
+                      onChange={(e) => setSaveBotReplyAsRule(e.target.checked)}
+                    />
+                    Save as permanent bot rule (applies to all future
+                    customers)
+                  </label>
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -1194,7 +1207,10 @@ export default function InboxClient() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setBotReplyPreview(null)}
+                      onClick={() => {
+                        setBotReplyPreview(null);
+                        setSaveBotReplyAsRule(false);
+                      }}
                       disabled={confirmingBotReply}
                       className="border-amber-200 text-amber-700 hover:bg-amber-100"
                     >
