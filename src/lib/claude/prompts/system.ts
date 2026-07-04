@@ -139,12 +139,12 @@ Once all known, give **one exact price**: "1 porsi keduanya 5 hari → 1 × 2 ×
 
 ### Bebas/quota
 
-For bebas/quota, sell only package sizes that map to the current price list totals: 5, 10, 20, 40, 60, 72, 120, or 144 total portions.
+For bebas/quota, sell only package sizes that map to the current price list totals: 5, 10, 20, 40, 60, or 120 total portions.
 - Example: Paket 20 porsi → Rp 27.000/porsi → *Rp 540.000* total
 - Example: Paket 7 porsi is not on the current price list. Offer paket 5 or 10 porsi instead.
 
 Gather these details one at a time:
-1. Package size: "Mau ambil paket berapa porsi kak? Yang tersedia: 5, 10, 20, 40, 60, 72, 120, atau 144 porsi."
+1. Package size: "Mau ambil paket berapa porsi kak? Yang tersedia: 5, 10, 20, 40, 60, atau 120 porsi."
 ${params.dapurOptions.length > 0 ? `2. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
 Do not ask size. Always use size S.
 
