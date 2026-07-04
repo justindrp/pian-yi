@@ -311,7 +311,7 @@ function normalizePackageRow(raw: Record<string, string>): PackageRow | null {
     tanggal: exact(["tanggal", "date"]).trim(),
     nama,
     hargaPorsi: exact(["harga/porsi", "harga per porsi", "price"]),
-    porsi: exact(["porsi", "portions"]),
+    porsi: exact(["porsi", "portions", "portion"]),
     totalHarga: exact(["total harga", "total"]),
   };
 }
@@ -339,6 +339,15 @@ function parseDate(raw: string): string | null {
 // Writes customers.portions_remaining/avg_price + the customer's primary order
 // (package_size/portions_remaining/price_per_portion/total_price). Never touches
 // status, customers themselves, or accounting journals. --dry-run writes nothing.
+// Last date the team filled ORDER_HARIAN by hand; daily_deliveries (entered via
+// the app) is authoritative from this date onward, so delivered-portion totals
+// must include both sources to avoid understating what's been drawn.
+const SHEET_DELIVERY_CUTOVER = "2026-06-29";
+// Per-customer completeness rule (owner decision): a DB order created after this
+// date with a real package_size was entered in-app post-cutover and is more
+// complete than the sheet for that customer — don't let --reconcile overwrite it.
+const ORDER_AUTHORITY_CUTOVER = "2026-06-29";
+
 async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: boolean) {
   const today = new Date().toISOString().slice(0, 10);
   console.log(`Reconcile (today=${today})${dryRun ? " — DRY RUN, no writes" : ""}`);
@@ -384,16 +393,39 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
     delivered.set(id, (delivered.get(id) ?? 0) + (Number.parseInt(r.jumlah, 10) || 0));
   }
 
+  // 3b. daily_deliveries (app-entered) from the sheet cutover through today — the
+  // sheet no longer reflects deliveries logged in-app after SHEET_DELIVERY_CUTOVER.
+  const { data: dbDeliveries } = await db
+    .from("daily_deliveries")
+    .select("customer_id, portions")
+    .gt("delivery_date", SHEET_DELIVERY_CUTOVER)
+    .lte("delivery_date", today);
+  for (const d of dbDeliveries ?? []) {
+    if (!d.customer_id) continue;
+    delivered.set(d.customer_id, (delivered.get(d.customer_id) ?? 0) + (d.portions ?? 0));
+  }
+
   // 4. oldest active order per customer (the row that carries the balance)
   const { data: orders } = await db
     .from("orders")
-    .select("id, customer_id, status, created_at")
+    .select("id, customer_id, status, created_at, package_size")
     .in("status", ["active", "pending_payment", "payment_proof_received", "paused"])
     .order("created_at", { ascending: true });
   const orderByCustomer = new Map<string, string>();
+  // Customers whose balance was entered in-app post-cutover with real data —
+  // treat DB as authoritative and skip the sheet-driven overwrite for them.
+  const dbAuthoritative = new Set<string>();
   for (const o of orders ?? []) {
     if (o.customer_id && !orderByCustomer.has(o.customer_id)) {
       orderByCustomer.set(o.customer_id, o.id);
+    }
+    if (
+      o.customer_id &&
+      o.created_at &&
+      o.created_at.slice(0, 10) > ORDER_AUTHORITY_CUTOVER &&
+      (o.package_size ?? 0) > 0
+    ) {
+      dbAuthoritative.add(o.customer_id);
     }
   }
 
@@ -409,6 +441,7 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
   }[] = [];
   const noPurchase: string[] = [];
   const suspicious: string[] = [];
+  const dbAuthoritativeSkipped: string[] = [];
   const negatives: { name: string; remaining: number }[] = [];
   let updated = 0;
   for (const id of ids) {
@@ -422,7 +455,9 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
     const ordId = orderByCustomer.get(id);
 
     let written = false;
-    if (pkg === 0) {
+    if (dbAuthoritative.has(id)) {
+      dbAuthoritativeSkipped.push(name);
+    } else if (pkg === 0) {
       noPurchase.push(name);
     } else if (pkg > SUSPICIOUS_PKG) {
       suspicious.push(`${name} (pkg=${pkg})`);
@@ -451,7 +486,13 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
   console.log(`\n${pad("Customer", 26)}${pad("Pkg", 6)}${pad("Deliv", 7)}${pad("Remain", 8)}${pad("(was)", 7)}`);
   console.log("─".repeat(56));
   for (const r of report) {
-    const flag = !r.written ? "  · skipped" : r.remaining < 0 ? "  ⚠ NEGATIVE" : "";
+    const flag = dbAuthoritativeSkipped.includes(r.name)
+      ? "  · DB-authoritative"
+      : !r.written
+        ? "  · skipped"
+        : r.remaining < 0
+          ? "  ⚠ NEGATIVE"
+          : "";
     console.log(`${pad(r.name, 26)}${pad(r.pkg, 6)}${pad(r.deliv, 7)}${pad(r.remaining, 8)}${pad(r.old, 7)}${flag}`);
   }
   console.log(`\n${report.length} computed, ${report.filter((r) => r.written).length} writable${dryRun ? " (DRY RUN — nothing written)" : `, ${updated} updated`}`);
@@ -461,6 +502,7 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
     console.warn(`\n⚠ ${negatives.length} customers with NEGATIVE balance (over-drawn — likely a missing renewal in package_orders):`);
     for (const n of negatives) console.warn(`    ${n.name}: ${n.remaining}`);
   }
+  if (dbAuthoritativeSkipped.length) console.warn(`\n· ${dbAuthoritativeSkipped.length} skipped — DB-authoritative (in-app order created after ${ORDER_AUTHORITY_CUTOVER}, sheet not written): ${dbAuthoritativeSkipped.sort().join(", ")}`);
   if (noPurchase.length) console.warn(`\n· ${noPurchase.length} skipped — no recorded purchase (left untouched): ${noPurchase.sort().join(", ")}`);
   if (suspicious.length) console.warn(`\n⚠ ${suspicious.length} skipped — suspicious package size (likely typo): ${suspicious.join(", ")}`);
   if (unmatchedPkg.size) console.warn(`\n⚠ ${unmatchedPkg.size} package names matched no DB customer: ${[...unmatchedPkg].sort().join(", ")}`);
@@ -497,6 +539,10 @@ async function main() {
   }
   // Only import deliveries strictly after this date (YYYY-MM-DD). Empty = no filter.
   const afterDate = (args.after ?? "").trim() || null;
+  // Only import deliveries on/before this date (YYYY-MM-DD, inclusive). Empty = no filter.
+  // Used to cap sheet-sourced deliveries at the last date the team filled ORDER_HARIAN
+  // by hand — post-cutover deliveries live only in daily_deliveries (entered via the app).
+  const untilDate = (args.until ?? "").trim() || null;
 
   if (skipCustomers) {
     if (!ordersCsvPath) {
@@ -733,6 +779,7 @@ async function main() {
     const date = parseDate(row.tanggal);
     if (!date) { deliverySkipped++; continue; }
     if (afterDate && date <= afterDate) { deliverySkipped++; continue; }
+    if (untilDate && date > untilDate) { deliverySkipped++; continue; }
 
     const mealType = row.mealType.toLowerCase().includes("dinner") ? "dinner" : "lunch";
     const portions = Number.parseInt(row.jumlah, 10) || 1;
