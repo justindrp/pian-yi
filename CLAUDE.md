@@ -201,60 +201,94 @@ pian-yi/
 │   └── seed.sql
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/
-│   │   │   ├── layout.tsx (auth-protected)
-│   │   │   ├── page.tsx (dashboard home)
-│   │   │   ├── inbox/
-│   │   │   ├── customers/
-│   │   │   ├── orders/
-│   │   │   ├── deliveries/
-│   │   │   ├── payments/
-│   │   │   ├── subcontractors/
-│   │   │   ├── chatbot-training/
-│   │   │   ├── reports/
-│   │   │   ├── settings/
-│   │   │   └── assistant/
+│   │   ├── (dashboard)/ — auth-protected admin PWA routes, one folder per nav item; each `page.tsx` here is a thin wrapper importing its real client component from `components/dashboard/`
+│   │   │   ├── layout.tsx (auth-protected, role-based nav)
+│   │   │   ├── page.tsx (dashboard home wrapper → `DashboardMetrics`)
+│   │   │   ├── dashboard/ (route for KPI home page)
+│   │   │   ├── inbox/ (route for WhatsApp thread list / admin-guided bot replies)
+│   │   │   ├── customers/ (route for customer list / detail panel)
+│   │   │   ├── orders/ (route for orders table / detail slide-over)
+│   │   │   ├── deliveries/ (route for Daily Sheet / proof-of-delivery uploads)
+│   │   │   ├── areas/ (route for delivery area management)
+│   │   │   ├── payments/ (route for payment tracking/reconciliation)
+│   │   │   ├── subcontractors/ (route for dapur/kitchen roster, off-days, menu images)
+│   │   │   ├── broadcasts/ (route for filtered WhatsApp broadcast composer)
+│   │   │   ├── chatbot-training/ (route for Annie's system-prompt training chat)
+│   │   │   ├── reports/ (route for revenue/orders/churn/conversion analytics)
+│   │   │   ├── settings/ (route for pricing tiers, templates, admins, kill switch)
+│   │   │   ├── assistant/ (route for agentic admin chat w/ confirm-before-write tools)
+│   │   │   └── guide/ (in-app usage docs for admins)
 │   │   ├── (auth)/
-│   │   │   ├── login/
-│   │   │   └── callback/
-│   │   └── api/
-│   │       ├── webhook/
-│   │       │   └── whatsapp/route.ts (Meta webhook)
-│   │       ├── cron/
-│   │       │   ├── send-reminders/route.ts
-│   │       │   ├── cancel-unpaid/route.ts
-│   │       │   ├── daily-summary/route.ts
-│   │       │   └── lapsed-customers/route.ts
-│   │       └── push/
-│   │           └── subscribe/route.ts
+│   │   │   ├── login/ (magic-link email login)
+│   │   │   └── callback/ (Supabase Auth callback handler)
+│   │   ├── dapur/[id]/ — public, auth-free mobile page per subcontractor: tomorrow's delivery orders
+│   │   └── api/ — route handlers; see "API Routes" section below for endpoint-level detail
+│   │       ├── webhook/whatsapp/ (Meta webhook: main chatbot entry point)
+│   │       ├── cron/ (Railway cron targets: reminders, cancellations, digests, delivery-gen)
+│   │       ├── push/ (VAPID config, subscribe, test push)
+│   │       ├── auth/ (admin email check, signout)
+│   │       ├── dashboard/ (KPI metrics endpoint)
+│   │       ├── orders/, customers/, deliveries/, subcontractors/, settings/, reports/ (CRUD for each dashboard page above)
+│   │       ├── inbox/ (bot-reply, learn-context, pipeline-stage, replay-latest, delivery-proofs proxy)
+│   │       ├── broadcasts/ (preview + send)
+│   │       ├── assistant/ (agentic chat + execute + conversation threads)
+│   │       ├── accounting/ (journals, accounts, reports, ledger — owner-only)
+│   │       ├── context/ (customer/preview context lookups used by admin tooling)
+│   │       ├── chatbot-instructions/ (CRUD for saved chatbot instruction rules)
+│   │       ├── chatbot-simulator/ (test the chatbot without sending real WhatsApp messages)
+│   │       ├── training-chat/ (backs the chatbot-training page)
+│   │       ├── admin/send-delivery-photo/ (send a delivery proof photo to a customer)
+│   │       ├── whatsapp/ (manual text send from dashboard)
+│   │       └── health/ (liveness probe)
 │   ├── proxy.ts (Supabase SSR session refresh — Next.js 16 "proxy" convention, replaces middleware.ts)
 │   ├── lib/
-│   │   ├── supabase/
+│   │   ├── supabase/ — Supabase client factories
 │   │   │   ├── client.ts (browser)
 │   │   │   ├── server.ts (server)
 │   │   │   ├── admin.ts (service role, server-only)
 │   │   │   └── get-role.ts (getSessionWithRole + isOwner helpers)
-│   │   ├── claude/
+│   │   ├── claude/ — chatbot brain: prompts, conversation history, safety gates
 │   │   │   ├── client.ts
 │   │   │   ├── conversation.ts (history management, token budget)
 │   │   │   ├── prompts/
 │   │   │   │   ├── system.ts (main chatbot prompt for Sonnet 5)
 │   │   │   │   ├── classifier.ts (Haiku 4.5 classifier)
 │   │   │   │   └── photo-matcher.ts (Haiku 4.5 photo matching)
-│   │   │   └── safety.ts (rate limits, circuit breaker, echo detection)
-│   │   ├── whatsapp/
+│   │   │   ├── safety.ts (rate limits, circuit breaker, echo detection)
+│   │   │   ├── validate-reply.ts (Haiku hallucination check before send)
+│   │   │   └── learn-context.ts (Haiku auto-summarizes durable customer notes)
+│   │   ├── whatsapp/ — Meta Cloud API integration
 │   │   │   ├── client.ts (send messages, typing indicators)
 │   │   │   ├── webhook.ts (signature verification, message parsing)
 │   │   │   └── types.ts
 │   │   ├── push/
 │   │   │   └── send.ts (web-push wrapper)
-│   │   └── utils/
+│   │   └── utils/ — shared formatting/timing helpers (currency, dates, delivery route, typing delay)
 │   │       ├── delay.ts (dynamic typing delay)
-│   │       └── format.ts (currency, dates)
+│   │       └── format.ts (currency, dates, getDeliveryRoute())
 │   ├── components/
-│   │   ├── ui/ (shadcn components)
-│   │   ├── dashboard/
-│   │   └── shared/
+│   │   ├── ui/ (shadcn primitives)
+│   │   ├── dashboard/ — **where the actual page logic/UI lives.** Every `app/(dashboard)/*/page.tsx` is just a thin wrapper importing its matching `*-client.tsx` here
+│   │   │   ├── dashboard-metrics.tsx (KPI widgets for the dashboard home page)
+│   │   │   ├── push-subscribe-button.tsx (browser push opt-in button, used on dashboard home)
+│   │   │   ├── inbox-client.tsx (WhatsApp thread list, admin-guided bot replies, human takeover)
+│   │   │   ├── inbox-filters.ts (All/Unread/Unanswered filter + search logic for inbox-client)
+│   │   │   ├── customers-client.tsx (customer list, detail panel, free-quota grants)
+│   │   │   ├── orders-client.tsx (orders table, detail slide-over, mark-paid, status changes)
+│   │   │   ├── new-order-modal.tsx (create-order modal used from orders-client / customers-client)
+│   │   │   ├── deliveries-client.tsx (Daily Sheet, proof-of-delivery uploads)
+│   │   │   ├── areas-client.tsx (delivery area management, derived from active subcontractors)
+│   │   │   ├── payments-client.tsx (payment tracking/reconciliation UI)
+│   │   │   ├── subcontractors-client.tsx (dapur/kitchen roster, off-days, menu images)
+│   │   │   ├── broadcasts-client.tsx (natural-language filtered WhatsApp broadcast composer)
+│   │   │   ├── chatbot-training-client.tsx (Annie's chat UI for crafting system-prompt instructions)
+│   │   │   ├── reports-client.tsx (revenue/orders/churn/conversion analytics)
+│   │   │   ├── settings-client.tsx (pricing tiers, templates, admins, kill-switch toggle)
+│   │   │   ├── kill-switch.tsx (chatbot on/off toggle, used inside settings-client)
+│   │   │   ├── accounting-client.tsx (journals, chart of accounts, financial reports, ledger)
+│   │   │   ├── assistant-client.tsx (agentic admin chat UI: query + write tools w/ confirm step)
+│   │   │   └── assistant-widget.tsx (floating shortcut into the assistant, embedded on other pages)
+│   │   └── shared/ (cross-page components: mobile nav, query provider, service worker registrar)
 │   └── types/
 │       └── database.ts (generated by `supabase gen types`)
 └── scripts/
