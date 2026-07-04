@@ -364,7 +364,8 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 - `GET /api/inbox/delivery-proofs/[...path]` — Auth-gated proxy for proof images stored in Supabase Storage; used by the inbox UI so proof attachments render without exposing the storage bucket directly.
 - `POST /api/inbox/learn-context` — Manual fallback for the same learned-context summarizer used by the webhook auto-learn path. Requires admin auth and `{ customer_id }`; writes only the `[AI learned context]` block in `customers.notes`.
 - `POST /api/inbox/pipeline-stage` — Admin override for the customer pipeline stage. Updates `customer_state.state`; payment-related stages also reconcile the latest order status (`pending_payment`, `payment_proof_received`, `active`) when an order exists.
-- `POST /api/inbox/replay-latest` — Re-run the latest saved inbound customer text through the normal chatbot flow after a thread is unblocked. Requires auth and `{ customer_id }`.
+- `POST /api/inbox/replay-latest` — Re-run the latest saved inbound customer text through the normal chatbot flow after a thread is unblocked. Requires auth and `{ customer_id }`. Rejects with `{ ok: true, replayed: false, reason: "thread_blocked" }` while `escalated_to_human` or `pending_bot_response` is still true.
+- "Regenerate reply" (inbox thread header → More menu) — for re-running the bot on the latest customer message after a system-prompt change or fix, without waiting for the auto-replay trigger. Since `replay-latest` refuses while the thread is blocked, the button first calls `POST /api/inbox/takeover` with `{ escalated: false }` (clears both `escalated_to_human` and `pending_bot_response`) whenever either flag is set, then calls `replay-latest`. Shows the `reason` inline if the replay still doesn't fire (e.g. `welcome_flow_only`, `latest_not_user`).
 
 ### Settings
 - `GET /api/settings` — All settings + pricing tiers + message templates + admin list

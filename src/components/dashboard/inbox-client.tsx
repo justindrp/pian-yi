@@ -141,6 +141,10 @@ export default function InboxClient() {
   >("new");
   const [stageDraft, setStageDraft] = useState<PipelineStage>("browsing");
   const [applyingStage, setApplyingStage] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateStatus, setRegenerateStatus] = useState<string | null>(
+    null,
+  );
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -478,6 +482,53 @@ export default function InboxClient() {
       return;
     }
     setFlags(nextFlags);
+  }
+
+  async function regenerateReply() {
+    if (!selectedCustomerId || !flags) return;
+    setRegenerating(true);
+    setRegenerateStatus(null);
+    if (flags.escalated_to_human || flags.pending_bot_response) {
+      const takeoverRes = await fetch("/api/inbox/takeover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: selectedCustomerId,
+          escalated: false,
+        }),
+      });
+      if (!takeoverRes.ok) {
+        setRegenerating(false);
+        setRegenerateStatus("Failed to clear thread state");
+        return;
+      }
+      setFlags({
+        ...flags,
+        escalated_to_human: false,
+        pending_bot_response: false,
+        pending_bot_question: null,
+      });
+    }
+    const res = await fetch("/api/inbox/replay-latest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId }),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      replayed?: boolean;
+      reason?: string;
+    } | null;
+    setRegenerating(false);
+    if (!res.ok || !body?.ok) {
+      setRegenerateStatus("Failed to regenerate reply");
+      return;
+    }
+    if (!body.replayed) {
+      setRegenerateStatus(`Not regenerated: ${body.reason ?? "unknown"}`);
+      return;
+    }
+    await loadMessages(selectedCustomerId);
   }
 
   async function learnConversationContext() {
@@ -1041,6 +1092,17 @@ export default function InboxClient() {
                     ) : null}
                     <button
                       type="button"
+                      className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      onClick={() => {
+                        setHeaderMenuOpen(false);
+                        void regenerateReply();
+                      }}
+                      disabled={regenerating}
+                    >
+                      {regenerating ? "Regenerating..." : "Regenerate reply"}
+                    </button>
+                    <button
+                      type="button"
                       className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                       onClick={() => {
                         setHeaderMenuOpen(false);
@@ -1058,6 +1120,12 @@ export default function InboxClient() {
           {learnedContextStatus && (
             <div className="px-5 py-2 border-b border-blue-100 bg-blue-50 text-xs text-blue-700">
               {learnedContextStatus}
+            </div>
+          )}
+
+          {regenerateStatus && (
+            <div className="px-5 py-2 border-b border-blue-100 bg-blue-50 text-xs text-blue-700">
+              {regenerateStatus}
             </div>
           )}
 
