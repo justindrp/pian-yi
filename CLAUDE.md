@@ -50,6 +50,8 @@ CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI c
 
 When performing infrastructure work, prefer CLI calls over manual UI clicks so the actions are reproducible and auditable.
 
+**Budget note:** Justin on $20/month Claude Pro plan — limited usage cap. Avoid spawning Agent/subagents for bounded, known-target tasks (single file, known symbol); do those inline w/ Read/Edit/Bash/Grep. Reserve Agent for genuinely open-ended multi-file research or when explicitly requested.
+
 ## Architectural principles
 
 1. **HTTP 200 first, process after** — webhook returns 200 to Meta immediately, then processes async
