@@ -137,7 +137,9 @@ export async function processWebhookAsync(
 
   const db = createAdminClient();
 
-  // Idempotency check
+  // Idempotency check — the insert (not this select) is the atomic guard, since
+  // Meta can deliver the same webhook event twice in quick succession and two
+  // concurrent requests can both pass this select before either insert lands.
   const { data: existing } = await db
     .from("processed_messages")
     .select("message_id")
@@ -145,7 +147,10 @@ export async function processWebhookAsync(
     .single();
   if (existing) return;
 
-  await db.from("processed_messages").insert({ message_id: message.messageId });
+  const { error: insertError } = await db
+    .from("processed_messages")
+    .insert({ message_id: message.messageId });
+  if (insertError) return; // unique violation — another concurrent request already claimed this message_id
 
   // Check if sender is a subcontractor admin
   const { data: subcontractor } = await db
