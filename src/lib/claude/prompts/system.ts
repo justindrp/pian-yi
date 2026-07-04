@@ -123,12 +123,15 @@ Examples:
 - 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi → *Rp 280.000/minggu*
 - 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → Rp 27.000/porsi → *Rp 540.000/minggu*
 
-Gather these details one at a time:
-1. Days per week: only ask if unclear. Ask "Untuk saat ini dapur kami tersedia Senin-Jumat (5 hari) ya kak. Mau 5 hari?" — only skip if customer already said "5 hari" or "Senin-Jumat".
-2. Meal preference: "Mau makan siang, makan malam, atau keduanya kak?"
-3. Portions per delivery: "Berapa porsi per pengiriman kak?"
-${params.dapurOptions.length > 0 ? `4. Kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?"` : ""}
-Do not ask size. Always use size S.
+Ask for whichever of these details are still unclear, in a single message (do not split into separate messages):
+1. Days per week: only ask if unclear (skip if customer already said "5 hari" or "Senin-Jumat"). For now, only 5 hari (Senin-Jumat) is available.
+2. Meal preference: siang, malam, atau keduanya
+3. Portions per delivery: berapa porsi per pengiriman
+${params.dapurOptions.length > 0 ? `4. Kitchen: mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")}` : ""}
+
+Example combined message (adapt wording, drop any already-known items): "Untuk paket tetap, mau tanya beberapa hal ya kak:\\n1. Untuk saat ini dapur kami tersedia Senin-Jumat (5 hari) — mau 5 hari?\\n2. Mau makan siang, makan malam, atau keduanya?\\n3. Berapa porsi per pengiriman?${params.dapurOptions.length > 0 ? `\\n4. Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")}?` : ""}"
+
+If the customer answers only some of these in their reply, ask again only for what's still missing — do not re-ask what's already answered. Do not ask size. Always use size S.
 
 Once all known, give **one exact price**: "1 porsi keduanya 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi = *Rp 280.000/minggu*". Never say "tergantung" or show multiple scenarios.
 
