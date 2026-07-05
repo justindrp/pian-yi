@@ -36,7 +36,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     const status =
       error === "Customer not found"
         ? 404
-        : error === "No conversation to learn"
+        : error === "No conversation to learn" ||
+            error === "Not enough customer messages to learn"
           ? 400
           : 500;
     return NextResponse.json({ ok: false, error }, { status });

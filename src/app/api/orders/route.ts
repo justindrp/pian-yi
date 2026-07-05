@@ -370,18 +370,16 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         );
       update.size = f.size;
     }
-    // Money/quota/date fields — editable per owner request. NOTE: raw edits here
-    // do NOT re-post or adjust accounting journals; books can drift.
-    if ("order_type" in f) update.order_type = String(f.order_type);
-    if ("package_size" in f) update.package_size = Number(f.package_size);
-    if ("portions_remaining" in f)
-      update.portions_remaining = Number(f.portions_remaining);
-    if ("price_per_portion" in f)
-      update.price_per_portion = Number(f.price_per_portion);
-    if ("total_price" in f) update.total_price = Number(f.total_price);
+    if ("order_type" in f) {
+      if (f.order_type !== "recurring" && f.order_type !== "scheduled")
+        return NextResponse.json(
+          { ok: false, error: "Invalid order_type" },
+          { status: 400 },
+        );
+      update.order_type = f.order_type;
+    }
     if ("start_date" in f && f.start_date)
       update.start_date = String(f.start_date);
-    if ("paid_at" in f) update.paid_at = f.paid_at ? String(f.paid_at) : null;
 
     const { error } = await db.from("orders").update(update).eq("id", body.id);
     if (error)

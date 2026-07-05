@@ -68,6 +68,7 @@ beforeEach(() => {
             text: "- Customer suka menu ayam\n- Minta siang saja",
           },
         ],
+        usage: { input_tokens: 100, output_tokens: 20 },
       }),
     },
   });
@@ -80,8 +81,26 @@ describe("POST /api/inbox/learn-context", () => {
       conversations: {
         data: [
           {
+            role: "user",
+            content: "Halo, mau tanya menu",
+            message_type: "text",
+            created_at: "2026-01-01",
+          },
+          {
             role: "assistant",
-            content: "Siap kak",
+            content: "Siap kak, ada apa ya?",
+            message_type: "text",
+            created_at: "2026-01-01",
+          },
+          {
+            role: "user",
+            content: "Ada menu ayam ga?",
+            message_type: "text",
+            created_at: "2026-01-02",
+          },
+          {
+            role: "assistant",
+            content: "Ada kak",
             message_type: "text",
             created_at: "2026-01-02",
           },
@@ -89,7 +108,7 @@ describe("POST /api/inbox/learn-context", () => {
             role: "user",
             content: "Saya suka menu ayam, siang saja",
             message_type: "text",
-            created_at: "2026-01-01",
+            created_at: "2026-01-03",
           },
         ],
         error: null,

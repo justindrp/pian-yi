@@ -12,7 +12,10 @@ jest.mock("@/lib/whatsapp/client", () => ({
   sendTextMessage: jest.fn().mockResolvedValue(undefined),
   uploadMediaToMeta: jest.fn().mockResolvedValue("meta-media-id-123"),
 }));
-jest.mock("@/lib/claude/conversation", () => ({ saveMessage: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("@/lib/claude/conversation", () => ({
+  saveMessage: jest.fn().mockResolvedValue(undefined),
+  updateMessageReceipt: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("@/lib/accounting/journal", () => ({ createJournalEntry: jest.fn().mockResolvedValue(undefined) }));
 
 // ---------------------------------------------------------------------------

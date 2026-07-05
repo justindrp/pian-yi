@@ -57,8 +57,8 @@ export async function saveMessage(params: {
     .select("id")
     .single();
 
-  if (error) {
-    console.error("[conversations] saveMessage failed:", error.message);
+  if (error || !data) {
+    console.error("[conversations] saveMessage failed:", error?.message);
     return null;
   }
 
