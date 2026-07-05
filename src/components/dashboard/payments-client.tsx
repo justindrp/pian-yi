@@ -98,14 +98,14 @@ export default function PaymentsClient() {
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     {
-      key: "pending_verification",
-      label: "Pending verification",
-      count: pendingVerification.length,
-    },
-    {
       key: "awaiting_payment",
       label: "Awaiting payment",
       count: awaitingPayment.length,
+    },
+    {
+      key: "pending_verification",
+      label: "Pending verification",
+      count: pendingVerification.length,
     },
     { key: "paid_today", label: "Paid today", count: paidToday.length },
   ];
