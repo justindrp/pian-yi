@@ -275,6 +275,7 @@ export default function OrdersClient() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
         >
+          <option value="">All</option>
           <option value="active">Active</option>
           <option value="pending_payment">Pending Payment</option>
           <option value="payment_proof_received">Proof Received</option>

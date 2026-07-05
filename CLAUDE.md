@@ -116,6 +116,8 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 Cancellations: `cancelled_unpaid`, `cancelled_by_customer`, `cancelled_by_admin`, `refunded`
 
+Orders page status dropdown defaults to "Active" and has no unfiltered view by default — an explicit "All" option (empty status, no `.eq` filter applied) was added alongside the per-status options so admins can see orders in any stage.
+
 ### Meal time preference types
 
 - `lunch_only`
