@@ -5,7 +5,6 @@ import {
   getSetting,
   getTemplate,
 } from "@/lib/cache/settings";
-import { classifyAddress } from "@/lib/claude/classify-address";
 import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import {
   loadHistory,
@@ -13,6 +12,10 @@ import {
   updateMessageReceipt,
   type WhatsAppMessageStatus,
 } from "@/lib/claude/conversation";
+import {
+  createOrderFromExtraction,
+  type ExtractedOrderInput,
+} from "@/lib/claude/extract-order";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
@@ -30,7 +33,6 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
-import { getDeliveryRoute } from "@/lib/utils/format";
 import {
   downloadMedia,
   sendImageByUrl,
@@ -1306,122 +1308,11 @@ async function handleToolUse(
   const db = createAdminClient();
 
   if (tool.name === "extract_order") {
-    const input = tool.input as {
-      customer_name: string;
-      package_size: number;
-      portions_per_delivery: number;
-      portions_lunch?: number;
-      portions_dinner?: number;
-      address: string;
-      maps_link: string;
-      area: string;
-      sub_area?: string;
-      meal_time_preference?: string;
-      custom_schedule?: Record<string, unknown>;
-      start_date?: string;
-      end_date?: string;
-      subcontractor_id?: string;
-      size?: string;
-    };
-
-    // Look up price: find the highest tier whose minimum is <= package_size
-    const { data: tier } = await db
-      .from("pricing_tiers")
-      .select("price_per_portion")
-      .lte("portions", input.package_size)
-      .order("portions", { ascending: false })
-      .limit(1)
-      .single();
-
-    const pricePerPortion = tier?.price_per_portion ?? 0;
-    const totalPrice = pricePerPortion * input.package_size;
-
-    await db.from("orders").insert({
-      customer_id: customerId,
-      package_size: input.package_size,
-      price_per_portion: pricePerPortion,
-      total_price: totalPrice,
-      portions_per_delivery: input.portions_per_delivery,
-      portions_lunch: input.portions_lunch ?? 0,
-      portions_dinner: input.portions_dinner ?? 0,
-      portions_remaining: input.package_size,
-      delivery_address: input.address,
-      maps_link: input.maps_link,
-      area: input.area,
-      meal_time_preference: input.meal_time_preference ?? "per_day_decision",
-      custom_schedule: (input.custom_schedule ?? null) as
-        | import("@/types/database").Json
-        | null,
-      start_date: (input.start_date ?? null) as string,
-      end_date: input.end_date ?? null,
-      size: "s",
-      subcontractor_id: input.subcontractor_id ?? null,
-      status: "pending_payment",
-      confirmed_at: new Date().toISOString(),
-    });
-
-    // Fetch current quota for WAC recalculation
-    const { data: existingCustomer } = await db
-      .from("customers")
-      .select("portions_remaining, avg_price_per_portion")
-      .eq("id", customerId)
-      .single();
-    const oldRemaining = existingCustomer?.portions_remaining ?? 0;
-    const oldAvg = existingCustomer?.avg_price_per_portion ?? 0;
-    const newRemaining = oldRemaining + input.package_size;
-    const newAvg = Math.round(
-      (oldRemaining * oldAvg + input.package_size * pricePerPortion) /
-        newRemaining,
-    );
-
-    // Classify address type then update customer record
-    const addressType = await classifyAddress(input.address);
-    await db
-      .from("customers")
-      .update({
-        name: input.customer_name,
-        address: input.address,
-        area: input.area,
-        sub_area: input.sub_area ?? null,
-        delivery_route: getDeliveryRoute(input.area),
-        address_type: addressType,
-        portions_remaining: newRemaining,
-        avg_price_per_portion: newAvg,
-        ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
-        ...(input.subcontractor_id
-          ? { subcontractor_id: input.subcontractor_id }
-          : {}),
-      })
-      .eq("id", customerId);
-
-    await db
-      .from("customer_state")
-      .update({
-        state: "awaiting_payment",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("customer_id", customerId);
-
-    // Send payment details
-    const [bankName, bankAccountNumber, bankAccountName] = await Promise.all([
-      getSetting("bank_name"),
-      getSetting("bank_account_number"),
-      getSetting("bank_account_name"),
-    ]);
-    const displayName = input.customer_name.split(" ")[0];
-    const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
-    const conversationId = await saveMessage({
+    await createOrderFromExtraction(
       customerId,
-      role: "assistant",
-      content: paymentMsg,
-      modelUsed: "sonnet-4-6",
-    });
-    const whatsappMessageId = await sendTextMessage(phone, paymentMsg);
-    await updateMessageReceipt({
-      conversationId,
-      whatsappMessageId,
-      status: "sent",
-    });
+      phone,
+      tool.input as ExtractedOrderInput,
+    );
   } else if (tool.name === "record_daily_order") {
     const input = tool.input as {
       delivery_date: string;

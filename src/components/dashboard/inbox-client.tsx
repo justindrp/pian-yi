@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import type { ExtractedOrderInput } from "@/lib/claude/extract-order";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
@@ -145,6 +146,14 @@ export default function InboxClient() {
   const [regenerateStatus, setRegenerateStatus] = useState<string | null>(
     null,
   );
+  const [extractingOrder, setExtractingOrder] = useState(false);
+  const [extractOrderError, setExtractOrderError] = useState<string | null>(
+    null,
+  );
+  const [extractedOrder, setExtractedOrder] =
+    useState<ExtractedOrderInput | null>(null);
+  const [confirmingExtractedOrder, setConfirmingExtractedOrder] =
+    useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -528,6 +537,52 @@ export default function InboxClient() {
       setRegenerateStatus(`Not regenerated: ${body.reason ?? "unknown"}`);
       return;
     }
+    await loadMessages(selectedCustomerId);
+  }
+
+  async function extractOrder() {
+    if (!selectedCustomerId) return;
+    setExtractingOrder(true);
+    setExtractOrderError(null);
+    const res = await fetch("/api/inbox/extract-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId }),
+    });
+    setExtractingOrder(false);
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      data?: ExtractedOrderInput;
+      error?: string;
+    } | null;
+    if (!res.ok || !body?.ok || !body.data) {
+      setExtractOrderError(body?.error ?? "Failed to extract order");
+      return;
+    }
+    setExtractedOrder(body.data);
+  }
+
+  async function confirmExtractedOrder() {
+    if (!selectedCustomerId || !extractedOrder) return;
+    setConfirmingExtractedOrder(true);
+    const res = await fetch("/api/inbox/extract-order/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_id: selectedCustomerId,
+        input: extractedOrder,
+      }),
+    });
+    setConfirmingExtractedOrder(false);
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      error?: string;
+    } | null;
+    if (!res.ok || !body?.ok) {
+      setExtractOrderError(body?.error ?? "Failed to create order");
+      return;
+    }
+    setExtractedOrder(null);
     await loadMessages(selectedCustomerId);
   }
 
@@ -1103,6 +1158,17 @@ export default function InboxClient() {
                     </button>
                     <button
                       type="button"
+                      className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      onClick={() => {
+                        setHeaderMenuOpen(false);
+                        void extractOrder();
+                      }}
+                      disabled={extractingOrder}
+                    >
+                      {extractingOrder ? "Extracting..." : "Extract order"}
+                    </button>
+                    <button
+                      type="button"
                       className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                       onClick={() => {
                         setHeaderMenuOpen(false);
@@ -1126,6 +1192,12 @@ export default function InboxClient() {
           {regenerateStatus && (
             <div className="px-5 py-2 border-b border-blue-100 bg-blue-50 text-xs text-blue-700">
               {regenerateStatus}
+            </div>
+          )}
+
+          {extractOrderError && (
+            <div className="px-5 py-2 border-b border-red-100 bg-red-50 text-xs text-red-700">
+              {extractOrderError}
             </div>
           )}
 
@@ -1398,6 +1470,164 @@ export default function InboxClient() {
       ) : (
         <div className="hidden md:flex flex-1 items-center justify-center text-sm text-gray-400">
           Select a conversation
+        </div>
+      )}
+
+      {extractedOrder && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">
+              Review extracted order
+            </h2>
+            <p className="text-xs text-gray-600 mb-4">
+              Parsed from this conversation. Fix anything wrong before
+              creating the order — this will send the payment-details
+              message to the customer.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700">
+                  Nama
+                </label>
+                <Input
+                  value={extractedOrder.customer_name}
+                  onChange={(e) =>
+                    setExtractedOrder({
+                      ...extractedOrder,
+                      customer_name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700">
+                  Alamat
+                </label>
+                <Textarea
+                  value={extractedOrder.address}
+                  onChange={(e) =>
+                    setExtractedOrder({
+                      ...extractedOrder,
+                      address: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700">
+                  Maps link
+                </label>
+                <Input
+                  value={extractedOrder.maps_link}
+                  onChange={(e) =>
+                    setExtractedOrder({
+                      ...extractedOrder,
+                      maps_link: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700">
+                  Area
+                </label>
+                <Input
+                  value={extractedOrder.area}
+                  onChange={(e) =>
+                    setExtractedOrder({
+                      ...extractedOrder,
+                      area: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">
+                    Package size (porsi)
+                  </label>
+                  <Input
+                    type="number"
+                    value={extractedOrder.package_size}
+                    onChange={(e) =>
+                      setExtractedOrder({
+                        ...extractedOrder,
+                        package_size: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">
+                    Porsi/pengiriman
+                  </label>
+                  <Input
+                    type="number"
+                    value={extractedOrder.portions_per_delivery}
+                    onChange={(e) =>
+                      setExtractedOrder({
+                        ...extractedOrder,
+                        portions_per_delivery: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">
+                    Tanggal mulai
+                  </label>
+                  <Input
+                    type="date"
+                    value={extractedOrder.start_date ?? ""}
+                    onChange={(e) =>
+                      setExtractedOrder({
+                        ...extractedOrder,
+                        start_date: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">
+                    Tanggal selesai
+                  </label>
+                  <Input
+                    type="date"
+                    value={extractedOrder.end_date ?? ""}
+                    onChange={(e) =>
+                      setExtractedOrder({
+                        ...extractedOrder,
+                        end_date: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setExtractedOrder(null)}
+                disabled={confirmingExtractedOrder}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={confirmExtractedOrder}
+                disabled={confirmingExtractedOrder}
+              >
+                {confirmingExtractedOrder
+                  ? "Creating..."
+                  : "Create order & send payment info"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
