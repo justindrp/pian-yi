@@ -201,7 +201,7 @@ describe("POST /api/assistant/execute", () => {
       ],
       expect.objectContaining({
         ignoreDuplicates: true,
-        onConflict: "order_id,delivery_date,meal_type",
+        onConflict: "delivery_date,customer_id,meal_type",
       }),
     );
 
