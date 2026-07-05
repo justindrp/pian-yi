@@ -86,6 +86,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 - Customer-facing chatbot prompt has the current Paket Personal S price list spelled out in `src/lib/claude/prompts/system.ts`; keep this in sync with `pricing_tiers` and `price_list_image_url`.
 - Existing orders lock in `price_per_portion` at order creation time
+- The admin inbox "Review extracted order" modal now shows server-computed `price_per_portion` and `total_price` before confirmation, but those values remain server-authoritative and are recomputed again on create.
 - Current S-only customer price thresholds: 5=29k, 10=28k, 20=27k, 40=26k, 60=26k, 120=25k per portion.
 - Current active subcontractor only serves 5 days/week. Chatbot must not offer 6 days/week as available, even though the public price list includes 6-day packages.
 - Splitting a fixed-schedule package's deliveries across two addresses on different days (e.g. 5 hari to address A, 1 extra day to address B) is operationally supported via the per-day address override on the daily sheet, but the extra day must not be folded into a 6-hari package (still unavailable). There is no single-portion one-off order — bebas/quota packages only sell in fixed sizes (5, 10, 20, 40, 60, 120 portions). Chatbot offers 5 hari paket tetap to address A as normal; the extra day's delivery to address B must draw from a bebas/quota package (min. 5 portions) the customer buys separately.

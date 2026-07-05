@@ -1,5 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { extractOrderFromConversation } from "@/lib/claude/extract-order";
+import {
+  extractOrderFromConversation,
+  getExtractedOrderPricing,
+} from "@/lib/claude/extract-order";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -26,12 +29,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   const extracted = await extractOrderFromConversation(customer_id);
   if (!extracted) {
     return NextResponse.json(
-      { ok: false, error: "Could not extract order details from this conversation" },
+      {
+        ok: false,
+        error: "Could not extract order details from this conversation",
+      },
       { status: 422 },
     );
   }
 
-  return NextResponse.json({ ok: true, data: extracted });
+  const pricing = await getExtractedOrderPricing(extracted.package_size);
+  return NextResponse.json({ ok: true, data: { ...extracted, ...pricing } });
 }
 
 export const dynamic = "force-dynamic";

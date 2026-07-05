@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { ExtractedOrderInput } from "@/lib/claude/extract-order";
+import type { ExtractedOrderReview } from "@/lib/claude/extract-order";
 import { normalizeCustomerState } from "@/lib/customers/lifecycle";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
@@ -147,7 +147,7 @@ export default function InboxClient() {
     null,
   );
   const [extractedOrder, setExtractedOrder] =
-    useState<ExtractedOrderInput | null>(null);
+    useState<ExtractedOrderReview | null>(null);
   const [confirmingExtractedOrder, setConfirmingExtractedOrder] =
     useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
@@ -540,7 +540,7 @@ export default function InboxClient() {
     setExtractingOrder(false);
     const body = (await res.json().catch(() => null)) as {
       ok?: boolean;
-      data?: ExtractedOrderInput;
+      data?: ExtractedOrderReview;
       error?: string;
     } | null;
     if (!res.ok || !body?.ok || !body.data) {
@@ -548,6 +548,23 @@ export default function InboxClient() {
       return;
     }
     setExtractedOrder(body.data);
+  }
+
+  async function refreshExtractedOrderPricing(packageSize: number) {
+    const res = await fetch("/api/inbox/extract-order/pricing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ package_size: packageSize }),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      data?: { price_per_portion: number; total_price: number };
+    } | null;
+    if (!res.ok || !body?.ok || !body.data) return;
+    setExtractedOrder((current) => {
+      if (!current || current.package_size !== packageSize) return current;
+      return { ...current, ...body.data };
+    });
   }
 
   async function confirmExtractedOrder() {
@@ -1556,12 +1573,19 @@ export default function InboxClient() {
                     id="extract-package-size"
                     type="number"
                     value={extractedOrder.package_size}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const packageSize = Number(e.target.value);
                       setExtractedOrder({
                         ...extractedOrder,
-                        package_size: Number(e.target.value),
-                      })
-                    }
+                        package_size: packageSize,
+                        ...(Number.isFinite(packageSize) && packageSize > 0
+                          ? {}
+                          : { price_per_portion: 0, total_price: 0 }),
+                      });
+                      if (Number.isFinite(packageSize) && packageSize > 0) {
+                        void refreshExtractedOrderPricing(packageSize);
+                      }
+                    }}
                   />
                 </div>
                 <div>
@@ -1581,6 +1605,36 @@ export default function InboxClient() {
                         portions_per_delivery: Number(e.target.value),
                       })
                     }
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label
+                    htmlFor="extract-price-per-portion"
+                    className="text-xs font-medium text-gray-700"
+                  >
+                    Harga/porsi
+                  </label>
+                  <Input
+                    id="extract-price-per-portion"
+                    value={`Rp ${extractedOrder.price_per_portion.toLocaleString("id-ID")}`}
+                    readOnly
+                    className="bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="extract-total-price"
+                    className="text-xs font-medium text-gray-700"
+                  >
+                    Total harga
+                  </label>
+                  <Input
+                    id="extract-total-price"
+                    value={`Rp ${extractedOrder.total_price.toLocaleString("id-ID")}`}
+                    readOnly
+                    className="bg-gray-50"
                   />
                 </div>
               </div>

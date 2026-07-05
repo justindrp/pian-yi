@@ -29,6 +29,13 @@ export interface ExtractedOrderInput {
   size?: string;
 }
 
+export interface ExtractedOrderPricing {
+  price_per_portion: number;
+  total_price: number;
+}
+
+export type ExtractedOrderReview = ExtractedOrderInput & ExtractedOrderPricing;
+
 export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
   name: "extract_order",
   description:
@@ -160,6 +167,25 @@ ${dapurList || "none"}`;
   return toolUse.input as ExtractedOrderInput;
 }
 
+export async function getExtractedOrderPricing(
+  packageSize: number,
+): Promise<ExtractedOrderPricing> {
+  const db = createAdminClient();
+  const { data: tier } = await db
+    .from("pricing_tiers")
+    .select("price_per_portion")
+    .lte("portions", packageSize)
+    .order("portions", { ascending: false })
+    .limit(1)
+    .single();
+
+  const pricePerPortion = tier?.price_per_portion ?? 0;
+  return {
+    price_per_portion: pricePerPortion,
+    total_price: pricePerPortion * packageSize,
+  };
+}
+
 /**
  * Same DB writes + payment-details WhatsApp message as the bot's own extract_order
  * tool handler — shared so the admin-triggered path and the live bot path can't drift apart.
@@ -170,17 +196,8 @@ export async function createOrderFromExtraction(
   input: ExtractedOrderInput,
 ): Promise<void> {
   const db = createAdminClient();
-
-  const { data: tier } = await db
-    .from("pricing_tiers")
-    .select("price_per_portion")
-    .lte("portions", input.package_size)
-    .order("portions", { ascending: false })
-    .limit(1)
-    .single();
-
-  const pricePerPortion = tier?.price_per_portion ?? 0;
-  const totalPrice = pricePerPortion * input.package_size;
+  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
+    await getExtractedOrderPricing(input.package_size);
 
   await db.from("orders").insert({
     customer_id: customerId,
