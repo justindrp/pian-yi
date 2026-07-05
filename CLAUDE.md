@@ -129,6 +129,7 @@ Cancellations: `cancelled_unpaid`, `cancelled_by_customer`, `cancelled_by_admin`
 
 - Q0 (jadwal tetap vs pesan bebas) is skipped, not just when the customer's own message makes the model obvious, but also when: the customer has an active quota-based order (`activeOrder` present → model is already bebas/quota), or they're a known returning customer whose notes/history reveal a prior ordering model. Skip the walkthrough and infer from context instead of asking — this is a hard rule, not a hedge.
 - Fixed-schedule ordering asks days / meal-preference / portions-per-delivery / kitchen as one combined message instead of one-at-a-time, to cut WA round-trips. The bot re-asks only whichever field the customer didn't answer.
+- Relative date phrases ("senin depan", "besok", "lusa") must resolve to the nearest upcoming occurrence from Today, not one cycle further out; an explicit date the customer states later always overrides the bot's earlier interpretation of a relative phrase — the bot must never silently "correct" a date the customer already confirmed.
 
 ### Confidentiality flow for subcontractor issues
 
