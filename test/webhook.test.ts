@@ -13,10 +13,7 @@ import {
 import { validateReply } from "@/lib/claude/validate-reply";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  sendTextMessage,
-  sendTypingIndicator,
-} from "@/lib/whatsapp/client";
+import { sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin");
 jest.mock("@/lib/cache/settings");
@@ -39,7 +36,9 @@ jest.mock("@/lib/claude/photo-matcher", () => ({
   matchDeliveryPhoto: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("@/lib/claude/validate-reply", () => ({
-  validateReply: jest.fn().mockResolvedValue({ valid: true, unsupportedClaims: [] }),
+  validateReply: jest
+    .fn()
+    .mockResolvedValue({ valid: true, unsupportedClaims: [] }),
 }));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/push/send");
@@ -52,12 +51,29 @@ jest.mock("@/lib/utils/delay", () => ({
 // Mock helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in",
-    "limit", "order", "is", "ilike",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "limit",
+    "order",
+    "is",
+    "ilike",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
@@ -65,8 +81,10 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -74,20 +92,28 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
 }
 
-function makeDefaultDb(overrides: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDefaultDb(
+  overrides: Record<string, { data: unknown; error: unknown }> = {},
+) {
   return makeDbMock({
     processed_messages: { data: null, error: null },
     subcontractors: { data: null, error: null },
-    customers: { data: { id: "cust-1", name: "Test Customer", first_message: null }, error: null },
+    customers: {
+      data: { id: "cust-1", name: "Test Customer", first_message: null },
+      error: null,
+    },
     customer_rate_limits: { data: null, error: null },
     customer_flags: {
       data: {
@@ -135,7 +161,41 @@ function makePayload(text = "Halo", from = "628111222333") {
         ],
       },
     ],
-  // biome-ignore lint/suspicious/noExplicitAny: test payload
+    // biome-ignore lint/suspicious/noExplicitAny: test payload
+  } as any;
+}
+
+function makeImagePayload(from = "628111222333") {
+  return {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "test_entry_id",
+        changes: [
+          {
+            value: {
+              messaging_product: "whatsapp",
+              metadata: {
+                display_phone_number: "6281234567890",
+                phone_number_id: "test-phone-id",
+              },
+              messages: [
+                {
+                  id: `img_${Date.now()}`,
+                  from,
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: "image",
+                  image: { id: "media-1", mime_type: "image/jpeg" },
+                },
+              ],
+              contacts: [{ profile: { name: "Test Customer" }, wa_id: from }],
+            },
+            field: "messages",
+          },
+        ],
+      },
+    ],
+    // biome-ignore lint/suspicious/noExplicitAny: test payload
   } as any;
 }
 
@@ -159,7 +219,10 @@ beforeEach(() => {
   (recordSuccess as jest.Mock).mockReturnValue(undefined);
   (recordFailure as jest.Mock).mockResolvedValue(undefined);
   (updateTokenCount as jest.Mock).mockResolvedValue(undefined);
-  (validateReply as jest.Mock).mockResolvedValue({ valid: true, unsupportedClaims: [] });
+  (validateReply as jest.Mock).mockResolvedValue({
+    valid: true,
+    unsupportedClaims: [],
+  });
   (loadHistory as jest.Mock).mockResolvedValue([]);
   (saveMessage as jest.Mock).mockResolvedValue(undefined);
   (sendTextMessage as jest.Mock).mockResolvedValue(undefined);
@@ -337,7 +400,10 @@ describe("processWebhookAsync", () => {
     // Name must come from the order form only, never the WhatsApp profile name,
     // so a contact is not "renamed" before they order and pay.
     const db = makeDefaultDb({
-      customers: { data: { id: "cust-1", name: null, first_message: "Halo" }, error: null },
+      customers: {
+        data: { id: "cust-1", name: null, first_message: "Halo" },
+        error: null,
+      },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
@@ -350,7 +416,10 @@ describe("processWebhookAsync", () => {
 
   test("T10 — does not overwrite existing customer name with WhatsApp display name", async () => {
     const db = makeDefaultDb({
-      customers: { data: { id: "cust-1", name: "Budi Santoso", first_message: "Halo" }, error: null },
+      customers: {
+        data: { id: "cust-1", name: "Budi Santoso", first_message: "Halo" },
+        error: null,
+      },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
@@ -365,12 +434,18 @@ describe("processWebhookAsync", () => {
     await processWebhookAsync(makePayload("Halo"));
 
     expect(validateReply).toHaveBeenCalledTimes(1);
-    expect(sendTextMessage).toHaveBeenCalledWith(expect.any(String), "Halo kak!");
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      "Halo kak!",
+    );
   });
 
   test("T12 — reply validator rejects once, regenerated reply passes: sends corrected reply", async () => {
     (validateReply as jest.Mock)
-      .mockResolvedValueOnce({ valid: false, unsupportedClaims: ["invented quota"] })
+      .mockResolvedValueOnce({
+        valid: false,
+        unsupportedClaims: ["invented quota"],
+      })
       .mockResolvedValueOnce({ valid: true, unsupportedClaims: [] });
 
     const createFn = jest
@@ -427,5 +502,26 @@ describe("processWebhookAsync", () => {
       "/inbox",
       "high",
     );
+  });
+
+  test("T14 — payment proof image is gated by latest order status, not customer_state", async () => {
+    const db = makeDefaultDb({
+      customer_state: {
+        data: { state: "idle", menu_shown: true },
+        error: null,
+      },
+      orders: {
+        data: { id: "order-1", status: "pending_payment" },
+        error: null,
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await processWebhookAsync(makeImagePayload());
+
+    expect(db.chains.orders.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "payment_proof_received" }),
+    );
+    expect(getAnthropicClient).not.toHaveBeenCalled();
   });
 });

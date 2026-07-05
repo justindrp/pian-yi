@@ -16,37 +16,64 @@ export async function GET(req: NextRequest): Promise<Response> {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 86400000).toISOString();
 
-  // Mark active_subscription customers with no active orders as lapsed
-  const { data: stateRows } = await db
-    .from("customer_state")
-    .select("customer_id")
-    .eq("state", "active_subscription");
-
-  for (const row of stateRows ?? []) {
-    const { data: activeOrders } = await db
-      .from("orders")
-      .select("id")
-      .eq("customer_id", row.customer_id)
-      .eq("status", "active")
-      .limit(1);
-
-    if (!activeOrders || activeOrders.length === 0) {
-      // Check last completed order was >30 days ago
-      const { data: lastOrder } = await db
+  // Mark customers with old completed orders and no current order as lapsed.
+  const [{ data: activeOrders }, { data: completedOrders }] = await Promise.all(
+    [
+      db
         .from("orders")
-        .select("completed_at")
-        .eq("customer_id", row.customer_id)
+        .select("customer_id")
+        .in("status", [
+          "active",
+          "paused",
+          "pending_payment",
+          "payment_proof_received",
+        ]),
+      db
+        .from("orders")
+        .select("customer_id, completed_at")
         .eq("status", "completed")
-        .order("completed_at", { ascending: false })
-        .limit(1)
-        .single();
+        .not("completed_at", "is", null)
+        .lt("completed_at", thirtyDaysAgo)
+        .order("completed_at", { ascending: false }),
+    ],
+  );
 
-      if (lastOrder?.completed_at && lastOrder.completed_at < thirtyDaysAgo) {
-        await db
-          .from("customer_state")
-          .update({ state: "lapsed" })
-          .eq("customer_id", row.customer_id);
-      }
+  const activeCustomerIds = new Set(
+    (activeOrders ?? [])
+      .map((order) => order.customer_id)
+      .filter((id): id is string => id !== null),
+  );
+  const lastCompletedByCustomer = new Map<string, string>();
+  for (const order of completedOrders ?? []) {
+    if (!order.customer_id || !order.completed_at) continue;
+    if (!lastCompletedByCustomer.has(order.customer_id)) {
+      lastCompletedByCustomer.set(order.customer_id, order.completed_at);
+    }
+  }
+
+  const candidateCustomerIds = [...lastCompletedByCustomer.keys()].filter(
+    (customerId) => !activeCustomerIds.has(customerId),
+  );
+  if (candidateCustomerIds.length > 0) {
+    const { data: currentStates } = await db
+      .from("customer_state")
+      .select("customer_id, state")
+      .in("customer_id", candidateCustomerIds);
+
+    const stateByCustomerId = new Map(
+      (currentStates ?? []).map((row) => [row.customer_id, row.state]),
+    );
+    for (const customerId of candidateCustomerIds) {
+      const currentState = stateByCustomerId.get(customerId);
+      if (currentState === "ordering" || currentState === "churned") continue;
+      await db.from("customer_state").upsert(
+        {
+          customer_id: customerId,
+          state: "lapsed",
+          updated_at: now.toISOString(),
+        },
+        { onConflict: "customer_id" },
+      );
     }
   }
 

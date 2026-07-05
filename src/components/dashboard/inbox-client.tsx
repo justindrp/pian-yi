@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ExtractedOrderInput } from "@/lib/claude/extract-order";
+import { normalizeCustomerState } from "@/lib/customers/lifecycle";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
@@ -27,11 +28,10 @@ interface Thread {
 }
 
 const PIPELINE_STAGES = [
-  { value: "browsing", label: "Browsing" },
+  { value: "new", label: "New" },
   { value: "ordering", label: "Ordering" },
-  { value: "awaiting_payment", label: "Awaiting payment" },
-  { value: "payment_proof_received", label: "Proof received" },
-  { value: "active_subscription", label: "Active subscriber" },
+  { value: "lapsed", label: "Lapsed" },
+  { value: "churned", label: "Churned" },
 ] as const;
 
 type PipelineStage = (typeof PIPELINE_STAGES)[number]["value"];
@@ -137,15 +137,11 @@ export default function InboxClient() {
     pending_bot_response: boolean;
     pending_bot_question: string | null;
   } | null>(null);
-  const [customerStage, setCustomerStage] = useState<
-    PipelineStage | "new" | "lapsed" | "churned"
-  >("new");
-  const [stageDraft, setStageDraft] = useState<PipelineStage>("browsing");
+  const [customerStage, setCustomerStage] = useState<PipelineStage>("new");
+  const [stageDraft, setStageDraft] = useState<PipelineStage>("new");
   const [applyingStage, setApplyingStage] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  const [regenerateStatus, setRegenerateStatus] = useState<string | null>(
-    null,
-  );
+  const [regenerateStatus, setRegenerateStatus] = useState<string | null>(null);
   const [extractingOrder, setExtractingOrder] = useState(false);
   const [extractOrderError, setExtractOrderError] = useState<string | null>(
     null,
@@ -293,17 +289,9 @@ export default function InboxClient() {
         .select("state")
         .eq("customer_id", customerId)
         .single();
-      const stage = (data?.state ?? "new") as
-        | PipelineStage
-        | "new"
-        | "lapsed"
-        | "churned";
+      const stage = normalizeCustomerState(data?.state);
       setCustomerStage(stage);
-      if (PIPELINE_STAGES.some((option) => option.value === stage)) {
-        setStageDraft(stage as PipelineStage);
-      } else {
-        setStageDraft("browsing");
-      }
+      setStageDraft(stage);
     },
     [supabase],
   );
@@ -1332,8 +1320,7 @@ export default function InboxClient() {
                       checked={saveBotReplyAsRule}
                       onChange={(e) => setSaveBotReplyAsRule(e.target.checked)}
                     />
-                    Save as permanent bot rule (applies to all future
-                    customers)
+                    Save as permanent bot rule (applies to all future customers)
                   </label>
                   <div className="flex gap-2">
                     <Button
@@ -1480,9 +1467,9 @@ export default function InboxClient() {
               Review extracted order
             </h2>
             <p className="text-xs text-gray-600 mb-4">
-              Parsed from this conversation. Fix anything wrong before
-              creating the order — this will send the payment-details
-              message to the customer.
+              Parsed from this conversation. Fix anything wrong before creating
+              the order — this will send the payment-details message to the
+              customer.
             </p>
             <div className="space-y-3">
               <div>
@@ -1733,11 +1720,7 @@ function IntentBadge({ intent }: { intent: string }) {
 function stageBadgeClass(stage: string) {
   const colors: Record<string, string> = {
     new: "bg-gray-100 text-gray-600",
-    browsing: "bg-blue-50 text-blue-600",
     ordering: "bg-yellow-50 text-yellow-700",
-    awaiting_payment: "bg-orange-50 text-orange-700",
-    payment_proof_received: "bg-indigo-50 text-indigo-700",
-    active_subscription: "bg-green-50 text-green-700",
     lapsed: "bg-red-50 text-red-600",
     churned: "bg-red-100 text-red-700",
   };

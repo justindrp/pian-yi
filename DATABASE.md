@@ -186,12 +186,12 @@ One row per customer. Tracks message and token usage for rate limiting. Users ca
 
 ## customer_state
 
-One row per customer. Tracks where the customer is in the conversation flow.
+One row per customer. Tracks customer-level funnel / lifecycle state only, not per-order payment status.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | customer_id | uuid | Primary key, FK → customers |
-| state | text | Current state: "new", "ordering", "awaiting_payment", "payment_proof_received", etc. |
+| state | text | Current state: "new", "ordering", "lapsed", or "churned". Legacy rows may still contain older values until backfilled. |
 | menu_shown | boolean | Whether the welcome sequence (menu images) has been sent |
 | reactivation_count | integer | How many times a re-engagement message has been sent |
 | reactivation_sent_at | timestamp | When the last re-engagement message was sent |

@@ -92,7 +92,13 @@ export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
         enum: ["s"],
       },
     },
-    required: ["customer_name", "package_size", "portions_per_delivery", "address", "area"],
+    required: [
+      "customer_name",
+      "package_size",
+      "portions_per_delivery",
+      "address",
+      "area",
+    ],
   },
 };
 
@@ -235,7 +241,7 @@ export async function createOrderFromExtraction(
   await db
     .from("customer_state")
     .update({
-      state: "awaiting_payment",
+      state: "ordering",
       updated_at: new Date().toISOString(),
     })
     .eq("customer_id", customerId);

@@ -20,7 +20,6 @@ import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
-import { validateReply } from "@/lib/claude/validate-reply";
 import {
   checkRateLimit,
   detectEcho,
@@ -30,6 +29,12 @@ import {
   recordSuccess,
   updateTokenCount,
 } from "@/lib/claude/safety";
+import { validateReply } from "@/lib/claude/validate-reply";
+import {
+  hasCurrentOrder,
+  normalizeCustomerState,
+  shouldHandlePaymentProof,
+} from "@/lib/customers/lifecycle";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -72,14 +77,13 @@ function formatLocationMessage(message: {
   locationLat?: number;
   locationLng?: number;
 }): string {
-  const parts = [message.locationName, message.locationAddress].filter(
-    Boolean,
-  );
+  const parts = [message.locationName, message.locationAddress].filter(Boolean);
   const { locationLat: lat, locationLng: lng } = message;
   let zoneNote = "";
   let mapsLink = "";
   if (lat !== undefined && lng !== undefined) {
-    const inBsd = lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
+    const inBsd =
+      lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
     if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
     mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
   }
@@ -196,6 +200,14 @@ export async function processWebhookAsync(
   if (!customer) return;
 
   const customerId = customer.id;
+  const { data: latestOrder } = await db
+    .from("orders")
+    .select("id, status")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const latestOrderStatus = latestOrder?.status ?? null;
 
   // NOTE: customer.name is never populated from the WhatsApp profile name here.
   // It is set only from the order form (extract_order) once the customer actually orders,
@@ -322,9 +334,9 @@ export async function processWebhookAsync(
     return;
   }
 
-  // Payment proof: capture image when customer is awaiting payment
+  // Payment proof: capture image when the latest order is still pending payment
   if (message.type === "image" && message.imageId) {
-    if (stateRow?.state === "awaiting_payment") {
+    if (shouldHandlePaymentProof(latestOrderStatus)) {
       await handlePaymentProofImage(
         message,
         customerId,
@@ -384,9 +396,11 @@ export async function processWebhookAsync(
     messageType: message.type === "image" ? "image" : "text",
     mediaId: message.type === "image" ? message.imageId : undefined,
   });
+  const normalizedCustomerState = normalizeCustomerState(stateRow?.state);
   if (
     intent === "ordering" &&
-    (stateRow?.state === "browsing" || !stateRow?.state)
+    normalizedCustomerState !== "ordering" &&
+    !hasCurrentOrder(latestOrderStatus)
   ) {
     await db
       .from("customer_state")
@@ -397,7 +411,7 @@ export async function processWebhookAsync(
   const learnedNotes = await tryLearnCustomerContext(customerId, db);
 
   // Rate limit check
-  if (stateRow?.state !== "awaiting_payment") {
+  if (!shouldHandlePaymentProof(latestOrderStatus)) {
     const rateCheck = await checkRateLimit(customerId);
     if (!rateCheck.allowed) {
       const tmpl = await getTemplate("rate_limit_exceeded");
@@ -639,6 +653,7 @@ export async function processWebhookAsync(
     customerId,
     customerName: customer.name,
     customerNotes: learnedNotes ?? customer.notes,
+    latestOrderStatus,
     phone: message.from,
     stateRow,
     text,
@@ -656,6 +671,7 @@ export async function processSavedCustomerMessage(params: {
   customerId: string;
   customerName: string | null;
   customerNotes: string | null;
+  latestOrderStatus?: string | null;
   phone: string;
   stateRow:
     | {
@@ -671,6 +687,7 @@ export async function processSavedCustomerMessage(params: {
     customerId,
     customerName,
     customerNotes,
+    latestOrderStatus,
     phone,
     stateRow,
     text,
@@ -679,7 +696,7 @@ export async function processSavedCustomerMessage(params: {
   const db = createAdminClient();
 
   // Rate limit check
-  if (stateRow?.state !== "awaiting_payment") {
+  if (!shouldHandlePaymentProof(latestOrderStatus)) {
     const rateCheck = await checkRateLimit(customerId);
     if (!rateCheck.allowed) {
       const tmpl = await getTemplate("rate_limit_exceeded");
@@ -1037,7 +1054,10 @@ export async function processSavedCustomerMessage(params: {
           }
         : null,
     };
-    const validation = await validateReply({ reply: replyText, ...validationParams });
+    const validation = await validateReply({
+      reply: replyText,
+      ...validationParams,
+    });
 
     if (!validation.valid) {
       console.warn(
@@ -1268,14 +1288,6 @@ async function handlePaymentProofImage(
     .update({ status: "payment_proof_received", payment_proof_url: imageUrl })
     .eq("customer_id", customerId)
     .eq("status", "pending_payment");
-
-  await db
-    .from("customer_state")
-    .update({
-      state: "payment_proof_received",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("customer_id", customerId);
 
   await saveMessage({
     customerId,

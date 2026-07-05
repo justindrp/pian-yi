@@ -2,8 +2,13 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest): Promise<Response> {
-  if (req.headers.get("Authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (
+    req.headers.get("Authorization") !== `Bearer ${process.env.CRON_SECRET}`
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const db = createAdminClient();
@@ -21,7 +26,10 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   if (error) {
     console.error("[deduct-daily-quota] fetch error:", error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
   }
 
   if (!deliveries || deliveries.length === 0) {
@@ -29,14 +37,22 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const rows = deliveries.filter(
-    (d): d is typeof d & { id: string; customer_id: string; order_id: string } =>
+    (
+      d,
+    ): d is typeof d & { id: string; customer_id: string; order_id: string } =>
       d.id !== null && d.customer_id !== null && d.order_id !== null,
   );
 
   // Group portions by customer for a single read+update per customer
-  const byCustomer = new Map<string, { totalPortions: number; deliveryIds: string[] }>();
+  const byCustomer = new Map<
+    string,
+    { totalPortions: number; deliveryIds: string[] }
+  >();
   for (const d of rows) {
-    const entry = byCustomer.get(d.customer_id) ?? { totalPortions: 0, deliveryIds: [] };
+    const entry = byCustomer.get(d.customer_id) ?? {
+      totalPortions: 0,
+      deliveryIds: [],
+    };
     entry.totalPortions += d.portions;
     entry.deliveryIds.push(d.id);
     byCustomer.set(d.customer_id, entry);
@@ -64,7 +80,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (newRemaining === 0) {
       await db
         .from("orders")
-        .update({ status: "completed" })
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+        })
         .eq("customer_id", customerId)
         .eq("status", "active");
     }
@@ -89,12 +108,16 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (ord && ord.portions_remaining !== null) {
       await db
         .from("orders")
-        .update({ portions_remaining: Math.max(0, ord.portions_remaining - d.portions) })
+        .update({
+          portions_remaining: Math.max(0, ord.portions_remaining - d.portions),
+        })
         .eq("id", d.order_id);
     }
   }
 
-  console.log(`[deduct-daily-quota] deducted ${deducted} rows for ${tomorrowStr}`);
+  console.log(
+    `[deduct-daily-quota] deducted ${deducted} rows for ${tomorrowStr}`,
+  );
   return NextResponse.json({ ok: true, deducted, date: tomorrowStr });
 }
 

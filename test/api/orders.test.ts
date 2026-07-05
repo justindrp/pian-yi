@@ -144,6 +144,7 @@ describe("PATCH /api/orders", () => {
     expect(db.chains.orders.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: "active" }),
     );
+    expect(db.from).not.toHaveBeenCalledWith("customer_state");
   });
 
   test("T1b — mark_paid generates all fixed recurring delivery rows", async () => {

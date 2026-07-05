@@ -1,11 +1,12 @@
 "use client";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { deriveCustomerDisplayState } from "@/lib/customers/lifecycle";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
@@ -13,6 +14,12 @@ import type { Database } from "@/types/database";
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type CustomerState = Database["public"]["Tables"]["customer_state"]["Row"];
 type CustomerFlags = Database["public"]["Tables"]["customer_flags"]["Row"];
+type Order = Database["public"]["Tables"]["orders"]["Row"];
+type CustomerListRow = Customer & {
+  customer_state: CustomerState | null;
+  customer_flags: CustomerFlags | null;
+  display_state: string;
+};
 
 type LedgerRow = {
   id: string;
@@ -79,13 +86,25 @@ export default function CustomersClient() {
   const [showGrant, setShowGrant] = useState(false);
   const [grantError, setGrantError] = useState<string | null>(null);
   const [grantRows, setGrantRows] = useState<
-    { key: string; customer_id: string; customer_name: string; portions: number; date: string; reason: string }[]
+    {
+      key: string;
+      customer_id: string;
+      customer_name: string;
+      portions: number;
+      date: string;
+      reason: string;
+    }[]
   >([]);
   const [grantSearch, setGrantSearch] = useState("");
   const [grantDropdownOpen, setGrantDropdownOpen] = useState(false);
-  const [grantCustomer, setGrantCustomer] = useState<{ id: string; name: string } | null>(null);
+  const [grantCustomer, setGrantCustomer] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [grantPortions, setGrantPortions] = useState(1);
-  const [grantDate, setGrantDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [grantDate, setGrantDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
   const [grantReason, setGrantReason] = useState("");
   const [addForm, setAddForm] = useState({
     name: "",
@@ -105,7 +124,10 @@ export default function CustomersClient() {
     queryKey: ["subcontractors"],
     queryFn: async () => {
       const res = await fetch("/api/subcontractors");
-      const json = await res.json() as { ok: boolean; data: Array<{ id: string; name: string; is_active: boolean }> };
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: Array<{ id: string; name: string; is_active: boolean }>;
+      };
       return (json.data ?? []).filter((s) => s.is_active);
     },
   });
@@ -116,7 +138,11 @@ export default function CustomersClient() {
       const res = await fetch("/api/customers?all=true");
       const json = (await res.json()) as {
         ok: boolean;
-        data: Array<{ id: string; name: string | null; active_order_id: string | null }>;
+        data: Array<{
+          id: string;
+          name: string | null;
+          active_order_id: string | null;
+        }>;
       };
       return (json.data ?? []).filter((c) => c.active_order_id);
     },
@@ -129,7 +155,11 @@ export default function CustomersClient() {
       const res = await fetch("/api/customers?all=true");
       const json = (await res.json()) as {
         ok: boolean;
-        data: Array<{ id: string; name: string | null; phone_number: string | null }>;
+        data: Array<{
+          id: string;
+          name: string | null;
+          phone_number: string | null;
+        }>;
       };
       return json.data ?? [];
     },
@@ -171,11 +201,39 @@ export default function CustomersClient() {
       }
 
       const { data, count } = await q;
+      const customers = (data ?? []) as unknown as (Customer & {
+        customer_state: CustomerState | null;
+        customer_flags: CustomerFlags | null;
+      })[];
+      const customerIds = customers.map((customer) => customer.id);
+      const { data: orders } = customerIds.length
+        ? await supabase
+            .from("orders")
+            .select("customer_id, status, created_at")
+            .in("customer_id", customerIds)
+            .order("created_at", { ascending: false })
+        : {
+            data: [] as Pick<Order, "customer_id" | "status" | "created_at">[],
+          };
+      const latestOrderByCustomer = new Map<string, Pick<Order, "status">>();
+      for (const order of orders ?? []) {
+        if (
+          !order.customer_id ||
+          latestOrderByCustomer.has(order.customer_id)
+        ) {
+          continue;
+        }
+        latestOrderByCustomer.set(order.customer_id, { status: order.status });
+      }
+
       return {
-        customers: (data ?? []) as unknown as (Customer & {
-          customer_state: CustomerState | null;
-          customer_flags: CustomerFlags | null;
-        })[],
+        customers: customers.map((customer) => ({
+          ...customer,
+          display_state: deriveCustomerDisplayState(
+            customer.customer_state?.state,
+            latestOrderByCustomer.get(customer.id)?.status ?? null,
+          ),
+        })) as CustomerListRow[],
         total: count ?? 0,
       };
     },
@@ -250,7 +308,17 @@ export default function CustomersClient() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["customers"] });
       setShowAdd(false);
-      setAddForm({ name: "", phone_number: "", area: "", sub_area: "", address: "", address_2: "", google_maps_link: "", subcontractor_id: "", linked_order_id: "" });
+      setAddForm({
+        name: "",
+        phone_number: "",
+        area: "",
+        sub_area: "",
+        address: "",
+        address_2: "",
+        google_maps_link: "",
+        subcontractor_id: "",
+        linked_order_id: "",
+      });
     },
   });
 
@@ -269,7 +337,8 @@ export default function CustomersClient() {
         }),
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
-      if (!json.ok) throw new Error(json.error ?? "Gagal menyimpan kuota gratis");
+      if (!json.ok)
+        throw new Error(json.error ?? "Gagal menyimpan kuota gratis");
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["customers"] });
@@ -333,7 +402,9 @@ export default function CustomersClient() {
       setAddError("Alamat wajib diisi");
       return;
     }
-    createMutation.mutate(addForm, { onError: (e) => setAddError((e as Error).message) });
+    createMutation.mutate(addForm, {
+      onError: (e) => setAddError((e as Error).message),
+    });
   }
 
   function openDetail(customer: Customer) {
@@ -360,20 +431,33 @@ export default function CustomersClient() {
       promo_used: c.promo_used ?? "",
       converted_to_subscription: c.converted_to_subscription ?? false,
       notes: c.notes ?? "",
-      address_2: (customer as unknown as { address_2?: string | null }).address_2 ?? "",
+      address_2:
+        (customer as unknown as { address_2?: string | null }).address_2 ?? "",
       area_2: (customer as unknown as { area_2?: string | null }).area_2 ?? "",
-      sub_area_2: (customer as unknown as { sub_area_2?: string | null }).sub_area_2 ?? "",
-      google_maps_link_2: (customer as unknown as { google_maps_link_2?: string | null }).google_maps_link_2 ?? "",
-      linked_order_id: (customer as unknown as { linked_order_id?: string | null }).linked_order_id ?? "",
+      sub_area_2:
+        (customer as unknown as { sub_area_2?: string | null }).sub_area_2 ??
+        "",
+      google_maps_link_2:
+        (customer as unknown as { google_maps_link_2?: string | null })
+          .google_maps_link_2 ?? "",
+      linked_order_id:
+        (customer as unknown as { linked_order_id?: string | null })
+          .linked_order_id ?? "",
     });
   }
 
-  async function saveInline(id: string, field: "name" | "area" | "sub_area", value: string) {
+  async function saveInline(
+    id: string,
+    field: "name" | "area" | "sub_area",
+    value: string,
+  ) {
     setEditingCell(null);
     const patch =
-      field === "name" ? { name: value || null } :
-      field === "area" ? { area: value || null } :
-      { sub_area: value || null };
+      field === "name"
+        ? { name: value || null }
+        : field === "area"
+          ? { area: value || null }
+          : { sub_area: value || null };
     await supabase
       .from("customers")
       .update({ ...patch, updated_at: new Date().toISOString() })
@@ -388,9 +472,31 @@ export default function CustomersClient() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Customers</h1>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-400">{data?.total ?? 0} total</span>
-          <Button type="button" variant="outline" onClick={() => { setGrantError(null); setGrantRows([]); setShowGrant(true); }} className="text-sm rounded-lg">+ Grant free quota</Button>
-          <Button type="button" onClick={() => { setAddError(null); setShowAdd(true); }} className="bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">+ Add customer</Button>
+          <span className="text-sm text-gray-400">
+            {data?.total ?? 0} total
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setGrantError(null);
+              setGrantRows([]);
+              setShowGrant(true);
+            }}
+            className="text-sm rounded-lg"
+          >
+            + Grant free quota
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              setAddError(null);
+              setShowAdd(true);
+            }}
+            className="bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
+          >
+            + Add customer
+          </Button>
         </div>
       </div>
 
@@ -440,7 +546,9 @@ export default function CustomersClient() {
             {isLoading
               ? (["a", "b", "c", "d", "e"] as const).map((rowId) => (
                   <tr key={rowId} className="border-b border-gray-50">
-                    {(["a", "b", "c", "d", "e", "f", "g", "h", "i"] as const).map((colId) => (
+                    {(
+                      ["a", "b", "c", "d", "e", "f", "g", "h", "i"] as const
+                    ).map((colId) => (
                       <td key={colId} className="px-4 py-3">
                         <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
                       </td>
@@ -448,7 +556,7 @@ export default function CustomersClient() {
                   </tr>
                 ))
               : (data?.customers ?? []).map((c) => {
-                  const state = c.customer_state?.state ?? "new";
+                  const state = c.display_state;
                   return (
                     // biome-ignore lint/a11y/useSemanticElements: interactive table row
                     <tr
@@ -464,18 +572,25 @@ export default function CustomersClient() {
                       <td className="px-4 py-3 text-gray-400 text-xs tabular-nums">
                         {c.customer_number ?? "—"}
                       </td>
-                      <td
-                        className="px-4 py-3 text-gray-900"
-                      >
-                        {editingCell?.id === c.id && editingCell.field === "name" ? (
+                      <td className="px-4 py-3 text-gray-900">
+                        {editingCell?.id === c.id &&
+                        editingCell.field === "name" ? (
                           <Input
                             autoFocus
                             value={editingCell.value}
-                            onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                            onChange={(e) =>
+                              setEditingCell({
+                                ...editingCell,
+                                value: e.target.value,
+                              })
+                            }
                             onClick={(e) => e.stopPropagation()}
-                            onBlur={() => saveInline(c.id, "name", editingCell.value)}
+                            onBlur={() =>
+                              saveInline(c.id, "name", editingCell.value)
+                            }
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") saveInline(c.id, "name", editingCell.value);
+                              if (e.key === "Enter")
+                                saveInline(c.id, "name", editingCell.value);
                               if (e.key === "Escape") setEditingCell(null);
                             }}
                             className="w-full h-auto py-0.5 px-1 text-sm border-orange-400"
@@ -485,7 +600,11 @@ export default function CustomersClient() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditingCell({ id: c.id, field: "name", value: c.name ?? "" });
+                              setEditingCell({
+                                id: c.id,
+                                field: "name",
+                                value: c.name ?? "",
+                              });
                             }}
                             className="cursor-text hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
                           >
@@ -496,22 +615,25 @@ export default function CustomersClient() {
                       <td className="px-4 py-3 text-gray-500">
                         {maskPhone(c.phone_number)}
                       </td>
-                      <td
-                        className="px-4 py-3 text-gray-500"
-                      >
-                        {editingCell?.id === c.id && editingCell.field === "area" ? (
+                      <td className="px-4 py-3 text-gray-500">
+                        {editingCell?.id === c.id &&
+                        editingCell.field === "area" ? (
                           <select
                             // biome-ignore lint/a11y/noAutofocus: intentional inline edit activation
                             autoFocus
                             value={editingCell.value}
-                            onChange={(e) => saveInline(c.id, "area", e.target.value)}
+                            onChange={(e) =>
+                              saveInline(c.id, "area", e.target.value)
+                            }
                             onClick={(e) => e.stopPropagation()}
                             onBlur={() => setEditingCell(null)}
                             className="text-sm border border-orange-400 rounded focus:outline-none px-1 py-0.5"
                           >
                             <option value="">—</option>
                             {DELIVERY_AREAS.map((a) => (
-                              <option key={a} value={a}>{a}</option>
+                              <option key={a} value={a}>
+                                {a}
+                              </option>
                             ))}
                           </select>
                         ) : (
@@ -519,7 +641,11 @@ export default function CustomersClient() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditingCell({ id: c.id, field: "area", value: c.area ?? "" });
+                              setEditingCell({
+                                id: c.id,
+                                field: "area",
+                                value: c.area ?? "",
+                              });
                             }}
                             className="cursor-pointer hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
                           >
@@ -527,18 +653,25 @@ export default function CustomersClient() {
                           </button>
                         )}
                       </td>
-                      <td
-                        className="px-4 py-3 text-gray-500"
-                      >
-                        {editingCell?.id === c.id && editingCell.field === "sub_area" ? (
+                      <td className="px-4 py-3 text-gray-500">
+                        {editingCell?.id === c.id &&
+                        editingCell.field === "sub_area" ? (
                           <Input
                             autoFocus
                             value={editingCell.value}
-                            onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                            onChange={(e) =>
+                              setEditingCell({
+                                ...editingCell,
+                                value: e.target.value,
+                              })
+                            }
                             onClick={(e) => e.stopPropagation()}
-                            onBlur={() => saveInline(c.id, "sub_area", editingCell.value)}
+                            onBlur={() =>
+                              saveInline(c.id, "sub_area", editingCell.value)
+                            }
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") saveInline(c.id, "sub_area", editingCell.value);
+                              if (e.key === "Enter")
+                                saveInline(c.id, "sub_area", editingCell.value);
                               if (e.key === "Escape") setEditingCell(null);
                             }}
                             className="w-full h-auto py-0.5 px-1 text-sm border-orange-400"
@@ -548,7 +681,11 @@ export default function CustomersClient() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditingCell({ id: c.id, field: "sub_area", value: c.sub_area ?? "" });
+                              setEditingCell({
+                                id: c.id,
+                                field: "sub_area",
+                                value: c.sub_area ?? "",
+                              });
                             }}
                             className="cursor-text hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
                           >
@@ -610,62 +747,178 @@ export default function CustomersClient() {
           <div className="bg-white rounded-xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">Pelanggan Baru</h2>
-              <Button type="button" variant="ghost" onClick={() => setShowAdd(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0">&times;</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowAdd(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0"
+              >
+                &times;
+              </Button>
             </div>
 
             <div>
-              <Label htmlFor="add-phone" className="text-xs text-gray-500 block mb-1">Phone *</Label>
-              <Input id="add-phone" value={addForm.phone_number} onChange={(e) => setAddForm({ ...addForm, phone_number: e.target.value })} placeholder="+628..." />
+              <Label
+                htmlFor="add-phone"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Phone *
+              </Label>
+              <Input
+                id="add-phone"
+                value={addForm.phone_number}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, phone_number: e.target.value })
+                }
+                placeholder="+628..."
+              />
             </div>
             <div>
-              <Label htmlFor="add-name" className="text-xs text-gray-500 block mb-1">Name</Label>
-              <Input id="add-name" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} />
+              <Label
+                htmlFor="add-name"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Name
+              </Label>
+              <Input
+                id="add-name"
+                value={addForm.name}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, name: e.target.value })
+                }
+              />
             </div>
             <div>
-              <Label htmlFor="add-address" className="text-xs text-gray-500 block mb-1">Address *</Label>
-              <Textarea id="add-address" value={addForm.address} onChange={(e) => setAddForm({ ...addForm, address: e.target.value })} rows={2} className="resize-none" />
+              <Label
+                htmlFor="add-address"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Address *
+              </Label>
+              <Textarea
+                id="add-address"
+                value={addForm.address}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, address: e.target.value })
+                }
+                rows={2}
+                className="resize-none"
+              />
             </div>
             <div>
-              <Label htmlFor="add-address-2" className="text-xs text-gray-500 block mb-1">Address 2 (opsional)</Label>
-              <Textarea id="add-address-2" value={addForm.address_2} onChange={(e) => setAddForm({ ...addForm, address_2: e.target.value })} rows={2} className="resize-none" />
+              <Label
+                htmlFor="add-address-2"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Address 2 (opsional)
+              </Label>
+              <Textarea
+                id="add-address-2"
+                value={addForm.address_2}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, address_2: e.target.value })
+                }
+                rows={2}
+                className="resize-none"
+              />
             </div>
             <div>
-              <Label htmlFor="add-area" className="text-xs text-gray-500 block mb-1">Area</Label>
-              <select id="add-area" value={addForm.area} onChange={(e) => setAddForm({ ...addForm, area: e.target.value })} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+              <Label
+                htmlFor="add-area"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Area
+              </Label>
+              <select
+                id="add-area"
+                value={addForm.area}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, area: e.target.value })
+                }
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
                 <option value="">— Select area —</option>
                 {DELIVERY_AREAS.map((a) => (
-                  <option key={a} value={a}>{a}</option>
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <Label htmlFor="add-sub-area" className="text-xs text-gray-500 block mb-1">Sub Area</Label>
-              <Input id="add-sub-area" value={addForm.sub_area} onChange={(e) => setAddForm({ ...addForm, sub_area: e.target.value })} placeholder="e.g. Binus, Pacific Garden" />
+              <Label
+                htmlFor="add-sub-area"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Sub Area
+              </Label>
+              <Input
+                id="add-sub-area"
+                value={addForm.sub_area}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, sub_area: e.target.value })
+                }
+                placeholder="e.g. Binus, Pacific Garden"
+              />
             </div>
             <div>
-              <Label htmlFor="add-maps" className="text-xs text-gray-500 block mb-1">Google Maps Link</Label>
-              <Input id="add-maps" value={addForm.google_maps_link} onChange={(e) => setAddForm({ ...addForm, google_maps_link: e.target.value })} />
+              <Label
+                htmlFor="add-maps"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Google Maps Link
+              </Label>
+              <Input
+                id="add-maps"
+                value={addForm.google_maps_link}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, google_maps_link: e.target.value })
+                }
+              />
             </div>
             <div>
-              <Label htmlFor="add-sub" className="text-xs text-gray-500 block mb-1">Assigned Subcontractor</Label>
-              <select id="add-sub" value={addForm.subcontractor_id} onChange={(e) => setAddForm({ ...addForm, subcontractor_id: e.target.value })} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+              <Label
+                htmlFor="add-sub"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Assigned Subcontractor
+              </Label>
+              <select
+                id="add-sub"
+                value={addForm.subcontractor_id}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, subcontractor_id: e.target.value })
+                }
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
                 <option value="">— None —</option>
                 {(subcontractors ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <Label htmlFor="add-linked-order" className="text-xs text-gray-500 block mb-1">Draws From Another Customer&apos;s Balance</Label>
+              <Label
+                htmlFor="add-linked-order"
+                className="text-xs text-gray-500 block mb-1"
+              >
+                Draws From Another Customer&apos;s Balance
+              </Label>
               <select
                 id="add-linked-order"
                 value={addForm.linked_order_id}
-                onChange={(e) => setAddForm({ ...addForm, linked_order_id: e.target.value })}
+                onChange={(e) =>
+                  setAddForm({ ...addForm, linked_order_id: e.target.value })
+                }
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
               >
                 <option value="">— Own package (default) —</option>
                 {(linkableCustomers ?? []).map((c) => (
-                  <option key={c.id} value={c.active_order_id ?? ""}>{c.name ?? c.id}</option>
+                  <option key={c.id} value={c.active_order_id ?? ""}>
+                    {c.name ?? c.id}
+                  </option>
                 ))}
               </select>
             </div>
@@ -673,8 +926,22 @@ export default function CustomersClient() {
             {addError && <p className="text-xs text-red-600">{addError}</p>}
 
             <div className="flex gap-2 pt-1">
-              <Button type="button" onClick={submitAdd} disabled={createMutation.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">{createMutation.isPending ? "Menyimpan..." : "Simpan"}</Button>
-              <Button type="button" variant="outline" onClick={() => setShowAdd(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg">Batal</Button>
+              <Button
+                type="button"
+                onClick={submitAdd}
+                disabled={createMutation.isPending}
+                className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40"
+              >
+                {createMutation.isPending ? "Menyimpan..." : "Simpan"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAdd(false)}
+                className="flex-1 py-2 border-gray-200 text-sm rounded-lg"
+              >
+                Batal
+              </Button>
             </div>
           </div>
         </div>
@@ -686,11 +953,20 @@ export default function CustomersClient() {
           <div className="bg-white rounded-xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">Grant Free Quota</h2>
-              <Button type="button" variant="ghost" onClick={() => setShowGrant(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0">&times;</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowGrant(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none h-auto w-auto p-0"
+              >
+                &times;
+              </Button>
             </div>
 
             <div className="relative">
-              <Label className="text-xs text-gray-500 block mb-1">Customer</Label>
+              <Label className="text-xs text-gray-500 block mb-1">
+                Customer
+              </Label>
               <Input
                 value={grantCustomer ? grantCustomer.name : grantSearch}
                 onChange={(e) => {
@@ -718,13 +994,18 @@ export default function CustomersClient() {
                         <button
                           type="button"
                           onMouseDown={() => {
-                            setGrantCustomer({ id: c.id, name: c.name ?? c.phone_number ?? c.id });
+                            setGrantCustomer({
+                              id: c.id,
+                              name: c.name ?? c.phone_number ?? c.id,
+                            });
                             setGrantDropdownOpen(false);
                           }}
                           className="w-full text-left px-3 py-1.5 hover:bg-gray-50"
                         >
                           {c.name ?? "—"}{" "}
-                          <span className="text-gray-400">{c.phone_number}</span>
+                          <span className="text-gray-400">
+                            {c.phone_number}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -733,7 +1014,9 @@ export default function CustomersClient() {
             </div>
 
             <div>
-              <Label className="text-xs text-gray-500 block mb-1">Portions</Label>
+              <Label className="text-xs text-gray-500 block mb-1">
+                Portions
+              </Label>
               <Input
                 type="number"
                 min={1}
@@ -743,7 +1026,11 @@ export default function CustomersClient() {
             </div>
             <div>
               <Label className="text-xs text-gray-500 block mb-1">Date</Label>
-              <Input type="date" value={grantDate} onChange={(e) => setGrantDate(e.target.value)} />
+              <Input
+                type="date"
+                value={grantDate}
+                onChange={(e) => setGrantDate(e.target.value)}
+              />
             </div>
             <div>
               <Label className="text-xs text-gray-500 block mb-1">Reason</Label>
@@ -756,23 +1043,39 @@ export default function CustomersClient() {
 
             {grantError && <p className="text-xs text-red-600">{grantError}</p>}
 
-            <Button type="button" variant="outline" onClick={addGrantRow} className="w-full text-sm rounded-lg">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={addGrantRow}
+              className="w-full text-sm rounded-lg"
+            >
               + Add to batch
             </Button>
 
             {grantRows.length > 0 && (
               <div className="border border-gray-100 rounded-lg divide-y divide-gray-50">
                 {grantRows.map((r) => (
-                  <div key={r.key} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <div
+                    key={r.key}
+                    className="flex items-center justify-between px-3 py-2 text-sm"
+                  >
                     <div>
-                      <span className="font-medium text-gray-900">{r.customer_name}</span>{" "}
-                      <span className="text-gray-500">+{r.portions} porsi · {r.date}</span>
+                      <span className="font-medium text-gray-900">
+                        {r.customer_name}
+                      </span>{" "}
+                      <span className="text-gray-500">
+                        +{r.portions} porsi · {r.date}
+                      </span>
                       <p className="text-xs text-gray-400">{r.reason}</p>
                     </div>
                     <Button
                       type="button"
                       variant="ghost"
-                      onClick={() => setGrantRows((rows) => rows.filter((row) => row.key !== r.key))}
+                      onClick={() =>
+                        setGrantRows((rows) =>
+                          rows.filter((row) => row.key !== r.key),
+                        )
+                      }
                       className="text-gray-400 hover:text-red-600 text-lg leading-none h-auto w-auto p-0"
                     >
                       &times;
@@ -783,7 +1086,9 @@ export default function CustomersClient() {
             )}
 
             {grantMutation.isError && (
-              <p className="text-xs text-red-600">{(grantMutation.error as Error).message}</p>
+              <p className="text-xs text-red-600">
+                {(grantMutation.error as Error).message}
+              </p>
             )}
 
             <div className="flex gap-2 pt-1">
@@ -793,9 +1098,18 @@ export default function CustomersClient() {
                 disabled={grantRows.length === 0 || grantMutation.isPending}
                 className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40"
               >
-                {grantMutation.isPending ? "Menyimpan..." : `Save ${grantRows.length || ""} grant${grantRows.length === 1 ? "" : "s"}`}
+                {grantMutation.isPending
+                  ? "Menyimpan..."
+                  : `Save ${grantRows.length || ""} grant${grantRows.length === 1 ? "" : "s"}`}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setShowGrant(false)} className="flex-1 py-2 border-gray-200 text-sm rounded-lg">Batal</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowGrant(false)}
+                className="flex-1 py-2 border-gray-200 text-sm rounded-lg"
+              >
+                Batal
+              </Button>
             </div>
           </div>
         </div>
@@ -829,7 +1143,10 @@ export default function CustomersClient() {
 
             <div className="p-5 space-y-4">
               <div>
-                <Label htmlFor="customer-phone" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-phone"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Phone
                 </Label>
                 <Input
@@ -842,7 +1159,10 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label htmlFor="customer-name" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-name"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Name
                 </Label>
                 <Input
@@ -855,7 +1175,10 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label htmlFor="customer-address" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-address"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Address
                 </Label>
                 <Textarea
@@ -870,7 +1193,10 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label htmlFor="customer-area" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-area"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Area
                 </Label>
                 <select
@@ -891,7 +1217,10 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label htmlFor="customer-sub-area" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-sub-area"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Sub Area
                 </Label>
                 <Input
@@ -905,33 +1234,47 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label htmlFor="customer-subcontractor" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-subcontractor"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Assigned Subcontractor
                 </Label>
                 <select
                   id="customer-subcontractor"
                   value={editForm.subcontractor_id}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, subcontractor_id: e.target.value })
+                    setEditForm({
+                      ...editForm,
+                      subcontractor_id: e.target.value,
+                    })
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="">— None —</option>
                   {(subcontractors ?? []).map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <Label htmlFor="customer-linked-order" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-linked-order"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Draws From Another Customer&apos;s Balance
                 </Label>
                 <select
                   id="customer-linked-order"
                   value={editForm.linked_order_id}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, linked_order_id: e.target.value })
+                    setEditForm({
+                      ...editForm,
+                      linked_order_id: e.target.value,
+                    })
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
@@ -939,13 +1282,18 @@ export default function CustomersClient() {
                   {(linkableCustomers ?? [])
                     .filter((c) => c.id !== selected?.id)
                     .map((c) => (
-                      <option key={c.id} value={c.active_order_id ?? ""}>{c.name ?? c.id}</option>
+                      <option key={c.id} value={c.active_order_id ?? ""}>
+                        {c.name ?? c.id}
+                      </option>
                     ))}
                 </select>
               </div>
 
               <div>
-                <Label htmlFor="customer-address-type" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-address-type"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Address Type
                 </Label>
                 <Input
@@ -959,7 +1307,10 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label htmlFor="customer-delivery-phone" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-delivery-phone"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Delivery Phone
                 </Label>
                 <Input
@@ -973,72 +1324,105 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label htmlFor="customer-maps-link" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-maps-link"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Google Maps Link
                 </Label>
                 <Input
                   id="customer-maps-link"
                   value={editForm.google_maps_link}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, google_maps_link: e.target.value })
+                    setEditForm({
+                      ...editForm,
+                      google_maps_link: e.target.value,
+                    })
                   }
                   placeholder="https://maps.app.goo.gl/..."
                 />
               </div>
 
               <div className="pt-1 pb-0.5">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Address 2</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Address 2
+                </p>
               </div>
 
               <div>
-                <Label htmlFor="customer-address-2" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-address-2"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Address 2
                 </Label>
                 <Textarea
                   id="customer-address-2"
                   value={editForm.address_2}
-                  onChange={(e) => setEditForm({ ...editForm, address_2: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, address_2: e.target.value })
+                  }
                   rows={2}
                   className="resize-none"
                 />
               </div>
 
               <div>
-                <Label htmlFor="customer-area-2" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-area-2"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Area 2
                 </Label>
                 <select
                   id="customer-area-2"
                   value={editForm.area_2}
-                  onChange={(e) => setEditForm({ ...editForm, area_2: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, area_2: e.target.value })
+                  }
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="">— Not set —</option>
                   {DELIVERY_AREAS.map((a) => (
-                    <option key={a} value={a}>{a}</option>
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <Label htmlFor="customer-sub-area-2" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-sub-area-2"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Sub Area 2
                 </Label>
                 <Input
                   id="customer-sub-area-2"
                   value={editForm.sub_area_2}
-                  onChange={(e) => setEditForm({ ...editForm, sub_area_2: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, sub_area_2: e.target.value })
+                  }
                 />
               </div>
 
               <div>
-                <Label htmlFor="customer-maps-link-2" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="customer-maps-link-2"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Google Maps Link 2
                 </Label>
                 <Input
                   id="customer-maps-link-2"
                   value={editForm.google_maps_link_2}
-                  onChange={(e) => setEditForm({ ...editForm, google_maps_link_2: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      google_maps_link_2: e.target.value,
+                    })
+                  }
                   placeholder="https://maps.app.goo.gl/..."
                 />
               </div>
@@ -1054,7 +1438,10 @@ export default function CustomersClient() {
                   id="customer-meal-time"
                   value={editForm.meal_time_preference}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, meal_time_preference: e.target.value })
+                    setEditForm({
+                      ...editForm,
+                      meal_time_preference: e.target.value,
+                    })
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
@@ -1070,19 +1457,27 @@ export default function CustomersClient() {
               </div>
 
               <div>
-                <Label className="text-xs text-gray-500 block mb-1">Ad Creative</Label>
+                <Label className="text-xs text-gray-500 block mb-1">
+                  Ad Creative
+                </Label>
                 <Input
                   value={editForm.ad_creative}
-                  onChange={(e) => setEditForm({ ...editForm, ad_creative: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, ad_creative: e.target.value })
+                  }
                   placeholder="e.g. C4"
                 />
               </div>
 
               <div>
-                <Label className="text-xs text-gray-500 block mb-1">Promo Used</Label>
+                <Label className="text-xs text-gray-500 block mb-1">
+                  Promo Used
+                </Label>
                 <Input
                   value={editForm.promo_used}
-                  onChange={(e) => setEditForm({ ...editForm, promo_used: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, promo_used: e.target.value })
+                  }
                   placeholder="e.g. Rp17k porsi pertama"
                 />
               </div>
@@ -1093,20 +1488,30 @@ export default function CustomersClient() {
                   type="checkbox"
                   checked={editForm.converted_to_subscription}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, converted_to_subscription: e.target.checked })
+                    setEditForm({
+                      ...editForm,
+                      converted_to_subscription: e.target.checked,
+                    })
                   }
                   className="h-4 w-4 rounded border-gray-300 accent-orange-500"
                 />
-                <Label htmlFor="converted-to-subscription" className="text-sm text-gray-700">
+                <Label
+                  htmlFor="converted-to-subscription"
+                  className="text-sm text-gray-700"
+                >
                   Converted to subscription
                 </Label>
               </div>
 
               <div>
-                <Label className="text-xs text-gray-500 block mb-1">Notes</Label>
+                <Label className="text-xs text-gray-500 block mb-1">
+                  Notes
+                </Label>
                 <Textarea
                   value={editForm.notes}
-                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, notes: e.target.value })
+                  }
                   rows={3}
                   className="resize-none"
                 />
@@ -1139,10 +1544,18 @@ export default function CustomersClient() {
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 text-gray-500">
                         <tr>
-                          <th className="text-left font-medium px-2 py-1.5">Tanggal</th>
-                          <th className="text-left font-medium px-2 py-1.5">Keterangan</th>
-                          <th className="text-right font-medium px-2 py-1.5">Jumlah</th>
-                          <th className="text-right font-medium px-2 py-1.5">Sisa</th>
+                          <th className="text-left font-medium px-2 py-1.5">
+                            Tanggal
+                          </th>
+                          <th className="text-left font-medium px-2 py-1.5">
+                            Keterangan
+                          </th>
+                          <th className="text-right font-medium px-2 py-1.5">
+                            Jumlah
+                          </th>
+                          <th className="text-right font-medium px-2 py-1.5">
+                            Sisa
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1151,10 +1564,14 @@ export default function CustomersClient() {
                             key={r.id}
                             className={`border-t border-gray-50 ${r.scheduled ? "text-gray-400" : "text-gray-700"}`}
                           >
-                            <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(r.date)}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">
+                              {formatDate(r.date)}
+                            </td>
                             <td className="px-2 py-1.5">
                               {r.kind === "package" ? (
-                                <span className="font-medium text-gray-900">{r.label}</span>
+                                <span className="font-medium text-gray-900">
+                                  {r.label}
+                                </span>
                               ) : (
                                 <span className="capitalize">
                                   {r.meal_type ?? "draw"}
@@ -1180,12 +1597,18 @@ export default function CustomersClient() {
                 )}
               </div>
 
-              {(selected as Customer & { converted_at?: string | null })?.converted_at && (
+              {(selected as Customer & { converted_at?: string | null })
+                ?.converted_at && (
                 <p className="text-xs text-gray-400">
                   Converted:{" "}
                   {new Date(
-                    (selected as Customer & { converted_at?: string }).converted_at as string,
-                  ).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                    (selected as Customer & { converted_at?: string })
+                      .converted_at as string,
+                  ).toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
                 </p>
               )}
 
@@ -1228,10 +1651,16 @@ export default function CustomersClient() {
             onClick={() => setDeleteConfirmOpen(false)}
           />
           <div className="relative w-full max-w-sm bg-white rounded-lg shadow-xl p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900">Delete customer?</h3>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Delete customer?
+            </h3>
             <p className="text-sm text-gray-600">
-              This permanently deletes <span className="font-medium">{selected.name ?? "this customer"}</span>{" "}
-              along with their orders, deliveries, conversations, and state. This cannot be undone.
+              This permanently deletes{" "}
+              <span className="font-medium">
+                {selected.name ?? "this customer"}
+              </span>{" "}
+              along with their orders, deliveries, conversations, and state.
+              This cannot be undone.
             </p>
             {deleteMutation.isError && (
               <p className="text-sm text-red-600">
@@ -1253,7 +1682,9 @@ export default function CustomersClient() {
                 disabled={deleteMutation.isPending}
                 className="bg-red-600 hover:bg-red-700"
               >
-                {deleteMutation.isPending ? "Deleting..." : "Delete permanently"}
+                {deleteMutation.isPending
+                  ? "Deleting..."
+                  : "Delete permanently"}
               </Button>
             </div>
           </div>
@@ -1266,11 +1697,18 @@ export default function CustomersClient() {
 function StateBadge({ state }: { state: string }) {
   const colors: Record<string, string> = {
     new: "bg-gray-100 text-gray-600",
-    browsing: "bg-blue-50 text-blue-600",
     ordering: "bg-yellow-50 text-yellow-700",
-    awaiting_payment: "bg-orange-50 text-orange-700",
-    active_subscription: "bg-green-50 text-green-700",
+    pending_payment: "bg-orange-50 text-orange-700",
+    payment_proof_received: "bg-indigo-50 text-indigo-700",
+    active: "bg-green-50 text-green-700",
+    paused: "bg-gray-100 text-gray-600",
+    completed: "bg-gray-100 text-gray-500",
+    cancelled_unpaid: "bg-red-50 text-red-600",
+    cancelled_by_customer: "bg-red-50 text-red-600",
+    cancelled_by_admin: "bg-red-50 text-red-600",
+    refunded: "bg-red-50 text-red-600",
     lapsed: "bg-red-50 text-red-600",
+    churned: "bg-red-100 text-red-700",
   };
   return (
     <span

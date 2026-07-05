@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { getNeighborhoods } from "@/lib/cache/settings";
+import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { buildSystemPrompt } from "@/lib/claude/prompts/system";
-import { getNeighborhoods } from "@/lib/cache/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,10 @@ export async function GET(): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const db = createAdminClient();
 
@@ -40,7 +43,10 @@ export async function GET(): Promise<Response> {
 
   const dapurMenuTexts = rawSubs
     .filter((s) => !!s.menu_image_url && !!s.menu_text)
-    .map((s) => ({ nickname: s.customer_nickname, menuText: s.menu_text as string }));
+    .map((s) => ({
+      nickname: s.customer_nickname,
+      menuText: s.menu_text as string,
+    }));
 
   const servedAreas = [
     ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
@@ -50,7 +56,7 @@ export async function GET(): Promise<Response> {
 
   const prompt = await buildSystemPrompt({
     casual: false,
-    customerState: "browsing",
+    customerState: "new",
     customerName: null,
     customerNotes: null,
     detectedMapsLink: null,

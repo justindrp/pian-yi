@@ -170,6 +170,7 @@ describe("POST /api/assistant/execute", () => {
     expect(db.chains.orders?.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: "active" }),
     );
+    expect(db.from).not.toHaveBeenCalledWith("customer_state");
 
     // journal created
     expect(createJournalEntry).toHaveBeenCalled();
