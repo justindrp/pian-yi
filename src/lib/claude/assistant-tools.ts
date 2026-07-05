@@ -230,7 +230,7 @@ export async function runTool(
       let q = db
         .from("orders")
         .select(
-          "id, status, package_size, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers(name, phone_number, area)",
+          "id, status, package_size, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
         );
       if (input.status) q = q.eq("status", input.status as string);
       if (input.customer_phone) {
@@ -400,7 +400,7 @@ export async function buildPendingAction(
     case "mark_order_paid": {
       const { data: order } = await db
         .from("orders")
-        .select("id, total_price, package_size, size, status, customers(name)")
+        .select("id, total_price, package_size, size, status, customers!orders_customer_id_fkey(name)")
         .eq("id", input.order_id as string)
         .single();
       const rawCustomer = order?.customers;
@@ -430,7 +430,7 @@ export async function buildPendingAction(
     case "cancel_order": {
       const { data: order } = await db
         .from("orders")
-        .select("id, status, package_size, customers(name)")
+        .select("id, status, package_size, customers!orders_customer_id_fkey(name)")
         .eq("id", input.order_id as string)
         .single();
       const rawCustomer = order?.customers;

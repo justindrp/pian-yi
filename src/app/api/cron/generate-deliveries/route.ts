@@ -27,7 +27,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const { data: orders } = await db
     .from("orders")
-    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, customers(name, phone_number, area, subcontractor_id)")
+    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, customers!orders_customer_id_fkey(name, phone_number, area, subcontractor_id)")
     .eq("status", "active")
     .eq("order_type", "recurring")
     .lte("start_date", date);

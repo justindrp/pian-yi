@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       const { data: order, error: fetchErr } = await db
         .from("orders")
         .select(
-          "id, total_price, package_size, customer_id, customers(name, phone_number)",
+          "id, total_price, package_size, customer_id, customers!orders_customer_id_fkey(name, phone_number)",
         )
         .eq("id", orderId)
         .single();
@@ -262,7 +262,7 @@ export async function POST(request: Request) {
 
       const { data: order, error: fetchErr } = await db
         .from("orders")
-        .select("id, customer_id, customers(name, phone_number)")
+        .select("id, customer_id, customers!orders_customer_id_fkey(name, phone_number)")
         .eq("id", orderId)
         .single();
       if (fetchErr || !order) {

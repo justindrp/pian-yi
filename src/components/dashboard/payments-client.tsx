@@ -27,7 +27,7 @@ export default function PaymentsClient() {
     queryFn: async () => {
       const { data } = await supabase
         .from("orders")
-        .select("*, customers(*)")
+        .select("*, customers!orders_customer_id_fkey(*)")
         .eq("status", "payment_proof_received")
         .order("confirmed_at", { ascending: true });
       return (data ?? []) as OrderWithCustomer[];
@@ -39,7 +39,7 @@ export default function PaymentsClient() {
     queryFn: async () => {
       const { data } = await supabase
         .from("orders")
-        .select("*, customers(*)")
+        .select("*, customers!orders_customer_id_fkey(*)")
         .eq("status", "pending_payment")
         .order("confirmed_at", { ascending: true });
       return (data ?? []) as OrderWithCustomer[];
@@ -53,7 +53,7 @@ export default function PaymentsClient() {
       today.setHours(0, 0, 0, 0);
       const { data } = await supabase
         .from("orders")
-        .select("*, customers(*)")
+        .select("*, customers!orders_customer_id_fkey(*)")
         .gte("paid_at", today.toISOString())
         .order("paid_at", { ascending: false });
       return (data ?? []) as OrderWithCustomer[];
