@@ -5,6 +5,7 @@ export type WhatsAppMessageStatus = "sent" | "delivered" | "read" | "failed";
 
 export async function loadHistory(
   customerId: string,
+  limit = 20,
 ): Promise<Anthropic.Messages.MessageParam[]> {
   const db = createAdminClient();
   const { data } = await db
@@ -13,7 +14,7 @@ export async function loadHistory(
     .eq("customer_id", customerId)
     .in("role", ["user", "assistant"])
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(limit);
 
   if (!data) return [];
 

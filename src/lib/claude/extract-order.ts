@@ -35,6 +35,8 @@ export interface ExtractedOrderPricing {
 }
 
 export type ExtractedOrderReview = ExtractedOrderInput & ExtractedOrderPricing;
+const LEARNED_CONTEXT_START = "[AI learned context]";
+const LEARNED_CONTEXT_END = "[/AI learned context]";
 
 export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
   name: "extract_order",
@@ -117,10 +119,15 @@ export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
 export async function extractOrderFromConversation(
   customerId: string,
 ): Promise<ExtractedOrderInput | null> {
-  const history = await loadHistory(customerId);
+  const history = await loadHistory(customerId, 60);
   if (history.length === 0) return null;
 
   const db = createAdminClient();
+  const { data: customer } = await db
+    .from("customers")
+    .select("notes")
+    .eq("id", customerId)
+    .single();
   const { data: activeSubs } = await db
     .from("subcontractors")
     .select("id, customer_nickname")
@@ -136,8 +143,12 @@ export async function extractOrderFromConversation(
     month: "long",
     day: "numeric",
   });
+  const learnedContext = extractLearnedContext(customer?.notes ?? null);
 
   const system = `You are reviewing a WhatsApp conversation between a catering customer and our ordering bot. The customer has already provided their order details somewhere in this conversation. Call extract_order with every field you can determine from the conversation. Today is ${today} — resolve any relative dates the customer mentioned against that. Leave a field out only if the customer genuinely never provided it.
+
+Saved customer context from prior learning (may help disambiguate location, preferences, or already-confirmed details; chat messages still take priority if they conflict):
+${learnedContext || "none"}
 
 Available dapur (kitchen) IDs:
 ${dapurList || "none"}`;
@@ -184,6 +195,15 @@ export async function getExtractedOrderPricing(
     price_per_portion: pricePerPortion,
     total_price: pricePerPortion * packageSize,
   };
+}
+
+function extractLearnedContext(notes: string | null): string | null {
+  if (!notes) return null;
+  const start = notes.indexOf(LEARNED_CONTEXT_START);
+  const end = notes.indexOf(LEARNED_CONTEXT_END);
+  if (start === -1 || end === -1 || end <= start) return null;
+  const content = notes.slice(start + LEARNED_CONTEXT_START.length, end).trim();
+  return content || null;
 }
 
 /**
