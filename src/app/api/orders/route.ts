@@ -24,7 +24,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
   let query = db
     .from("orders")
-    .select("*, customers!orders_customer_id_fkey(name, phone_number)")
+    .select("*, customers!orders_customer_id_fkey(name, phone_number, area)")
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -55,8 +55,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     order_type: "recurring" | "scheduled";
     price_per_portion: number;
     portions_per_delivery: number;
-    delivery_address: string;
-    area: string;
     subcontractor_id: string | null;
     status: "pending_payment" | "active" | "completed";
     // Recurring
@@ -82,8 +80,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     !body.customer_id ||
     !body.order_type ||
     !body.price_per_portion ||
-    !body.portions_per_delivery ||
-    !body.area
+    !body.portions_per_delivery
   ) {
     return NextResponse.json(
       { ok: false, error: "Missing required fields" },
@@ -123,8 +120,6 @@ export async function POST(req: NextRequest): Promise<Response> {
         package_size: body.package_size,
         portions_remaining: body.package_size,
         total_price: totalPrice,
-        delivery_address: body.delivery_address,
-        area: body.area,
         subcontractor_id: body.subcontractor_id,
         start_date: body.start_date,
         end_date: body.end_date ?? null,
@@ -175,8 +170,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       package_size: packageSize,
       portions_remaining: packageSize,
       total_price: totalPrice,
-      delivery_address: body.delivery_address,
-      area: body.area,
       subcontractor_id: body.subcontractor_id,
       start_date: startDate,
       end_date: endDate,
@@ -352,11 +345,6 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     };
 
     // Allowlisted operational fields only — never money/quota/status/server columns.
-    if ("area" in f) update.area = String(f.area);
-    if ("delivery_address" in f)
-      update.delivery_address = String(f.delivery_address);
-    if ("maps_link" in f)
-      update.maps_link = f.maps_link ? String(f.maps_link) : null;
     if ("subcontractor_id" in f)
       update.subcontractor_id = f.subcontractor_id
         ? String(f.subcontractor_id)

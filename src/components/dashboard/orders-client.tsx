@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import NewOrderModal from "./new-order-modal";
 
 interface Order {
@@ -21,8 +20,6 @@ interface Order {
   size: string;
   created_at: string;
   order_type: string;
-  delivery_address: string;
-  maps_link: string | null;
   subcontractor_id: string | null;
   end_date: string | null;
   price_per_portion: number;
@@ -32,17 +29,8 @@ interface Order {
   portions_per_delivery: number;
   lunch_address_slot: number;
   dinner_address_slot: number;
-  customers?: { name: string | null; phone_number: string };
+  customers?: { name: string | null; phone_number: string; area: string | null };
 }
-
-const DELIVERY_AREAS = [
-  "BSD Baru",
-  "BSD Lama",
-  "Gading Serpong",
-  "Alam Sutera",
-  "Bintaro",
-  "Graha Raya",
-];
 
 const MEAL_PREFERENCES = [
   "lunch_only",
@@ -77,9 +65,6 @@ const STATUS_COLORS: Record<string, string> = {
 const PENDING_STATUSES = ["pending_payment", "payment_proof_received"];
 
 type EditForm = {
-  area: string;
-  delivery_address: string;
-  maps_link: string;
   subcontractor_id: string;
   meal_time_preference: string;
   end_date: string;
@@ -129,9 +114,6 @@ export default function OrdersClient() {
   function openDetail(o: Order) {
     setSelected(o);
     setEditForm({
-      area: o.area ?? "",
-      delivery_address: o.delivery_address ?? "",
-      maps_link: o.maps_link ?? "",
       subcontractor_id: o.subcontractor_id ?? "",
       meal_time_preference: o.meal_time_preference ?? "",
       end_date: o.end_date ?? "",
@@ -353,7 +335,7 @@ export default function OrdersClient() {
                   <td className="px-4 py-3 text-gray-900">
                     Rp {o.total_price.toLocaleString("id-ID")}
                   </td>
-                  <td className="px-4 py-3 text-gray-900">{o.area}</td>
+                  <td className="px-4 py-3 text-gray-900">{o.customers?.area}</td>
                   <td className="px-4 py-3 text-gray-900">{o.start_date}</td>
                   <td className="px-4 py-3">
                     <span
@@ -469,53 +451,13 @@ export default function OrdersClient() {
                 </div>
               </div>
 
+              {/* Area/address are customer-level data — edit on the Customers page, not per order */}
+              <div className="rounded-lg bg-gray-50 p-3 text-sm">
+                <span className="text-xs text-gray-500 block mb-1">Delivery area</span>
+                <p className="text-gray-900">{selected.customers?.area ?? "—"}</p>
+              </div>
+
               {/* Editable operational fields */}
-              <div>
-                <Label htmlFor="order-area" className="text-xs text-gray-500 block mb-1">
-                  Area
-                </Label>
-                <select
-                  id="order-area"
-                  value={editForm.area}
-                  onChange={(e) => setEditForm({ ...editForm, area: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                  <option value="">— Select area —</option>
-                  {DELIVERY_AREAS.map((a) => (
-                    <option key={a} value={a}>
-                      {a}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <Label htmlFor="order-address" className="text-xs text-gray-500 block mb-1">
-                  Delivery Address
-                </Label>
-                <Textarea
-                  id="order-address"
-                  value={editForm.delivery_address}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, delivery_address: e.target.value })
-                  }
-                  rows={2}
-                  className="resize-none"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="order-maps" className="text-xs text-gray-500 block mb-1">
-                  Google Maps Link
-                </Label>
-                <Input
-                  id="order-maps"
-                  value={editForm.maps_link}
-                  onChange={(e) => setEditForm({ ...editForm, maps_link: e.target.value })}
-                  placeholder="https://maps.app.goo.gl/..."
-                />
-              </div>
-
               <div>
                 <Label htmlFor="order-sub" className="text-xs text-gray-500 block mb-1">
                   Assigned Subcontractor

@@ -46,8 +46,15 @@ export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
     type: "object",
     properties: {
       customer_name: { type: "string" },
-      package_size: { type: "number" },
-      portions_per_delivery: { type: "number" },
+      package_size: {
+        type: "number",
+        description:
+          "Total portions in the package/order, not the number of delivery days. Example: 2 portions per delivery for 5 delivery days means package_size = 10.",
+      },
+      portions_per_delivery: {
+        type: "number",
+        description: "How many portions are sent on each delivery day.",
+      },
       portions_lunch: { type: "number" },
       portions_dinner: { type: "number" },
       address: { type: "string" },
@@ -149,6 +156,8 @@ export async function extractOrderFromConversation(
 
   const system = `You are reviewing a WhatsApp conversation between a catering customer and our ordering bot. The customer has already provided their order details somewhere in this conversation. Call extract_order with every field you can determine from the conversation. Today is ${today} — resolve any relative dates the customer mentioned against that. Leave a field out only if the customer genuinely never provided it.
 
+Important: package_size must be the total number of portions in the full order, not the number of delivery days. For example, 2 portions per delivery for 5 delivery days means package_size = 10.
+
 Saved customer context from prior learning (may help disambiguate location, preferences, or already-confirmed details; chat messages still take priority if they conflict):
 ${learnedContext || "none"}
 
@@ -177,7 +186,11 @@ ${dapurList || "none"}`;
   );
   if (!toolUse) return null;
 
-  return toolUse.input as ExtractedOrderInput;
+  return normalizeExtractedOrder(
+    toolUse.input as ExtractedOrderInput,
+    history,
+    learnedContext,
+  );
 }
 
 export async function getExtractedOrderPricing(
@@ -218,6 +231,97 @@ function trimTrailingAssistantMessages(
   return history.slice(0, end);
 }
 
+function normalizeExtractedOrder(
+  input: ExtractedOrderInput,
+  history: Anthropic.Messages.MessageParam[],
+  learnedContext: string | null,
+): ExtractedOrderInput {
+  const inferredPackageSize = inferPackageSizeFromContext(
+    history,
+    learnedContext,
+    input,
+  );
+  if (
+    inferredPackageSize !== null &&
+    inferredPackageSize !== input.package_size
+  ) {
+    return { ...input, package_size: inferredPackageSize };
+  }
+
+  const portionsPerDelivery = getPortionsPerDelivery(input);
+  if (
+    input.package_size > 0 &&
+    portionsPerDelivery > 1 &&
+    input.package_size % portionsPerDelivery !== 0
+  ) {
+    return {
+      ...input,
+      package_size: input.package_size * portionsPerDelivery,
+    };
+  }
+
+  return input;
+}
+
+function inferPackageSizeFromContext(
+  history: Anthropic.Messages.MessageParam[],
+  learnedContext: string | null,
+  input: ExtractedOrderInput,
+): number | null {
+  const text = [
+    learnedContext ?? "",
+    ...history.map((message) =>
+      typeof message.content === "string" ? message.content : "",
+    ),
+  ].join("\n");
+
+  const explicitTotalPattern =
+    /(\d+)\s*porsi\s*x\s*(\d+)\s*hari\s*=\s*(\d+)\s*porsi/gi;
+  for (const match of text.matchAll(explicitTotalPattern)) {
+      const perDelivery = Number(match[1]);
+      const total = Number(match[3]);
+      if (Number.isFinite(total) && total > 0) {
+        if (
+          !input.portions_per_delivery ||
+          input.portions_per_delivery === perDelivery
+        ) {
+          return total;
+        }
+      }
+  }
+
+  const totalOnlyPattern = /total(?: tetap)?\s*(\d+)\s*porsi/gi;
+  for (const match of text.matchAll(totalOnlyPattern)) {
+    const total = Number(match[1]);
+    if (Number.isFinite(total) && total > 0) return total;
+  }
+
+  const dailyPattern =
+    /(\d+)\s*porsi(?:\/hari| per hari|\/pengiriman| per pengiriman).{0,40}?(\d+)\s*hari/gi;
+  for (const match of text.matchAll(dailyPattern)) {
+    const perDelivery = Number(match[1]);
+    const dayCount = Number(match[2]);
+    const total = perDelivery * dayCount;
+    if (
+      Number.isFinite(total) &&
+      total > 0 &&
+      (!input.portions_per_delivery ||
+        input.portions_per_delivery === perDelivery)
+    ) {
+      return total;
+    }
+  }
+
+  return null;
+}
+
+function getPortionsPerDelivery(input: ExtractedOrderInput): number {
+  const lunch = input.portions_lunch ?? 0;
+  const dinner = input.portions_dinner ?? 0;
+  const combined = lunch + dinner;
+  return combined > 0 ? combined : input.portions_per_delivery;
+}
+
 /**
  * Same DB writes + payment-details WhatsApp message as the bot's own extract_order
  * tool handler — shared so the admin-triggered path and the live bot path can't drift apart.
@@ -242,9 +346,6 @@ export async function createOrderFromExtraction(
     portions_lunch: input.portions_lunch ?? 0,
     portions_dinner: input.portions_dinner ?? 0,
     portions_remaining: input.package_size,
-    delivery_address: input.address,
-    maps_link: input.maps_link,
-    area: input.area,
     meal_time_preference: input.meal_time_preference ?? "per_day_decision",
     custom_schedule: (input.custom_schedule ?? null) as
       | import("@/types/database").Json

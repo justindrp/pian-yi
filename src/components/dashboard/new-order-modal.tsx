@@ -247,8 +247,6 @@ export default function NewOrderModal({
         order_type: orderType,
         price_per_portion: Number(pricePerPortion) + (size === "m" ? 2000 : 0),
         portions_per_delivery: Number(portionsPerDelivery),
-        delivery_address: deliveryAddress,
-        area,
         subcontractor_id: subcontractorId || null,
         status,
         lunch_address_slot: lunchSlot,
@@ -438,14 +436,8 @@ export default function NewOrderModal({
                 />
               </div>
               <div>
-                <Label htmlFor="new-order-area" className="block text-xs font-medium text-gray-600 mb-1">Area</Label>
-                <Input
-                  id="new-order-area"
-                  type="text"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                  className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
-                />
+                <span className="block text-xs font-medium text-gray-600 mb-1">Area</span>
+                <p className="text-sm text-gray-900 py-2">{area || "—"}</p>
               </div>
               <div>
                 <Label htmlFor="new-order-subcontractor" className="block text-xs font-medium text-gray-600 mb-1">Subkontraktor</Label>
@@ -467,14 +459,8 @@ export default function NewOrderModal({
                 </Select>
               </div>
               <div className="col-span-2">
-                <Label htmlFor="new-order-delivery-address" className="block text-xs font-medium text-gray-600 mb-1">Alamat pengiriman</Label>
-                <Input
-                  id="new-order-delivery-address"
-                  type="text"
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                  className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
-                />
+                <span className="block text-xs font-medium text-gray-600 mb-1">Alamat pengiriman</span>
+                <p className="text-sm text-gray-900 py-2">{deliveryAddress || "—"}</p>
               </div>
               <div>
                 <Label htmlFor="new-order-status" className="block text-xs font-medium text-gray-600 mb-1">Status order</Label>

@@ -269,8 +269,6 @@ describe("PATCH /api/orders", () => {
         id: "order-1",
         action: "update_fields",
         fields: {
-          area: "BSD Baru",
-          delivery_address: "Jl. Baru 1",
           lunch_address_slot: 2,
           portions_lunch: "3",
           // attacker-supplied fields that must be ignored
@@ -286,8 +284,6 @@ describe("PATCH /api/orders", () => {
     expect(json.ok).toBe(true);
     const updateArg = (db.chains.orders.update as jest.Mock).mock.calls[0][0];
     expect(updateArg).toMatchObject({
-      area: "BSD Baru",
-      delivery_address: "Jl. Baru 1",
       lunch_address_slot: 2,
       portions_lunch: 3,
     });

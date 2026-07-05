@@ -33,7 +33,7 @@ export async function POST(req: Request): Promise<Response> {
   const customerIds = [...new Set(grants.map((g) => g.customer_id as string))];
   const { data: customers, error: customersError } = await db
     .from("customers")
-    .select("id, area, address, portions_remaining")
+    .select("id, portions_remaining")
     .in("id", customerIds);
   if (customersError) {
     return NextResponse.json({ ok: false, error: customersError.message }, { status: 500 });
@@ -46,7 +46,6 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const rows = grants.map((g) => {
-    const customer = customerById.get(g.customer_id as string);
     return {
       customer_id: g.customer_id as string,
       order_type: "scheduled" as const,
@@ -57,8 +56,6 @@ export async function POST(req: Request): Promise<Response> {
       portions_remaining: g.portions as number,
       portions_per_delivery: g.portions as number,
       start_date: g.date as string,
-      area: customer?.area ?? "",
-      delivery_address: customer?.address ?? "",
       source: "free_quota" as const,
       grant_reason: (g.reason as string).trim(),
       granted_by: session.email,

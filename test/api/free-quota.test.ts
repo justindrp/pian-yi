@@ -100,7 +100,7 @@ describe("POST /api/customers/free-quota", () => {
   test("T6 — valid single grant inserts Rp0 free_quota order, bumps portions_remaining, writes edit_log", async () => {
     const db = makeDbMock({
       admin_users: { data: { role: "admin" }, error: null },
-      customers: { data: [{ id: "c1", area: "BSD Baru", address: "Jl A", portions_remaining: 10 }], error: null },
+      customers: { data: [{ id: "c1", portions_remaining: 10 }], error: null },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
     // orders.insert(...).select("id") resolves via .then on the chain
@@ -132,8 +132,6 @@ describe("POST /api/customers/free-quota", () => {
         source: "free_quota",
         grant_reason: "late delivery compensation",
         granted_by: "admin@example.com",
-        area: "BSD Baru",
-        delivery_address: "Jl A",
       }),
     ]);
 

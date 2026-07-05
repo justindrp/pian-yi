@@ -878,7 +878,6 @@ export type Database = {
         Row: {
           abandoned_recovery_sent_at: string | null
           addon_cost_per_portion: number
-          area: string
           cancellation_reason: string | null
           cancelled_at: string | null
           completed_at: string | null
@@ -886,7 +885,6 @@ export type Database = {
           created_at: string | null
           custom_schedule: Json | null
           customer_id: string | null
-          delivery_address: string
           dinner_address_slot: number
           end_date: string | null
           followup_sent_at: string | null
@@ -894,7 +892,6 @@ export type Database = {
           granted_by: string | null
           id: string
           lunch_address_slot: number
-          maps_link: string | null
           meal_time_preference: string | null
           order_type: string
           package_size: number
@@ -918,7 +915,6 @@ export type Database = {
         Insert: {
           abandoned_recovery_sent_at?: string | null
           addon_cost_per_portion?: number
-          area: string
           cancellation_reason?: string | null
           cancelled_at?: string | null
           completed_at?: string | null
@@ -926,7 +922,6 @@ export type Database = {
           created_at?: string | null
           custom_schedule?: Json | null
           customer_id?: string | null
-          delivery_address: string
           dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
@@ -934,7 +929,6 @@ export type Database = {
           granted_by?: string | null
           id?: string
           lunch_address_slot?: number
-          maps_link?: string | null
           meal_time_preference?: string | null
           order_type?: string
           package_size: number
@@ -958,7 +952,6 @@ export type Database = {
         Update: {
           abandoned_recovery_sent_at?: string | null
           addon_cost_per_portion?: number
-          area?: string
           cancellation_reason?: string | null
           cancelled_at?: string | null
           completed_at?: string | null
@@ -966,7 +959,6 @@ export type Database = {
           created_at?: string | null
           custom_schedule?: Json | null
           customer_id?: string | null
-          delivery_address?: string
           dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
@@ -974,7 +966,6 @@ export type Database = {
           granted_by?: string | null
           id?: string
           lunch_address_slot?: number
-          maps_link?: string | null
           meal_time_preference?: string | null
           order_type?: string
           package_size?: number

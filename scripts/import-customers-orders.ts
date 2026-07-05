@@ -599,7 +599,7 @@ async function main() {
   // ── Load existing orders to avoid duplicates ────────────────────────────
   const { data: existingOrders } = await db
     .from("orders")
-    .select("id, customer_id, delivery_address, area, status")
+    .select("id, customer_id, status")
     .in("status", ["active", "pending_payment", "payment_proof_received", "paused"]);
   const existingOrdersByCustomer = new Map<string, typeof existingOrders>();
   for (const ord of existingOrders ?? []) {
@@ -632,8 +632,10 @@ async function main() {
     }
     for (const [custId, orders] of existingOrdersByCustomer) {
       for (const ord of orders ?? []) {
-        const alamatSlug = slugify(ord.delivery_address || ord.area || "");
-        orderIdByKey.set(`${custId}:${alamatSlug}`, ord.id);
+        // Orders no longer carry their own address, so we can't key by it —
+        // fall back to a bare customerId key; the lookup below already treats
+        // "any order for this customer" as an acceptable match.
+        orderIdByKey.set(`${custId}:`, ord.id);
       }
     }
     console.log(
@@ -721,8 +723,7 @@ async function main() {
     const existingCustOrders = existingOrdersByCustomer.get(cust.id) ?? [];
     if (existingCustOrders.length > 0) {
       for (const ord of existingCustOrders) {
-        const alamatSlug = slugify(ord.delivery_address || ord.area || "");
-        orderIdByKey.set(`${cust.id}:${alamatSlug}`, ord.id);
+        orderIdByKey.set(`${cust.id}:`, ord.id);
       }
       console.log(`  ↩ ${baseName} (existing orders, skipped creation)`);
       continue;
@@ -730,8 +731,6 @@ async function main() {
 
     // New customer — create one order per row
     for (const row of rows) {
-      const parsed = parseAreaSubArea(row.areaSubArea);
-      const area = parsed.area || row.areaSubArea || "";
       const portions = Number.parseInt(row.sisaKuota, 10) || 0;
       const priceRaw = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, ""), 10) || 0;
       const totalPrice = portions * priceRaw;
@@ -749,9 +748,6 @@ async function main() {
           total_price: totalPrice,
           meal_time_preference: "per_day_decision",
           start_date: new Date().toISOString().slice(0, 10),
-          delivery_address: row.alamat,
-          maps_link: row.mapsLink,
-          area,
         })
         .select("id")
         .single();
@@ -762,8 +758,7 @@ async function main() {
       }
       orderCount++;
 
-      const alamatSlug = slugify(row.alamat || row.areaSubArea);
-      orderIdByKey.set(`${cust.id}:${alamatSlug}`, ord.id);
+      orderIdByKey.set(`${cust.id}:`, ord.id);
     }
 
     console.log(`  ✓ ${baseName} (${rows.length} order${rows.length > 1 ? "s" : ""})`);
@@ -794,11 +789,7 @@ async function main() {
       continue;
     }
 
-    // Match order: prefer address match, fall back to any order for this customer
-    const alamatSlug = slugify(row.alamat || row.areaSubArea);
-    const orderId =
-      orderIdByKey.get(`${customerId}:${alamatSlug}`) ??
-      [...orderIdByKey.entries()].find(([k]) => k.startsWith(`${customerId}:`))?.[1];
+    const orderId = orderIdByKey.get(`${customerId}:`);
 
     if (!orderId) {
       console.warn(`  SKIP delivery row: no order found for "${row.nama}" on ${date}`);

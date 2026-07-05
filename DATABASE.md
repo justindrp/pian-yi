@@ -363,6 +363,8 @@ Bot message templates editable by admins from the Settings page. Keyed by name.
 
 An order is the main commercial agreement with a customer — either a fixed-schedule or quota-based catering package.
 
+No address/area columns here — `area`, `delivery_address`, `maps_link` were dropped in migration 056 (duplicated `customers.area`/`address`/`google_maps_link` and drifted out of sync). Read delivery address live via join on `customers`.
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
@@ -386,9 +388,6 @@ An order is the main commercial agreement with a customer — either a fixed-sch
 | dinner_address_slot | smallint | Standing address slot for dinner deliveries: 1 = primary, 2 = secondary — default 1 |
 | meal_time_preference | text | Nullable. "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" — null for scheduled orders |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
-| delivery_address | text | Street address |
-| maps_link | text | Google Maps link |
-| area | text | Delivery zone |
 | start_date | date | First delivery date |
 | end_date | date | Last requested delivery date |
 | payment_proof_url | text | URL of payment transfer screenshot |
