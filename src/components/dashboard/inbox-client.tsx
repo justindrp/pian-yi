@@ -188,7 +188,7 @@ export default function InboxClient() {
   const loadThreads = useCallback(async () => {
     const { data } = await supabase
       .from("conversations")
-      .select("*, customers!orders_customer_id_fkey(*)")
+      .select("*, customers!conversations_customer_id_fkey(*)")
       .order("created_at", { ascending: false })
       .limit(500);
 
