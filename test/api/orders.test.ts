@@ -195,7 +195,7 @@ describe("PATCH /api/orders", () => {
       ],
       expect.objectContaining({
         ignoreDuplicates: true,
-        onConflict: "order_id,delivery_date,meal_type",
+        onConflict: "delivery_date,customer_id,meal_type",
       }),
     );
   });

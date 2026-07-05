@@ -241,7 +241,7 @@ export async function POST(request: Request) {
         const { error: deliveryErr } = await db
           .from("daily_deliveries")
           .upsert(deliveryRows, {
-            onConflict: "order_id,delivery_date,meal_type",
+            onConflict: "delivery_date,customer_id,meal_type",
             ignoreDuplicates: true,
           });
         if (deliveryErr) {
