@@ -484,7 +484,10 @@ export async function processWebhookAsync(
 
   // Send welcome sequence on first contact — atomic claim prevents duplicate sends
   // when two messages arrive before the first one sets menu_shown = true.
-  if (!stateRow?.menu_shown) {
+  // Skip entirely if the customer already has an order (e.g. legacy-imported
+  // customers whose customer_state row never got menu_shown set) — they go
+  // straight to Claude, which treats them as a returning customer.
+  if (!stateRow?.menu_shown && !latestOrderStatus) {
     const { data: claimed } = await db
       .from("customer_state")
       .update({ menu_shown: true })
