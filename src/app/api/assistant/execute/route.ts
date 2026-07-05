@@ -3,6 +3,7 @@ import { createJournalEntry } from "@/lib/accounting/journal";
 import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
+import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import {
@@ -156,7 +157,7 @@ export async function POST(request: Request) {
       const { data: order, error: fetchErr } = await db
         .from("orders")
         .select(
-          "id, total_price, package_size, customer_id, customers!orders_customer_id_fkey(name, phone_number)",
+          "id, total_price, package_size, customer_id, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number)",
         )
         .eq("id", orderId)
         .single();
@@ -222,6 +223,35 @@ export async function POST(request: Request) {
         console.error("[execute/mark_paid] journal error:", err),
       );
 
+      const deliveryRows = buildRecurringDeliveryRows({
+        customer_id: order.customer_id,
+        dinner_address_slot: order.dinner_address_slot ?? null,
+        end_date: order.end_date ?? null,
+        lunch_address_slot: order.lunch_address_slot ?? null,
+        meal_time_preference: order.meal_time_preference ?? null,
+        order_id: orderId,
+        package_size: order.package_size ?? null,
+        portions_dinner: order.portions_dinner ?? null,
+        portions_lunch: order.portions_lunch ?? null,
+        portions_per_delivery: order.portions_per_delivery ?? null,
+        start_date: order.start_date ?? null,
+        subcontractor_id: order.subcontractor_id ?? null,
+      });
+      if (deliveryRows.length > 0) {
+        const { error: deliveryErr } = await db
+          .from("daily_deliveries")
+          .upsert(deliveryRows, {
+            onConflict: "order_id,delivery_date,meal_type",
+            ignoreDuplicates: true,
+          });
+        if (deliveryErr) {
+          console.error(
+            "[execute/mark_paid] delivery generation error:",
+            deliveryErr,
+          );
+        }
+      }
+
       // WhatsApp confirmation
       const rawCustomer = order.customers;
       const customer = (
@@ -262,7 +292,9 @@ export async function POST(request: Request) {
 
       const { data: order, error: fetchErr } = await db
         .from("orders")
-        .select("id, customer_id, customers!orders_customer_id_fkey(name, phone_number)")
+        .select(
+          "id, customer_id, customers!orders_customer_id_fkey(name, phone_number)",
+        )
         .eq("id", orderId)
         .single();
       if (fetchErr || !order) {

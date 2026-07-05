@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
+import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
@@ -487,75 +488,32 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     ],
   }).catch((err) => console.error("[mark_paid] journal error:", err));
 
-  // Generate today's delivery row if today falls within the order date range and is a weekday
-  {
-    const todayStr = new Date().toLocaleDateString("en-CA", {
-      timeZone: "Asia/Jakarta",
-    });
-    const dow = new Date(todayStr).getUTCDay(); // 0=Sun 6=Sat
-    const isWeekday = dow >= 1 && dow <= 5;
-    const inRange =
-      todayStr >= (order.start_date ?? "") &&
-      (!order.end_date || todayStr <= order.end_date);
-
-    if (isWeekday && inRange) {
-      type MealRow = {
-        meal_type: "lunch" | "dinner";
-        portions: number;
-        address_slot: number;
-      };
-      const meals: MealRow[] = [];
-      const pref = order.meal_time_preference;
-      if (pref === "lunch_only" || pref === "default_lunch") {
-        meals.push({
-          meal_type: "lunch",
-          portions: order.portions_lunch ?? order.portions_per_delivery ?? 1,
-          address_slot: order.lunch_address_slot ?? 1,
-        });
-      } else if (pref === "dinner_only" || pref === "default_dinner") {
-        meals.push({
-          meal_type: "dinner",
-          portions: order.portions_dinner ?? order.portions_per_delivery ?? 1,
-          address_slot: order.dinner_address_slot ?? 1,
-        });
-      } else if (pref === "both_fixed") {
-        meals.push({
-          meal_type: "lunch",
-          portions: order.portions_lunch ?? 1,
-          address_slot: order.lunch_address_slot ?? 1,
-        });
-        meals.push({
-          meal_type: "dinner",
-          portions: order.portions_dinner ?? 1,
-          address_slot: order.dinner_address_slot ?? 1,
-        });
-      }
-      // per_day_decision and custom_schedule: customer decides day-by-day, skip auto-generation
-
-      if (meals.length > 0) {
-        Promise.all(
-          meals.map(({ meal_type, portions, address_slot }) =>
-            db.from("daily_deliveries").upsert(
-              {
-                order_id: body.id,
-                customer_id: order.customer_id,
-                delivery_date: todayStr,
-                meal_type,
-                portions,
-                subcontractor_id: order.subcontractor_id ?? null,
-                status: "scheduled",
-                address_slot,
-              },
-              {
-                onConflict: "order_id,delivery_date,meal_type",
-                ignoreDuplicates: true,
-              },
-            ),
-          ),
-        ).catch((err) =>
-          console.error("[mark_paid] delivery generation error:", err),
-        );
-      }
+  const deliveryRows = buildRecurringDeliveryRows(
+    {
+      customer_id: order.customer_id,
+      dinner_address_slot: order.dinner_address_slot ?? null,
+      end_date: order.end_date ?? null,
+      lunch_address_slot: order.lunch_address_slot ?? null,
+      meal_time_preference: order.meal_time_preference ?? null,
+      order_id: body.id,
+      package_size: order.package_size ?? null,
+      portions_dinner: order.portions_dinner ?? null,
+      portions_lunch: order.portions_lunch ?? null,
+      portions_per_delivery: order.portions_per_delivery ?? null,
+      start_date: order.start_date ?? null,
+      subcontractor_id: order.subcontractor_id ?? null,
+    },
+    today,
+  );
+  if (deliveryRows.length > 0) {
+    const { error: deliveryErr } = await db
+      .from("daily_deliveries")
+      .upsert(deliveryRows, {
+        onConflict: "order_id,delivery_date,meal_type",
+        ignoreDuplicates: true,
+      });
+    if (deliveryErr) {
+      console.error("[mark_paid] delivery generation error:", deliveryErr);
     }
   }
 

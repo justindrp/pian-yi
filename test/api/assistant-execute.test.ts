@@ -3,7 +3,11 @@ import { POST } from "@/app/api/assistant/execute/route";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { sendImageMessageById, sendTextMessage, uploadMediaToMeta } from "@/lib/whatsapp/client";
+import {
+  sendImageMessageById,
+  sendTextMessage,
+  uploadMediaToMeta,
+} from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/supabase/get-role", () => ({ getSessionWithRole: jest.fn() }));
@@ -16,18 +20,37 @@ jest.mock("@/lib/claude/conversation", () => ({
   saveMessage: jest.fn().mockResolvedValue(undefined),
   updateMessageReceipt: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock("@/lib/accounting/journal", () => ({ createJournalEntry: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("@/lib/accounting/journal", () => ({
+  createJournalEntry: jest.fn().mockResolvedValue(undefined),
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in", "ilike",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "ilike",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
@@ -35,8 +58,10 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -44,10 +69,13 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
@@ -67,7 +95,10 @@ function postRequest(body: unknown) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (getSessionWithRole as jest.Mock).mockResolvedValue({ email: "drpramadyo@gmail.com", role: "owner" });
+  (getSessionWithRole as jest.Mock).mockResolvedValue({
+    email: "drpramadyo@gmail.com",
+    role: "owner",
+  });
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
     headers: new Headers({ "content-type": "image/jpeg" }),
@@ -83,7 +114,9 @@ describe("POST /api/assistant/execute", () => {
   test("T1 — unauthenticated returns 401", async () => {
     (getSessionWithRole as jest.Mock).mockResolvedValue(null);
 
-    const res = await POST(postRequest({ tool: "mark_order_paid", input: { order_id: "x" } }));
+    const res = await POST(
+      postRequest({ tool: "mark_order_paid", input: { order_id: "x" } }),
+    );
 
     expect(res.status).toBe(401);
     const body = await res.json();
@@ -106,15 +139,27 @@ describe("POST /api/assistant/execute", () => {
           total_price: 290000,
           package_size: 10,
           customer_id: "cust-1",
+          start_date: "2099-01-05",
+          end_date: "2099-01-06",
+          meal_time_preference: "both_fixed",
+          portions_per_delivery: 1,
+          portions_lunch: 1,
+          portions_dinner: 1,
+          subcontractor_id: "sub-1",
+          lunch_address_slot: 1,
+          dinner_address_slot: 2,
           customers: { name: "Budi Santoso", phone_number: "+6281234567890" },
         },
         error: null,
       },
       customers: { data: { converted_at: null }, error: null },
+      daily_deliveries: { data: null, error: null },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await POST(postRequest({ tool: "mark_order_paid", input: { order_id: "order-1" } }));
+    const res = await POST(
+      postRequest({ tool: "mark_order_paid", input: { order_id: "order-1" } }),
+    );
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -129,8 +174,41 @@ describe("POST /api/assistant/execute", () => {
     // journal created
     expect(createJournalEntry).toHaveBeenCalled();
 
+    // delivery rows created for the whole fixed schedule
+    expect(db.chains.daily_deliveries?.upsert).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          delivery_date: "2099-01-05",
+          meal_type: "lunch",
+          address_slot: 1,
+        }),
+        expect.objectContaining({
+          delivery_date: "2099-01-05",
+          meal_type: "dinner",
+          address_slot: 2,
+        }),
+        expect.objectContaining({
+          delivery_date: "2099-01-06",
+          meal_type: "lunch",
+          address_slot: 1,
+        }),
+        expect.objectContaining({
+          delivery_date: "2099-01-06",
+          meal_type: "dinner",
+          address_slot: 2,
+        }),
+      ],
+      expect.objectContaining({
+        ignoreDuplicates: true,
+        onConflict: "order_id,delivery_date,meal_type",
+      }),
+    );
+
     // WhatsApp confirmation sent
-    expect(sendTextMessage).toHaveBeenCalledWith("+6281234567890", expect.stringContaining("Budi"));
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      "+6281234567890",
+      expect.stringContaining("Budi"),
+    );
   });
 
   test("T4 — cancel_order with notify_customer:true → status cancelled_by_admin + sendTextMessage called", async () => {
@@ -149,7 +227,11 @@ describe("POST /api/assistant/execute", () => {
     const res = await POST(
       postRequest({
         tool: "cancel_order",
-        input: { order_id: "order-2", notify_customer: true, reason: "stok habis" },
+        input: {
+          order_id: "order-2",
+          notify_customer: true,
+          reason: "stok habis",
+        },
       }),
     );
 
@@ -157,8 +239,13 @@ describe("POST /api/assistant/execute", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
 
-    expect(db.chains.orders?.update).toHaveBeenCalledWith({ status: "cancelled_by_admin" });
-    expect(sendTextMessage).toHaveBeenCalledWith("+6289876543210", expect.stringContaining("Siti"));
+    expect(db.chains.orders?.update).toHaveBeenCalledWith({
+      status: "cancelled_by_admin",
+    });
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      "+6289876543210",
+      expect.stringContaining("Siti"),
+    );
   });
 
   test("T5 — update_customer_field field=name → customers update called", async () => {
@@ -177,7 +264,9 @@ describe("POST /api/assistant/execute", () => {
     expect(body.ok).toBe(true);
 
     expect(db.from).toHaveBeenCalledWith("customers");
-    expect(db.chains.customers?.update).toHaveBeenCalledWith({ name: "Budi Baru" });
+    expect(db.chains.customers?.update).toHaveBeenCalledWith({
+      name: "Budi Baru",
+    });
   });
 
   test("T6 — send_whatsapp_image uploads image URL to Meta, sends by media ID, and logs image row", async () => {
@@ -199,7 +288,10 @@ describe("POST /api/assistant/execute", () => {
 
     expect(res.status).toBe(200);
     expect(global.fetch).toHaveBeenCalledWith("https://example.com/menu.jpg");
-    expect(uploadMediaToMeta).toHaveBeenCalledWith(expect.any(Buffer), "image/jpeg");
+    expect(uploadMediaToMeta).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      "image/jpeg",
+    );
     expect(sendImageMessageById).toHaveBeenCalledWith(
       "+628111",
       "meta-media-id-123",
@@ -242,8 +334,18 @@ describe("POST /api/assistant/execute", () => {
     expect(res.status).toBe(200);
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(sendImageMessageById).toHaveBeenCalledTimes(2);
-    expect(sendImageMessageById).toHaveBeenNthCalledWith(1, "+628111", "meta-media-id-123", "Menu minggu ini");
-    expect(sendImageMessageById).toHaveBeenNthCalledWith(2, "+628111", "meta-media-id-123", "Price list");
+    expect(sendImageMessageById).toHaveBeenNthCalledWith(
+      1,
+      "+628111",
+      "meta-media-id-123",
+      "Menu minggu ini",
+    );
+    expect(sendImageMessageById).toHaveBeenNthCalledWith(
+      2,
+      "+628111",
+      "meta-media-id-123",
+      "Price list",
+    );
   });
 
   test("T7 — update_customer_field field=phone_number → 400, no DB update", async () => {
@@ -253,7 +355,11 @@ describe("POST /api/assistant/execute", () => {
     const res = await POST(
       postRequest({
         tool: "update_customer_field",
-        input: { customer_id: "cust-3", field: "phone_number", value: "+628999" },
+        input: {
+          customer_id: "cust-3",
+          field: "phone_number",
+          value: "+628999",
+        },
       }),
     );
 

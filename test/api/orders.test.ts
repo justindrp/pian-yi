@@ -19,12 +19,28 @@ jest.mock("@/lib/accounting/journal", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
@@ -32,8 +48,10 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -41,10 +59,13 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
@@ -95,21 +116,86 @@ describe("PATCH /api/orders", () => {
           customer_id: "cust-1",
           total_price: 30000,
           package_size: 30,
+          start_date: "2099-01-05",
+          end_date: "2099-01-07",
+          meal_time_preference: "lunch_only",
+          portions_per_delivery: 1,
+          portions_lunch: null,
+          portions_dinner: null,
+          subcontractor_id: "sub-1",
+          lunch_address_slot: 2,
+          dinner_address_slot: 1,
           customers: { name: "Test Customer", phone_number: "+628111222333" },
         },
         error: null,
       },
       customers: { data: { converted_at: null }, error: null },
+      daily_deliveries: { data: null, error: null },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await PATCH(patchRequest({ id: "order-1", action: "mark_paid" }));
+    const res = await PATCH(
+      patchRequest({ id: "order-1", action: "mark_paid" }),
+    );
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
     expect(db.chains.orders.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: "active" }),
+    );
+  });
+
+  test("T1b — mark_paid generates all fixed recurring delivery rows", async () => {
+    const db = makeDbMock({
+      orders: {
+        data: {
+          id: "order-1",
+          customer_id: "cust-1",
+          total_price: 30000,
+          package_size: 30,
+          start_date: "2099-01-05",
+          end_date: "2099-01-07",
+          meal_time_preference: "lunch_only",
+          portions_per_delivery: 1,
+          portions_lunch: null,
+          portions_dinner: null,
+          subcontractor_id: "sub-1",
+          lunch_address_slot: 2,
+          dinner_address_slot: 1,
+          customers: { name: "Test Customer", phone_number: "+628111222333" },
+        },
+        error: null,
+      },
+      customers: { data: { converted_at: null }, error: null },
+      daily_deliveries: { data: null, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await PATCH(patchRequest({ id: "order-1", action: "mark_paid" }));
+
+    expect(db.chains.daily_deliveries.upsert).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          delivery_date: "2099-01-05",
+          meal_type: "lunch",
+          address_slot: 2,
+        }),
+        expect.objectContaining({
+          delivery_date: "2099-01-06",
+          meal_type: "lunch",
+          address_slot: 2,
+        }),
+        expect.objectContaining({
+          delivery_date: "2099-01-07",
+          meal_type: "lunch",
+          address_slot: 2,
+        }),
+      ],
+      expect.objectContaining({
+        ignoreDuplicates: true,
+        onConflict: "order_id,delivery_date,meal_type",
+      }),
     );
   });
 
@@ -188,7 +274,11 @@ describe("PATCH /api/orders", () => {
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
     const res = await PATCH(
-      patchRequest({ id: "order-1", action: "update_fields", fields: { size: "xl" } }),
+      patchRequest({
+        id: "order-1",
+        action: "update_fields",
+        fields: { size: "xl" },
+      }),
     );
     const json = await res.json();
 
@@ -201,7 +291,11 @@ describe("PATCH /api/orders", () => {
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
     const res = await PATCH(
-      patchRequest({ id: "order-1", action: "update_status", status: "paused" }),
+      patchRequest({
+        id: "order-1",
+        action: "update_status",
+        status: "paused",
+      }),
     );
     const json = await res.json();
 
@@ -217,7 +311,11 @@ describe("PATCH /api/orders", () => {
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
     const res = await PATCH(
-      patchRequest({ id: "order-1", action: "update_status", status: "active" }),
+      patchRequest({
+        id: "order-1",
+        action: "update_status",
+        status: "active",
+      }),
     );
     const json = await res.json();
 
@@ -238,7 +336,10 @@ describe("DELETE /api/orders", () => {
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
     expect(db.chains.daily_deliveries.delete).toHaveBeenCalled();
-    expect(db.chains.daily_deliveries.eq).toHaveBeenCalledWith("order_id", "order-1");
+    expect(db.chains.daily_deliveries.eq).toHaveBeenCalledWith(
+      "order_id",
+      "order-1",
+    );
     expect(db.chains.orders.delete).toHaveBeenCalled();
     expect(db.chains.orders.eq).toHaveBeenCalledWith("id", "order-1");
 
