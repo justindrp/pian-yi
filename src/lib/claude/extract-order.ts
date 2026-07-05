@@ -130,14 +130,20 @@ Available dapur (kitchen) IDs:
 ${dapurList || "none"}`;
 
   const anthropic = getAnthropicClient();
-  const response = await anthropic.messages.create({
-    model: SONNET_MODEL,
-    max_tokens: 1024,
-    system,
-    messages: history,
-    tools: [EXTRACT_ORDER_TOOL],
-    tool_choice: { type: "tool", name: "extract_order" },
-  });
+  let response: Anthropic.Messages.Message;
+  try {
+    response = await anthropic.messages.create({
+      model: SONNET_MODEL,
+      max_tokens: 1024,
+      system,
+      messages: history,
+      tools: [EXTRACT_ORDER_TOOL],
+      tool_choice: { type: "tool", name: "extract_order" },
+    });
+  } catch (err) {
+    console.error("extractOrderFromConversation: Anthropic call failed", err);
+    return null;
+  }
 
   const toolUse = response.content.find(
     (block): block is Anthropic.Messages.ToolUseBlock =>
