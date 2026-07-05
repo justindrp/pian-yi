@@ -21,8 +21,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   const body = (await req.json()) as {
     customer_id: string;
     input: ExtractedOrderInput;
+    send_payment_info?: boolean;
   };
-  const { customer_id, input } = body;
+  const { customer_id, input, send_payment_info } = body;
   if (!customer_id || !input) {
     return NextResponse.json(
       { ok: false, error: "customer_id and input required" },
@@ -43,7 +44,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  await createOrderFromExtraction(customer_id, customer.phone_number, input);
+  await createOrderFromExtraction(customer_id, customer.phone_number, input, {
+    sendPaymentInfo: send_payment_info ?? true,
+  });
 
   return NextResponse.json({ ok: true });
 }

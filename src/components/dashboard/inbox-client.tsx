@@ -150,6 +150,10 @@ export default function InboxClient() {
     useState<ExtractedOrderReview | null>(null);
   const [confirmingExtractedOrder, setConfirmingExtractedOrder] =
     useState(false);
+  const [
+    sendingExtractedOrderPaymentInfo,
+    setSendingExtractedOrderPaymentInfo,
+  ] = useState(true);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -567,8 +571,9 @@ export default function InboxClient() {
     });
   }
 
-  async function confirmExtractedOrder() {
+  async function confirmExtractedOrder(sendPaymentInfo: boolean) {
     if (!selectedCustomerId || !extractedOrder) return;
+    setSendingExtractedOrderPaymentInfo(sendPaymentInfo);
     setConfirmingExtractedOrder(true);
     const res = await fetch("/api/inbox/extract-order/confirm", {
       method: "POST",
@@ -576,6 +581,7 @@ export default function InboxClient() {
       body: JSON.stringify({
         customer_id: selectedCustomerId,
         input: extractedOrder,
+        send_payment_info: sendPaymentInfo,
       }),
     });
     setConfirmingExtractedOrder(false);
@@ -1691,11 +1697,22 @@ export default function InboxClient() {
               </Button>
               <Button
                 type="button"
+                variant="outline"
                 size="sm"
-                onClick={confirmExtractedOrder}
+                onClick={() => confirmExtractedOrder(false)}
                 disabled={confirmingExtractedOrder}
               >
-                {confirmingExtractedOrder
+                {confirmingExtractedOrder && !sendingExtractedOrderPaymentInfo
+                  ? "Creating..."
+                  : "Create order only"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => confirmExtractedOrder(true)}
+                disabled={confirmingExtractedOrder}
+              >
+                {confirmingExtractedOrder && sendingExtractedOrderPaymentInfo
                   ? "Creating..."
                   : "Create order & send payment info"}
               </Button>

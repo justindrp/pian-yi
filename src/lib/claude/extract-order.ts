@@ -226,8 +226,10 @@ export async function createOrderFromExtraction(
   customerId: string,
   phone: string,
   input: ExtractedOrderInput,
+  options?: { sendPaymentInfo?: boolean },
 ): Promise<void> {
   const db = createAdminClient();
+  const sendPaymentInfo = options?.sendPaymentInfo ?? true;
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
     await getExtractedOrderPricing(input.package_size);
 
@@ -294,6 +296,8 @@ export async function createOrderFromExtraction(
       updated_at: new Date().toISOString(),
     })
     .eq("customer_id", customerId);
+
+  if (!sendPaymentInfo) return;
 
   const [bankName, bankAccountNumber, bankAccountName] = await Promise.all([
     getSetting("bank_name"),
