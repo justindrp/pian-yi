@@ -220,6 +220,32 @@ describe("PATCH /api/orders", () => {
     );
   });
 
+  test("T2b — mark_payment_proof_received advances only pending orders", async () => {
+    const db = makeDbMock({
+      orders: { data: null, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await PATCH(
+      patchRequest({
+        id: "order-1",
+        action: "mark_payment_proof_received",
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(db.chains.orders.update).toHaveBeenCalledWith({
+      status: "payment_proof_received",
+    });
+    expect(db.chains.orders.eq).toHaveBeenCalledWith("id", "order-1");
+    expect(db.chains.orders.eq).toHaveBeenCalledWith(
+      "status",
+      "pending_payment",
+    );
+  });
+
   test("T3 — update_size with invalid value returns 400", async () => {
     const db = makeDbMock();
     (createAdminClient as jest.Mock).mockReturnValue(db);

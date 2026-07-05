@@ -75,6 +75,24 @@ export default function PaymentsClient() {
     },
   });
 
+  const markProofReceivedMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: orderId,
+          action: "mark_payment_proof_received",
+        }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Failed");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+
   const rejectMutation = useMutation({
     mutationFn: async ({
       orderId,
@@ -264,7 +282,7 @@ export default function PaymentsClient() {
                     key={order.id}
                     className={`bg-white border ${color} rounded-xl p-4`}
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-sm font-medium text-gray-900">
                           {order.customers?.name ??
@@ -281,6 +299,19 @@ export default function PaymentsClient() {
                           {formatDateTime(order.confirmed_at)}
                         </p>
                       )}
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          markProofReceivedMutation.mutate(order.id)
+                        }
+                        disabled={markProofReceivedMutation.isPending}
+                      >
+                        Mark proof received
+                      </Button>
                     </div>
                   </div>
                 );

@@ -288,7 +288,12 @@ export async function PATCH(req: NextRequest): Promise<Response> {
 
   const body = (await req.json()) as {
     id: string;
-    action: "mark_paid" | "update_size" | "update_fields" | "update_status";
+    action:
+      | "mark_paid"
+      | "mark_payment_proof_received"
+      | "update_size"
+      | "update_fields"
+      | "update_status";
     size?: "s" | "m";
     status?: string;
     fields?: Record<string, unknown>;
@@ -296,6 +301,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   if (
     !body.id ||
     (body.action !== "mark_paid" &&
+      body.action !== "mark_payment_proof_received" &&
       body.action !== "update_size" &&
       body.action !== "update_fields" &&
       body.action !== "update_status")
@@ -306,6 +312,20 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     );
 
   const db = createAdminClient();
+
+  if (body.action === "mark_payment_proof_received") {
+    const { error } = await db
+      .from("orders")
+      .update({ status: "payment_proof_received" })
+      .eq("id", body.id)
+      .eq("status", "pending_payment");
+    if (error)
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
+    return NextResponse.json({ ok: true });
+  }
 
   if (body.action === "update_size") {
     if (body.size !== "s" && body.size !== "m")

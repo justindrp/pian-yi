@@ -118,6 +118,8 @@ Cancellations: `cancelled_unpaid`, `cancelled_by_customer`, `cancelled_by_admin`
 
 `orders.status` is the source of truth for payment/subscription/order lifecycle as soon as an order row exists. `customer_state` is customer-level only (`new`, `ordering`, `lapsed`, `churned`) and should not mirror payment stages.
 
+Payments page owns the payment queue: Awaiting payment lists `pending_payment`, admins can manually advance those rows to `payment_proof_received`, and Pending verification is where they run `mark_paid`.
+
 Orders page status dropdown defaults to "Active" and has no unfiltered view by default — an explicit "All" option (empty status, no `.eq` filter applied) was added alongside the per-status options so admins can see orders in any stage.
 
 ### Meal time preference types
