@@ -384,6 +384,16 @@ export async function processWebhookAsync(
     messageType: message.type === "image" ? "image" : "text",
     mediaId: message.type === "image" ? message.imageId : undefined,
   });
+  if (
+    intent === "ordering" &&
+    (stateRow?.state === "browsing" || !stateRow?.state)
+  ) {
+    await db
+      .from("customer_state")
+      .update({ state: "ordering", updated_at: new Date().toISOString() })
+      .eq("customer_id", customerId);
+  }
+
   const learnedNotes = await tryLearnCustomerContext(customerId, db);
 
   // Rate limit check
