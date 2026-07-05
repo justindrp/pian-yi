@@ -80,7 +80,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 - Bot replies under 200 words always
 - Use emojis sparingly but warmly
 - 50% of conversational messages should be casual (lowercase, no punctuation, no emojis) to feel human; transactional messages (order summaries, bank details, payments) must always be polished
-- Contextual "ok" handling: post-delivery "ok" gets an enjoy-food reply; a generic affirmative "ok" gets "Ada yang bisa kami bantu?"
+- Contextual "ok" handling: post-delivery "ok" gets an enjoy-food reply; a generic affirmative "ok" gets a closing thanks only ("Baik kak, terima kasih ya 😊") — bot must not ask "Ada yang bisa kami bantu lagi?"
 
 ### Pricing
 
