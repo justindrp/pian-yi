@@ -1486,10 +1486,14 @@ export default function InboxClient() {
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-gray-700">
+                <label
+                  htmlFor="extract-name"
+                  className="text-xs font-medium text-gray-700"
+                >
                   Nama
                 </label>
                 <Input
+                  id="extract-name"
                   value={extractedOrder.customer_name}
                   onChange={(e) =>
                     setExtractedOrder({
@@ -1500,10 +1504,14 @@ export default function InboxClient() {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-700">
+                <label
+                  htmlFor="extract-address"
+                  className="text-xs font-medium text-gray-700"
+                >
                   Alamat
                 </label>
                 <Textarea
+                  id="extract-address"
                   value={extractedOrder.address}
                   onChange={(e) =>
                     setExtractedOrder({
@@ -1514,10 +1522,14 @@ export default function InboxClient() {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-700">
+                <label
+                  htmlFor="extract-maps-link"
+                  className="text-xs font-medium text-gray-700"
+                >
                   Maps link
                 </label>
                 <Input
+                  id="extract-maps-link"
                   value={extractedOrder.maps_link}
                   onChange={(e) =>
                     setExtractedOrder({
@@ -1528,10 +1540,14 @@ export default function InboxClient() {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-700">
+                <label
+                  htmlFor="extract-area"
+                  className="text-xs font-medium text-gray-700"
+                >
                   Area
                 </label>
                 <Input
+                  id="extract-area"
                   value={extractedOrder.area}
                   onChange={(e) =>
                     setExtractedOrder({
@@ -1543,10 +1559,14 @@ export default function InboxClient() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-700">
+                  <label
+                    htmlFor="extract-package-size"
+                    className="text-xs font-medium text-gray-700"
+                  >
                     Package size (porsi)
                   </label>
                   <Input
+                    id="extract-package-size"
                     type="number"
                     value={extractedOrder.package_size}
                     onChange={(e) =>
@@ -1558,10 +1578,14 @@ export default function InboxClient() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-700">
+                  <label
+                    htmlFor="extract-portions-per-delivery"
+                    className="text-xs font-medium text-gray-700"
+                  >
                     Porsi/pengiriman
                   </label>
                   <Input
+                    id="extract-portions-per-delivery"
                     type="number"
                     value={extractedOrder.portions_per_delivery}
                     onChange={(e) =>
@@ -1575,10 +1599,14 @@ export default function InboxClient() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-700">
+                  <label
+                    htmlFor="extract-start-date"
+                    className="text-xs font-medium text-gray-700"
+                  >
                     Tanggal mulai
                   </label>
                   <Input
+                    id="extract-start-date"
                     type="date"
                     value={extractedOrder.start_date ?? ""}
                     onChange={(e) =>
@@ -1590,10 +1618,14 @@ export default function InboxClient() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-700">
+                  <label
+                    htmlFor="extract-end-date"
+                    className="text-xs font-medium text-gray-700"
+                  >
                     Tanggal selesai
                   </label>
                   <Input
+                    id="extract-end-date"
                     type="date"
                     value={extractedOrder.end_date ?? ""}
                     onChange={(e) =>
