@@ -12,12 +12,12 @@ export async function loadHistory(
     .select("role, content")
     .eq("customer_id", customerId)
     .in("role", ["user", "assistant"])
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(20);
 
   if (!data) return [];
 
-  return data.map((row) => ({
+  return data.reverse().map((row) => ({
     role: row.role as "user" | "assistant",
     content: row.content,
   }));
