@@ -14,17 +14,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const date = tomorrow.toISOString().slice(0, 10);
 
-  // Skip if rows already exist for this date (e.g. cron ran twice)
-  const { data: existing } = await db
-    .from("daily_deliveries")
-    .select("id")
-    .eq("delivery_date", date)
-    .limit(1);
-
-  if (existing && existing.length > 0) {
-    return NextResponse.json({ ok: true, skipped: true, date });
-  }
-
   const { data: orders } = await db
     .from("orders")
     .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, customers!orders_customer_id_fkey(name, phone_number, area, subcontractor_id)")
