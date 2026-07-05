@@ -119,7 +119,9 @@ export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
 export async function extractOrderFromConversation(
   customerId: string,
 ): Promise<ExtractedOrderInput | null> {
-  const history = await loadHistory(customerId, 60);
+  const history = trimTrailingAssistantMessages(
+    await loadHistory(customerId, 60),
+  );
   if (history.length === 0) return null;
 
   const db = createAdminClient();
@@ -204,6 +206,16 @@ function extractLearnedContext(notes: string | null): string | null {
   if (start === -1 || end === -1 || end <= start) return null;
   const content = notes.slice(start + LEARNED_CONTEXT_START.length, end).trim();
   return content || null;
+}
+
+function trimTrailingAssistantMessages(
+  history: Anthropic.Messages.MessageParam[],
+): Anthropic.Messages.MessageParam[] {
+  let end = history.length;
+  while (end > 0 && history[end - 1]?.role === "assistant") {
+    end -= 1;
+  }
+  return history.slice(0, end);
 }
 
 /**
