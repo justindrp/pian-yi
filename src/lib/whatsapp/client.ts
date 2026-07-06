@@ -189,10 +189,9 @@ export async function sendImageTemplate(
             type: "header",
             parameters: [{ type: "image", image: { id: mediaId } }],
           },
-          {
-            type: "body",
-            parameters: bodyParams.map((text) => ({ type: "text", text })),
-          },
+          ...(bodyParams.length > 0
+            ? [{ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) }]
+            : []),
         ],
       },
     },

@@ -202,7 +202,7 @@ export async function sendDeliveryPhotoToCustomer(
     phone,
     "delivery_proof",
     mediaId,
-    [customerName, mealType],
+    [],
   );
   await updateMessageReceipt({
     conversationId,
