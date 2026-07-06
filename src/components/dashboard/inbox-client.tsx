@@ -1657,14 +1657,30 @@ export default function InboxClient() {
 
                 return (
                   <>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-700">
+                        {scheduleMode ? "Package size (porsi)" : "Porsi"}
+                      </span>
+                      <div className="flex gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => scheduleMode && toggleScheduleMode()}
+                          className={!scheduleMode ? "text-blue-600 font-semibold" : "text-gray-400 hover:text-gray-600"}
+                        >
+                          Seragam
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => !scheduleMode && toggleScheduleMode()}
+                          className={scheduleMode ? "text-blue-600 font-semibold" : "text-gray-400 hover:text-gray-600"}
+                        >
+                          Per hari
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label
-                          htmlFor="extract-package-size"
-                          className="text-xs font-medium text-gray-700"
-                        >
-                          Package size (porsi)
-                        </label>
                         <Input
                           id="extract-package-size"
                           type="number"
@@ -1687,23 +1703,8 @@ export default function InboxClient() {
                           }}
                         />
                       </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label
-                            htmlFor="extract-portions-per-delivery"
-                            className="text-xs font-medium text-gray-700"
-                          >
-                            {scheduleMode ? "Jadwal/hari" : "Porsi/pengiriman"}
-                          </label>
-                          <button
-                            type="button"
-                            onClick={toggleScheduleMode}
-                            className="text-xs text-blue-600 hover:underline"
-                          >
-                            {scheduleMode ? "Seragam" : "Per hari"}
-                          </button>
-                        </div>
-                        {!scheduleMode && (
+                      {!scheduleMode && (
+                        <div>
                           <Input
                             id="extract-portions-per-delivery"
                             type="number"
@@ -1715,8 +1716,8 @@ export default function InboxClient() {
                               })
                             }
                           />
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                     {scheduleMode && (
                       <div className="space-y-1">
