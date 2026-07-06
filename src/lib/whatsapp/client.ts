@@ -189,6 +189,11 @@ export async function sendImageTemplate(
       },
     },
     { headers: headers() },
-  );
+  ).catch((err: unknown) => {
+    if (axios.isAxiosError(err)) {
+      console.error("[sendImageTemplate] Meta error:", JSON.stringify(err.response?.data));
+    }
+    throw err;
+  });
   return getSentMessageId(res.data);
 }
