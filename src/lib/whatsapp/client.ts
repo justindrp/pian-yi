@@ -149,3 +149,46 @@ export async function sendImageByUrl(
   const mediaId = await uploadMediaToMeta(compressed, "image/jpeg");
   return sendImageMessageById(to, mediaId, caption);
 }
+
+export async function fetchAndUploadImage(imageUrl: string): Promise<string> {
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+  const raw = Buffer.from(await res.arrayBuffer());
+  const compressed = await sharp(raw)
+    .jpeg({ quality: 85, mozjpeg: true })
+    .toBuffer();
+  return uploadMediaToMeta(compressed, "image/jpeg");
+}
+
+export async function sendImageTemplate(
+  to: string,
+  templateName: string,
+  mediaId: string,
+  bodyParams: string[],
+  languageCode = "id",
+): Promise<string> {
+  const res = await axios.post<MetaSendResponse>(
+    `${BASE_URL}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        components: [
+          {
+            type: "header",
+            parameters: [{ type: "image", image: { id: mediaId } }],
+          },
+          {
+            type: "body",
+            parameters: bodyParams.map((text) => ({ type: "text", text })),
+          },
+        ],
+      },
+    },
+    { headers: headers() },
+  );
+  return getSentMessageId(res.data);
+}

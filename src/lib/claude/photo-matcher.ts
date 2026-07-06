@@ -3,7 +3,7 @@ import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendImageByUrl } from "@/lib/whatsapp/client";
+import { fetchAndUploadImage, sendImageTemplate } from "@/lib/whatsapp/client";
 
 interface DeliveryRow {
   id: string;
@@ -190,7 +190,7 @@ export async function sendDeliveryPhotoToCustomer(
 
   if (!signedData?.signedUrl) return;
 
-  const caption = `Halo ${customerName}, pesanan ${mealType} hari ini sudah sampai ya 🍱 Selamat menikmati!\n\nBalas pesan ini dengan "ok" supaya besok bisa dikirim foto lagi ya kak 😊`;
+  const mediaId = await fetchAndUploadImage(signedData.signedUrl);
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
@@ -198,7 +198,12 @@ export async function sendDeliveryPhotoToCustomer(
     messageType: "image",
     modelUsed: "human",
   });
-  const messageId = await sendImageByUrl(phone, signedData.signedUrl, caption);
+  const messageId = await sendImageTemplate(
+    phone,
+    "delivery_proof",
+    mediaId,
+    [customerName, mealType],
+  );
   await updateMessageReceipt({
     conversationId,
     whatsappMessageId: messageId,
