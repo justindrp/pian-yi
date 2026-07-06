@@ -22,6 +22,16 @@ function getSentMessageId(data: MetaSendResponse): string {
   return messageId;
 }
 
+// Strips the axios config (which contains the Authorization header) before
+// re-throwing, so Next.js error logging can't leak the token.
+function sanitizeAxiosError(err: unknown): never {
+  if (axios.isAxiosError(err)) {
+    console.error("[whatsapp/client] Meta API error:", JSON.stringify(err.response?.data));
+    throw new Error(`WhatsApp API error ${err.response?.status}: ${JSON.stringify(err.response?.data)}`);
+  }
+  throw err;
+}
+
 export async function sendTextMessage(
   to: string,
   text: string,
@@ -36,7 +46,7 @@ export async function sendTextMessage(
       text: { body: text },
     },
     { headers: headers() },
-  );
+  ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
@@ -55,7 +65,7 @@ export async function sendImageMessage(
       image: { link: imageUrl, caption },
     },
     { headers: headers() },
-  );
+  ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
@@ -75,7 +85,7 @@ export async function uploadMediaToMeta(
       ...form.getHeaders(),
       Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
     },
-  });
+  }).catch(sanitizeAxiosError);
   return res.data.id;
 }
 
@@ -94,24 +104,22 @@ export async function sendImageMessageById(
       image: { id: mediaId, caption },
     },
     { headers: headers() },
-  );
+  ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
 export async function downloadMedia(mediaId: string): Promise<Buffer> {
   const token = process.env.WHATSAPP_TOKEN;
   const version = process.env.WHATSAPP_API_VERSION;
-  // First get the media URL
   const metaRes = await axios.get(
     `https://graph.facebook.com/${version}/${mediaId}`,
     { headers: { Authorization: `Bearer ${token}` } },
-  );
+  ).catch(sanitizeAxiosError);
   const mediaUrl = (metaRes.data as { url: string }).url;
-  // Then download the binary
   const dlRes = await axios.get(mediaUrl, {
     headers: { Authorization: `Bearer ${token}` },
     responseType: "arraybuffer",
-  });
+  }).catch(sanitizeAxiosError);
   return Buffer.from(dlRes.data as ArrayBuffer);
 }
 
@@ -189,11 +197,6 @@ export async function sendImageTemplate(
       },
     },
     { headers: headers() },
-  ).catch((err: unknown) => {
-    if (axios.isAxiosError(err)) {
-      console.error("[sendImageTemplate] Meta error:", JSON.stringify(err.response?.data));
-    }
-    throw err;
-  });
+  ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
