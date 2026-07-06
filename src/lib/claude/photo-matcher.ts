@@ -167,11 +167,22 @@ export async function sendDeliveryPhotoToCustomer(
   }
 
   const delivery = rows.find((d) => d.customer_id === customerId);
-  const customerName = delivery?.customers?.name ?? "kak";
   const mealType = delivery?.meal_type === "dinner" ? "dinner" : "lunch";
-  const phone = delivery?.customers?.phone_number;
 
-  if (!phone) return;
+  let phone = delivery?.customers?.phone_number;
+  if (!phone) {
+    const { data: customer } = await db
+      .from("customers")
+      .select("phone_number")
+      .eq("id", customerId)
+      .single();
+    phone = customer?.phone_number ?? undefined;
+  }
+
+  if (!phone) {
+    console.error(`[sendDeliveryPhotoToCustomer] no phone for customer ${customerId}`);
+    return;
+  }
 
   const { data: proof } = await db
     .from("delivery_proofs")
