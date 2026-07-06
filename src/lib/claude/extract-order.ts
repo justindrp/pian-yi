@@ -11,6 +11,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getDeliveryRoute } from "@/lib/utils/format";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
+export interface DeliveryScheduleSlot {
+  date: string;
+  meal_type: string;
+  portions: number;
+}
+
 export interface ExtractedOrderInput {
   customer_name: string;
   package_size: number;
@@ -23,6 +29,7 @@ export interface ExtractedOrderInput {
   sub_area?: string;
   meal_time_preference?: string;
   custom_schedule?: Record<string, unknown>;
+  delivery_schedule?: DeliveryScheduleSlot[];
   start_date?: string;
   end_date?: string;
   subcontractor_id?: string;
@@ -98,6 +105,26 @@ export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
         type: "string",
         description:
           "ISO date string YYYY-MM-DD — the customer's requested last delivery date",
+      },
+      delivery_schedule: {
+        type: "array",
+        description:
+          "Use ONLY when portions vary by delivery day (e.g. 3 on Tue, 2 on Wed). Omit when all deliveries have the same portion count — use portions_per_delivery instead. When used, package_size must equal the sum of all slot portions.",
+        items: {
+          type: "object",
+          properties: {
+            date: {
+              type: "string",
+              description: "ISO date YYYY-MM-DD",
+            },
+            meal_type: {
+              type: "string",
+              enum: ["lunch", "dinner"],
+            },
+            portions: { type: "number" },
+          },
+          required: ["date", "meal_type", "portions"],
+        },
       },
       subcontractor_id: {
         type: "string",
@@ -334,29 +361,66 @@ export async function createOrderFromExtraction(
 ): Promise<void> {
   const db = createAdminClient();
   const sendPaymentInfo = options?.sendPaymentInfo ?? true;
-  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(input.package_size);
 
-  await db.from("orders").insert({
-    customer_id: customerId,
-    package_size: input.package_size,
-    price_per_portion: pricePerPortion,
-    total_price: totalPrice,
-    portions_per_delivery: input.portions_per_delivery,
-    portions_lunch: input.portions_lunch ?? 0,
-    portions_dinner: input.portions_dinner ?? 0,
-    portions_remaining: input.package_size,
-    meal_time_preference: input.meal_time_preference ?? "per_day_decision",
-    custom_schedule: (input.custom_schedule ?? null) as
-      | import("@/types/database").Json
-      | null,
-    start_date: (input.start_date ?? null) as string,
-    end_date: input.end_date ?? null,
-    size: "s",
-    subcontractor_id: input.subcontractor_id ?? null,
-    status: "pending_payment",
-    confirmed_at: new Date().toISOString(),
-  });
+  const schedule = input.delivery_schedule?.length ? input.delivery_schedule : null;
+  const packageSize = schedule
+    ? schedule.reduce((sum, s) => sum + s.portions, 0)
+    : input.package_size;
+  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
+    await getExtractedOrderPricing(packageSize);
+
+  const sortedSchedule = schedule
+    ? [...schedule].sort((a, b) => a.date.localeCompare(b.date))
+    : null;
+  const startDate = sortedSchedule
+    ? sortedSchedule[0].date
+    : ((input.start_date ?? null) as string);
+  const endDate = sortedSchedule
+    ? sortedSchedule[sortedSchedule.length - 1].date
+    : (input.end_date ?? null);
+
+  const { data: insertedOrder } = await db
+    .from("orders")
+    .insert({
+      customer_id: customerId,
+      ...(schedule ? { order_type: "scheduled" } : {}),
+      package_size: packageSize,
+      price_per_portion: pricePerPortion,
+      total_price: totalPrice,
+      portions_per_delivery: input.portions_per_delivery,
+      portions_lunch: input.portions_lunch ?? 0,
+      portions_dinner: input.portions_dinner ?? 0,
+      portions_remaining: packageSize,
+      meal_time_preference: input.meal_time_preference ?? "per_day_decision",
+      custom_schedule: (input.custom_schedule ?? null) as
+        | import("@/types/database").Json
+        | null,
+      start_date: startDate,
+      end_date: endDate,
+      size: "s",
+      subcontractor_id: input.subcontractor_id ?? null,
+      status: "pending_payment",
+      confirmed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (sortedSchedule && insertedOrder) {
+    const today = new Date().toISOString().slice(0, 10);
+    await db.from("daily_deliveries").upsert(
+      sortedSchedule.map((s) => ({
+        delivery_date: s.date,
+        customer_id: customerId,
+        order_id: insertedOrder.id,
+        meal_type: s.meal_type,
+        portions: s.portions,
+        subcontractor_id: input.subcontractor_id ?? null,
+        address_slot: 1,
+        status: s.date < today ? "delivered" : "scheduled",
+      })),
+      { onConflict: "delivery_date,customer_id,meal_type", ignoreDuplicates: true },
+    );
+  }
 
   const { data: existingCustomer } = await db
     .from("customers")
@@ -365,10 +429,9 @@ export async function createOrderFromExtraction(
     .single();
   const oldRemaining = existingCustomer?.portions_remaining ?? 0;
   const oldAvg = existingCustomer?.avg_price_per_portion ?? 0;
-  const newRemaining = oldRemaining + input.package_size;
+  const newRemaining = oldRemaining + packageSize;
   const newAvg = Math.round(
-    (oldRemaining * oldAvg + input.package_size * pricePerPortion) /
-      newRemaining,
+    (oldRemaining * oldAvg + packageSize * pricePerPortion) / newRemaining,
   );
 
   const addressType = await classifyAddress(input.address);
