@@ -3,7 +3,14 @@ set -e
 
 pnpm install --frozen-lockfile
 
-if [ "$#" -eq 0 ]; then
+# Only bump version when pushing to main
+PUSHING_TO_MAIN=false
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    PUSHING_TO_MAIN=true
+  fi
+done
+if [ "$PUSHING_TO_MAIN" = "false" ]; then
   exit 0
 fi
 
