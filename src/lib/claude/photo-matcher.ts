@@ -171,7 +171,6 @@ export async function sendDeliveryPhotoToCustomer(
   }
 
   const delivery = rows.find((d) => d.customer_id === customerId);
-  const mealType = delivery?.meal_type === "dinner" ? "dinner" : "lunch";
 
   let phone = delivery?.customers?.phone_number;
   if (!phone) {
