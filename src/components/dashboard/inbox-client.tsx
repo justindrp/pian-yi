@@ -8,7 +8,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { ExtractedOrderReview } from "@/lib/claude/extract-order";
+import type {
+  DeliveryScheduleSlot,
+  ExtractedOrderReview,
+} from "@/lib/claude/extract-order";
 import { normalizeCustomerState } from "@/lib/customers/lifecycle";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
@@ -1567,53 +1570,209 @@ export default function InboxClient() {
                   }
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label
-                    htmlFor="extract-package-size"
-                    className="text-xs font-medium text-gray-700"
-                  >
-                    Package size (porsi)
-                  </label>
-                  <Input
-                    id="extract-package-size"
-                    type="number"
-                    value={extractedOrder.package_size}
-                    onChange={(e) => {
-                      const packageSize = Number(e.target.value);
-                      setExtractedOrder({
-                        ...extractedOrder,
-                        package_size: packageSize,
-                        ...(Number.isFinite(packageSize) && packageSize > 0
-                          ? {}
-                          : { price_per_portion: 0, total_price: 0 }),
-                      });
-                      if (Number.isFinite(packageSize) && packageSize > 0) {
-                        void refreshExtractedOrderPricing(packageSize);
+              {(() => {
+                const o = extractedOrder as ExtractedOrderReview;
+                const scheduleMode = (o.delivery_schedule?.length ?? 0) > 0;
+
+                function toggleScheduleMode() {
+                  if (scheduleMode) {
+                    setExtractedOrder({ ...o, delivery_schedule: [] });
+                    return;
+                  }
+                  const defaultPortions = o.portions_per_delivery || 1;
+                  const slots: DeliveryScheduleSlot[] = [];
+                  if (o.start_date && o.end_date) {
+                    const cur = new Date(o.start_date);
+                    const last = new Date(o.end_date);
+                    while (cur <= last) {
+                      const dow = cur.getDay();
+                      if (dow !== 0 && dow !== 6) {
+                        slots.push({
+                          date: cur.toISOString().slice(0, 10),
+                          meal_type: "lunch",
+                          portions: defaultPortions,
+                        });
                       }
-                    }}
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="extract-portions-per-delivery"
-                    className="text-xs font-medium text-gray-700"
-                  >
-                    Porsi/pengiriman
-                  </label>
-                  <Input
-                    id="extract-portions-per-delivery"
-                    type="number"
-                    value={extractedOrder.portions_per_delivery}
-                    onChange={(e) =>
-                      setExtractedOrder({
-                        ...extractedOrder,
-                        portions_per_delivery: Number(e.target.value),
-                      })
+                      cur.setDate(cur.getDate() + 1);
                     }
-                  />
-                </div>
-              </div>
+                  }
+                  if (slots.length === 0) {
+                    slots.push({
+                      date: o.start_date ?? new Date().toISOString().slice(0, 10),
+                      meal_type: "lunch",
+                      portions: defaultPortions,
+                    });
+                  }
+                  const newTotal = slots.reduce((s, r) => s + r.portions, 0);
+                  setExtractedOrder({
+                    ...o,
+                    delivery_schedule: slots,
+                    package_size: newTotal,
+                  });
+                  void refreshExtractedOrderPricing(newTotal);
+                }
+
+                function updateScheduleRow(
+                  idx: number,
+                  patch: Partial<DeliveryScheduleSlot>,
+                ) {
+                  const rows = [...(o.delivery_schedule ?? [])];
+                  rows[idx] = { ...rows[idx], ...patch };
+                  const newTotal = rows.reduce((s, r) => s + r.portions, 0);
+                  setExtractedOrder({ ...o, delivery_schedule: rows, package_size: newTotal });
+                  if (patch.portions !== undefined) {
+                    void refreshExtractedOrderPricing(newTotal);
+                  }
+                }
+
+                function removeScheduleRow(idx: number) {
+                  const rows = (o.delivery_schedule ?? []).filter((_, i) => i !== idx);
+                  const newTotal = rows.reduce((s, r) => s + r.portions, 0);
+                  setExtractedOrder({ ...o, delivery_schedule: rows, package_size: newTotal });
+                  void refreshExtractedOrderPricing(newTotal);
+                }
+
+                function addScheduleRow() {
+                  const rows = o.delivery_schedule ?? [];
+                  const lastDate =
+                    rows[rows.length - 1]?.date ??
+                    new Date().toISOString().slice(0, 10);
+                  const next = new Date(lastDate);
+                  next.setDate(next.getDate() + 1);
+                  while (next.getDay() === 0 || next.getDay() === 6) {
+                    next.setDate(next.getDate() + 1);
+                  }
+                  const newRows = [
+                    ...rows,
+                    {
+                      date: next.toISOString().slice(0, 10),
+                      meal_type: "lunch",
+                      portions: o.portions_per_delivery || 1,
+                    },
+                  ];
+                  const newTotal = newRows.reduce((s, r) => s + r.portions, 0);
+                  setExtractedOrder({ ...o, delivery_schedule: newRows, package_size: newTotal });
+                  void refreshExtractedOrderPricing(newTotal);
+                }
+
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label
+                          htmlFor="extract-package-size"
+                          className="text-xs font-medium text-gray-700"
+                        >
+                          Package size (porsi)
+                        </label>
+                        <Input
+                          id="extract-package-size"
+                          type="number"
+                          value={o.package_size}
+                          readOnly={scheduleMode}
+                          className={scheduleMode ? "bg-gray-50" : ""}
+                          onChange={(e) => {
+                            if (scheduleMode) return;
+                            const packageSize = Number(e.target.value);
+                            setExtractedOrder({
+                              ...o,
+                              package_size: packageSize,
+                              ...(Number.isFinite(packageSize) && packageSize > 0
+                                ? {}
+                                : { price_per_portion: 0, total_price: 0 }),
+                            });
+                            if (Number.isFinite(packageSize) && packageSize > 0) {
+                              void refreshExtractedOrderPricing(packageSize);
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label
+                            htmlFor="extract-portions-per-delivery"
+                            className="text-xs font-medium text-gray-700"
+                          >
+                            {scheduleMode ? "Jadwal/hari" : "Porsi/pengiriman"}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={toggleScheduleMode}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            {scheduleMode ? "Seragam" : "Per hari"}
+                          </button>
+                        </div>
+                        {!scheduleMode && (
+                          <Input
+                            id="extract-portions-per-delivery"
+                            type="number"
+                            value={o.portions_per_delivery}
+                            onChange={(e) =>
+                              setExtractedOrder({
+                                ...o,
+                                portions_per_delivery: Number(e.target.value),
+                              })
+                            }
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {scheduleMode && (
+                      <div className="space-y-1">
+                        {(o.delivery_schedule ?? []).map((slot, idx) => (
+                          <div
+                            key={`${slot.date}-${idx}`}
+                            className="flex gap-1 items-center"
+                          >
+                            <Input
+                              type="date"
+                              value={slot.date}
+                              className="text-xs h-8 flex-1"
+                              onChange={(e) =>
+                                updateScheduleRow(idx, { date: e.target.value })
+                              }
+                            />
+                            <select
+                              value={slot.meal_type}
+                              onChange={(e) =>
+                                updateScheduleRow(idx, { meal_type: e.target.value })
+                              }
+                              className="text-xs h-8 border rounded px-1 bg-white"
+                            >
+                              <option value="lunch">Siang</option>
+                              <option value="dinner">Malam</option>
+                            </select>
+                            <Input
+                              type="number"
+                              value={slot.portions}
+                              min={1}
+                              className="text-xs h-8 w-14"
+                              onChange={(e) =>
+                                updateScheduleRow(idx, { portions: Number(e.target.value) })
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeScheduleRow(idx)}
+                              className="text-gray-400 hover:text-red-500 text-sm px-1"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={addScheduleRow}
+                          className="text-xs text-blue-600 hover:underline mt-1"
+                        >
+                          + Tambah hari
+                        </button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label
