@@ -50,6 +50,7 @@ export interface WhatsAppStatusUpdate {
   messageId: string;
   status: string;
   timestamp?: string;
+  errors?: Array<{ code: number; title: string; message?: string }>;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -96,12 +97,21 @@ export function parseStatusUpdates(
     const state = status.status;
     if (typeof messageId !== "string" || typeof state !== "string") return [];
 
+    const rawErrors = status.errors;
+    const errors = Array.isArray(rawErrors)
+      ? rawErrors.flatMap((e): Array<{ code: number; title: string; message?: string }> => {
+          if (!isObject(e)) return [];
+          return [{ code: Number(e.code), title: String(e.title), message: typeof e.message === "string" ? e.message : undefined }];
+        })
+      : undefined;
+
     return [
       {
         messageId,
         status: state,
         timestamp:
           typeof status.timestamp === "string" ? status.timestamp : undefined,
+        errors: errors?.length ? errors : undefined,
       },
     ];
   });

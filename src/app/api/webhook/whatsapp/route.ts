@@ -129,6 +129,9 @@ export async function processWebhookAsync(
     for (const statusUpdate of statusUpdates) {
       const normalizedStatus = normalizeWhatsAppStatus(statusUpdate.status);
       if (!normalizedStatus) continue;
+      if (normalizedStatus === "failed" && statusUpdate.errors?.length) {
+        console.error("[webhook] message delivery failed:", statusUpdate.messageId, JSON.stringify(statusUpdate.errors));
+      }
       await updateMessageReceipt({
         messageId: statusUpdate.messageId,
         status: normalizedStatus,
