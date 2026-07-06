@@ -3,7 +3,11 @@ import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchAndUploadImage, sendImageTemplate } from "@/lib/whatsapp/client";
+import {
+  fetchAndUploadImage,
+  sendImageTemplate,
+  sendTextMessage,
+} from "@/lib/whatsapp/client";
 
 interface DeliveryRow {
   id: string;
@@ -220,4 +224,10 @@ export async function sendDeliveryPhotoToCustomer(
     whatsappMessageId: messageId,
     status: "sent",
   });
+
+  // Prompt customer to reply so the 24h service window stays open for tomorrow's proof.
+  await sendTextMessage(
+    phone,
+    "Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima.",
+  );
 }
