@@ -469,12 +469,14 @@ export default function CustomersClient() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Customers</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-400">
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <h1 className="text-xl font-semibold text-gray-900 mr-1">
+          Customers
+          <span className="ml-2 text-sm font-normal text-gray-400">
             {data?.total ?? 0} total
           </span>
+        </h1>
+        <div className="flex items-center gap-2 ml-auto flex-wrap">
           <Button
             type="button"
             variant="outline"
@@ -505,7 +507,7 @@ export default function CustomersClient() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or phone..."
-          className="w-full max-w-xs"
+          className="w-full sm:max-w-xs"
         />
       </div>
 
@@ -525,19 +527,19 @@ export default function CustomersClient() {
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
                 Area
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
+              <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-medium text-gray-500">
                 Sub Area
               </th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">
+              <th className="hidden sm:table-cell text-right px-4 py-3 text-xs font-medium text-gray-500">
                 Remaining
               </th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">
+              <th className="hidden sm:table-cell text-right px-4 py-3 text-xs font-medium text-gray-500">
                 Avg Price
               </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
                 State
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
+              <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-medium text-gray-500">
                 Joined
               </th>
             </tr>
@@ -546,10 +548,21 @@ export default function CustomersClient() {
             {isLoading
               ? (["a", "b", "c", "d", "e"] as const).map((rowId) => (
                   <tr key={rowId} className="border-b border-gray-50">
-                    {(
-                      ["a", "b", "c", "d", "e", "f", "g", "h", "i"] as const
-                    ).map((colId) => (
+                    {(["a", "b", "c"] as const).map((colId) => (
                       <td key={colId} className="px-4 py-3">
+                        <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
+                      </td>
+                    ))}
+                    {(["d", "e"] as const).map((colId) => (
+                      <td key={colId} className="hidden sm:table-cell px-4 py-3">
+                        <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
+                      </td>
+                    ))}
+                    <td className="px-4 py-3">
+                      <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
+                    </td>
+                    {(["f", "g", "h"] as const).map((colId) => (
+                      <td key={colId} className="hidden sm:table-cell px-4 py-3">
                         <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
                       </td>
                     ))}
@@ -653,7 +666,7 @@ export default function CustomersClient() {
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="hidden sm:table-cell px-4 py-3 text-gray-500">
                         {editingCell?.id === c.id &&
                         editingCell.field === "sub_area" ? (
                           <Input
@@ -693,10 +706,10 @@ export default function CustomersClient() {
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                      <td className="hidden sm:table-cell px-4 py-3 text-right tabular-nums text-gray-700">
                         {c.portions_remaining > 0 ? c.portions_remaining : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-gray-500 text-xs">
+                      <td className="hidden sm:table-cell px-4 py-3 text-right tabular-nums text-gray-500 text-xs">
                         {c.avg_price_per_portion > 0
                           ? `Rp ${c.avg_price_per_portion.toLocaleString("id-ID")}`
                           : "—"}
@@ -704,7 +717,7 @@ export default function CustomersClient() {
                       <td className="px-4 py-3">
                         <StateBadge state={state} />
                       </td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">
+                      <td className="hidden sm:table-cell px-4 py-3 text-gray-400 text-xs">
                         {c.created_at ? formatDate(c.created_at) : "—"}
                       </td>
                     </tr>
