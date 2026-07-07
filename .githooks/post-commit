@@ -1,0 +1,33 @@
+#!/bin/sh
+# Guard: if this commit already includes package.json (i.e., this is the amend), skip
+if git diff HEAD~1..HEAD --name-only 2>/dev/null | grep -q 'package.json'; then
+  exit 0
+fi
+
+MSG=$(git log -1 --pretty=%s)
+
+# Skip merge commits
+if echo "$MSG" | grep -qE '^Merge'; then
+  exit 0
+fi
+
+# feat: → minor bump, everything else → patch
+if echo "$MSG" | grep -qE '^feat(\(.+\))?:'; then
+  BUMP="minor"
+else
+  BUMP="patch"
+fi
+
+node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const [major, minor, patch] = pkg.version.split('.').map(Number);
+  pkg.version = '$BUMP' === 'minor'
+    ? \`\${major}.\${minor + 1}.0\`
+    : \`\${major}.\${minor}.\${patch + 1}\`;
+  fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+  process.stderr.write('version → ' + pkg.version + '\n');
+"
+
+git add package.json
+git commit --amend --no-edit --no-verify
