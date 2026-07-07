@@ -1605,6 +1605,26 @@ export default function CustomersClient() {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot className="bg-gray-50 border-t-2 border-gray-200 text-gray-700 font-medium">
+                        <tr className="border-t border-gray-100">
+                          <td colSpan={2} className="px-2 py-1.5 text-gray-500">
+                            Total masuk
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-green-600 tabular-nums">
+                            +{ledger.totalPackage}
+                          </td>
+                          <td />
+                        </tr>
+                        <tr className="border-t border-gray-100">
+                          <td colSpan={2} className="px-2 py-1.5 text-gray-500">
+                            Total keluar
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-red-600 tabular-nums">
+                            -{ledger.totalDrawn}
+                          </td>
+                          <td />
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}
