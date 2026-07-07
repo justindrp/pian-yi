@@ -88,6 +88,7 @@ export default function OrdersClient() {
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const qc = useQueryClient();
 
   const { data: subcontractors } = useQuery({
@@ -217,14 +218,19 @@ export default function OrdersClient() {
     },
   });
 
-  const filteredOrders = (orders ?? []).filter((o) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      o.customers?.name?.toLowerCase().includes(q) ||
-      o.customers?.phone_number?.toLowerCase().includes(q)
-    );
-  });
+  const filteredOrders = (orders ?? [])
+    .filter((o) => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        o.customers?.name?.toLowerCase().includes(q) ||
+        o.customers?.phone_number?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      const cmp = (a.start_date ?? "").localeCompare(b.start_date ?? "");
+      return sortDir === "asc" ? cmp : -cmp;
+    });
 
   return (
     <div>
@@ -284,7 +290,12 @@ export default function OrdersClient() {
                 <th className="px-4 py-3 text-left">Remaining</th>
                 <th className="px-4 py-3 text-left">Total</th>
                 <th className="px-4 py-3 text-left">Area</th>
-                <th className="px-4 py-3 text-left">Start date</th>
+                <th
+                  className="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-600"
+                  onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                >
+                  Start date {sortDir === "asc" ? "↑" : "↓"}
+                </th>
                 <th className="px-4 py-3 text-left">Status</th>
               </tr>
             </thead>
