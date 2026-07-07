@@ -44,9 +44,9 @@ CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI c
 
 ## Workflow
 
-- After every code change, commit and push the current branch unless the user explicitly says not to.
+- Work happens in git worktrees on feature branches. After every code change, commit and push the current branch, then open a PR to merge into main. Never push directly to `origin/main`.
 - **REQUIRED before every commit, no exceptions:** Update root `CLAUDE.md` — edit the specific section the change affects (tech stack, business rules, API routes, known issues, etc.), never a dated changelog entry — and root `DATABASE.md` (if schema changed) in the same commit as the code change. Never commit code without updating these files. If you skipped this, make a follow-up commit immediately.
-- A git hook bumps the app version on every commit and amends the commit, so pushes often need a second attempt using the new HEAD SHA.
+- Version bumping is handled by a GitHub Actions workflow on push to main — no local git hook.
 
 When performing infrastructure work, prefer CLI calls over manual UI clicks so the actions are reproducible and auditable.
 
@@ -182,7 +182,7 @@ Full endpoint-level reference moved to `API_ROUTES.md` (read on demand when work
 - Dates stored as ISO strings; phone numbers as strings (preserve leading zero in display, store as international format `+628...`)
 - All commits go through `gh` CLI; PR descriptions written via `gh pr create`
 - Formatting enforced by Biome on save and in CI
-- After making any code or documentation change, commit and push the completed change to `origin/main`. Stage only files relevant to the change; leave unrelated dirty worktree files untouched.
+- After making any code or documentation change, commit and push to the current worktree branch. Stage only files relevant to the change; leave unrelated dirty worktree files untouched.
 
 ## Things to never do
 
