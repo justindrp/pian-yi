@@ -1,24 +1,15 @@
 /**
- * Re-runnable data audit: scans the three Google Sheets (CUSTOMERS, ORDER_HARIAN,
- * package_orders) against the Supabase customers table and writes DATA_AUDIT.md
- * listing every missing field, blank name, and name that does not match a DB
- * customer (with a best-guess suggestion).
+ * Re-runnable data audit: scans package_orders and ORDER_HARIAN Google Sheets
+ * against the CUSTOMERS Google Sheet (source of truth for names — NOT Supabase,
+ * NOT the sheet's own Sisa Kuota column) and writes DATA_AUDIT.md listing every
+ * missing field, blank name, name that does not match a CUSTOMERS row, and a
+ * computed remaining quota per customer (purchased − delivered to date).
  *
  *   set -a && . ./.env.local && set +a && pnpm tsx scripts/audit-sheet-data.ts
  */
 
 import { parse } from "csv-parse/sync";
 import { writeFileSync } from "node:fs";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "../src/types/database";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!supabaseUrl || !serviceRoleKey) {
-  console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
-const db = createClient<Database>(supabaseUrl, serviceRoleKey);
 
 const SHEET_ID = "13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI";
 const GID = { customers: "1454452383", harian: "1975392427", packages: "341974326" };
@@ -159,37 +150,45 @@ function col(row: Record<string, string>, keys: string[]): string {
 async function main() {
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: dbCustomers } = await db.from("customers").select("id, name");
+  const [custRows, pkgRows, harRows] = await Promise.all([
+    fetchCsv(GID.customers),
+    fetchCsv(GID.packages),
+    fetchCsv(GID.harian),
+  ]);
+
+  // Source of truth for names: the CUSTOMERS sheet (not Supabase, not Sisa Kuota).
   const idByName = new Map<string, string>();
   const dbNames: string[] = [];
-  for (const c of dbCustomers ?? []) {
-    if (!c.name) continue;
-    dbNames.push(c.name);
-    for (const k of nameKeys(c.name)) idByName.set(k, c.id);
+  for (const r of custRows) {
+    const nama = col(r, ["nama", "name"]);
+    if (!nama || nama === "#N/A") continue;
+    dbNames.push(nama);
+    for (const k of nameKeys(nama)) idByName.set(k, nama);
   }
-
-  const [pkgRows, harRows] = await Promise.all([fetchCsv(GID.packages), fetchCsv(GID.harian)]);
 
   const out: string[] = [];
   const w = (s = "") => out.push(s);
 
-  w("# Data Audit — Google Sheets vs Supabase");
+  w("# Data Audit — package_orders / ORDER_HARIAN vs CUSTOMERS sheet");
   w("");
   w(`_Generated ${today}. Re-run: \`set -a && . ./.env.local && set +a && pnpm tsx scripts/audit-sheet-data.ts\`_`);
   w("");
-  w(`DB customers: **${dbNames.length}** · package_orders rows: **${pkgRows.length}** · ORDER_HARIAN rows: **${harRows.length}**`);
+  w(`CUSTOMERS sheet rows: **${dbNames.length}** · package_orders rows: **${pkgRows.length}** · ORDER_HARIAN rows: **${harRows.length}**`);
   w("");
 
-  // ── A. package_orders: names with no DB match ────────────────────────────
+  // ── A. package_orders: names with no match in the CUSTOMERS sheet ────────
   type Agg = { rows: number; porsi: number };
   const pkgUnmatched = new Map<string, Agg>();
+  const pkgByCustomer = new Map<string, number>(); // canonical name -> total porsi purchased
+  type Event = { date: string; porsi: number };
+  const pkgEvents = new Map<string, Event[]>(); // canonical name -> dated purchase events
   let pkgFiller = 0;
   const pkgOrphan: string[] = []; // real purchase (date/porsi/total) but NO name
   const pkgBlankPorsi: string[] = [];
   const pkgSuspicious: string[] = [];
   for (const r of pkgRows) {
     const nama = col(r, ["nama", "name"]);
-    const porsi = digits(col(r, ["porsi", "portions"]));
+    const porsi = digits(col(r, ["porsi", "portions", "portion"]));
     const tgl = col(r, ["tanggal", "date"]);
     const total = digits(col(r, ["total harga", "total"]));
     if (!nama || nama === "#N/A") {
@@ -204,16 +203,25 @@ async function main() {
     }
     if (porsi === 0) pkgBlankPorsi.push(`${nama} (${tgl || "no date"})`);
     if (porsi > 500) pkgSuspicious.push(`${nama}: porsi=${porsi} (${col(r, ["tanggal", "date"])})`);
-    if (!matchId(idByName, nama)) {
+    const canonical = matchId(idByName, nama);
+    if (!canonical) {
       const a = pkgUnmatched.get(nama) ?? { rows: 0, porsi: 0 };
       a.rows++; a.porsi += porsi;
       pkgUnmatched.set(nama, a);
+    } else {
+      pkgByCustomer.set(canonical, (pkgByCustomer.get(canonical) ?? 0) + porsi);
+      const d = parseDate(tgl);
+      if (d) {
+        const evs = pkgEvents.get(canonical) ?? [];
+        evs.push({ date: d, porsi });
+        pkgEvents.set(canonical, evs);
+      }
     }
   }
 
-  w("## A. package_orders — names with NO matching DB customer");
+  w("## A. package_orders — names with NO matching customer in the CUSTOMERS sheet");
   w("");
-  w("These purchases are not counted toward any customer's quota. Either the customer is missing from the DB, or the name is spelled differently.");
+  w("These purchases are not counted toward any customer's quota. Either the customer is missing from the CUSTOMERS sheet, or the name is spelled differently.");
   w("");
   if (pkgUnmatched.size === 0) {
     w("_None._");
@@ -249,6 +257,8 @@ async function main() {
   // ── B. ORDER_HARIAN: blank customer name ─────────────────────────────────
   const harBlankName: string[] = [];
   const harUnmatched = new Map<string, Agg>();
+  const harByCustomer = new Map<string, number>(); // canonical name -> total porsi delivered to date
+  const harEvents = new Map<string, Event[]>(); // canonical name -> dated delivery events (to date)
   const harBlankDate: number[] = [];
   const harZeroPorsi: string[] = [];
   const harNAarea: string[] = [];
@@ -259,7 +269,7 @@ async function main() {
     const tgl = col(r, ["tanggal", "date"]);
     const date = parseDate(tgl);
     const meal = col(r, ["lunch", "meal"]);
-    const porsi = digits(col(r, ["jumlah", "porsi", "portions"]));
+    const porsi = digits(col(r, ["jumlah", "porsi", "portions", "portion"]));
     const area = col(r, ["area"]);
 
     if (!nama || nama === "#N/A") {
@@ -274,10 +284,18 @@ async function main() {
     if (!date) harBlankDate.push(harRowsScanned);
     if (porsi === 0) harZeroPorsi.push(`${nama} ${tgl} ${meal}`);
     if (area === "#N/A" || area === "") harNAarea.push(`${nama} ${tgl}`);
-    if (!matchId(idByName, nama)) {
+    const canonical = matchId(idByName, nama);
+    if (!canonical) {
       const a = harUnmatched.get(nama) ?? { rows: 0, porsi: 0 };
       a.rows++; a.porsi += porsi;
       harUnmatched.set(nama, a);
+    } else if (!date || date <= today) {
+      harByCustomer.set(canonical, (harByCustomer.get(canonical) ?? 0) + porsi);
+      if (date) {
+        const evs = harEvents.get(canonical) ?? [];
+        evs.push({ date, porsi });
+        harEvents.set(canonical, evs);
+      }
     }
   }
 
@@ -294,22 +312,108 @@ async function main() {
   }
   w("");
 
-  // ── C. ORDER_HARIAN: name no DB match ────────────────────────────────────
-  w("## C. ORDER_HARIAN — names with NO matching DB customer");
+  // ── C. ORDER_HARIAN: name no match in CUSTOMERS sheet ─────────────────────
+  w("## C. ORDER_HARIAN — names with NO matching customer in the CUSTOMERS sheet");
   w("");
-  w("These delivery rows are NOT deducted, so the named customer's remaining is overstated (or the customer is missing from the DB).");
+  w("These delivery rows are NOT deducted, so the named customer's remaining is overstated (or the customer is missing from the CUSTOMERS sheet).");
   w("");
   if (harUnmatched.size === 0) {
     w("_None._");
   } else {
-    w("| Sheet name | Rows | Σ Porsi (delivered) | Likely DB match? |");
+    w("| Sheet name | Rows | Σ Porsi (delivered) | Likely match? |");
     w("|---|---|---|---|");
     for (const [name, a] of [...harUnmatched].sort((x, y) => y[1].porsi - x[1].porsi)) {
       const s = suggest(name, dbNames);
-      w(`| ${name} | ${a.rows} | ${a.porsi} | ${s || "— (not in DB?)"} |`);
+      w(`| ${name} | ${a.rows} | ${a.porsi} | ${s || "— (not in sheet?)"} |`);
     }
   }
   w("");
+
+  // ── E. Computed remaining quota (package_orders − ORDER_HARIAN to date) ──
+  w("## E. Computed remaining quota per customer (ignores Sisa Kuota column)");
+  w("");
+  w(`Remaining = Σ package_orders porsi − Σ ORDER_HARIAN porsi delivered on or before ${today}, matched by CUSTOMERS sheet name. Names from A/C (unmatched rows) are excluded — fix those first, they are not counted here.`);
+  w("");
+  const allCanonical = new Set([...pkgByCustomer.keys(), ...harByCustomer.keys()]);
+  const remainingRows: { name: string; purchased: number; delivered: number; remaining: number }[] = [];
+  for (const name of allCanonical) {
+    const purchased = pkgByCustomer.get(name) ?? 0;
+    const delivered = harByCustomer.get(name) ?? 0;
+    remainingRows.push({ name, purchased, delivered, remaining: purchased - delivered });
+  }
+  remainingRows.sort((a, b) => a.remaining - b.remaining);
+  const negative = remainingRows.filter((r) => r.remaining < 0);
+  // Customers with 0 logged purchases but deliveries: package_orders was only
+  // backfilled from Dec 1 onward, so these are a data-gap, not a real deficit.
+  const noHistory = negative.filter((r) => r.purchased === 0);
+  const realDeficit = negative.filter((r) => r.purchased > 0);
+  w(`**${realDeficit.length} customer(s) with negative computed remaining despite having logged purchases** (candidates for free/goodwill quota — see Section F):`);
+  w("");
+  if (realDeficit.length === 0) {
+    w("_None._");
+  } else {
+    w("| Customer | Purchased | Delivered | Remaining |");
+    w("|---|---|---|---|");
+    for (const r of realDeficit) w(`| ${r.name} | ${r.purchased} | ${r.delivered} | ${r.remaining} |`);
+  }
+  w("");
+  w(`**${noHistory.length} customer(s) with 0 logged purchases but deliveries exist** — package_orders was only backfilled from Dec 1, 2025 onward; these predate the backfill and are not a real deficit:`);
+  w("");
+  if (noHistory.length === 0) {
+    w("_None._");
+  } else {
+    for (const r of noHistory) w(`- ${r.name} (delivered ${r.delivered})`);
+  }
+  w("");
+  w("<details><summary>Full computed remaining quota, all customers</summary>");
+  w("");
+  w("| Customer | Purchased | Delivered | Remaining |");
+  w("|---|---|---|---|");
+  for (const r of [...remainingRows].sort((a, b) => a.name.localeCompare(b.name))) {
+    w(`| ${r.name} | ${r.purchased} | ${r.delivered} | ${r.remaining} |`);
+  }
+  w("");
+  w("</details>");
+  w("");
+
+  // ── F. Free-quota check: dates where a customer's running balance goes negative ──
+  w("## F. Free quota check — dates a customer's balance went negative");
+  w("");
+  w("For each customer with a real deficit (has purchases, still over-delivered — Section E), walks purchase and delivery events in date order and flags each delivery date where the running balance drops below zero. Use this to find *when* a free/goodwill portion (e.g. late-delivery compensation) was likely given, so it can be logged. `Gaylen (Influencer)` is excluded — permanent 1-portion/month barter for endorsement content, not a data issue.");
+  w("");
+  const KNOWN_EXCEPTIONS = ["gaylen"];
+  const deficitNames = realDeficit
+    .map((r) => r.name)
+    .filter((n) => !KNOWN_EXCEPTIONS.some((k) => n.toLowerCase().includes(k)));
+  if (deficitNames.length === 0) {
+    w("_None._");
+  } else {
+    for (const name of deficitNames) {
+      const timeline = [
+        ...(pkgEvents.get(name) ?? []).map((e) => ({ ...e, kind: "purchase" as const })),
+        ...(harEvents.get(name) ?? []).map((e) => ({ ...e, kind: "delivery" as const })),
+      ].sort((a, b) => a.date.localeCompare(b.date));
+      let balance = 0;
+      const flags: string[] = [];
+      for (const ev of timeline) {
+        const before = balance;
+        balance += ev.kind === "purchase" ? ev.porsi : -ev.porsi;
+        // Only flag the day balance first crosses from >=0 into negative —
+        // that's the likely free/goodwill grant. Later deliveries while still
+        // negative are just spending down that same grant, not a new one.
+        if (ev.kind === "delivery" && before >= 0 && balance < 0) {
+          flags.push(`${ev.date} (balance goes ${before} → ${balance})`);
+        }
+      }
+      w(`**${name}** — total deficit ${remainingRows.find((r) => r.name === name)?.remaining ?? "?"}, ${flags.length} likely grant date(s):`);
+      if (flags.length === 0) {
+        w("- (deficit only from unmatched/unlogged purchases before Dec 1 — no specific over-delivery date found)");
+      } else {
+        for (const f of flags) w(`- ${f}`);
+      }
+      w("");
+    }
+  }
 
   // ── D. other missing/suspect fields ──────────────────────────────────────
   w("## D. Other missing / suspicious data");
@@ -328,11 +432,12 @@ async function main() {
 
   w("## How to fix");
   w("");
-  w("1. **Section A/C suggestions**: if \"Likely DB match\" is right, rename the sheet entry to match the DB exactly (or add an alias in `scripts/import-customers-orders.ts` → `NAME_ALIASES`).");
-  w("2. **\"not in DB?\"**: the customer is missing — add them in the dashboard, or confirm they are non-customers (e.g. `panti`, `tambahan acara`).");
-  w("3. **Section A2 orphan purchases**: fill the Nama column in package_orders so the quota credits a customer (24 purchases, incl. a 52-porsi / Rp1.560.000 row).");
-  w("4. **Section D zeros/typos**: correct the Porsi cells (e.g. Mario Montana 2010 → 10).");
-  w("5. Re-run this audit, then `--reconcile --dry-run` to confirm the numbers settle.");
+  w("1. **Section A/C suggestions**: if \"Likely match\" is right, rename the sheet entry to match the CUSTOMERS sheet exactly (or add an alias in `scripts/import-customers-orders.ts` → `NAME_ALIASES`).");
+  w("2. **\"not in sheet?\"**: the customer is missing from CUSTOMERS — add them there, or confirm they are non-customers (e.g. `panti`, `tambahan acara`).");
+  w("3. **Section A2 orphan purchases**: fill the Nama column in package_orders so the quota credits a customer.");
+  w("4. **Section D zeros/typos**: correct the Porsi cells.");
+  w("5. **Section E**: negative remaining means over-delivered vs purchases, or a purchase row is still unmatched (fix A first) — this replaces the Sisa Kuota column as the trusted number.");
+  w("6. Re-run this audit, then `--reconcile --dry-run` to confirm the numbers settle.");
 
   writeFileSync("DATA_AUDIT.md", `${out.join("\n")}\n`);
   console.log("Wrote DATA_AUDIT.md");
