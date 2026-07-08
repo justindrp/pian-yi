@@ -44,9 +44,11 @@ CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI c
 
 ## Workflow
 
-- Work happens in git worktrees on feature branches. After every code change, commit and push the current branch, then open a PR to merge into main. Never push directly to `origin/main`.
-- **REQUIRED before every commit, no exceptions:** Update root `CLAUDE.md` — edit the specific section the change affects (tech stack, business rules, API routes, known issues, etc.), never a dated changelog entry — and root `DATABASE.md` (if schema changed) in the same commit as the code change. Never commit code without updating these files. If you skipped this, make a follow-up commit immediately.
-- Version bumping is handled by a GitHub Actions workflow on push to main — no local git hook.
+- Work happens either directly on `main` or in git worktrees on feature branches.
+  - **On main:** commit and push after every change.
+  - **On a worktree branch:** commit and push the branch, then open a PR to merge into main.
+- **REQUIRED before every commit, no exceptions:** Update root `CLAUDE.md` — edit the specific section the change affects (tech stack, business rules, API routes, known issues, etc.). Never append a dated changelog entry at the bottom; always edit the relevant section in-place. Update root `DATABASE.md` too if schema changed. Both updates go in the same commit as the code change. If you skipped this, make a follow-up commit immediately.
+- Version bumping is handled by a local `post-commit` hook (`.githooks/commit-msg`) — it amends the commit to include the bumped `package.json`. No GitHub Actions workflow involved.
 
 When performing infrastructure work, prefer CLI calls over manual UI clicks so the actions are reproducible and auditable.
 
