@@ -4,7 +4,7 @@ WhatsApp-based ordering system for **Pian Yi Catering**, a daily catering busine
 
 Two surfaces:
 
-- **Customers** — chat only via WhatsApp with an AI bot (Claude Sonnet 4.6)
+- **Customers** — chat only via WhatsApp with an AI bot (DeepSeek V4 Flash)
 - **Admins** — a PWA dashboard for operations (orders, deliveries, payments, inbox, accounting)
 
 ## Tech stack
@@ -17,7 +17,7 @@ Two surfaces:
 | Hosting | Railway (always-on Node, Singapore region) |
 | Database | Supabase Postgres + Row Level Security |
 | Auth | Supabase Auth (magic-link, admins only) |
-| AI | Claude Sonnet 4.6 (chat), Haiku 4.5 (classify/photo-match/sentiment) |
+| AI | DeepSeek V4 Flash (chat + classify/photo-match/sentiment) |
 | Messaging | Meta WhatsApp Business Cloud API v25.0 |
 | Push | `web-push` (VAPID, no Firebase) |
 | Data fetching | TanStack Query |
@@ -69,10 +69,12 @@ pnpm db:push      # push migrations to remote
 ```text
 src/
   app/
-    (dashboard)/   admin PWA pages (inbox, orders, deliveries, payments, ...)
+    (dashboard)/   admin PWA pages (inbox, orders, deliveries, payments, customers,
+                   accounting, settings, reports, broadcasts, chatbot-training, ...)
     (auth)/        login + callback
     api/           webhook, cron, push, and dashboard APIs
-  lib/             supabase, claude, whatsapp, push, utils
+  lib/             supabase, claude, whatsapp, push, utils, accounting,
+                   cache, customers, images, orders
   components/      ui (shadcn), dashboard, shared
   types/database.ts  (generated)
 supabase/migrations/  SQL migrations (Supabase CLI)
@@ -81,7 +83,7 @@ test/                 Jest suite
 
 WhatsApp webhook (after deploy): `https://<railway-app>.up.railway.app/api/webhook/whatsapp`
 
-See `CLAUDE.md` for full conventions, business rules, and the API route reference.
+See `CLAUDE.md` for full conventions and business rules. See `API_ROUTES.md` for the API route reference.
 
 ## Testing
 
