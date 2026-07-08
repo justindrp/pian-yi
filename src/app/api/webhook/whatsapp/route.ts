@@ -645,6 +645,36 @@ export async function processWebhookAsync(
         }
       }
 
+      const tnc = [
+        "*Syarat & Ketentuan Pian Yi Catering:*",
+        "",
+        `📦 Setiap porsi: nasi + lauk + sayur + sambal (mika bento)`,
+        `🚚 Pengiriman siang 10.00–12.00 WIB | malam 16.00–18.00 WIB`,
+        `⏰ Batas order & perubahan: jam ${deadlineText} H-1 pengiriman`,
+        `💰 Pembayaran di muka sebelum jam ${deadlineText}`,
+        `⚠️ Terlambat (siang >12.30 / malam >18.30) → diskon 50%`,
+        `🏠 Jika tidak ada di rumah, pesanan digantung di pintu/pagar`,
+        `📅 Tutup di semua hari libur nasional (tanggal merah)`,
+        "",
+        "Dengan melanjutkan pemesanan, kak menyetujui ketentuan di atas 🙏",
+      ].join("\n");
+      try {
+        const conversationId = await saveMessage({
+          customerId,
+          role: "assistant",
+          content: tnc,
+          modelUsed: "system",
+        });
+        const whatsappMessageId = await sendTextMessage(message.from, tnc);
+        await updateMessageReceipt({
+          conversationId,
+          whatsappMessageId,
+          status: "sent",
+        });
+      } catch (e) {
+        console.error("[welcome] tnc send failed:", e);
+      }
+
     }
   }
 
