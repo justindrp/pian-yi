@@ -645,13 +645,6 @@ export async function processWebhookAsync(
         }
       }
 
-      // Welcome sequence already greets the customer; skip Claude reply to avoid
-      // a redundant second hello, then mark processed.
-      await db
-        .from("processed_messages")
-        .update({ processed_at: new Date().toISOString() })
-        .eq("message_id", message.messageId);
-      return;
     }
   }
 
