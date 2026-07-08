@@ -6,7 +6,7 @@
 
 ## accounts
 
-Chart of accounts for double-entry bookkeeping.
+Chart of accounts for double-entry bookkeeping. Key accounts: 1001–1004 (Cash/Banks), 1200 Subcontractor Advance, **1201 Courier Cash Advance (Kasbon Kurir)**, 2001 Accounts Payable, 2100 Unearned Revenue, 4001 Catering Revenue, 5001 Subcontractor Cost.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -340,8 +340,9 @@ A double-entry journal entry (the header). Each journal has two or more lines in
 | reference | text | Human-readable reference code (e.g. "JNL-2026-0001") |
 | date | date | Transaction date |
 | description | text | What this entry records |
-| source_type | text | What generated this entry (e.g. "order", "manual") |
-| source_id | text | ID of the source record (e.g. order ID) |
+| source_type | text | What generated this entry (`order_payment`, `delivery`, `delivery_cogs`, `manual`) |
+| source_id | text | ID or composite key of the source record. Auto-generated delivery journals use `rev_{date}_{meal_type}` / `cogs_{date}_{meal_type}` — one aggregated journal per meal per day, idempotent on first save |
+| notes | text | Calculation breakdown shown in the UI (e.g. "45 porsi: 20p × Rp19.500, 25p × Rp21.000 = Rp915.000") |
 | created_at | timestamp | |
 
 ---
@@ -493,7 +494,8 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | admin_phone | text | Primary WhatsApp number for the kitchen admin |
 | admin_phone_2 | text | Secondary WhatsApp number |
 | delivery_areas | json | Array of area strings this kitchen serves (e.g. ["BSD Baru", "Gading Serpong"]) |
-| cost_per_portion | integer | What we pay this kitchen per portion in IDR |
+| cost_per_portion | integer | What we pay per portion in IDR — used for Route 2 (kitchen delivers) |
+| cost_per_portion_route1 | integer | Override cost for Route 1 (we use own courier, cheaper). NULL = same as cost_per_portion. Thenie: 19,500 (R1) / 21,000 (R2) |
 | menu_image_url | text | URL of the current weekly menu image (shown to new customers) |
 | menu_text | text | Plain-text menu description injected into the chatbot system prompt |
 | notes | text | Internal notes about this kitchen |

@@ -133,12 +133,25 @@ export async function PUT(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
 
   // Pre-fetch subcontractor costs to avoid N+1 queries in the loop
-  const { data: subcontractors } = await db
+  const { data: rawSubs } = await db
     .from("subcontractors")
-    .select("id, cost_per_portion");
-  const subCostMap = new Map<string, number>(
-    (subcontractors ?? []).map((s) => [s.id, s.cost_per_portion ?? 0]),
+    .select("id, cost_per_portion, cost_per_portion_route1");
+  type SubRow = { id: string; cost_per_portion: number | null; cost_per_portion_route1?: number | null };
+  const subcontractors = (rawSubs ?? []) as unknown as SubRow[];
+  const subCostMap = new Map<string, number>(subcontractors.map((s) => [s.id, s.cost_per_portion ?? 0]));
+  const subCostRoute1Map = new Map<string, number | null>(
+    subcontractors.map((s) => [s.id, s.cost_per_portion_route1 ?? null]),
   );
+
+  // Accumulate per-meal journal data; journals created after loop (one per meal_type per day)
+  type JournalAccum = {
+    portions: number;
+    pricePerPortion: number;
+    addonCostPerPortion: number;
+    subcontractorId: string | null;
+    customerId: string;
+  };
+  const journalAccum = new Map<string, JournalAccum[]>(); // key: meal_type
 
   for (const row of body.rows) {
     // Cancellation path: reverse quota deduction if already processed
@@ -208,42 +221,94 @@ export async function PUT(req: NextRequest): Promise<Response> {
       { onConflict: "delivery_date,customer_id,meal_type" },
     ).select("id").single();
 
-    // Record journals for non-skipped rows (quota deduction handled by nightly cron)
-    if (!row.skip && upserted?.id) {
+    // Accumulate journal data for non-skipped rows; journals created after loop
+    if (!row.skip && upserted?.id && row.order_id) {
       const { data: ord } = await db
         .from("orders")
         .select("price_per_portion, addon_cost_per_portion")
         .eq("id", row.order_id)
         .single();
 
-      // Revenue recognition: Dr Unearned Revenue / Cr Catering Revenue
       if (ord?.price_per_portion) {
-        const revenueAmount = row.portions * ord.price_per_portion;
+        const mealType = row.meal_type;
+        if (!journalAccum.has(mealType)) journalAccum.set(mealType, []);
+        journalAccum.get(mealType)!.push({
+          portions: row.portions,
+          pricePerPortion: ord.price_per_portion,
+          addonCostPerPortion: ord.addon_cost_per_portion ?? 0,
+          subcontractorId: row.subcontractor_id,
+          customerId: row.customer_id,
+        });
+      }
+    }
+  }
+
+  // Create one revenue + one COGS journal per meal_type (idempotent: skipped if already exists)
+  if (journalAccum.size > 0) {
+    const allEntries = [...journalAccum.values()].flat();
+    const uniqueCustomerIds = [...new Set(allEntries.map((e) => e.customerId))];
+
+    const { data: custRoutes } = await db
+      .from("customers")
+      .select("id, delivery_route")
+      .in("id", uniqueCustomerIds);
+    const routeMap = new Map<string, string | null>(
+      (custRoutes ?? []).map((c) => [c.id, c.delivery_route as string | null]),
+    );
+
+    for (const [mealType, entries] of journalAccum.entries()) {
+      // Revenue: group by price_per_portion
+      const revenueByRate = new Map<number, number>();
+      for (const e of entries) {
+        revenueByRate.set(e.pricePerPortion, (revenueByRate.get(e.pricePerPortion) ?? 0) + e.portions);
+      }
+      const totalRevenue = [...revenueByRate.entries()].reduce((s, [price, p]) => s + price * p, 0);
+      if (totalRevenue > 0) {
+        const totalPortions = entries.reduce((s, e) => s + e.portions, 0);
+        const revParts = [...revenueByRate.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([price, p]) => `${p}p × Rp${price.toLocaleString("id-ID")}`);
         createJournalEntry({
-          description: `Revenue recognition ${body.date} ${row.meal_type}`,
+          description: `Revenue recognition ${body.date} ${mealType}`,
           date: body.date,
           sourceType: "delivery",
-          sourceId: upserted.id,
+          sourceId: `rev_${body.date}_${mealType}`,
+          notes: `${totalPortions} porsi: ${revParts.join(", ")} = Rp${totalRevenue.toLocaleString("id-ID")}`,
           lines: [
-            { accountCode: "2100", debit: revenueAmount, credit: 0 },
-            { accountCode: "4001", debit: 0, credit: revenueAmount },
+            { accountCode: "2100", debit: totalRevenue, credit: 0 },
+            { accountCode: "4001", debit: 0, credit: totalRevenue },
           ],
         }).catch((err) => console.error("[delivery] revenue journal error:", err));
       }
 
-      // COGS: Dr Subcontractor Cost / Cr Accounts Payable
-      const subCost = row.subcontractor_id ? (subCostMap.get(row.subcontractor_id) ?? 0) : 0;
-      const addonCost = ord?.addon_cost_per_portion ?? 0;
-      const cogsAmount = row.portions * (subCost + addonCost);
-      if (cogsAmount > 0) {
+      // COGS: group by effective cost per portion (route-aware)
+      const cogsByRate = new Map<number, number>();
+      for (const e of entries) {
+        const subId = e.subcontractorId;
+        const baseCost = subId ? (subCostMap.get(subId) ?? 0) : 0;
+        const route1Cost = subId ? (subCostRoute1Map.get(subId) ?? null) : null;
+        const route = routeMap.get(e.customerId);
+        const subCost = route1Cost !== null && route === "1" ? route1Cost : baseCost;
+        const totalRate = subCost + e.addonCostPerPortion;
+        if (totalRate > 0) {
+          cogsByRate.set(totalRate, (cogsByRate.get(totalRate) ?? 0) + e.portions);
+        }
+      }
+      const totalCogs = [...cogsByRate.entries()].reduce((s, [rate, p]) => s + rate * p, 0);
+      if (totalCogs > 0) {
+        const totalCogsPortions = [...cogsByRate.values()].reduce((s, p) => s + p, 0);
+        const cogsParts = [...cogsByRate.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([rate, p]) => `${p}p × Rp${rate.toLocaleString("id-ID")}`);
         createJournalEntry({
-          description: `COGS ${body.date} ${row.meal_type}`,
+          description: `COGS ${body.date} ${mealType}`,
           date: body.date,
           sourceType: "delivery_cogs",
-          sourceId: upserted.id,
+          sourceId: `cogs_${body.date}_${mealType}`,
+          notes: `${totalCogsPortions} porsi: ${cogsParts.join(", ")} = Rp${totalCogs.toLocaleString("id-ID")}`,
           lines: [
-            { accountCode: "5001", debit: cogsAmount, credit: 0 },
-            { accountCode: "2001", debit: 0, credit: cogsAmount },
+            { accountCode: "5001", debit: totalCogs, credit: 0 },
+            { accountCode: "2001", debit: 0, credit: totalCogs },
           ],
         }).catch((err) => console.error("[delivery] cogs journal error:", err));
       }

@@ -11,6 +11,7 @@ interface CreateJournalOptions {
   date: string; // YYYY-MM-DD
   sourceType: "order_payment" | "delivery" | "delivery_cogs";
   sourceId: string;
+  notes?: string;
   lines: JournalLine[];
 }
 
@@ -61,14 +62,16 @@ export async function createJournalEntry(opts: CreateJournalOptions): Promise<vo
     return;
   }
 
-  const { data: journal, error: journalErr } = await db
-    .from("journals")
+  // notes column added in migration 057; cast until generated types are regenerated
+  // biome-ignore lint/suspicious/noExplicitAny: see above
+  const { data: journal, error: journalErr } = await (db.from("journals") as any)
     .insert({
       reference: ref as string,
       description: opts.description,
       date: opts.date,
       source_type: opts.sourceType,
       source_id: opts.sourceId,
+      notes: opts.notes ?? null,
     })
     .select("id")
     .single();

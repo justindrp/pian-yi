@@ -121,14 +121,27 @@ interface Journal {
   description: string;
   date: string;
   source_type: string;
+  notes: string | null;
   created_at: string;
   lines: JournalLine[];
 }
 
 function JournalTab({ from, to }: { from: string; to: string }) {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingJournal, setEditingJournal] = useState<Journal | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteJournal(id: string) {
+    setDeleting(true);
+    await fetch(`/api/accounting?id=${id}`, { method: "DELETE" });
+    await queryClient.invalidateQueries({ queryKey: ["accounting"] });
+    setDeletingId(null);
+    setDeleting(false);
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["accounting", from, to, page],
@@ -160,6 +173,9 @@ function JournalTab({ from, to }: { from: string; to: string }) {
       </div>
 
       {showModal && <NewJournalModal onClose={() => setShowModal(false)} />}
+      {editingJournal && (
+        <EditJournalModal journal={editingJournal} onClose={() => setEditingJournal(null)} />
+      )}
 
       <div className="space-y-2">
         {isLoading && (
@@ -174,44 +190,99 @@ function JournalTab({ from, to }: { from: string; to: string }) {
         )}
         {journals.map((j) => {
           const isOpen = expanded === j.id;
+          const isDeleting = deletingId === j.id;
           const totalDebit = j.lines.reduce((s, l) => s + l.debit, 0);
           return (
-            <div key={j.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setExpanded(isOpen ? null : j.id)}
-                className="w-full flex items-center justify-between px-4 py-3 h-auto text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-gray-400 w-28 shrink-0">{j.reference}</span>
-                  <div>
-                    <p className="text-sm text-gray-800">{j.description}</p>
-                    <p className="text-xs text-gray-400">
-                      {j.date} · {sourceLabel(j.source_type)}
-                    </p>
+            <div
+              key={j.id}
+              className={`bg-white rounded-xl border overflow-hidden ${isDeleting ? "border-red-200" : "border-gray-100"}`}
+            >
+              <div className="flex items-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setExpanded(isOpen ? null : j.id)}
+                  className="flex-1 flex items-center justify-between px-4 py-3 h-auto text-left min-w-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono text-xs text-gray-400 w-28 shrink-0">{j.reference}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-800 truncate">{j.description}</p>
+                      <p className="text-xs text-gray-400">
+                        {j.date} · {sourceLabel(j.source_type)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-3">
+                    <span className="text-sm font-medium text-gray-700">{formatRp(totalDebit)}</span>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      role="img"
+                      aria-label="Toggle details"
+                      className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </Button>
+                <div className="flex items-center gap-1 px-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setEditingJournal(j); setDeletingId(null); }}
+                    className="text-gray-400 hover:text-gray-700 px-2"
+                    title="Edit jurnal"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-label="Edit">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDeletingId(isDeleting ? null : j.id)}
+                    className="text-gray-400 hover:text-red-600 px-2"
+                    title="Hapus jurnal"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-label="Hapus">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </Button>
+                </div>
+              </div>
+
+              {isDeleting && (
+                <div className="border-t border-red-100 px-4 py-2 bg-red-50 flex items-center justify-between">
+                  <span className="text-xs text-red-600">Hapus jurnal ini? Tindakan tidak bisa dibatalkan.</span>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setDeletingId(null)}>
+                      Batal
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={deleting}
+                      onClick={() => deleteJournal(j.id)}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      {deleting ? "Menghapus…" : "Ya, Hapus"}
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm font-medium text-gray-700">{formatRp(totalDebit)}</span>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    role="img"
-                    aria-label="Toggle details"
-                    className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </Button>
+              )}
 
               {isOpen && (
                 <div className="border-t border-gray-100 px-4 py-3">
+                  {j.notes && (
+                    <p className="text-xs text-gray-500 mb-3 font-mono bg-gray-50 rounded px-2 py-1">{j.notes}</p>
+                  )}
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-gray-400">
@@ -986,6 +1057,206 @@ function NewJournalModal({ onClose }: { onClose: () => void }) {
           </Button>
           <Button type="button" onClick={submit} disabled={!canSubmit}>
             {saving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Edit journal modal
+// ---------------------------------------------------------------------------
+
+function EditJournalModal({ journal, onClose }: { journal: Journal; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [date, setDate] = useState(journal.date);
+  const [description, setDescription] = useState(journal.description);
+  const [notes, setNotes] = useState(journal.notes ?? "");
+  const [lines, setLines] = useState<DraftLine[]>(
+    journal.lines.map((l) => ({
+      accountCode: l.account?.code ?? "",
+      debit: l.debit > 0 ? String(l.debit) : "",
+      credit: l.credit > 0 ? String(l.credit) : "",
+    })),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const { data: accountsData } = useQuery({
+    queryKey: ["accounting-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/accounting/accounts");
+      return (await res.json()) as { ok: boolean; data: Account[] };
+    },
+  });
+  const accounts = accountsData?.data ?? [];
+
+  const totalDebit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+  const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+  const balanced = totalDebit > 0 && totalDebit === totalCredit;
+  const allLinesValid = lines.every(
+    (l) => l.accountCode && (Number(l.debit) > 0) !== (Number(l.credit) > 0),
+  );
+  const canSubmit = balanced && allLinesValid && description.trim().length > 0 && !saving;
+
+  function updateLine(i: number, patch: Partial<DraftLine>) {
+    setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, { accountCode: "", debit: "", credit: "" }]);
+  }
+
+  function removeLine(i: number) {
+    setLines((prev) => (prev.length > 2 ? prev.filter((_, idx) => idx !== i) : prev));
+  }
+
+  async function submit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/accounting", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: journal.id,
+          date,
+          description: description.trim(),
+          notes: notes.trim() || null,
+          lines: lines.map((l) => ({
+            accountCode: l.accountCode,
+            debit: Number(l.debit) || 0,
+            credit: Number(l.credit) || 0,
+          })),
+        }),
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error ?? "Gagal menyimpan jurnal");
+        setSaving(false);
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["accounting"] });
+      onClose();
+    } catch {
+      setError("Gagal terhubung ke server");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-xl w-full max-w-2xl my-8 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Edit Jurnal</h2>
+            <p className="text-xs text-gray-400 font-mono">{journal.reference}</p>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Tutup
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">Tanggal</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">Deskripsi</Label>
+            <Input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Keterangan jurnal"
+            />
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <Label className="block text-xs text-gray-500 mb-1">Catatan perhitungan (opsional)</Label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="mis. 45p × Rp26.000 = Rp1.170.000"
+            rows={2}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono resize-none"
+          />
+        </div>
+
+        <div className="space-y-2 mb-3">
+          <div className="flex gap-2 text-xs text-gray-400 px-1">
+            <span className="flex-1">Akun</span>
+            <span className="w-28 text-right">Debit</span>
+            <span className="w-28 text-right">Kredit</span>
+            <span className="w-8" />
+          </div>
+          {lines.map((line, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: line rows are positional
+            <div key={i} className="flex gap-2 items-center">
+              <select
+                value={line.accountCode}
+                onChange={(e) => updateLine(i, { accountCode: e.target.value })}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">Pilih akun…</option>
+                {accounts.map((a) => (
+                  <option key={a.code} value={a.code}>
+                    {a.code} — {a.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="0"
+                value={line.debit}
+                onChange={(e) => updateLine(i, { debit: e.target.value, credit: "" })}
+                placeholder="0"
+                className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm text-right"
+              />
+              <input
+                type="number"
+                min="0"
+                value={line.credit}
+                onChange={(e) => updateLine(i, { credit: e.target.value, debit: "" })}
+                placeholder="0"
+                className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm text-right"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => removeLine(i)}
+                disabled={lines.length <= 2}
+                className="w-8 px-0 text-gray-400"
+              >
+                ×
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        <Button type="button" variant="outline" size="sm" onClick={addLine} className="mb-4">
+          + Baris
+        </Button>
+
+        <div className="flex justify-between items-center text-sm border-t border-gray-100 pt-3 mb-4">
+          <span className={balanced ? "text-green-600" : "text-gray-400"}>
+            {balanced ? "Seimbang" : "Belum seimbang"}
+          </span>
+          <span className="text-gray-600">
+            Debit {formatRp(totalDebit)} · Kredit {formatRp(totalCredit)}
+          </span>
+        </div>
+
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Batal
+          </Button>
+          <Button type="button" onClick={submit} disabled={!canSubmit}>
+            {saving ? "Menyimpan…" : "Simpan Perubahan"}
           </Button>
         </div>
       </div>
