@@ -8,6 +8,7 @@ import QueryProvider from "@/components/shared/query-provider";
 import ServiceWorkerRegistrar from "@/components/shared/service-worker-registrar";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { AssistantWidget } from "@/components/dashboard/assistant-widget";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const allNavItems = [
   { href: "/dashboard", label: "Home", ownerOnly: false },
@@ -27,6 +28,8 @@ const allNavItems = [
   { href: "/assistant", label: "Assistant", ownerOnly: false },
 ];
 
+type NavItem = { href: string; label: string; badge?: number };
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -35,9 +38,19 @@ export default async function DashboardLayout({
   const session = await getSessionWithRole();
   if (!session) redirect("/login");
 
-  const navItems = allNavItems
+  const db = createAdminClient();
+  const { count: pendingBotCount } = await db
+    .from("customer_flags")
+    .select("*", { count: "exact", head: true })
+    .eq("pending_bot_response", true);
+
+  const navItems: NavItem[] = allNavItems
     .filter((item) => !item.ownerOnly || session.role === "owner")
-    .map(({ href, label }) => ({ href, label }));
+    .map(({ href, label }) => ({
+      href,
+      label,
+      badge: href === "/assistant" && (pendingBotCount ?? 0) > 0 ? pendingBotCount! : undefined,
+    }));
 
   return (
     <QueryProvider>
@@ -61,9 +74,14 @@ export default async function DashboardLayout({
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors mb-0.5"
+                className="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors mb-0.5"
               >
                 {item.label}
+                {item.badge ? (
+                  <span className="text-xs bg-amber-100 text-amber-700 font-medium rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+                    {item.badge}
+                  </span>
+                ) : null}
               </Link>
             ))}
           </nav>

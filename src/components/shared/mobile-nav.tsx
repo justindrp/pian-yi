@@ -6,6 +6,7 @@ import { useState } from "react";
 interface NavItem {
   href: string;
   label: string;
+  badge?: number;
 }
 
 interface MobileNavProps {
@@ -72,9 +73,14 @@ export default function MobileNav({ navItems, userEmail, version }: MobileNavPro
               key={item.href}
               href={item.href}
               onClick={() => setOpen(false)}
-              className="flex items-center px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors mb-0.5"
+              className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors mb-0.5"
             >
               {item.label}
+              {item.badge ? (
+                <span className="text-xs bg-amber-100 text-amber-700 font-medium rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+                  {item.badge}
+                </span>
+              ) : null}
             </Link>
           ))}
         </nav>

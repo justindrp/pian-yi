@@ -125,12 +125,7 @@ export default function InboxClient() {
   );
   const [messages, setMessages] = useState<Conversation[]>([]);
   const [manualReply, setManualReply] = useState("");
-  const [botReply, setBotReply] = useState("");
-  const [botReplyPreview, setBotReplyPreview] = useState<string | null>(null);
-  const [saveBotReplyAsRule, setSaveBotReplyAsRule] = useState(false);
-  const [confirmingBotReply, setConfirmingBotReply] = useState(false);
   const [sending, setSending] = useState(false);
-  const [sendingBotReply, setSendingBotReply] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
@@ -655,63 +650,6 @@ export default function InboxClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-  }
-
-  async function previewBotReply() {
-    if (!selectedCustomerId || !botReply.trim()) return;
-    setSendingBotReply(true);
-    const res = await fetch("/api/inbox/bot-reply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer_id: selectedCustomerId,
-        admin_answer: botReply.trim(),
-        preview_only: true,
-      }),
-    });
-    setSendingBotReply(false);
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      alert(`Failed to generate preview: ${body?.error ?? res.statusText}`);
-      return;
-    }
-    const body = (await res.json()) as { preview?: string };
-    setBotReplyPreview(body.preview ?? botReply.trim());
-  }
-
-  async function confirmBotReply() {
-    if (!selectedCustomerId || !botReplyPreview) return;
-    setConfirmingBotReply(true);
-    const res = await fetch("/api/inbox/bot-reply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer_id: selectedCustomerId,
-        polished_text: botReplyPreview,
-        admin_answer: botReply.trim(),
-        save_as_rule: saveBotReplyAsRule,
-      }),
-    });
-    setConfirmingBotReply(false);
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      alert(`Failed to send: ${body?.error ?? res.statusText}`);
-      return;
-    }
-    setBotReply("");
-    setBotReplyPreview(null);
-    setSaveBotReplyAsRule(false);
-    if (flags)
-      setFlags({
-        ...flags,
-        pending_bot_response: false,
-        pending_bot_question: null,
-      });
-    await loadMessages(selectedCustomerId);
   }
 
   async function deleteCustomer() {
@@ -1315,89 +1253,6 @@ export default function InboxClient() {
             })}
             <div ref={bottomRef} />
           </div>
-
-          {/* Bot-help reply panel */}
-          {flags?.pending_bot_response && !flags.escalated_to_human && (
-            <div className="px-4 py-3 border-t border-amber-200 bg-amber-50 space-y-2">
-              <div className="flex items-start gap-2">
-                <span className="text-amber-600 text-sm mt-0.5">⏳</span>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-amber-800">
-                    Bot is waiting for your answer
-                  </p>
-                  {flags.pending_bot_question && (
-                    <p className="text-xs text-amber-700 mt-0.5 italic">
-                      "{flags.pending_bot_question}"
-                    </p>
-                  )}
-                </div>
-              </div>
-              {botReplyPreview ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-amber-800">
-                    AI will send this:
-                  </p>
-                  <p className="text-sm text-amber-900 bg-white border border-amber-200 rounded-lg px-3 py-2 whitespace-pre-wrap">
-                    {botReplyPreview}
-                  </p>
-                  <label className="flex items-center gap-2 text-xs text-amber-800">
-                    <input
-                      type="checkbox"
-                      checked={saveBotReplyAsRule}
-                      onChange={(e) => setSaveBotReplyAsRule(e.target.checked)}
-                    />
-                    Save as permanent bot rule (applies to all future customers)
-                  </label>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      onClick={confirmBotReply}
-                      disabled={confirmingBotReply}
-                      className="bg-amber-500 text-white hover:bg-amber-600"
-                    >
-                      {confirmingBotReply ? "Sending..." : "Send"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setBotReplyPreview(null);
-                        setSaveBotReplyAsRule(false);
-                      }}
-                      disabled={confirmingBotReply}
-                      className="border-amber-200 text-amber-700 hover:bg-amber-100"
-                    >
-                      Edit
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Textarea
-                    value={botReply}
-                    onChange={(e) => setBotReply(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        void previewBotReply();
-                      }
-                    }}
-                    placeholder="Type your answer (AI will polish it)..."
-                    rows={3}
-                    className="flex-1 min-h-0 resize-none border-amber-200 focus-visible:ring-amber-400"
-                  />
-                  <Button
-                    type="button"
-                    onClick={previewBotReply}
-                    disabled={sendingBotReply || !botReply.trim()}
-                    className="bg-amber-500 text-white hover:bg-amber-600"
-                  >
-                    {sendingBotReply ? "Previewing..." : "Preview"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Manual reply */}
           {flags?.escalated_to_human && (

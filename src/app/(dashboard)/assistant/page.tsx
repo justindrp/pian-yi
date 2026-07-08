@@ -1,4 +1,5 @@
 import { AssistantClient } from "@/components/dashboard/assistant-client";
+import { PendingBotResponses } from "@/components/dashboard/pending-bot-responses";
 
 export default function AssistantPage() {
   return (
@@ -7,6 +8,7 @@ export default function AssistantPage() {
         <h1 className="text-xl font-semibold">Assistant</h1>
         <p className="text-sm text-gray-500 mt-0.5">Ask questions about customers, orders, deliveries, and financials.</p>
       </div>
+      <PendingBotResponses />
       <AssistantClient fullPage />
     </div>
   );
