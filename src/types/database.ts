@@ -829,6 +829,7 @@ export type Database = {
           date: string
           description: string
           id: string
+          notes: string | null
           reference: string
           source_id: string | null
           source_type: string | null
@@ -838,6 +839,7 @@ export type Database = {
           date: string
           description: string
           id?: string
+          notes?: string | null
           reference: string
           source_id?: string | null
           source_type?: string | null
@@ -847,6 +849,7 @@ export type Database = {
           date?: string
           description?: string
           id?: string
+          notes?: string | null
           reference?: string
           source_id?: string | null
           source_type?: string | null
@@ -1136,6 +1139,7 @@ export type Database = {
           admin_phone: string | null
           admin_phone_2: string | null
           cost_per_portion: number
+          cost_per_portion_route1: number | null
           created_at: string | null
           customer_nickname: string | null
           delivery_areas: Json | null
@@ -1153,6 +1157,7 @@ export type Database = {
           admin_phone?: string | null
           admin_phone_2?: string | null
           cost_per_portion?: number
+          cost_per_portion_route1?: number | null
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null
@@ -1170,6 +1175,7 @@ export type Database = {
           admin_phone?: string | null
           admin_phone_2?: string | null
           cost_per_portion?: number
+          cost_per_portion_route1?: number | null
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null

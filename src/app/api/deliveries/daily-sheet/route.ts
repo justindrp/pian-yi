@@ -136,8 +136,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
   const { data: rawSubs } = await db
     .from("subcontractors")
     .select("id, cost_per_portion, cost_per_portion_route1");
-  type SubRow = { id: string; cost_per_portion: number | null; cost_per_portion_route1?: number | null };
-  const subcontractors = (rawSubs ?? []) as unknown as SubRow[];
+  const subcontractors = rawSubs ?? [];
   const subCostMap = new Map<string, number>(subcontractors.map((s) => [s.id, s.cost_per_portion ?? 0]));
   const subCostRoute1Map = new Map<string, number | null>(
     subcontractors.map((s) => [s.id, s.cost_per_portion_route1 ?? null]),

@@ -62,9 +62,8 @@ export async function createJournalEntry(opts: CreateJournalOptions): Promise<vo
     return;
   }
 
-  // notes column added in migration 057; cast until generated types are regenerated
-  // biome-ignore lint/suspicious/noExplicitAny: see above
-  const { data: journal, error: journalErr } = await (db.from("journals") as any)
+  const { data: journal, error: journalErr } = await db
+    .from("journals")
     .insert({
       reference: ref as string,
       description: opts.description,

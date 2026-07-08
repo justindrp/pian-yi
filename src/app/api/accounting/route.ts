@@ -17,19 +17,8 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
 
-  type JournalRow = {
-    id: string;
-    reference: string;
-    description: string;
-    date: string;
-    source_type: string | null;
-    notes: string | null;
-    created_at: string;
-  };
-
-  // notes column added in migration 057; cast needed until generated types are regenerated
-  // biome-ignore lint/suspicious/noExplicitAny: see above
-  let query = (db.from("journals") as any)
+  let query = db
+    .from("journals")
     .select("id, reference, description, date, source_type, notes, created_at", { count: "exact" })
     .order("date", { ascending: false })
     .order("created_at", { ascending: false })
@@ -38,11 +27,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (from) query = query.gte("date", from);
   if (to) query = query.lte("date", to);
 
-  const { data: journals, count, error } = (await query) as {
-    data: JournalRow[] | null;
-    count: number | null;
-    error: { message: string } | null;
-  };
+  const { data: journals, count, error } = await query;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
   // Load lines for each journal on this page
@@ -281,9 +266,8 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     }
   }
 
-  // Update header (cast: notes not yet in generated types, migration 057)
-  // biome-ignore lint/suspicious/noExplicitAny: see above
-  const { error: updateErr } = await (db.from("journals") as any)
+  const { error: updateErr } = await db
+    .from("journals")
     .update({ description, date, notes })
     .eq("id", id);
   if (updateErr) return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
