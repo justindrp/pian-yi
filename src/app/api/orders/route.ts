@@ -20,15 +20,29 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
+  const search = searchParams.get("search")?.trim();
 
   const db = createAdminClient();
+
+  let customerIds: string[] | null = null;
+  if (search) {
+    const { data: matched } = await db
+      .from("customers")
+      .select("id")
+      .or(`name.ilike.%${search}%,phone_number.ilike.%${search}%`);
+    customerIds = (matched ?? []).map((c) => c.id);
+    if (customerIds.length === 0)
+      return NextResponse.json({ ok: true, data: [] });
+  }
+
   let query = db
     .from("orders")
     .select("*, customers!orders_customer_id_fkey(name, phone_number, area)")
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .order("created_at", { ascending: false });
 
+  if (!search) query = query.limit(100) as typeof query;
   if (status) query = query.eq("status", status);
+  if (customerIds) query = query.in("customer_id", customerIds);
 
   const { data, error } = await query;
   if (error)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,6 +83,7 @@ const ORDER_TYPES = ["recurring", "scheduled"];
 export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("active");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [selected, setSelected] = useState<Order | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
@@ -90,6 +91,11 @@ export default function OrdersClient() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const qc = useQueryClient();
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const { data: subcontractors } = useQuery({
     queryKey: ["subcontractors"],
@@ -210,23 +216,19 @@ export default function OrdersClient() {
   }
 
   const { data: orders, isLoading } = useQuery({
-    queryKey: ["orders", statusFilter],
+    queryKey: ["orders", statusFilter, debouncedSearch],
     queryFn: async () => {
-      const res = await fetch(`/api/orders?status=${statusFilter}`);
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      const res = await fetch(`/api/orders?${params}`);
       const json = (await res.json()) as { ok: boolean; data: Order[] };
       return json.data;
     },
   });
 
   const filteredOrders = (orders ?? [])
-    .filter((o) => {
-      if (!search.trim()) return true;
-      const q = search.toLowerCase();
-      return (
-        o.customers?.name?.toLowerCase().includes(q) ||
-        o.customers?.phone_number?.toLowerCase().includes(q)
-      );
-    })
+    .slice()
     .sort((a, b) => {
       const cmp = (a.start_date ?? "").localeCompare(b.start_date ?? "");
       return sortDir === "asc" ? cmp : -cmp;
