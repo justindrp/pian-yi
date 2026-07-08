@@ -653,7 +653,7 @@ export async function processWebhookAsync(
         `⏰ Batas order & perubahan: jam ${deadlineText} H-1 pengiriman`,
         `💰 Pembayaran di muka sebelum jam ${deadlineText}`,
         `⚠️ Terlambat (siang >12.30 / malam >18.30) → diskon 50%`,
-        `🏠 Jika tidak ada di rumah, pesanan digantung di pintu/pagar`,
+        `🏠 Pesanan selalu digantung di pintu/pagar — kurir tidak menunggu`,
         `📅 Tutup di semua hari libur nasional (tanggal merah)`,
         "",
         "Dengan melanjutkan pemesanan, kak menyetujui ketentuan di atas 🙏",
