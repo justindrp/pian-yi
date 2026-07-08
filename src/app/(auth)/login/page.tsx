@@ -18,19 +18,6 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const res = await fetch("/api/auth/check-admin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-
-    if (!res.ok) {
-      const data = (await res.json()) as { error?: string };
-      setError(data.error ?? "Unauthorized");
-      setLoading(false);
-      return;
-    }
-
     const supabase = createClient();
     const { error: authError } = await supabase.auth.signInWithOtp({
       email,
@@ -61,9 +48,20 @@ export default function LoginPage() {
     if (verifyError) {
       setError("Invalid or expired code. Try again.");
       setLoading(false);
-    } else {
-      router.push("/dashboard");
+      return;
     }
+
+    const res = await fetch("/api/auth/check-admin", { method: "POST" });
+    if (!res.ok) {
+      await supabase.auth.signOut();
+      setError("This account is not authorized.");
+      setStep("email");
+      setCode("");
+      setLoading(false);
+      return;
+    }
+
+    router.push("/dashboard");
   }
 
   return (

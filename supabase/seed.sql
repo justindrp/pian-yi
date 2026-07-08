@@ -14,7 +14,7 @@ INSERT INTO settings (key, value, description) VALUES
   ('low_quota_first_warning', '3', 'Portions remaining for first renewal warning'),
   ('low_quota_final_warning', '1', 'Portions remaining for final renewal warning'),
   ('order_deadline_hour', '20', 'Cutoff hour for next-day orders (24h format)'),
-  ('delivery_areas', '["BSD","Gading Serpong","Alam Sutera","Bintaro","Graha Raya"]', 'Served areas as JSON array'),
+  ('delivery_areas', '["BSD Baru","BSD Lama","Gading Serpong","Alam Sutera","Karawaci"]', 'Served areas as JSON array'),
   ('escalation_keywords', '["manusia","admin","CS","ngomong sama orang","bukan bot","complain","komplain"]', 'Keywords that trigger human escalation'),
   ('chatbot_enabled', 'true', 'Kill switch for AI chatbot');
 
