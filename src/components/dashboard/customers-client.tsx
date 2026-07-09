@@ -40,6 +40,10 @@ type LedgerData = {
 };
 
 const PAGE_SIZE = 200;
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 const DELIVERY_AREAS = [
   "BSD Baru",
   "BSD Lama",
@@ -83,6 +87,12 @@ export default function CustomersClient() {
   const [showAdd, setShowAdd] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const [deliveryPortions, setDeliveryPortions] = useState<
+    Record<string, { lunch: number; dinner: number }>
+  >({});
   const [showGrant, setShowGrant] = useState(false);
   const [grantError, setGrantError] = useState<string | null>(null);
   const [grantRows, setGrantRows] = useState<
@@ -345,6 +355,30 @@ export default function CustomersClient() {
       void queryClient.invalidateQueries({ queryKey: ["customer-ledger"] });
       setShowGrant(false);
       setGrantRows([]);
+    },
+  });
+
+  const createDeliveriesMutation = useMutation({
+    mutationFn: async () => {
+      const deliveries = Object.entries(deliveryPortions).flatMap(
+        ([date, { lunch, dinner }]) => {
+          const rows: { date: string; meal_type: string; portions: number }[] = [];
+          if (lunch > 0) rows.push({ date, meal_type: "lunch", portions: lunch });
+          if (dinner > 0) rows.push({ date, meal_type: "dinner", portions: dinner });
+          return rows;
+        },
+      );
+      const res = await fetch("/api/deliveries/bulk-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: selected?.id, deliveries }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Gagal membuat pengiriman");
+      return json;
+    },
+    onSuccess: () => {
+      setDeliveryPortions({});
     },
   });
 
@@ -1653,6 +1687,19 @@ export default function CustomersClient() {
 
               <Button
                 type="button"
+                variant="outline"
+                onClick={() => {
+                  setDeliveryPortions({});
+                  createDeliveriesMutation.reset();
+                  setShowDeliveryModal(true);
+                }}
+                className="w-full border-gray-200 text-gray-700 hover:bg-gray-50"
+              >
+                Create deliveries
+              </Button>
+
+              <Button
+                type="button"
                 onClick={() => saveMutation.mutate(editForm)}
                 disabled={saveMutation.isPending}
                 className="w-full bg-orange-500 hover:bg-orange-600"
@@ -1672,6 +1719,215 @@ export default function CustomersClient() {
           </div>
         </div>
       )}
+
+      {/* Create deliveries modal */}
+      {showDeliveryModal && selected && (() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const firstDay = new Date(calYear, calMonth, 1).getDay();
+        const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+        function dKey(y: number, m: number, d: number) {
+          return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        }
+        function getP(k: string) {
+          return deliveryPortions[k] ?? { lunch: 0, dinner: 0 };
+        }
+        function stepP(k: string, meal: "lunch" | "dinner", delta: number) {
+          const cur = getP(k);
+          setDeliveryPortions((prev) => ({
+            ...prev,
+            [k]: { ...cur, [meal]: Math.max(0, cur[meal] + delta) },
+          }));
+        }
+
+        const allEntries = Object.entries(deliveryPortions);
+        let totalLunch = 0;
+        let totalDinner = 0;
+        let activeDates = 0;
+        for (const [, { lunch, dinner }] of allEntries) {
+          if (lunch > 0 || dinner > 0) {
+            activeDates++;
+            totalLunch += lunch;
+            totalDinner += dinner;
+          }
+        }
+        const total = totalLunch + totalDinner;
+
+        return (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <button
+              type="button"
+              aria-label="Close"
+              className="absolute inset-0 bg-black/40 cursor-default"
+              onClick={() => setShowDeliveryModal(false)}
+            />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-gray-900">
+                    Create deliveries — {selected.name}
+                  </span>
+                  <span className="flex items-center gap-2 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
+                      Lunch
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full bg-blue-400" />
+                      Dinner
+                    </span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (calMonth === 0) { setCalMonth(11); setCalYear((y) => y - 1); }
+                      else setCalMonth((m) => m - 1);
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm"
+                  >‹</button>
+                  <span className="text-sm font-medium w-32 text-center tabular-nums">
+                    {MONTHS[calMonth]} {calYear}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (calMonth === 11) { setCalMonth(0); setCalYear((y) => y + 1); }
+                      else setCalMonth((m) => m + 1);
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm"
+                  >›</button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeliveryModal(false)}
+                    className="ml-2 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-sm"
+                  >✕</button>
+                </div>
+              </div>
+
+              {/* Calendar */}
+              <div className="p-4">
+                {/* Day labels */}
+                <div className="grid grid-cols-7 gap-1 mb-1">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                    <div key={d} className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wide py-1">
+                      {d}
+                    </div>
+                  ))}
+                </div>
+                {/* Grid */}
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: firstDay }, (_, i) => (
+                    <div key={`e${i}`} />
+                  ))}
+                  {Array.from({ length: daysInMonth }, (_, i) => {
+                    const day = i + 1;
+                    const k = dKey(calYear, calMonth, day);
+                    const { lunch, dinner } = getP(k);
+                    const isActive = lunch > 0 || dinner > 0;
+                    const cellDate = new Date(calYear, calMonth, day);
+                    const isToday = cellDate.getTime() === today.getTime();
+                    return (
+                      <div
+                        key={k}
+                        className={`border rounded-lg p-1.5 flex flex-col gap-1 min-h-[72px] transition-colors ${
+                          isActive
+                            ? "bg-orange-50 border-orange-200"
+                            : "border-gray-100"
+                        }`}
+                      >
+                        <span className={`text-[11px] font-semibold leading-none ${isToday ? "text-blue-500" : "text-gray-400"}`}>
+                          {day}
+                        </span>
+                        <div className="flex gap-1 flex-1 items-end">
+                          {/* Lunch */}
+                          <div className="flex-1 flex flex-col items-center gap-0.5">
+                            <span className="text-[9px] font-bold text-orange-500 leading-none">L</span>
+                            <div className="w-full flex items-center bg-orange-100 rounded px-0.5 py-0.5 gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => stepP(k, "lunch", -1)}
+                                className="w-3.5 h-3.5 flex items-center justify-center text-orange-500 text-xs font-bold leading-none hover:bg-orange-200 rounded"
+                              >−</button>
+                              <span className={`flex-1 text-center text-[11px] font-bold leading-none tabular-nums ${lunch === 0 ? "text-orange-300" : "text-orange-600"}`}>
+                                {lunch}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => stepP(k, "lunch", 1)}
+                                className="w-3.5 h-3.5 flex items-center justify-center text-orange-500 text-xs font-bold leading-none hover:bg-orange-200 rounded"
+                              >+</button>
+                            </div>
+                          </div>
+                          {/* Dinner */}
+                          <div className="flex-1 flex flex-col items-center gap-0.5">
+                            <span className="text-[9px] font-bold text-blue-500 leading-none">D</span>
+                            <div className="w-full flex items-center bg-blue-100 rounded px-0.5 py-0.5 gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => stepP(k, "dinner", -1)}
+                                className="w-3.5 h-3.5 flex items-center justify-center text-blue-500 text-xs font-bold leading-none hover:bg-blue-200 rounded"
+                              >−</button>
+                              <span className={`flex-1 text-center text-[11px] font-bold leading-none tabular-nums ${dinner === 0 ? "text-blue-300" : "text-blue-600"}`}>
+                                {dinner}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => stepP(k, "dinner", 1)}
+                                className="w-3.5 h-3.5 flex items-center justify-center text-blue-500 text-xs font-bold leading-none hover:bg-blue-200 rounded"
+                              >+</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-gray-100 px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-xs text-gray-500 leading-relaxed">
+                  {total === 0 ? (
+                    <span className="italic text-gray-400">No deliveries selected</span>
+                  ) : (
+                    <>
+                      {totalLunch > 0 && <span className="text-orange-500 font-semibold">{totalLunch} lunch</span>}
+                      {totalLunch > 0 && totalDinner > 0 && <span className="text-gray-400"> + </span>}
+                      {totalDinner > 0 && <span className="text-blue-500 font-semibold">{totalDinner} dinner</span>}
+                      <span className="text-gray-400"> across </span>
+                      <span className="font-semibold text-gray-700">{activeDates} date{activeDates !== 1 ? "s" : ""}</span>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {createDeliveriesMutation.isError && (
+                    <span className="text-xs text-red-600">
+                      {(createDeliveriesMutation.error as Error).message}
+                    </span>
+                  )}
+                  {createDeliveriesMutation.isSuccess && (
+                    <span className="text-xs text-green-600">Created.</span>
+                  )}
+                  <Button
+                    type="button"
+                    onClick={() => createDeliveriesMutation.mutate()}
+                    disabled={total === 0 || createDeliveriesMutation.isPending}
+                    className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-sm"
+                  >
+                    {createDeliveriesMutation.isPending
+                      ? "Creating..."
+                      : `Create ${total || ""} deliver${total === 1 ? "y" : "ies"}`}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete customer confirm */}
       {deleteConfirmOpen && selected && (
