@@ -527,6 +527,7 @@ export default function InboxClient() {
       setRegenerateStatus(`Not regenerated: ${body.reason ?? "unknown"}`);
       return;
     }
+    setRegenerateStatus("Analisis dikirim ke halaman Assistant.");
     await loadMessages(selectedCustomerId);
   }
 
@@ -1141,7 +1142,13 @@ export default function InboxClient() {
             </div>
           )}
 
-          {regenerateStatus && (
+          {regenerating && (
+            <div className="px-5 py-2 border-b border-blue-100 bg-blue-50 text-xs text-blue-700">
+              Menganalisis pesan... cek halaman Assistant sebentar lagi.
+            </div>
+          )}
+
+          {!regenerating && regenerateStatus && (
             <div className="px-5 py-2 border-b border-blue-100 bg-blue-50 text-xs text-blue-700">
               {regenerateStatus}
             </div>
