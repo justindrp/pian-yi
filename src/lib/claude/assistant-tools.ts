@@ -15,6 +15,7 @@ export const WRITE_TOOLS = new Set([
   "send_whatsapp_message",
   "send_whatsapp_image",
   "update_customer_field",
+  "update_delivery",
 ]);
 
 export function isWriteTool(name: string): boolean {
@@ -113,6 +114,27 @@ export const assistantTools: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+    },
+  },
+  {
+    name: "update_delivery",
+    description:
+      "Skip or reschedule a single daily_deliveries row. Use 'skip' to mark it skipped, 'reschedule' to move it to a new date. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        delivery_id: { type: "string", description: "The daily_deliveries UUID" },
+        action: {
+          type: "string",
+          enum: ["skip", "reschedule"],
+          description: "skip: set status to skipped. reschedule: move to new_date.",
+        },
+        new_date: {
+          type: "string",
+          description: "Required for reschedule. Target date (YYYY-MM-DD).",
+        },
+      },
+      required: ["delivery_id", "action"],
     },
   },
   {
@@ -498,6 +520,36 @@ export async function buildPendingAction(
           `New value: ${input.value as string}`,
         ],
         dangerous: false,
+      };
+    }
+
+    case "update_delivery": {
+      const { data: delivery } = await db
+        .from("daily_deliveries")
+        .select("delivery_date, meal_type, portions, status, customer:customers(name)")
+        .eq("id", input.delivery_id as string)
+        .single();
+      const customerName =
+        (delivery?.customer as { name?: string } | null)?.name ?? "Unknown";
+      const deliveryData = delivery as {
+        delivery_date?: string;
+        meal_type?: string;
+        portions?: number;
+        status?: string;
+      } | null;
+      const action = input.action as string;
+      return {
+        tool,
+        input,
+        label: action === "skip" ? "Skip delivery" : `Reschedule delivery to ${input.new_date as string}`,
+        details: [
+          `Customer: ${customerName}`,
+          `Date: ${deliveryData?.delivery_date ?? "?"}`,
+          `Meal: ${deliveryData?.meal_type ?? "?"}, ${deliveryData?.portions ?? "?"} porsi`,
+          `Current status: ${deliveryData?.status ?? "?"}`,
+          ...(action === "reschedule" ? [`New date: ${input.new_date as string}`] : []),
+        ],
+        dangerous: action === "skip",
       };
     }
 

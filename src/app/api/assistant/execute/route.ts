@@ -390,6 +390,42 @@ export async function POST(request: Request) {
       return reply(`Field ${field} customer sudah diperbarui.`);
     }
 
+    case "update_delivery": {
+      const deliveryId = input.delivery_id as string;
+      const action = input.action as string;
+
+      if (action === "skip") {
+        const { error } = await db
+          .from("daily_deliveries")
+          .update({ status: "skipped" })
+          .eq("id", deliveryId);
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        }
+        return reply("Pengiriman sudah ditandai skip.");
+      }
+
+      if (action === "reschedule") {
+        const newDate = input.new_date as string | undefined;
+        if (!newDate) {
+          return NextResponse.json(
+            { ok: false, error: "new_date required for reschedule" },
+            { status: 400 },
+          );
+        }
+        const { error } = await db
+          .from("daily_deliveries")
+          .update({ delivery_date: newDate })
+          .eq("id", deliveryId);
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        }
+        return reply(`Pengiriman dijadwalkan ulang ke ${newDate}.`);
+      }
+
+      return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 });
+    }
+
     default:
       return NextResponse.json(
         { ok: false, error: "Unknown tool" },
