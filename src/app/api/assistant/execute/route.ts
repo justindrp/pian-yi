@@ -6,6 +6,7 @@ import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
+import { getDeliveryRoute } from "@/lib/utils/format";
 import {
   sendImageMessageById,
   sendTextMessage,
@@ -13,6 +14,20 @@ import {
 } from "@/lib/whatsapp/client";
 
 const ALLOWED_CUSTOMER_FIELDS = new Set(["name", "address", "area", "notes"]);
+const ALLOWED_ORDER_FIELDS = new Set([
+  "meal_time_preference",
+  "portions_per_delivery",
+  "portions_lunch",
+  "portions_dinner",
+  "start_date",
+  "end_date",
+  "order_type",
+]);
+const NUMERIC_ORDER_FIELDS = new Set([
+  "portions_per_delivery",
+  "portions_lunch",
+  "portions_dinner",
+]);
 
 export async function POST(request: Request) {
   const session = await getSessionWithRole();
@@ -430,6 +445,223 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 });
+    }
+
+    case "pause_order": {
+      const orderId = input.order_id as string;
+      const pauseUntil = (input.pause_until as string | undefined) ?? null;
+      const { error } = await db
+        .from("orders")
+        // biome-ignore lint/suspicious/noExplicitAny: pause_until not in generated types
+        .update({ status: "paused", pause_until: pauseUntil } as any)
+        .eq("id", orderId)
+        .eq("status", "active");
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      return reply(
+        pauseUntil
+          ? `Pesanan dijeda sampai ${pauseUntil}.`
+          : "Pesanan sudah dijeda.",
+      );
+    }
+
+    case "resume_order": {
+      const orderId = input.order_id as string;
+      const { error } = await db
+        .from("orders")
+        // biome-ignore lint/suspicious/noExplicitAny: pause_until not in generated types
+        .update({ status: "active", pause_until: null } as any)
+        .eq("id", orderId)
+        .eq("status", "paused");
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      return reply("Pesanan sudah diaktifkan kembali.");
+    }
+
+    case "send_payment_details": {
+      const orderId = input.order_id as string;
+      const { data: order, error: fetchErr } = await db
+        .from("orders")
+        .select(
+          "id, total_price, customer_id, customers!orders_customer_id_fkey(name, phone_number)",
+        )
+        .eq("id", orderId)
+        .single();
+      if (fetchErr || !order) {
+        return NextResponse.json({ ok: false, error: "Order not found" }, { status: 404 });
+      }
+      const rawCustomer = order.customers;
+      const customer = (
+        Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
+      ) as { name: string | null; phone_number: string } | null;
+      if (!customer?.phone_number) {
+        return NextResponse.json(
+          { ok: false, error: "Customer phone not found" },
+          { status: 400 },
+        );
+      }
+      const [bankNameRes, bankAccountRes, bankHolderRes] = await Promise.all([
+        db.from("settings").select("value").eq("key", "bank_name").single(),
+        db.from("settings").select("value").eq("key", "bank_account_number").single(),
+        db.from("settings").select("value").eq("key", "bank_account_name").single(),
+      ]);
+      const bankName = bankNameRes.data?.value ?? "";
+      const bankAccount = bankAccountRes.data?.value ?? "";
+      const bankHolder = bankHolderRes.data?.value ?? "";
+      const firstName = (customer.name ?? "").split(" ")[0] || "kak";
+      const totalPrice = (order as { total_price?: number }).total_price ?? 0;
+      const msg = `Terima kasih kak ${firstName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccount}\n👤 a.n. ${bankHolder}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
+      try {
+        const convId = await saveMessage({
+          customerId: order.customer_id ?? "",
+          role: "assistant",
+          content: msg,
+        });
+        const messageId = await sendTextMessage(customer.phone_number, msg);
+        await updateMessageReceipt({
+          conversationId: convId,
+          whatsappMessageId: messageId,
+          status: "sent",
+        });
+      } catch (err) {
+        console.error("[execute/send_payment_details] WhatsApp send failed:", err);
+        return NextResponse.json(
+          { ok: false, error: "Failed to send WhatsApp message" },
+          { status: 500 },
+        );
+      }
+      return reply("Detail pembayaran sudah dikirim via WhatsApp.");
+    }
+
+    case "mark_payment_proof_received": {
+      const orderId = input.order_id as string;
+      const { error } = await db
+        .from("orders")
+        .update({ status: "payment_proof_received" })
+        .eq("id", orderId)
+        .eq("status", "pending_payment");
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      return reply("Status pesanan sudah diperbarui ke payment_proof_received.");
+    }
+
+    case "update_order": {
+      const orderId = input.order_id as string;
+      const field = input.field as string;
+      const rawValue = input.value as string;
+
+      if (!ALLOWED_ORDER_FIELDS.has(field)) {
+        return NextResponse.json(
+          { ok: false, error: `Field '${field}' is not editable` },
+          { status: 400 },
+        );
+      }
+      const coercedValue = NUMERIC_ORDER_FIELDS.has(field) ? Number(rawValue) : rawValue;
+      const { error } = await db
+        .from("orders")
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic field from validated allowlist
+        .update({ [field]: coercedValue } as any)
+        .eq("id", orderId);
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      return reply(`Field ${field} pesanan sudah diperbarui.`);
+    }
+
+    case "create_customer": {
+      const phoneNumber = input.phone_number as string;
+      const address = input.address as string;
+      const area = input.area as string;
+      const name = input.name as string | undefined;
+      const googleMapsLink = input.google_maps_link as string | undefined;
+
+      const { data: existing } = await db
+        .from("customers")
+        .select("id")
+        .eq("phone_number", phoneNumber)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json(
+          { ok: false, error: `Customer with phone ${phoneNumber} already exists` },
+          { status: 409 },
+        );
+      }
+
+      const deliveryRoute = getDeliveryRoute(area);
+      const { data: newCustomer, error: insertErr } = await db
+        .from("customers")
+        .insert({
+          phone_number: phoneNumber,
+          address,
+          area,
+          name: name ?? null,
+          google_maps_link: googleMapsLink ?? null,
+          delivery_route: deliveryRoute,
+        })
+        .select("id")
+        .single();
+      if (insertErr || !newCustomer) {
+        return NextResponse.json(
+          { ok: false, error: insertErr?.message ?? "Insert failed" },
+          { status: 500 },
+        );
+      }
+
+      await Promise.all([
+        db
+          .from("customer_rate_limits")
+          .upsert({ customer_id: newCustomer.id }, { onConflict: "customer_id", ignoreDuplicates: true }),
+        db
+          .from("customer_flags")
+          .upsert({ customer_id: newCustomer.id }, { onConflict: "customer_id", ignoreDuplicates: true }),
+        db
+          .from("customer_state")
+          .upsert({ customer_id: newCustomer.id }, { onConflict: "customer_id", ignoreDuplicates: true }),
+      ]);
+
+      return reply(`Customer ${name ?? phoneNumber} sudah dibuat (ID: ${newCustomer.id}).`);
+    }
+
+    case "create_order": {
+      const customerId = input.customer_id as string;
+      const orderType = input.order_type as string;
+      const packageSize = input.package_size as number;
+      const portionsPerDelivery = input.portions_per_delivery as number;
+      const pricePerPortion = input.price_per_portion as number;
+      const mealTimePreference = input.meal_time_preference as string;
+      const startDate = input.start_date as string;
+      const endDate = (input.end_date as string | undefined) ?? null;
+      const totalPrice = packageSize * pricePerPortion;
+
+      const { data: newOrder, error: insertErr } = await db
+        .from("orders")
+        .insert({
+          customer_id: customerId,
+          order_type: orderType,
+          package_size: packageSize,
+          portions_per_delivery: portionsPerDelivery,
+          price_per_portion: pricePerPortion,
+          total_price: totalPrice,
+          portions_remaining: packageSize,
+          meal_time_preference: mealTimePreference,
+          start_date: startDate,
+          end_date: endDate,
+          status: "pending_payment",
+          size: "s",
+        })
+        .select("id")
+        .single();
+      if (insertErr || !newOrder) {
+        return NextResponse.json(
+          { ok: false, error: insertErr?.message ?? "Insert failed" },
+          { status: 500 },
+        );
+      }
+      const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
+      return reply(`Pesanan baru sudah dibuat (ID: ${newOrder.id}, total: Rp ${formatted}).`);
     }
 
     default:

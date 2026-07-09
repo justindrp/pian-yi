@@ -16,6 +16,13 @@ export const WRITE_TOOLS = new Set([
   "send_whatsapp_image",
   "update_customer_field",
   "update_delivery",
+  "pause_order",
+  "resume_order",
+  "send_payment_details",
+  "mark_payment_proof_received",
+  "update_order",
+  "create_customer",
+  "create_order",
 ]);
 
 export function isWriteTool(name: string): boolean {
@@ -215,6 +222,158 @@ export const assistantTools: Tool[] = [
         value: { type: "string", description: "The new value" },
       },
       required: ["customer_id", "field", "value"],
+    },
+  },
+  {
+    name: "pause_order",
+    description:
+      "Pause an active recurring order. Optionally specify a resume date for auto-resume. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_id: { type: "string", description: "The order UUID" },
+        pause_until: {
+          type: "string",
+          description: "Optional ISO date (YYYY-MM-DD) when the order should auto-resume",
+        },
+      },
+      required: ["order_id"],
+    },
+  },
+  {
+    name: "resume_order",
+    description:
+      "Resume a paused order and set it back to active. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_id: { type: "string", description: "The order UUID" },
+      },
+      required: ["order_id"],
+    },
+  },
+  {
+    name: "send_payment_details",
+    description:
+      "Send bank transfer payment details to a customer for a pending order. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_id: {
+          type: "string",
+          description: "The order UUID (should be in pending_payment status)",
+        },
+      },
+      required: ["order_id"],
+    },
+  },
+  {
+    name: "mark_payment_proof_received",
+    description:
+      "Advance an order from pending_payment to payment_proof_received after the customer sends proof. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_id: { type: "string", description: "The order UUID" },
+      },
+      required: ["order_id"],
+    },
+  },
+  {
+    name: "update_order",
+    description:
+      "Update a single editable field on an order. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_id: { type: "string", description: "The order UUID" },
+        field: {
+          type: "string",
+          enum: [
+            "meal_time_preference",
+            "portions_per_delivery",
+            "portions_lunch",
+            "portions_dinner",
+            "start_date",
+            "end_date",
+            "order_type",
+          ],
+          description: "Which field to update",
+        },
+        value: {
+          type: "string",
+          description:
+            "The new value. For numeric fields (portions_per_delivery, portions_lunch, portions_dinner) pass the number as a string.",
+        },
+      },
+      required: ["order_id", "field", "value"],
+    },
+  },
+  {
+    name: "create_customer",
+    description:
+      "Create a new customer record with companion rows. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        phone_number: {
+          type: "string",
+          description: "International format (e.g. +628...)",
+        },
+        address: { type: "string", description: "Full delivery address" },
+        area: {
+          type: "string",
+          description:
+            "Delivery area: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, or Karawaci",
+        },
+        name: { type: "string", description: "Customer name (optional)" },
+        google_maps_link: {
+          type: "string",
+          description: "Google Maps link to address (optional)",
+        },
+      },
+      required: ["phone_number", "address", "area"],
+    },
+  },
+  {
+    name: "create_order",
+    description:
+      "Create a new pending_payment order for an existing customer. Does not generate deliveries or send payment details — use mark_order_paid and send_payment_details as follow-up steps. Admin must confirm before this executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        customer_id: { type: "string", description: "Customer UUID" },
+        order_type: {
+          type: "string",
+          enum: ["recurring", "scheduled"],
+          description: "Order type",
+        },
+        package_size: { type: "number", description: "Total portions in the package" },
+        portions_per_delivery: { type: "number", description: "Portions per daily delivery" },
+        price_per_portion: {
+          type: "number",
+          description: "Price in IDR per portion (e.g. 28000)",
+        },
+        meal_time_preference: {
+          type: "string",
+          description:
+            "e.g. lunch_only, dinner_only, both_fixed, per_day_decision, default_lunch, default_dinner",
+        },
+        start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        end_date: {
+          type: "string",
+          description: "End date (YYYY-MM-DD) — optional for recurring",
+        },
+      },
+      required: [
+        "customer_id",
+        "order_type",
+        "package_size",
+        "portions_per_delivery",
+        "price_per_portion",
+        "meal_time_preference",
+        "start_date",
+      ],
     },
   },
 ];
@@ -550,6 +709,188 @@ export async function buildPendingAction(
           ...(action === "reschedule" ? [`New date: ${input.new_date as string}`] : []),
         ],
         dangerous: action === "skip",
+      };
+    }
+
+    case "pause_order": {
+      const { data: order } = await db
+        .from("orders")
+        .select(
+          "id, status, portions_remaining, start_date, customers!orders_customer_id_fkey(name)",
+        )
+        .eq("id", input.order_id as string)
+        .single();
+      const rawCustomer = order?.customers;
+      const customerName = Array.isArray(rawCustomer)
+        ? (rawCustomer[0]?.name ?? "Unknown")
+        : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
+      const orderData = order as {
+        status?: string;
+        portions_remaining?: number;
+      } | null;
+      return {
+        tool,
+        input,
+        label: "Pause order",
+        details: [
+          `Customer: ${customerName}`,
+          `Current status: ${orderData?.status ?? "unknown"}`,
+          `Portions remaining: ${orderData?.portions_remaining ?? "?"}`,
+          ...(input.pause_until
+            ? [`Resume date: ${input.pause_until as string}`]
+            : ["No auto-resume date"]),
+        ],
+        dangerous: false,
+      };
+    }
+
+    case "resume_order": {
+      const { data: order } = await db
+        .from("orders")
+        .select(
+          "id, status, portions_remaining, customers!orders_customer_id_fkey(name)",
+        )
+        .eq("id", input.order_id as string)
+        .single();
+      const rawCustomer = order?.customers;
+      const customerName = Array.isArray(rawCustomer)
+        ? (rawCustomer[0]?.name ?? "Unknown")
+        : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
+      const orderData = order as { status?: string; portions_remaining?: number } | null;
+      return {
+        tool,
+        input,
+        label: "Resume order",
+        details: [
+          `Customer: ${customerName}`,
+          `Current status: ${orderData?.status ?? "unknown"}`,
+          `Portions remaining: ${orderData?.portions_remaining ?? "?"}`,
+        ],
+        dangerous: false,
+      };
+    }
+
+    case "send_payment_details": {
+      const { data: order } = await db
+        .from("orders")
+        .select(
+          "id, total_price, status, customers!orders_customer_id_fkey(name, phone_number)",
+        )
+        .eq("id", input.order_id as string)
+        .single();
+      const rawCustomer = order?.customers;
+      const customer = (
+        Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
+      ) as { name: string | null; phone_number: string } | null;
+      const orderData = order as { total_price?: number; status?: string } | null;
+      const formatted = new Intl.NumberFormat("id-ID").format(orderData?.total_price ?? 0);
+      return {
+        tool,
+        input,
+        label: `Send payment details — Rp ${formatted}`,
+        details: [
+          `Customer: ${customer?.name ?? "Unknown"}`,
+          `Phone: ${customer?.phone_number ?? "?"}`,
+          `Amount: Rp ${formatted}`,
+          `Order status: ${orderData?.status ?? "unknown"}`,
+        ],
+        dangerous: false,
+      };
+    }
+
+    case "mark_payment_proof_received": {
+      const { data: order } = await db
+        .from("orders")
+        .select(
+          "id, total_price, status, customers!orders_customer_id_fkey(name)",
+        )
+        .eq("id", input.order_id as string)
+        .single();
+      const rawCustomer = order?.customers;
+      const customerName = Array.isArray(rawCustomer)
+        ? (rawCustomer[0]?.name ?? "Unknown")
+        : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
+      const orderData = order as { total_price?: number; status?: string } | null;
+      const formatted = new Intl.NumberFormat("id-ID").format(orderData?.total_price ?? 0);
+      return {
+        tool,
+        input,
+        label: "Mark payment proof received",
+        details: [
+          `Customer: ${customerName}`,
+          `Amount: Rp ${formatted}`,
+          `Current status: ${orderData?.status ?? "unknown"}`,
+        ],
+        dangerous: false,
+      };
+    }
+
+    case "update_order": {
+      const field = input.field as string;
+      const { data: order } = await db
+        .from("orders")
+        .select(
+          "id, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date, order_type, customers!orders_customer_id_fkey(name)",
+        )
+        .eq("id", input.order_id as string)
+        .single();
+      const rawCustomer = order?.customers;
+      const customerName = Array.isArray(rawCustomer)
+        ? (rawCustomer[0]?.name ?? "Unknown")
+        : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
+      const currentVal = (order as Record<string, unknown> | null)?.[field];
+      return {
+        tool,
+        input,
+        label: `Update order ${field}`,
+        details: [
+          `Customer: ${customerName}`,
+          `Field: ${field}`,
+          `Current: ${currentVal ?? "—"}`,
+          `New value: ${input.value as string}`,
+        ],
+        dangerous: false,
+      };
+    }
+
+    case "create_customer": {
+      return {
+        tool,
+        input,
+        label: "Create customer",
+        details: [
+          `Name: ${(input.name as string | undefined) ?? "(none)"}`,
+          `Phone: ${input.phone_number as string}`,
+          `Area: ${input.area as string}`,
+          `Address: ${input.address as string}`,
+        ],
+        dangerous: false,
+      };
+    }
+
+    case "create_order": {
+      const { data: customer } = await db
+        .from("customers")
+        .select("name")
+        .eq("id", input.customer_id as string)
+        .single();
+      const packageSize = input.package_size as number;
+      const pricePerPortion = input.price_per_portion as number;
+      const totalPrice = packageSize * pricePerPortion;
+      const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
+      return {
+        tool,
+        input,
+        label: `Create order — Rp ${formatted}`,
+        details: [
+          `Customer: ${(customer as { name?: string } | null)?.name ?? "Unknown"}`,
+          `Package: ${packageSize} porsi (${input.order_type as string})`,
+          `Price: Rp ${new Intl.NumberFormat("id-ID").format(pricePerPortion)}/porsi`,
+          `Total: Rp ${formatted}`,
+          `Start: ${input.start_date as string}`,
+          `Meal: ${input.meal_time_preference as string}`,
+        ],
+        dangerous: false,
       };
     }
 

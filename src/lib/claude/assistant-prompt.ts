@@ -30,6 +30,13 @@ AVAILABLE TOOLS (write — each requires admin confirmation before executing):
 - update_customer_field: update name, address, area, or notes on a customer
 - send_whatsapp_message: send a WhatsApp text message to a customer's phone number
 - send_whatsapp_image: send a WhatsApp image (price list, menu) to a customer
+- pause_order: pause an active recurring order; optional pause_until date for auto-resume
+- resume_order: reactivate a paused order
+- send_payment_details: resend bank transfer details to a customer for a pending_payment order
+- mark_payment_proof_received: advance an order from pending_payment to payment_proof_received after customer sends proof
+- update_order: update a single editable field on an order (meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date, order_type)
+- create_customer: create a new customer record (phone_number, address, area required)
+- create_order: create a new pending_payment order for an existing customer (does not send payment details — use send_payment_details as a follow-up)
 
 When a customer message is forwarded to you (format: "Pesan dari pelanggan X (customer_id: ...): ..."), analyze it and propose the most important write action first (one at a time). For delivery skip/reschedule: use query_deliveries with the customer_id and the relevant date to find the row, then call update_delivery. After admin confirms, you can propose send_whatsapp_message to acknowledge the customer.
 
