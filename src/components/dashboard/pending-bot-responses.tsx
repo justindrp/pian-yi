@@ -193,17 +193,19 @@ export function PendingBotResponses() {
   if (chats.length === 0) return null;
 
   return (
-    <div className="py-4 border-b space-y-3">
-      <p className="text-sm font-medium text-amber-800">
+    <div className="py-4 border-b">
+      <p className="text-sm font-medium text-amber-800 mb-3">
         ⏳ Pending bot responses ({chats.length})
       </p>
-      {chats.map((chat) => (
-        <PendingCard
-          key={chat.customer_id}
-          chat={chat}
-          onDone={() => setChats((prev) => prev.filter((c) => c.customer_id !== chat.customer_id))}
-        />
-      ))}
+      <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+        {chats.map((chat) => (
+          <PendingCard
+            key={chat.customer_id}
+            chat={chat}
+            onDone={() => setChats((prev) => prev.filter((c) => c.customer_id !== chat.customer_id))}
+          />
+        ))}
+      </div>
     </div>
   );
 }
