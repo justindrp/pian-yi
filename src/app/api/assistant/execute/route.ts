@@ -47,12 +47,18 @@ export async function POST(request: Request) {
 
   const db = createAdminClient();
 
-  // Persist the assistant's confirmation reply to the active thread, then respond.
+  // Persist the assistant's confirmation reply to the active thread, clear any pending action, then respond.
   function reply(text: string) {
     if (conversationId) {
       saveAssistantReply(db, conversationId, text).catch((err) =>
         console.error("[execute] persist reply:", err),
       );
+      Promise.resolve(
+        db.from("assistant_conversations")
+          // biome-ignore lint/suspicious/noExplicitAny: pending_action not in generated types yet
+          .update({ pending_action: null } as any)
+          .eq("id", conversationId),
+      ).catch((err: unknown) => console.error("[execute] clear pending_action:", err));
     }
     return NextResponse.json({ ok: true, text, conversationId });
   }

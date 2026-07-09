@@ -38,13 +38,13 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     refetchOnWindowFocus: true,
   });
 
-  const messagesQuery = useQuery<Message[]>({
+  const messagesQuery = useQuery<{ messages: Message[]; pendingAction: PendingAction | null }>({
     queryKey: ["assistant-messages", activeId],
     queryFn: async () => {
       const res = await fetch(`/api/assistant/conversations/${activeId}`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Failed to load");
-      return json.data as Message[];
+      return { messages: json.data as Message[], pendingAction: (json.pendingAction as PendingAction | null) ?? null };
     },
     enabled: !!activeId,
   });
@@ -52,8 +52,8 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   // Reconcile local message state whenever the active conversation's server view changes.
   useEffect(() => {
     if (activeId && messagesQuery.data) {
-      setMessages(messagesQuery.data);
-      setPendingAction(null);
+      setMessages(messagesQuery.data.messages);
+      setPendingAction(messagesQuery.data.pendingAction);
     }
     if (!activeId) {
       setMessages([]);

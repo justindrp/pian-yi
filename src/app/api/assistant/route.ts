@@ -80,6 +80,14 @@ export async function POST(request: Request) {
             )
           : await buildBatchPendingAction(writeBlocks);
         await persist(text);
+        if (conversationId) {
+          Promise.resolve(
+            db.from("assistant_conversations")
+              // biome-ignore lint/suspicious/noExplicitAny: pending_action not in generated types yet
+              .update({ pending_action: pendingAction } as any)
+              .eq("id", conversationId),
+          ).catch((err: unknown) => console.error("[assistant] save pending_action:", err));
+        }
         return NextResponse.json({ ok: true, text, pendingAction, conversationId });
       }
 

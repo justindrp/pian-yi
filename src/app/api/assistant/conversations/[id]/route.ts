@@ -10,8 +10,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
   const { id } = await params;
   const db = createAdminClient();
-  const data = await getMessages(db, id);
-  return NextResponse.json({ ok: true, data });
+  const [messages, convRes] = await Promise.all([
+    getMessages(db, id),
+    db.from("assistant_conversations").select("pending_action").eq("id", id).single(),
+  ]);
+  const pendingAction = (convRes.data as { pending_action?: unknown } | null)?.pending_action ?? null;
+  return NextResponse.json({ ok: true, data: messages, pendingAction });
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {

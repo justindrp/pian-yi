@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { processSavedCustomerMessage } from "@/app/api/webhook/whatsapp/route";
+import { analyzeCustomerMessage } from "@/lib/claude/analyze-customer-message";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,15 +21,14 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
 
-  const [{ data: customer, error: customerError }, { data: flags, error: flagError }, { data: stateRow }, { data: latestMessage, error: latestError }] =
+  const [{ data: customer, error: customerError }, { data: flags, error: flagError }, { data: latestMessage, error: latestError }] =
     await Promise.all([
-      db.from("customers").select("id, name, phone_number, notes").eq("id", customer_id).single(),
+      db.from("customers").select("id, name, phone_number").eq("id", customer_id).single(),
       db
         .from("customer_flags")
         .select("escalated_to_human, pending_bot_response, is_blacklisted")
         .eq("customer_id", customer_id)
         .single(),
-      db.from("customer_state").select("state, menu_shown").eq("customer_id", customer_id).single(),
       db
         .from("conversations")
         .select("role, content, message_id, message_type")
@@ -51,12 +50,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (flags.is_blacklisted) {
     return NextResponse.json({ ok: true, replayed: false, reason: "blacklisted" });
   }
-  if (flags.escalated_to_human || flags.pending_bot_response) {
-    return NextResponse.json({ ok: true, replayed: false, reason: "thread_blocked" });
-  }
-  if (!(stateRow?.menu_shown ?? false)) {
-    return NextResponse.json({ ok: true, replayed: false, reason: "welcome_flow_only" });
-  }
   if (latestMessage.role !== "user") {
     return NextResponse.json({ ok: true, replayed: false, reason: "latest_not_user" });
   }
@@ -67,14 +60,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: true, replayed: false, reason: "empty_message" });
   }
 
-  await processSavedCustomerMessage({
+  await analyzeCustomerMessage({
     customerId: customer.id,
     customerName: customer.name,
-    customerNotes: customer.notes,
-    phone: customer.phone_number,
-    stateRow,
     text: latestMessage.content,
-    messageId: null,
   });
 
   return NextResponse.json({ ok: true, replayed: true });

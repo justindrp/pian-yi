@@ -16,6 +16,7 @@ import {
   createOrderFromExtraction,
   type ExtractedOrderInput,
 } from "@/lib/claude/extract-order";
+import { analyzeCustomerMessage } from "@/lib/claude/analyze-customer-message";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
@@ -289,12 +290,20 @@ export async function processWebhookAsync(
       mediaId: message.type === "image" ? message.imageId : undefined,
     });
     await tryLearnCustomerContext(customerId, db);
-    await sendPushToAllAdmins(
-      "New message from escalated customer",
-      `${customer.name ?? message.from}: ${escalatedText.slice(0, 80)}`,
-      "/inbox",
-      "medium",
-    );
+    if (message.type === "text" && escalatedText.trim()) {
+      analyzeCustomerMessage({
+        customerId,
+        customerName: customer.name ?? null,
+        text: escalatedText,
+      }).catch((err) => console.error("[webhook] analyzeCustomerMessage failed:", err));
+    } else {
+      await sendPushToAllAdmins(
+        "New message from escalated customer",
+        `${customer.name ?? message.from}: ${escalatedText.slice(0, 80)}`,
+        "/inbox",
+        "medium",
+      );
+    }
     await db
       .from("processed_messages")
       .update({ processed_at: new Date().toISOString() })
