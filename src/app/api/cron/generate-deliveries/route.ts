@@ -41,6 +41,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (!customer) continue;
 
     const subcontractorId = (order as unknown as { subcontractor_id: string | null }).subcontractor_id ?? customer.subcontractor_id;
+    if (!subcontractorId) continue;
 
     if (order.pause_until && new Date(order.pause_until) >= targetDate) continue;
 
