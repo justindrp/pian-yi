@@ -75,8 +75,6 @@ export async function analyzeCustomerMessage({
     break;
   }
 
-  if (!pendingAction) return { conversationId: null };
-
   await saveTurn(db, {
     conversationId,
     userText,
@@ -84,17 +82,19 @@ export async function analyzeCustomerMessage({
     isFirstMessage: true,
   });
 
-  await db
-    .from("assistant_conversations")
-    // biome-ignore lint/suspicious/noExplicitAny: jsonb column not in generated types yet
-    .update({ pending_action: pendingAction } as any)
-    .eq("id", conversationId);
+  if (pendingAction) {
+    await db
+      .from("assistant_conversations")
+      // biome-ignore lint/suspicious/noExplicitAny: jsonb column not in generated types yet
+      .update({ pending_action: pendingAction } as any)
+      .eq("id", conversationId);
+  }
 
   await sendPushToAllAdmins(
     `Permintaan dari ${displayName}`,
     assistantText || text.slice(0, 80),
     "/assistant",
-    "high",
+    pendingAction ? "high" : "medium",
   ).catch((err) => console.error("[analyzeCustomerMessage] push failed:", err));
 
   return { conversationId };
