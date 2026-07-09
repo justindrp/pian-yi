@@ -733,6 +733,12 @@ export async function processSavedCustomerMessage(params: {
   } = params;
   const db = createAdminClient();
 
+  if (text.trim()) {
+    analyzeCustomerMessage({ customerId, customerName, text }).catch((err) =>
+      console.error("[webhook] analyzeCustomerMessage failed:", err),
+    );
+  }
+
   // Rate limit check
   if (!shouldHandlePaymentProof(latestOrderStatus)) {
     const rateCheck = await checkRateLimit(customerId);
