@@ -3,6 +3,7 @@
 import { Switch } from "@/components/ui/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import SubcontractorsClient from "@/components/dashboard/subcontractors-client";
 
 interface SettingRow { key: string; value: string; description?: string | null }
 interface PricingRow { portions: number; price_per_portion: number }
@@ -38,27 +39,50 @@ function useSettingsMutation() {
 }
 
 export default function SettingsClient() {
+  const [tab, setTab] = useState<"general" | "subcontractors">("general");
   const { data, isLoading } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
 
-  if (isLoading) return <div className="text-gray-400 text-sm p-4">Loading...</div>;
-  if (!data) return null;
-
-  const settingsMap = Object.fromEntries(data.settings.map((s) => [s.key, s.value]));
+  const tabs = [
+    { id: "general", label: "General" },
+    { id: "subcontractors", label: "Subcontractors" },
+  ] as const;
 
   return (
-    <div className="space-y-8 max-w-3xl">
-      <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
+    <div className="space-y-6">
+      <div className="flex items-center gap-1 border-b border-gray-100">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.id ? "border-gray-900 text-gray-900" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <BusinessSection settingsMap={settingsMap} />
-      <PricingSection rows={data.pricing} />
-      <DeliverySection settingsMap={settingsMap} />
-      <MessagesSection settingsMap={settingsMap} templates={data.templates} />
-      <ChatbotSection settingsMap={settingsMap} />
-      <AutomationSection settingsMap={settingsMap} />
-      <EscalationSection settingsMap={settingsMap} />
-      <WeeklyMenuSection settingsMap={settingsMap} />
-      <TemplatesSection rows={data.templates.filter((t) => t.key !== "chatbot_unavailable")} />
-      <AdminsSection rows={data.admins} />
+      {tab === "subcontractors" ? (
+        <SubcontractorsClient />
+      ) : isLoading ? (
+        <div className="text-gray-400 text-sm p-4">Loading...</div>
+      ) : !data ? null : (() => {
+        const settingsMap = Object.fromEntries(data.settings.map((s) => [s.key, s.value]));
+        return (
+          <div className="space-y-8 max-w-3xl">
+            <BusinessSection settingsMap={settingsMap} />
+            <PricingSection rows={data.pricing} />
+            <DeliverySection settingsMap={settingsMap} />
+            <MessagesSection settingsMap={settingsMap} templates={data.templates} />
+            <ChatbotSection settingsMap={settingsMap} />
+            <AutomationSection settingsMap={settingsMap} />
+            <EscalationSection settingsMap={settingsMap} />
+            <WeeklyMenuSection settingsMap={settingsMap} />
+            <TemplatesSection rows={data.templates.filter((t) => t.key !== "chatbot_unavailable")} />
+            <AdminsSection rows={data.admins} />
+          </div>
+        );
+      })()}
     </div>
   );
 }
