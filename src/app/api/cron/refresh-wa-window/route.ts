@@ -43,7 +43,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     await sendTextMessage(
       customer.phone_number,
-      "halo kak, ada yang bisa kami bantu? balas pesan ini ya 😊",
+      "Halo kak, maaf ganggu ya 🙏 Karena keterbatasan WhatsApp Business, kami tidak bisa menghubungi kakak kalau tidak ada balasan dalam 24 jam. Mohon balas \"ok\" supaya kami tetap bisa menghubungi kakak kalau ada info penting ya!",
     );
     sent++;
   }
