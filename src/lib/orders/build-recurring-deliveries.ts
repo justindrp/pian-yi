@@ -46,7 +46,7 @@ function getFixedMeals(order: RecurringDeliveryOrder) {
       {
         address_slot: order.lunch_address_slot ?? 1,
         meal_type: "lunch" as const,
-        portions: order.portions_lunch ?? order.portions_per_delivery ?? 1,
+        portions: order.portions_lunch || order.portions_per_delivery || 1,
       },
     ];
   }
@@ -55,7 +55,7 @@ function getFixedMeals(order: RecurringDeliveryOrder) {
       {
         address_slot: order.dinner_address_slot ?? 1,
         meal_type: "dinner" as const,
-        portions: order.portions_dinner ?? order.portions_per_delivery ?? 1,
+        portions: order.portions_dinner || order.portions_per_delivery || 1,
       },
     ];
   }
@@ -64,12 +64,12 @@ function getFixedMeals(order: RecurringDeliveryOrder) {
       {
         address_slot: order.lunch_address_slot ?? 1,
         meal_type: "lunch" as const,
-        portions: order.portions_lunch ?? 1,
+        portions: order.portions_lunch || order.portions_per_delivery || 1,
       },
       {
         address_slot: order.dinner_address_slot ?? 1,
         meal_type: "dinner" as const,
-        portions: order.portions_dinner ?? 1,
+        portions: order.portions_dinner || order.portions_per_delivery || 1,
       },
     ];
   }
@@ -84,6 +84,9 @@ export function buildRecurringDeliveryRows(
 
   const meals = getFixedMeals(order);
   if (meals.length === 0) return [];
+
+  const portionsPerDay = meals.reduce((sum, meal) => sum + meal.portions, 0);
+  if (portionsPerDay <= 0) return [];
 
   const rows: DeliveryRow[] = [];
   const start = parseIsoDate(order.start_date);
@@ -112,9 +115,6 @@ export function buildRecurringDeliveryRows(
     }
     return rows;
   }
-
-  const portionsPerDay = meals.reduce((sum, meal) => sum + meal.portions, 0);
-  if (portionsPerDay <= 0) return [];
 
   let remaining = order.package_size ?? 0;
   for (
