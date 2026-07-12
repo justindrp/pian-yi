@@ -636,6 +636,14 @@ export async function POST(request: Request) {
       const endDate = (input.end_date as string | undefined) ?? null;
       const totalPrice = packageSize * pricePerPortion;
 
+      const { data: existingCustomer } = await db.from("customers").select("id").eq("id", customerId).single();
+      if (!existingCustomer) {
+        return NextResponse.json(
+          { ok: false, error: `Customer ${customerId} not found — use query_customers to get the correct UUID` },
+          { status: 400 },
+        );
+      }
+
       const { data: newOrder, error: insertErr } = await db
         .from("orders")
         .insert({

@@ -874,6 +874,15 @@ export async function buildPendingAction(
         .select("name")
         .eq("id", input.customer_id as string)
         .single();
+      if (!customer) {
+        return {
+          tool,
+          input,
+          label: `⚠ create_order — customer not found (${input.customer_id as string})`,
+          details: [`customer_id "${input.customer_id as string}" does not exist — use query_customers to get the correct UUID`],
+          dangerous: true,
+        };
+      }
       const packageSize = input.package_size as number;
       const pricePerPortion = input.price_per_portion as number;
       const totalPrice = packageSize * pricePerPortion;
@@ -883,7 +892,7 @@ export async function buildPendingAction(
         input,
         label: `Create order — Rp ${formatted}`,
         details: [
-          `Customer: ${(customer as { name?: string } | null)?.name ?? "Unknown"}`,
+          `Customer: ${(customer as { name?: string }).name}`,
           `Package: ${packageSize} porsi (${input.order_type as string})`,
           `Price: Rp ${new Intl.NumberFormat("id-ID").format(pricePerPortion)}/porsi`,
           `Total: Rp ${formatted}`,
