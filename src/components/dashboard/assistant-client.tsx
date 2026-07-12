@@ -16,14 +16,19 @@ interface AssistantClientProps {
   fullPage?: boolean;
 }
 
+const SUGGESTIONS = [
+  "Berapa pesanan aktif hari ini?",
+  "Pelanggan baru minggu ini?",
+  "Total pendapatan bulan ini?",
+  "Siapa yang belum bayar?",
+];
+
 export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
-    null,
-  );
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +54,6 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     enabled: !!activeId,
   });
 
-  // Reconcile local message state whenever the active conversation's server view changes.
   useEffect(() => {
     if (activeId && messagesQuery.data) {
       setMessages(messagesQuery.data.messages);
@@ -68,10 +72,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   }
 
   const send = useMutation({
-    mutationFn: async (payload: {
-      messages: Message[];
-      conversationId?: string;
-    }) => {
+    mutationFn: async (payload: { messages: Message[]; conversationId?: string }) => {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,11 +83,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Request failed");
-      return json as {
-        text: string;
-        pendingAction?: PendingAction;
-        conversationId?: string;
-      };
+      return json as { text: string; pendingAction?: PendingAction; conversationId?: string };
     },
     onSuccess: (data) => {
       if (data.conversationId && data.conversationId !== activeId) {
@@ -98,9 +95,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       setPendingAction(data.pendingAction ?? null);
       qc.invalidateQueries({ queryKey: ["assistant-conversations"] });
       if (data.conversationId) {
-        qc.invalidateQueries({
-          queryKey: ["assistant-messages", data.conversationId],
-        });
+        qc.invalidateQueries({ queryKey: ["assistant-messages", data.conversationId] });
       }
     },
   });
@@ -110,11 +105,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       const res = await fetch("/api/assistant/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tool: action.tool,
-          input: action.input,
-          conversationId: activeId ?? undefined,
-        }),
+        body: JSON.stringify({ tool: action.tool, input: action.input, conversationId: activeId ?? undefined }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Execute failed");
@@ -126,27 +117,20 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       invalidateLists();
     },
     onError: (err) => {
-      setMessages((prev) => [
-        ...prev,
-        makeMessage("assistant", `Gagal: ${err.message}`),
-      ]);
+      setMessages((prev) => [...prev, makeMessage("assistant", `Gagal: ${err.message}`)]);
       setPendingAction(null);
     },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/assistant/conversations/${id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/assistant/conversations/${id}`, { method: "DELETE" });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Delete failed");
     },
     onSuccess: (_void, id) => {
       qc.removeQueries({ queryKey: ["assistant-messages", id] });
-      if (activeId === id) {
-        setActiveId(null);
-      }
+      if (activeId === id) setActiveId(null);
       qc.invalidateQueries({ queryKey: ["assistant-conversations"] });
     },
   });
@@ -162,10 +146,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
 
     let base = messages;
     if (pendingAction) {
-      base = [
-        ...messages,
-        makeMessage("assistant", "Dibatalkan karena ada pesan baru."),
-      ];
+      base = [...messages, makeMessage("assistant", "Dibatalkan karena ada pesan baru.")];
       setMessages(base);
       setPendingAction(null);
     }
@@ -173,10 +154,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     const newMessages: Message[] = [...base, makeMessage("user", trimmed)];
     setMessages(newMessages);
     setInput("");
-    send.mutate({
-      messages: newMessages,
-      conversationId: activeId ?? undefined,
-    });
+    send.mutate({ messages: newMessages, conversationId: activeId ?? undefined });
   }
 
   function handleConfirm() {
@@ -199,33 +177,38 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     setSidebarOpen(false);
   }
 
-  const containerHeight = fullPage ? "calc(100vh - 130px)" : "460px";
+  const containerHeight = fullPage ? "calc(100vh - 200px)" : "460px";
 
   const sidebar = (
-    <div className="flex flex-col h-full w-64 shrink-0 border-r bg-gray-50">
-      <div className="p-2">
+    <div className="flex flex-col h-full w-60 shrink-0 border-r border-[#EEECE8] bg-[#F7F5F2]">
+      <div className="p-3 border-b border-[#EEECE8]">
+        <p className="text-[10px] font-semibold tracking-widest text-[#A8A29E] uppercase px-1 mb-2">
+          Riwayat
+        </p>
         <button
           type="button"
           onClick={handleNewChat}
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium hover:bg-white transition-colors text-left"
+          className="w-full px-3 py-2 rounded-lg border border-[#DDD9D4] text-sm text-[#57534E] hover:border-[#C4622D] hover:text-[#C4622D] transition-colors text-left"
         >
-          + New chat
+          + Obrolan baru
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
         {conversationsQuery.isLoading && (
-          <p className="text-xs text-gray-400 px-2 py-1">Loading…</p>
+          <p className="text-xs text-[#A8A29E] px-3 py-2">Memuat…</p>
         )}
         {conversationsQuery.data?.length === 0 && (
-          <p className="text-xs text-gray-400 px-2 py-1">
-            No conversations yet.
+          <p className="text-xs text-[#A8A29E] px-3 py-2 leading-relaxed">
+            Belum ada obrolan.
           </p>
         )}
         {conversationsQuery.data?.map((c) => (
           <div
             key={c.id}
-            className={`group flex items-center gap-1 rounded-lg ${
-              c.id === activeId ? "bg-blue-100" : "hover:bg-gray-200"
+            className={`group flex items-center rounded-lg border-l-[3px] transition-colors ${
+              c.id === activeId
+                ? "border-[#C4622D] bg-white"
+                : "border-transparent hover:bg-[#EEECe8]"
             }`}
           >
             <button
@@ -233,17 +216,17 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
               onClick={() => handleSelect(c.id)}
               className="flex-1 min-w-0 px-2.5 py-2 text-left"
             >
-              <p className="text-sm truncate text-gray-800">{c.title}</p>
-              <p className="text-[11px] text-gray-400">
-                {formatDate(c.updated_at)}
+              <p className={`text-sm truncate ${c.id === activeId ? "text-[#1C1917] font-medium" : "text-[#78716C]"}`}>
+                {c.title}
               </p>
+              <p className="text-[11px] text-[#A8A29E] mt-0.5">{formatDate(c.updated_at)}</p>
             </button>
             <button
               type="button"
               onClick={() => remove.mutate(c.id)}
               disabled={remove.isPending}
-              title="Delete"
-              className="opacity-0 group-hover:opacity-100 px-2 py-2 text-gray-400 hover:text-red-600 text-sm"
+              title="Hapus"
+              className="opacity-0 group-hover:opacity-100 px-2 py-2 text-[#A8A29E] hover:text-red-500 text-xs transition-opacity"
             >
               ✕
             </button>
@@ -254,9 +237,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   );
 
   return (
-    <div className="flex h-full">
+    <div className="flex border border-[#EEECE8] rounded-xl overflow-hidden bg-white shadow-sm" style={{ height: containerHeight }}>
       {/* Desktop sidebar */}
-      <div className="hidden md:flex">{sidebar}</div>
+      <div className="hidden md:flex h-full">{sidebar}</div>
 
       {/* Mobile drawer */}
       {sidebarOpen && (
@@ -265,131 +248,160 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
             type="button"
             className="absolute inset-0 bg-black/40"
             onClick={() => setSidebarOpen(false)}
-            aria-label="Close sidebar"
+            aria-label="Tutup"
           />
           <div className="relative z-10 h-full">{sidebar}</div>
         </div>
       )}
 
       {/* Chat pane */}
-      <div className="flex flex-col flex-1 min-w-0">
-        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b">
+      <div className="flex flex-col flex-1 min-w-0 bg-[#FAFAF8]">
+        {/* Mobile header */}
+        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-[#EEECE8] bg-white">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
-            className="px-2 py-1 rounded-lg border border-gray-300 text-sm"
+            className="px-2 py-1 rounded-lg border border-[#DDD9D4] text-sm text-[#78716C]"
           >
             ☰
           </button>
-          <span className="text-sm text-gray-500 truncate">
+          <span className="text-sm text-[#78716C] truncate">
             {activeId
-              ? (conversationsQuery.data?.find((c) => c.id === activeId)
-                  ?.title ?? "Chat")
-              : "New chat"}
+              ? (conversationsQuery.data?.find((c) => c.id === activeId)?.title ?? "Obrolan")
+              : "Obrolan baru"}
           </span>
         </div>
 
-        <div
-          className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
-          style={{ height: containerHeight }}
-        >
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {messages.length === 0 && (
-            <div className="text-center text-gray-400 text-sm mt-8">
-              Ask anything about customers, orders, deliveries, or financials.
+            <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-[#1C1917]">Tanya sesuatu</p>
+                <p className="text-xs text-[#A8A29E]">Data pelanggan, pesanan, pengiriman, dan keuangan.</p>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center max-w-xs">
+                {SUGGESTIONS.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setInput(q)}
+                    className="px-3 py-1.5 rounded-full border border-[#DDD9D4] text-xs text-[#78716C] hover:border-[#C4622D] hover:text-[#C4622D] bg-white transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
+
           {messages.map((msg) => (
             <div
               key={msg.id}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${
+                className={`max-w-[80%] px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-800"
+                    ? "bg-[#1C1917] text-white rounded-2xl rounded-br-none"
+                    : "bg-white border border-[#EEECE8] shadow-sm text-[#292524] rounded-2xl rounded-bl-none"
                 }`}
               >
                 {msg.content}
               </div>
             </div>
           ))}
+
           {pendingAction && (
             <div className="flex justify-start">
-              <div className="max-w-[80%] border rounded-2xl p-3 bg-amber-50 border-amber-200 space-y-2 text-sm">
-                <p className="font-medium text-amber-900">
-                  {pendingAction.label}
-                </p>
-                <ul className="space-y-0.5 text-amber-800">
-                  {pendingAction.details.map((d) => (
-                    <li key={d}>• {d}</li>
-                  ))}
-                </ul>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleConfirm}
-                    disabled={confirm.isPending}
-                    className={`px-3 py-1.5 rounded-lg text-white text-xs font-medium disabled:opacity-50 ${
-                      pendingAction.dangerous
-                        ? "bg-red-600 hover:bg-red-700"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {confirm.isPending ? "..." : "Confirm"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    disabled={confirm.isPending}
-                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
+              <div className="max-w-[80%] bg-white border border-[#EEECE8] shadow-sm rounded-2xl rounded-bl-none overflow-hidden">
+                <div className="border-l-4 border-[#C4622D] p-3 space-y-2">
+                  <p className="text-[10px] font-semibold tracking-widest uppercase text-[#C4622D]">
+                    {pendingAction.dangerous ? "⚠ Tindakan Berbahaya" : "Konfirmasi Tindakan"}
+                  </p>
+                  <p className="text-sm font-medium text-[#1C1917]">{pendingAction.label}</p>
+                  <ul className="space-y-1">
+                    {pendingAction.details.map((d) => (
+                      <li key={d} className="flex gap-1.5 text-sm text-[#57534E]">
+                        <span className="text-[#C4622D] mt-0.5 shrink-0">·</span>
+                        <span>{d}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleConfirm}
+                      disabled={confirm.isPending}
+                      className={`px-3 py-1.5 rounded-lg text-white text-xs font-medium disabled:opacity-50 transition-colors ${
+                        pendingAction.dangerous
+                          ? "bg-red-600 hover:bg-red-700"
+                          : "bg-[#C4622D] hover:bg-[#A8521F]"
+                      }`}
+                    >
+                      {confirm.isPending ? "Memproses…" : "Konfirmasi"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      disabled={confirm.isPending}
+                      className="px-3 py-1.5 rounded-lg border border-[#DDD9D4] text-xs text-[#78716C] hover:bg-[#F7F5F2] disabled:opacity-50 transition-colors"
+                    >
+                      Batal
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
+
           {send.isPending && (
             <div className="flex justify-start">
-              <div className="bg-gray-100 text-gray-500 px-4 py-2.5 rounded-2xl text-sm">
-                ...
+              <div className="bg-white border border-[#EEECE8] shadow-sm px-4 py-3 rounded-2xl rounded-bl-none flex gap-1 items-center">
+                <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce" />
               </div>
             </div>
           )}
+
           {send.isError && (
             <div className="flex justify-start">
-              <div className="bg-red-50 text-red-600 px-4 py-2.5 rounded-2xl text-sm">
-                Error: {send.error?.message}
+              <div className="max-w-[80%] bg-red-50 border border-red-100 text-red-700 px-4 py-2.5 rounded-2xl rounded-bl-none text-sm">
+                {send.error?.message}
               </div>
             </div>
           )}
+
           <div ref={bottomRef} />
         </div>
 
-        <div className="border-t px-3 py-2 flex gap-2">
-          <textarea
-            className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            rows={2}
-            placeholder="Ask about your business data..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            disabled={send.isPending}
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={send.isPending || !input.trim()}
-            className="self-end px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
-          >
-            Send
-          </button>
+        {/* Input */}
+        <div className="border-t border-[#EEECE8] px-3 py-3 bg-white">
+          <div className="flex gap-2 items-end">
+            <textarea
+              className="flex-1 resize-none rounded-xl border border-[#DDD9D4] bg-[#FAFAF8] px-3 py-2.5 text-sm text-[#1C1917] placeholder:text-[#A8A29E] focus:outline-none focus:ring-2 focus:ring-[#C4622D]/20 focus:border-[#C4622D] transition-colors"
+              rows={2}
+              placeholder="Tanya tentang data bisnis… (Enter untuk kirim)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              disabled={send.isPending}
+            />
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={send.isPending || !input.trim()}
+              className="self-end px-4 py-2.5 rounded-xl bg-[#C4622D] text-white text-sm font-medium disabled:opacity-40 hover:bg-[#A8521F] transition-colors"
+            >
+              Kirim
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -398,5 +410,5 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.toLocaleDateString("id-ID", { month: "short", day: "numeric" });
 }

@@ -3,10 +3,10 @@ import { PendingBotResponses } from "@/components/dashboard/pending-bot-response
 
 export default function AssistantPage() {
   return (
-    <div className="flex flex-col h-full px-4">
-      <div className="py-4 border-b">
-        <h1 className="text-xl font-semibold">Assistant</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Ask questions about customers, orders, deliveries, and financials.</p>
+    <div className="flex flex-col gap-3">
+      <div>
+        <h1 className="text-xl font-semibold text-[#1C1917]">Assistant</h1>
+        <p className="text-sm text-[#78716C] mt-0.5">Tanya tentang pelanggan, pesanan, pengiriman, dan keuangan.</p>
       </div>
       <PendingBotResponses />
       <AssistantClient fullPage />
