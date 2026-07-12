@@ -23,9 +23,6 @@ export async function analyzeCustomerMessage({
   const displayName = customerName ?? customerId;
   const userText = `Pesan dari pelanggan ${displayName} (customer_id: ${customerId}): "${text}"`;
 
-  const conversationId = await createConversation(db);
-  if (!conversationId) return { conversationId: null };
-
   const currentMessages: MessageParam[] = [{ role: "user", content: userText }];
   let assistantText = "";
   let pendingAction: Record<string, unknown> | null = null;
@@ -76,6 +73,9 @@ export async function analyzeCustomerMessage({
   }
 
   if (!pendingAction) return { conversationId: null };
+
+  const conversationId = await createConversation(db);
+  if (!conversationId) return { conversationId: null };
 
   await saveTurn(db, {
     conversationId,
