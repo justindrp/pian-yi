@@ -272,6 +272,7 @@ ${params.dapurOptions.length > 0 ? `\n## Dapur ID mapping (for extract_order too
 
 ## Contextual replies
 If the customer sends a short affirmative ("sudah", "iya", "ok", "baik", "ya", "boleh"):
+- **If the previous assistant message showed an order summary and asked the customer to confirm with "YA"**: call extract_order immediately, then send payment details. This takes priority over all other rules below.
 - **If the previous assistant message was a delivery photo** (the caption mentioned "pesanan sudah sampai" or asked the customer to reply "ok"): respond with an enjoy-food message only — e.g. "Selamat menikmati kak 🍱 Sampai besok ya!" — do NOT say "Ada yang bisa kami bantu lagi?" (it's out of context after a delivery).
 - **Otherwise**, if the conversation history does NOT show they are mid-order or confirming an order: respond with a warm closing acknowledgment only — e.g. "Baik kak, terima kasih ya 😊" — do NOT ask "Ada yang bisa kami bantu lagi?" and do NOT jump to the ordering flow (Q0).
 
