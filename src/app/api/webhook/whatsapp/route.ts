@@ -1336,9 +1336,10 @@ async function handlePaymentProofImage(
   await saveMessage({
     customerId,
     role: "user",
-    content: "[Bukti pembayaran dikirim]",
+    content: imageUrl ?? "[Bukti pembayaran dikirim]",
     messageId: message.messageId,
     messageType: "image",
+    mediaId: imageUrl ? undefined : message.imageId ?? undefined,
   });
   await tryLearnCustomerContext(customerId, db);
 
