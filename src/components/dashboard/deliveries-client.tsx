@@ -656,6 +656,33 @@ export default function DeliveriesClient() {
       qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
   });
 
+  const assignRoute = useMutation({
+    mutationFn: async ({
+      customerId,
+      route,
+    }: {
+      customerId: string;
+      route: number | null;
+    }) => {
+      const res = await fetch(`/api/customers/${customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delivery_route: route }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error ?? "Gagal simpan rute");
+    },
+    onSuccess: (_data, { customerId, route }) => {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.customer_id === customerId && r.customers
+            ? { ...r, customers: { ...r.customers, delivery_route: route } }
+            : r,
+        ),
+      );
+    },
+  });
+
   const unmatchProof = useMutation({
     mutationFn: async (id: string) => {
       await fetch("/api/deliveries/proofs", {
@@ -1128,6 +1155,28 @@ export default function DeliveriesClient() {
                                       </Button>
                                     )}
                                   </div>
+                                  <Select
+                                    value={r.customers?.delivery_route?.toString() ?? ""}
+                                    onValueChange={(v) =>
+                                      assignRoute.mutate({
+                                        customerId: r.customer_id,
+                                        route: v ? Number(v) : null,
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="mt-1 h-auto w-full rounded border-orange-200 bg-orange-50 px-1 py-0.5 text-[10px] text-orange-700">
+                                      <SelectValue placeholder="Assign route..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(ROUTE_LABELS).map(
+                                        ([k, label]) => (
+                                          <SelectItem key={k} value={k}>
+                                            {label}
+                                          </SelectItem>
+                                        ),
+                                      )}
+                                    </SelectContent>
+                                  </Select>
                                 </td>
                                 <td className="px-2 py-2">
                                   <div className="flex items-center gap-1">
