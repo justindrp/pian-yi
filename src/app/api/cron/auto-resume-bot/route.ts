@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 
-const INACTIVITY_MINUTES = 15;
+const INACTIVITY_MINUTES = 10;
 
 export async function GET(req: NextRequest): Promise<Response> {
   const secret = req.headers.get("x-cron-secret");
@@ -12,25 +13,39 @@ export async function GET(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
   const cutoff = new Date(Date.now() - INACTIVITY_MINUTES * 60 * 1000).toISOString();
 
-  const { data, error } = await db
+  const { data: candidates, error: selectError } = await db
     .from("customer_flags")
-    .update({ escalated_to_human: false, escalation_reason: null, last_human_activity_at: null })
+    .select("customer_id")
     .eq("escalated_to_human", true)
     .lt("last_human_activity_at", cutoff)
-    .not("last_human_activity_at", "is", null)
-    .select("customer_id");
+    .not("last_human_activity_at", "is", null);
 
-  if (error) {
-    console.error("[auto-resume-bot]", error.message);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (selectError) {
+    console.error("[auto-resume-bot]", selectError.message);
+    return NextResponse.json({ ok: false, error: selectError.message }, { status: 500 });
   }
 
-  const resumed = data?.length ?? 0;
-  if (resumed > 0) {
-    console.log(`[auto-resume-bot] resumed bot for ${resumed} customer(s)`);
+  if (!candidates?.length) {
+    return NextResponse.json({ ok: true, resumed: 0 });
   }
 
-  return NextResponse.json({ ok: true, resumed });
+  await Promise.all(
+    candidates.map(({ customer_id }) => tryLearnCustomerContext(customer_id, db)),
+  );
+
+  const ids = candidates.map((c) => c.customer_id);
+  const { error: updateError } = await db
+    .from("customer_flags")
+    .update({ escalated_to_human: false, escalation_reason: null, last_human_activity_at: null })
+    .in("customer_id", ids);
+
+  if (updateError) {
+    console.error("[auto-resume-bot] update failed:", updateError.message);
+    return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+  }
+
+  console.log(`[auto-resume-bot] learned context and resumed bot for ${ids.length} customer(s)`);
+  return NextResponse.json({ ok: true, resumed: ids.length });
 }
 
 export const dynamic = "force-dynamic";
