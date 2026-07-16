@@ -664,6 +664,7 @@ export async function processWebhookAsync(
         `⚠️ Terlambat (siang >12.30 / malam >18.30) → diskon 50%`,
         `🏠 Pesanan selalu digantung di pintu/pagar — kurir tidak menunggu`,
         `📅 Tutup di semua hari libur nasional (tanggal merah)`,
+        `🚫 Pembayaran tidak dapat di-refund`,
         "",
         "Dengan melanjutkan pemesanan, kak menyetujui ketentuan di atas 🙏",
       ].join("\n");
