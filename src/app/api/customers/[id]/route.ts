@@ -27,7 +27,8 @@ export async function GET(
       .select(
         "id, package_size, total_price, price_per_portion, start_date, created_at, status, source, grant_reason",
       )
-      .eq("customer_id", id),
+      .eq("customer_id", id)
+      .in("status", ["active", "paused", "completed", "payment_proof_received"]),
     db
       .from("daily_deliveries")
       .select("id, delivery_date, meal_type, portions, status, notes")
