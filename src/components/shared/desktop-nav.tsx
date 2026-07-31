@@ -14,6 +14,7 @@ import {
   Settings,
   HelpCircle,
   LogOut,
+  ChefHat,
 } from "lucide-react";
 
 interface NavItem {
@@ -38,6 +39,7 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/assistant": Sparkles,
   "/accounting": BookOpen,
   "/settings": Settings,
+  "/dapur/52cd5e62-da09-49c9-939c-2f1246566c40": ChefHat,
 };
 
 export default function DesktopNav({ navItems, userEmail, version }: DesktopNavProps) {
