@@ -125,4 +125,26 @@ export async function POST(req: NextRequest): Promise<Response> {
   return NextResponse.json({ ok: true, data: proof });
 }
 
+export async function DELETE(req: NextRequest): Promise<Response> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await req.json() as { id: string };
+  if (!id) return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
+
+  const db = createAdminClient();
+  const { data: proof } = await db.from("delivery_proofs").select("image_url").eq("id", id).single();
+
+  if (proof?.image_url) {
+    const path = proof.image_url.split("/delivery-proofs/")[1];
+    if (path) await db.storage.from("delivery-proofs").remove([path]);
+  }
+
+  const { error } = await db.from("delivery_proofs").delete().eq("id", id);
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}
+
 export const dynamic = "force-dynamic";

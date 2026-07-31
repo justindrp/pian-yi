@@ -695,6 +695,20 @@ export default function DeliveriesClient() {
       qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
   });
 
+  const deleteProof = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch("/api/deliveries/proofs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Gagal menghapus");
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["delivery-proofs", date] }),
+  });
+
   const deleteRow = useMutation({
     mutationFn: async (row: DeliveryRow) => {
       // Unsaved local row (no DB id) — just drop from state, no fetch.
@@ -1386,6 +1400,15 @@ export default function DeliveriesClient() {
                     >
                       Send
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => deleteProof.mutate(p.id)}
+                      disabled={deleteProof.isPending}
+                      className="px-3 py-1.5 border-red-200 text-red-500 text-xs rounded-lg h-auto hover:bg-red-50"
+                    >
+                      Hapus
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1445,6 +1468,15 @@ export default function DeliveriesClient() {
                         Resend
                       </Button>
                     )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => deleteProof.mutate(p.id)}
+                      disabled={deleteProof.isPending}
+                      className="mt-1 w-full px-2 py-1 text-xs border-red-200 text-red-500 rounded-lg h-auto hover:bg-red-50"
+                    >
+                      Hapus
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1506,6 +1538,15 @@ export default function DeliveriesClient() {
                         Resend
                       </Button>
                     )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => deleteProof.mutate(p.id)}
+                      disabled={deleteProof.isPending}
+                      className="mt-1 w-full px-2 py-1 text-xs border-red-200 text-red-500 rounded-lg h-auto hover:bg-red-50"
+                    >
+                      Hapus
+                    </Button>
                   </div>
                 ))}
               </div>
