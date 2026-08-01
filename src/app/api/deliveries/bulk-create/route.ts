@@ -40,12 +40,19 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const { data: order } = await db
     .from("orders")
-    .select("id")
+    .select("id, order_type")
     .eq("customer_id", customer_id)
     .eq("status", "active")
-    .eq("order_type", "recurring")
+    .in("order_type", ["recurring", "scheduled"])
     .limit(1)
     .maybeSingle();
+
+  if (!order) {
+    return NextResponse.json(
+      { ok: false, error: "Customer has no active order — cannot create draws without balance" },
+      { status: 400 },
+    );
+  }
 
   const rows = deliveries.map((d) => ({
     delivery_date: d.date,
