@@ -1020,6 +1020,12 @@ export async function processSavedCustomerMessage(params: {
         "Called when customer indicates they have sent payment proof.",
       input_schema: { type: "object", properties: {} },
     },
+    {
+      name: "send_menu_image",
+      description:
+        "Sends the current menu image(s) to the customer. Use when the customer asks what today's or tomorrow's menu is. Safe to call even if menu was previously sent.",
+      input_schema: { type: "object", properties: {} },
+    },
   ];
 
   // Call Sonnet 4.6 (with one retry on overload)
@@ -1544,6 +1550,31 @@ async function handleToolUse(
       "/payments",
       "medium",
     );
+  } else if (tool.name === "send_menu_image") {
+    const { data: menuSubsRaw } = await db
+      .from("subcontractors")
+      .select("customer_nickname, menu_image_url")
+      .not("menu_image_url", "is", null);
+    const menuSubs = (menuSubsRaw ?? []).filter((s) => !!s.menu_image_url);
+    for (const sub of menuSubs) {
+      const conversationId = await saveMessage({
+        customerId,
+        role: "assistant",
+        content: sub.menu_image_url,
+        messageType: "image",
+        modelUsed: "system",
+      });
+      const whatsappMessageId = await sendImageByUrl(
+        phone,
+        sub.menu_image_url,
+        sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur",
+      );
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId,
+        status: "sent",
+      });
+    }
   }
 }
 
