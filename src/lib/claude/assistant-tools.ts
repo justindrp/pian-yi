@@ -37,9 +37,19 @@ export const assistantTools: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        search: { type: "string", description: "Partial match on name or phone number" },
-        area: { type: "string", description: "Filter by delivery area (e.g. BSD Baru, Gading Serpong)" },
-        subcontractor_id: { type: "string", description: "Filter by subcontractor UUID" },
+        search: {
+          type: "string",
+          description: "Partial match on name or phone number",
+        },
+        area: {
+          type: "string",
+          description:
+            "Filter by delivery area (e.g. BSD Baru, Gading Serpong)",
+        },
+        subcontractor_id: {
+          type: "string",
+          description: "Filter by subcontractor UUID",
+        },
         limit: { type: "number", description: "Max rows (default 20, max 50)" },
       },
     },
@@ -56,9 +66,18 @@ export const assistantTools: Tool[] = [
           description:
             "Order status: pending_payment, payment_proof_received, active, paused, completed, cancelled_unpaid, cancelled_by_customer, cancelled_by_admin, refunded",
         },
-        customer_phone: { type: "string", description: "Exact customer phone number" },
-        start_date: { type: "string", description: "ISO date, filter by created_at >= this date" },
-        end_date: { type: "string", description: "ISO date, filter by created_at <= this date" },
+        customer_phone: {
+          type: "string",
+          description: "Exact customer phone number",
+        },
+        start_date: {
+          type: "string",
+          description: "ISO date, filter by created_at >= this date",
+        },
+        end_date: {
+          type: "string",
+          description: "ISO date, filter by created_at <= this date",
+        },
         limit: { type: "number", description: "Max rows (default 20, max 50)" },
       },
     },
@@ -70,11 +89,26 @@ export const assistantTools: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        date: { type: "string", description: "Specific delivery date (YYYY-MM-DD)" },
-        start_date: { type: "string", description: "Start of date range (YYYY-MM-DD)" },
-        end_date: { type: "string", description: "End of date range (YYYY-MM-DD)" },
-        status: { type: "string", description: "Delivery status (e.g. pending, delivered, skipped)" },
-        subcontractor_id: { type: "string", description: "Filter by subcontractor UUID" },
+        date: {
+          type: "string",
+          description: "Specific delivery date (YYYY-MM-DD)",
+        },
+        start_date: {
+          type: "string",
+          description: "Start of date range (YYYY-MM-DD)",
+        },
+        end_date: {
+          type: "string",
+          description: "End of date range (YYYY-MM-DD)",
+        },
+        status: {
+          type: "string",
+          description: "Delivery status (e.g. pending, delivered, skipped)",
+        },
+        subcontractor_id: {
+          type: "string",
+          description: "Filter by subcontractor UUID",
+        },
         limit: { type: "number", description: "Max rows (default 20, max 50)" },
       },
     },
@@ -108,9 +142,18 @@ export const assistantTools: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        customer_phone: { type: "string", description: "Customer phone number (exact)" },
-        customer_name: { type: "string", description: "Customer name (partial match)" },
-        limit: { type: "number", description: "Max messages (default 20, max 50)" },
+        customer_phone: {
+          type: "string",
+          description: "Customer phone number (exact)",
+        },
+        customer_name: {
+          type: "string",
+          description: "Customer name (partial match)",
+        },
+        limit: {
+          type: "number",
+          description: "Max messages (default 20, max 50)",
+        },
       },
     },
   },
@@ -124,17 +167,56 @@ export const assistantTools: Tool[] = [
     },
   },
   {
+    name: "query_expiring_orders",
+    description:
+      "Get active orders that are ending soon (within N days) or quota orders with fewer than 5 portions remaining. Use for renewal risk briefings and proactive outreach.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        days: {
+          type: "number",
+          description:
+            "How many days ahead to check for expiring end_date (default 7, max 30)",
+        },
+      },
+    },
+  },
+  {
+    name: "query_revenue_trend",
+    description:
+      "Compare this week's revenue (Mon–today) vs last week (same Mon–Sun span) from the accounting journal. Returns totals and % change.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+    },
+  },
+  {
+    name: "query_lapsed_customers",
+    description:
+      "List lapsed customers (customer_state = 'lapsed') with days inactive and contact info. Use for re-engagement outreach recommendations.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        limit: { type: "number", description: "Max rows (default 20)" },
+      },
+    },
+  },
+  {
     name: "update_delivery",
     description:
       "Skip or reschedule a single daily_deliveries row. Use 'skip' to mark it skipped, 'reschedule' to move it to a new date. Admin must confirm before this executes.",
     input_schema: {
       type: "object" as const,
       properties: {
-        delivery_id: { type: "string", description: "The daily_deliveries UUID" },
+        delivery_id: {
+          type: "string",
+          description: "The daily_deliveries UUID",
+        },
         action: {
           type: "string",
           enum: ["skip", "reschedule"],
-          description: "skip: set status to skipped. reschedule: move to new_date.",
+          description:
+            "skip: set status to skipped. reschedule: move to new_date.",
         },
         new_date: {
           type: "string",
@@ -166,9 +248,14 @@ export const assistantTools: Tool[] = [
         order_id: { type: "string", description: "The order UUID" },
         notify_customer: {
           type: "boolean",
-          description: "Whether to send a WhatsApp cancellation message to the customer",
+          description:
+            "Whether to send a WhatsApp cancellation message to the customer",
         },
-        reason: { type: "string", description: "Optional reason for cancellation (included in WhatsApp message)" },
+        reason: {
+          type: "string",
+          description:
+            "Optional reason for cancellation (included in WhatsApp message)",
+        },
       },
       required: ["order_id", "notify_customer"],
     },
@@ -182,7 +269,8 @@ export const assistantTools: Tool[] = [
       properties: {
         phone_number: {
           type: "string",
-          description: "Customer's phone number in international format (e.g. +628...)",
+          description:
+            "Customer's phone number in international format (e.g. +628...)",
         },
         message: { type: "string", description: "The message text to send" },
       },
@@ -198,7 +286,8 @@ export const assistantTools: Tool[] = [
       properties: {
         phone_number: {
           type: "string",
-          description: "Customer's phone number in international format (e.g. +628...)",
+          description:
+            "Customer's phone number in international format (e.g. +628...)",
         },
         image_url: { type: "string", description: "Public image URL to send" },
         caption: { type: "string", description: "Short image caption" },
@@ -234,7 +323,8 @@ export const assistantTools: Tool[] = [
         order_id: { type: "string", description: "The order UUID" },
         pause_until: {
           type: "string",
-          description: "Optional ISO date (YYYY-MM-DD) when the order should auto-resume",
+          description:
+            "Optional ISO date (YYYY-MM-DD) when the order should auto-resume",
         },
       },
       required: ["order_id"],
@@ -348,8 +438,14 @@ export const assistantTools: Tool[] = [
           enum: ["recurring", "scheduled"],
           description: "Order type",
         },
-        package_size: { type: "number", description: "Total portions in the package" },
-        portions_per_delivery: { type: "number", description: "Portions per daily delivery" },
+        package_size: {
+          type: "number",
+          description: "Total portions in the package",
+        },
+        portions_per_delivery: {
+          type: "number",
+          description: "Portions per daily delivery",
+        },
         price_per_portion: {
           type: "number",
           description: "Price in IDR per portion (e.g. 28000)",
@@ -401,8 +497,11 @@ export async function runTool(
         q = q.or(`name.ilike.%${s}%,phone_number.ilike.%${s}%`);
       }
       if (input.area) q = q.ilike("area", `%${input.area as string}%`);
-      if (input.subcontractor_id) q = q.eq("subcontractor_id", input.subcontractor_id as string);
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
+      if (input.subcontractor_id)
+        q = q.eq("subcontractor_id", input.subcontractor_id as string);
+      const { data, error } = await q
+        .order("created_at", { ascending: false })
+        .limit(limit);
       if (error) return { error: error.message };
       return { customers: data ?? [], count: data?.length ?? 0 };
     }
@@ -424,8 +523,11 @@ export async function runTool(
         q = q.eq("customer_id", cust.id);
       }
       if (input.start_date) q = q.gte("created_at", input.start_date as string);
-      if (input.end_date) q = q.lte("created_at", `${input.end_date as string}T23:59:59`);
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
+      if (input.end_date)
+        q = q.lte("created_at", `${input.end_date as string}T23:59:59`);
+      const { data, error } = await q
+        .order("created_at", { ascending: false })
+        .limit(limit);
       if (error) return { error: error.message };
       return { orders: data ?? [], count: data?.length ?? 0 };
     }
@@ -437,11 +539,15 @@ export async function runTool(
           "id, delivery_date, status, portions, subcontractor_id, address_slot, customer:customers(name, phone_number, area)",
         );
       if (input.date) q = q.eq("delivery_date", input.date as string);
-      if (input.start_date) q = q.gte("delivery_date", input.start_date as string);
+      if (input.start_date)
+        q = q.gte("delivery_date", input.start_date as string);
       if (input.end_date) q = q.lte("delivery_date", input.end_date as string);
       if (input.status) q = q.eq("status", input.status as string);
-      if (input.subcontractor_id) q = q.eq("subcontractor_id", input.subcontractor_id as string);
-      const { data, error } = await q.order("delivery_date", { ascending: false }).limit(limit);
+      if (input.subcontractor_id)
+        q = q.eq("subcontractor_id", input.subcontractor_id as string);
+      const { data, error } = await q
+        .order("delivery_date", { ascending: false })
+        .limit(limit);
       if (error) return { error: error.message };
       return { deliveries: data ?? [], count: data?.length ?? 0 };
     }
@@ -465,8 +571,14 @@ export async function runTool(
           .gte("journal.date", input.start_date as string)
           .lte("journal.date", input.end_date as string),
       ]);
-      const revenue = (revenueRes.data ?? []).reduce((sum, r) => sum + (r.credit ?? 0), 0);
-      const cogs = (cogsRes.data ?? []).reduce((sum, r) => sum + (r.debit ?? 0), 0);
+      const revenue = (revenueRes.data ?? []).reduce(
+        (sum, r) => sum + (r.credit ?? 0),
+        0,
+      );
+      const cogs = (cogsRes.data ?? []).reduce(
+        (sum, r) => sum + (r.debit ?? 0),
+        0,
+      );
       return {
         revenue,
         cogs,
@@ -478,36 +590,48 @@ export async function runTool(
 
     case "query_metrics": {
       const today = new Date().toISOString().split("T")[0];
-      const [activeRes, deliveriesRes, pendingRes, revenueRes, pendingProofsRes, lapsedRes] =
-        await Promise.all([
-          db.from("orders").select("id", { count: "exact", head: true }).eq("status", "active"),
-          db
-            .from("daily_deliveries")
-            .select("id", { count: "exact", head: true })
-            .eq("delivery_date", today)
-            .neq("status", "skipped"),
-          db
-            .from("orders")
-            .select("id", { count: "exact", head: true })
-            .in("status", ["pending_payment", "payment_proof_received"]),
-          db
-            .from("journal_lines")
-            .select(
-              "credit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
-            )
-            .eq("account.code", "4001")
-            .eq("journal.date", today)
-            .eq("journal.source_type", "delivery"),
-          db
-            .from("delivery_proofs")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "needs_review"),
-          db
-            .from("customer_state")
-            .select("id", { count: "exact", head: true })
-            .eq("state", "lapsed"),
-        ]);
-      const revenueToday = (revenueRes.data ?? []).reduce((sum, r) => sum + (r.credit ?? 0), 0);
+      const [
+        activeRes,
+        deliveriesRes,
+        pendingRes,
+        revenueRes,
+        pendingProofsRes,
+        lapsedRes,
+      ] = await Promise.all([
+        db
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active"),
+        db
+          .from("daily_deliveries")
+          .select("id", { count: "exact", head: true })
+          .eq("delivery_date", today)
+          .neq("status", "skipped"),
+        db
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["pending_payment", "payment_proof_received"]),
+        db
+          .from("journal_lines")
+          .select(
+            "credit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
+          )
+          .eq("account.code", "4001")
+          .eq("journal.date", today)
+          .eq("journal.source_type", "delivery"),
+        db
+          .from("delivery_proofs")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "needs_review"),
+        db
+          .from("customer_state")
+          .select("id", { count: "exact", head: true })
+          .eq("state", "lapsed"),
+      ]);
+      const revenueToday = (revenueRes.data ?? []).reduce(
+        (sum, r) => sum + (r.credit ?? 0),
+        0,
+      );
       return {
         today,
         activeOrders: activeRes.count ?? 0,
@@ -534,7 +658,8 @@ export async function runTool(
           .ilike("name", `%${input.customer_name as string}%`);
         customerIds = (data ?? []).map((c) => c.id);
       }
-      if (customerIds.length === 0) return { messages: [], count: 0, note: "No customers found" };
+      if (customerIds.length === 0)
+        return { messages: [], count: 0, note: "No customers found" };
       const { data, error } = await db
         .from("conversations")
         .select("id, customer_id, role, content, created_at, message_type")
@@ -547,10 +672,15 @@ export async function runTool(
 
     case "query_menu_assets": {
       const [{ data: settings }, { data: subcontractors }] = await Promise.all([
-        db.from("settings").select("key, value").eq("key", "price_list_image_url"),
+        db
+          .from("settings")
+          .select("key, value")
+          .eq("key", "price_list_image_url"),
         db
           .from("subcontractors")
-          .select("customer_nickname, menu_image_url, menu_text, delivery_areas")
+          .select(
+            "customer_nickname, menu_image_url, menu_text, delivery_areas",
+          )
           .eq("is_active", true)
           .not("menu_image_url", "is", null)
           .order("customer_nickname"),
@@ -564,6 +694,147 @@ export async function runTool(
           delivery_areas: s.delivery_areas,
         })),
       };
+    }
+
+    case "query_expiring_orders": {
+      const today = new Date().toISOString().split("T")[0];
+      const days = Math.min(Number(input.days ?? 7), 30);
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + days);
+      const futureDateStr = futureDate.toISOString().split("T")[0];
+
+      const [scheduledRes, quotaRes] = await Promise.all([
+        db
+          .from("orders")
+          .select(
+            "id, end_date, portions_remaining, order_type, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+          )
+          .eq("status", "active")
+          .not("end_date", "is", null)
+          .gte("end_date", today)
+          .lte("end_date", futureDateStr)
+          .order("end_date", { ascending: true }),
+        db
+          .from("orders")
+          .select(
+            "id, end_date, portions_remaining, order_type, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+          )
+          .eq("status", "active")
+          .eq("order_type", "recurring")
+          .lt("portions_remaining", 5)
+          .order("portions_remaining", { ascending: true }),
+      ]);
+
+      const seen = new Set<string>();
+      const expiring: unknown[] = [];
+      for (const row of [
+        ...(scheduledRes.data ?? []),
+        ...(quotaRes.data ?? []),
+      ]) {
+        if (!seen.has(row.id)) {
+          seen.add(row.id);
+          expiring.push(row);
+        }
+      }
+      return { expiring, count: expiring.length, checked_days_ahead: days };
+    }
+
+    case "query_revenue_trend": {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const daysFromMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const thisMonday = new Date(now);
+      thisMonday.setDate(now.getDate() - daysFromMon);
+      const thisMondayStr = thisMonday.toISOString().split("T")[0];
+      const todayStr = now.toISOString().split("T")[0];
+
+      const lastMonday = new Date(thisMonday);
+      lastMonday.setDate(thisMonday.getDate() - 7);
+      const lastMondayStr = lastMonday.toISOString().split("T")[0];
+      const lastSunday = new Date(thisMonday);
+      lastSunday.setDate(thisMonday.getDate() - 1);
+      const lastSundayStr = lastSunday.toISOString().split("T")[0];
+
+      const [thisRes, lastRes] = await Promise.all([
+        db
+          .from("journal_lines")
+          .select(
+            "credit, account:accounts!inner(code), journal:journals!inner(date)",
+          )
+          .eq("account.code", "4001")
+          .gte("journal.date", thisMondayStr)
+          .lte("journal.date", todayStr),
+        db
+          .from("journal_lines")
+          .select(
+            "credit, account:accounts!inner(code), journal:journals!inner(date)",
+          )
+          .eq("account.code", "4001")
+          .gte("journal.date", lastMondayStr)
+          .lte("journal.date", lastSundayStr),
+      ]);
+
+      const thisWeek = (thisRes.data ?? []).reduce(
+        (sum, r) => sum + (r.credit ?? 0),
+        0,
+      );
+      const lastWeek = (lastRes.data ?? []).reduce(
+        (sum, r) => sum + (r.credit ?? 0),
+        0,
+      );
+      const changePct =
+        lastWeek === 0
+          ? null
+          : Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+
+      return {
+        this_week: thisWeek,
+        last_week: lastWeek,
+        change_pct: changePct,
+        currency: "IDR",
+        period: {
+          this_start: thisMondayStr,
+          this_end: todayStr,
+          last_start: lastMondayStr,
+          last_end: lastSundayStr,
+        },
+      };
+    }
+
+    case "query_lapsed_customers": {
+      const { data, error } = await db
+        .from("customer_state")
+        .select(
+          "customer_id, updated_at, customer:customers!inner(id, name, phone_number, area)",
+        )
+        .eq("state", "lapsed")
+        .order("updated_at", { ascending: true })
+        .limit(limit);
+      if (error) return { error: error.message };
+
+      const now = Date.now();
+      const customers = (data ?? []).map((row) => {
+        const updatedAt = row.updated_at
+          ? new Date(row.updated_at).getTime()
+          : 0;
+        const daysInactive = updatedAt
+          ? Math.floor((now - updatedAt) / (1000 * 60 * 60 * 24))
+          : null;
+        const cust = row.customer as {
+          name?: string;
+          phone_number?: string;
+          area?: string;
+        } | null;
+        return {
+          customer_id: row.customer_id,
+          name: cust?.name ?? "Unknown",
+          phone_number: cust?.phone_number ?? "?",
+          area: cust?.area ?? "?",
+          lapsed_since: row.updated_at,
+          days_inactive: daysInactive,
+        };
+      });
+      return { customers, count: customers.length };
     }
 
     default:
@@ -581,14 +852,17 @@ export async function buildPendingAction(
     case "mark_order_paid": {
       const { data: order } = await db
         .from("orders")
-        .select("id, total_price, package_size, size, status, customers!orders_customer_id_fkey(name)")
+        .select(
+          "id, total_price, package_size, size, status, customers!orders_customer_id_fkey(name)",
+        )
         .eq("id", input.order_id as string)
         .single();
       const rawCustomer = order?.customers;
       const customerName = Array.isArray(rawCustomer)
         ? (rawCustomer[0]?.name ?? "Unknown")
         : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
-      const totalPrice = (order as { total_price?: number } | null)?.total_price ?? 0;
+      const totalPrice =
+        (order as { total_price?: number } | null)?.total_price ?? 0;
       const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
       const orderData = order as {
         package_size?: number;
@@ -611,14 +885,19 @@ export async function buildPendingAction(
     case "cancel_order": {
       const { data: order } = await db
         .from("orders")
-        .select("id, status, package_size, customers!orders_customer_id_fkey(name)")
+        .select(
+          "id, status, package_size, customers!orders_customer_id_fkey(name)",
+        )
         .eq("id", input.order_id as string)
         .single();
       const rawCustomer = order?.customers;
       const customerName = Array.isArray(rawCustomer)
         ? (rawCustomer[0]?.name ?? "Unknown")
         : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
-      const orderData = order as { package_size?: number; status?: string } | null;
+      const orderData = order as {
+        package_size?: number;
+        status?: string;
+      } | null;
       return {
         tool,
         input,
@@ -639,7 +918,8 @@ export async function buildPendingAction(
     case "send_whatsapp_message": {
       const phone = input.phone_number as string;
       const message = input.message as string;
-      const preview = message.length > 60 ? `${message.slice(0, 60)}...` : message;
+      const preview =
+        message.length > 60 ? `${message.slice(0, 60)}...` : message;
       return {
         tool,
         input,
@@ -653,7 +933,8 @@ export async function buildPendingAction(
       const phone = input.phone_number as string;
       const imageUrl = input.image_url as string;
       const caption = input.caption as string;
-      const preview = caption.length > 60 ? `${caption.slice(0, 60)}...` : caption;
+      const preview =
+        caption.length > 60 ? `${caption.slice(0, 60)}...` : caption;
       return {
         tool,
         input,
@@ -685,7 +966,9 @@ export async function buildPendingAction(
     case "update_delivery": {
       const { data: delivery } = await db
         .from("daily_deliveries")
-        .select("delivery_date, meal_type, portions, status, customer:customers(name)")
+        .select(
+          "delivery_date, meal_type, portions, status, customer:customers(name)",
+        )
         .eq("id", input.delivery_id as string)
         .single();
       const customerName =
@@ -700,13 +983,18 @@ export async function buildPendingAction(
       return {
         tool,
         input,
-        label: action === "skip" ? "Skip delivery" : `Reschedule delivery to ${input.new_date as string}`,
+        label:
+          action === "skip"
+            ? "Skip delivery"
+            : `Reschedule delivery to ${input.new_date as string}`,
         details: [
           `Customer: ${customerName}`,
           `Date: ${deliveryData?.delivery_date ?? "?"}`,
           `Meal: ${deliveryData?.meal_type ?? "?"}, ${deliveryData?.portions ?? "?"} porsi`,
           `Current status: ${deliveryData?.status ?? "?"}`,
-          ...(action === "reschedule" ? [`New date: ${input.new_date as string}`] : []),
+          ...(action === "reschedule"
+            ? [`New date: ${input.new_date as string}`]
+            : []),
         ],
         dangerous: action === "skip",
       };
@@ -756,7 +1044,10 @@ export async function buildPendingAction(
       const customerName = Array.isArray(rawCustomer)
         ? (rawCustomer[0]?.name ?? "Unknown")
         : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
-      const orderData = order as { status?: string; portions_remaining?: number } | null;
+      const orderData = order as {
+        status?: string;
+        portions_remaining?: number;
+      } | null;
       return {
         tool,
         input,
@@ -782,8 +1073,13 @@ export async function buildPendingAction(
       const customer = (
         Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
       ) as { name: string | null; phone_number: string } | null;
-      const orderData = order as { total_price?: number; status?: string } | null;
-      const formatted = new Intl.NumberFormat("id-ID").format(orderData?.total_price ?? 0);
+      const orderData = order as {
+        total_price?: number;
+        status?: string;
+      } | null;
+      const formatted = new Intl.NumberFormat("id-ID").format(
+        orderData?.total_price ?? 0,
+      );
       return {
         tool,
         input,
@@ -810,8 +1106,13 @@ export async function buildPendingAction(
       const customerName = Array.isArray(rawCustomer)
         ? (rawCustomer[0]?.name ?? "Unknown")
         : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
-      const orderData = order as { total_price?: number; status?: string } | null;
-      const formatted = new Intl.NumberFormat("id-ID").format(orderData?.total_price ?? 0);
+      const orderData = order as {
+        total_price?: number;
+        status?: string;
+      } | null;
+      const formatted = new Intl.NumberFormat("id-ID").format(
+        orderData?.total_price ?? 0,
+      );
       return {
         tool,
         input,
@@ -879,7 +1180,9 @@ export async function buildPendingAction(
           tool,
           input,
           label: `⚠ create_order — customer not found (${input.customer_id as string})`,
-          details: [`customer_id "${input.customer_id as string}" does not exist — use query_customers to get the correct UUID`],
+          details: [
+            `customer_id "${input.customer_id as string}" does not exist — use query_customers to get the correct UUID`,
+          ],
           dangerous: true,
         };
       }
@@ -904,6 +1207,12 @@ export async function buildPendingAction(
     }
 
     default:
-      return { tool, input, label: `Execute: ${tool}`, details: [], dangerous: false };
+      return {
+        tool,
+        input,
+        label: `Execute: ${tool}`,
+        details: [],
+        dangerous: false,
+      };
   }
 }

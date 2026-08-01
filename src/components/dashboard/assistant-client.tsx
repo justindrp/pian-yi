@@ -28,9 +28,12 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+    null,
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const briefSentRef = useRef(false);
 
   const conversationsQuery = useQuery<Conversation[]>({
     queryKey: ["assistant-conversations"],
@@ -43,13 +46,19 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     refetchOnWindowFocus: true,
   });
 
-  const messagesQuery = useQuery<{ messages: Message[]; pendingAction: PendingAction | null }>({
+  const messagesQuery = useQuery<{
+    messages: Message[];
+    pendingAction: PendingAction | null;
+  }>({
     queryKey: ["assistant-messages", activeId],
     queryFn: async () => {
       const res = await fetch(`/api/assistant/conversations/${activeId}`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Failed to load");
-      return { messages: json.data as Message[], pendingAction: (json.pendingAction as PendingAction | null) ?? null };
+      return {
+        messages: json.data as Message[],
+        pendingAction: (json.pendingAction as PendingAction | null) ?? null,
+      };
     },
     enabled: !!activeId,
   });
@@ -72,7 +81,10 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   }
 
   const send = useMutation({
-    mutationFn: async (payload: { messages: Message[]; conversationId?: string }) => {
+    mutationFn: async (payload: {
+      messages: Message[];
+      conversationId?: string;
+    }) => {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -83,7 +95,11 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Request failed");
-      return json as { text: string; pendingAction?: PendingAction; conversationId?: string };
+      return json as {
+        text: string;
+        pendingAction?: PendingAction;
+        conversationId?: string;
+      };
     },
     onSuccess: (data) => {
       if (data.conversationId && data.conversationId !== activeId) {
@@ -95,7 +111,9 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       setPendingAction(data.pendingAction ?? null);
       qc.invalidateQueries({ queryKey: ["assistant-conversations"] });
       if (data.conversationId) {
-        qc.invalidateQueries({ queryKey: ["assistant-messages", data.conversationId] });
+        qc.invalidateQueries({
+          queryKey: ["assistant-messages", data.conversationId],
+        });
       }
     },
   });
@@ -105,7 +123,11 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       const res = await fetch("/api/assistant/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tool: action.tool, input: action.input, conversationId: activeId ?? undefined }),
+        body: JSON.stringify({
+          tool: action.tool,
+          input: action.input,
+          conversationId: activeId ?? undefined,
+        }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Execute failed");
@@ -117,14 +139,19 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       invalidateLists();
     },
     onError: (err) => {
-      setMessages((prev) => [...prev, makeMessage("assistant", `Gagal: ${err.message}`)]);
+      setMessages((prev) => [
+        ...prev,
+        makeMessage("assistant", `Gagal: ${err.message}`),
+      ]);
       setPendingAction(null);
     },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/assistant/conversations/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/assistant/conversations/${id}`, {
+        method: "DELETE",
+      });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Delete failed");
     },
@@ -140,22 +167,49 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, send.isPending, pendingAction]);
 
-  function handleSend() {
-    const trimmed = input.trim();
-    if (!trimmed || send.isPending) return;
+  function handleSendText(text: string) {
+    if (!text || send.isPending) return;
 
     let base = messages;
     if (pendingAction) {
-      base = [...messages, makeMessage("assistant", "Dibatalkan karena ada pesan baru.")];
+      base = [
+        ...messages,
+        makeMessage("assistant", "Dibatalkan karena ada pesan baru."),
+      ];
       setMessages(base);
       setPendingAction(null);
     }
 
-    const newMessages: Message[] = [...base, makeMessage("user", trimmed)];
+    const newMessages: Message[] = [...base, makeMessage("user", text)];
     setMessages(newMessages);
-    setInput("");
-    send.mutate({ messages: newMessages, conversationId: activeId ?? undefined });
+    send.mutate({
+      messages: newMessages,
+      conversationId: activeId ?? undefined,
+    });
   }
+
+  function handleSend() {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    setInput("");
+    handleSendText(trimmed);
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fires once on mount/new-chat; send.mutate and setMessages are stable
+  useEffect(() => {
+    if (!fullPage || activeId !== null || briefSentRef.current) return;
+    const today = new Date().toISOString().split("T")[0];
+    if (localStorage.getItem("jarvis_last_brief") === today) {
+      briefSentRef.current = true;
+      return;
+    }
+    briefSentRef.current = true;
+    localStorage.setItem("jarvis_last_brief", today);
+    const text = "Berikan briefing situasi bisnis hari ini";
+    const newMessages: Message[] = [makeMessage("user", text)];
+    setMessages(newMessages);
+    send.mutate({ messages: newMessages });
+  }, [fullPage, activeId]);
 
   function handleConfirm() {
     if (!pendingAction || confirm.isPending) return;
@@ -216,10 +270,14 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
               onClick={() => handleSelect(c.id)}
               className="flex-1 min-w-0 px-2.5 py-2 text-left"
             >
-              <p className={`text-sm truncate ${c.id === activeId ? "text-[#1C1917] font-medium" : "text-[#78716C]"}`}>
+              <p
+                className={`text-sm truncate ${c.id === activeId ? "text-[#1C1917] font-medium" : "text-[#78716C]"}`}
+              >
                 {c.title}
               </p>
-              <p className="text-[11px] text-[#A8A29E] mt-0.5">{formatDate(c.updated_at)}</p>
+              <p className="text-[11px] text-[#A8A29E] mt-0.5">
+                {formatDate(c.updated_at)}
+              </p>
             </button>
             <button
               type="button"
@@ -237,7 +295,10 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   );
 
   return (
-    <div className="flex border border-[#EEECE8] rounded-xl overflow-hidden bg-white shadow-sm" style={{ height: containerHeight }}>
+    <div
+      className="flex border border-[#EEECE8] rounded-xl overflow-hidden bg-white shadow-sm"
+      style={{ height: containerHeight }}
+    >
       {/* Desktop sidebar */}
       <div className="hidden md:flex h-full">{sidebar}</div>
 
@@ -267,7 +328,8 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
           </button>
           <span className="text-sm text-[#78716C] truncate">
             {activeId
-              ? (conversationsQuery.data?.find((c) => c.id === activeId)?.title ?? "Obrolan")
+              ? (conversationsQuery.data?.find((c) => c.id === activeId)
+                  ?.title ?? "Obrolan")
               : "Obrolan baru"}
           </span>
         </div>
@@ -277,15 +339,19 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
               <div className="text-center space-y-1">
-                <p className="text-sm font-medium text-[#1C1917]">Tanya sesuatu</p>
-                <p className="text-xs text-[#A8A29E]">Data pelanggan, pesanan, pengiriman, dan keuangan.</p>
+                <p className="text-sm font-medium text-[#1C1917]">
+                  Tanya sesuatu
+                </p>
+                <p className="text-xs text-[#A8A29E]">
+                  Data pelanggan, pesanan, pengiriman, dan keuangan.
+                </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-xs">
                 {SUGGESTIONS.map((q) => (
                   <button
                     key={q}
                     type="button"
-                    onClick={() => setInput(q)}
+                    onClick={() => handleSendText(q)}
                     className="px-3 py-1.5 rounded-full border border-[#DDD9D4] text-xs text-[#78716C] hover:border-[#C4622D] hover:text-[#C4622D] bg-white transition-colors"
                   >
                     {q}
@@ -317,13 +383,22 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
               <div className="max-w-[80%] bg-white border border-[#EEECE8] shadow-sm rounded-2xl rounded-bl-none overflow-hidden">
                 <div className="border-l-4 border-[#C4622D] p-3 space-y-2">
                   <p className="text-[10px] font-semibold tracking-widest uppercase text-[#C4622D]">
-                    {pendingAction.dangerous ? "⚠ Tindakan Berbahaya" : "Konfirmasi Tindakan"}
+                    {pendingAction.dangerous
+                      ? "⚠ Tindakan Berbahaya"
+                      : "Konfirmasi Tindakan"}
                   </p>
-                  <p className="text-sm font-medium text-[#1C1917]">{pendingAction.label}</p>
+                  <p className="text-sm font-medium text-[#1C1917]">
+                    {pendingAction.label}
+                  </p>
                   <ul className="space-y-1">
                     {pendingAction.details.map((d) => (
-                      <li key={d} className="flex gap-1.5 text-sm text-[#57534E]">
-                        <span className="text-[#C4622D] mt-0.5 shrink-0">·</span>
+                      <li
+                        key={d}
+                        className="flex gap-1.5 text-sm text-[#57534E]"
+                      >
+                        <span className="text-[#C4622D] mt-0.5 shrink-0">
+                          ·
+                        </span>
                         <span>{d}</span>
                       </li>
                     ))}
