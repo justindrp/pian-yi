@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { analyzeCustomerMessage } from "@/lib/claude/analyze-customer-message";
+import { processSavedCustomerMessage } from "@/app/api/webhook/whatsapp/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,22 +21,39 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
 
-  const [{ data: customer, error: customerError }, { data: flags, error: flagError }, { data: latestMessage, error: latestError }] =
-    await Promise.all([
-      db.from("customers").select("id, name, phone_number").eq("id", customer_id).single(),
-      db
-        .from("customer_flags")
-        .select("escalated_to_human, pending_bot_response, is_blacklisted")
-        .eq("customer_id", customer_id)
-        .single(),
-      db
-        .from("conversations")
-        .select("role, content, message_id, message_type")
-        .eq("customer_id", customer_id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single(),
-    ]);
+  const [
+    { data: customer, error: customerError },
+    { data: flags, error: flagError },
+    { data: latestMessage, error: latestError },
+    { data: stateRow },
+    { data: latestOrder },
+  ] = await Promise.all([
+    db.from("customers").select("id, name, phone_number, notes").eq("id", customer_id).single(),
+    db
+      .from("customer_flags")
+      .select("escalated_to_human, pending_bot_response, is_blacklisted")
+      .eq("customer_id", customer_id)
+      .single(),
+    db
+      .from("conversations")
+      .select("role, content, message_id, message_type")
+      .eq("customer_id", customer_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single(),
+    db
+      .from("customer_state")
+      .select("state, menu_shown")
+      .eq("customer_id", customer_id)
+      .single(),
+    db
+      .from("orders")
+      .select("status")
+      .eq("customer_id", customer_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single(),
+  ]);
 
   if (customerError || !customer) {
     return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
@@ -60,10 +77,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: true, replayed: false, reason: "empty_message" });
   }
 
-  await analyzeCustomerMessage({
+  await processSavedCustomerMessage({
     customerId: customer.id,
     customerName: customer.name,
+    customerNotes: (customer as { notes?: string | null }).notes ?? null,
+    latestOrderStatus: latestOrder?.status ?? null,
+    phone: customer.phone_number,
+    stateRow: stateRow ?? null,
     text: latestMessage.content,
+    messageId: latestMessage.message_id ?? null,
   });
 
   return NextResponse.json({ ok: true, replayed: true });
