@@ -1180,6 +1180,29 @@ export default function InboxClient() {
             </div>
           )}
 
+          {/* Bot paused banner */}
+          {flags?.pending_bot_response && !flags?.escalated_to_human && (
+            <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-amber-800">Bot paused — awaiting admin input</p>
+                  {flags.pending_bot_question && (
+                    <p className="mt-0.5 text-amber-700 break-words">{flags.pending_bot_question}</p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void regenerateReply()}
+                  disabled={regenerating}
+                  className="shrink-0 bg-amber-600 text-white hover:bg-amber-700"
+                >
+                  {regenerating ? "Resuming..." : "Resume bot"}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Messages */}
           <div
             ref={scrollContainerRef}
