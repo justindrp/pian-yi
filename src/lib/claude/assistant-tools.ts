@@ -802,8 +802,9 @@ export async function runTool(
     }
 
     case "query_lapsed_customers": {
-      // Live query: customers with a completed order but no active/pending order.
-      // Ignores the cron-populated customer_state so results are always current.
+      // Lapsed = had a delivery in the past but no active/pending order today.
+      // Use daily_deliveries as the source of truth for last delivery date —
+      // orders.status is unreliable (stays 'active' until portions_remaining hits 0).
       const ACTIVE_STATUSES = [
         "active",
         "paused",
@@ -811,7 +812,9 @@ export async function runTool(
         "payment_proof_received",
       ];
 
-      const [{ data: activeOrders }, { data: completedOrders, error }] =
+      const today = new Date().toISOString().slice(0, 10);
+
+      const [{ data: activeOrders }, { data: deliveries, error }] =
         await Promise.all([
           db
             .from("orders")
@@ -819,14 +822,13 @@ export async function runTool(
             .in("status", ACTIVE_STATUSES)
             .not("customer_id", "is", null),
           db
-            .from("orders")
+            .from("daily_deliveries")
             .select(
-              "customer_id, completed_at, customer:customers!orders_customer_id_fkey(id, name, phone_number, area)",
+              "customer_id, delivery_date, customer:customers!inner(id, name, phone_number, area)",
             )
-            .eq("status", "completed")
-            .not("completed_at", "is", null)
+            .lt("delivery_date", today)
             .not("customer_id", "is", null)
-            .order("completed_at", { ascending: false }),
+            .order("delivery_date", { ascending: false }),
         ]);
 
       if (error) return { error: error.message };
@@ -844,12 +846,12 @@ export async function runTool(
         name: string;
         phone_number: string;
         area: string;
-        last_completed_at: string | null;
-        days_since_last_order: number | null;
+        last_delivery_date: string;
+        days_since_last_delivery: number;
       }[] = [];
 
-      for (const row of completedOrders ?? []) {
-        if (!row.customer_id) continue;
+      for (const row of deliveries ?? []) {
+        if (!row.customer_id || !row.delivery_date) continue;
         if (activeIds.has(row.customer_id)) continue;
         if (seen.has(row.customer_id)) continue;
         seen.add(row.customer_id);
@@ -859,27 +861,22 @@ export async function runTool(
           phone_number?: string;
           area?: string;
         } | null;
-        const completedMs = row.completed_at
-          ? new Date(row.completed_at).getTime()
-          : null;
+        const deliveryMs = new Date(row.delivery_date).getTime();
         customers.push({
           customer_id: row.customer_id,
           name: cust?.name ?? "Unknown",
           phone_number: cust?.phone_number ?? "?",
           area: cust?.area ?? "?",
-          last_completed_at: row.completed_at ?? null,
-          days_since_last_order: completedMs
-            ? Math.floor((now - completedMs) / (1000 * 60 * 60 * 24))
-            : null,
+          last_delivery_date: row.delivery_date,
+          days_since_last_delivery: Math.floor(
+            (now - deliveryMs) / (1000 * 60 * 60 * 24),
+          ),
         });
 
         if (customers.length >= limit) break;
       }
 
-      customers.sort(
-        (a, b) => (a.days_since_last_order ?? 0) - (b.days_since_last_order ?? 0),
-      );
-
+      // Already sorted by delivery_date desc from the query
       return { customers, count: customers.length };
     }
 
