@@ -63,11 +63,13 @@ ${transcript}`,
     ],
   });
 
-  const summary =
+  const rawText =
     response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  if (!summary) {
+  if (!rawText) {
+    console.error("[learn-context] Haiku returned empty content, stop_reason:", response.stop_reason, "content length:", response.content.length);
     throw new Error("Could not summarize conversation");
   }
+  const summary = rawText;
   await updateTokenCount(
     customerId,
     response.usage.input_tokens + response.usage.output_tokens,
@@ -93,10 +95,10 @@ export async function tryLearnCustomerContext(
     const learned = await learnCustomerContext(customerId, db);
     return learned.notes;
   } catch (err) {
-    console.error(
-      "[learn-context] failed:",
-      err instanceof Error ? err.message : err,
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg !== "Not enough customer messages to learn") {
+      console.error("[learn-context] failed:", msg);
+    }
     return null;
   }
 }

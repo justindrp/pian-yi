@@ -35,6 +35,7 @@ Do NOT flag general business info (menu, prices, delivery areas, policies, how q
 
 Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["..."]}`;
 
+  let rawText = "";
   try {
     const client = getAnthropicClient();
     const res = await client.messages.create({
@@ -42,8 +43,13 @@ Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["...
       max_tokens: 200,
       messages: [{ role: "user", content: prompt }],
     });
-    const text =
+    rawText =
       res.content[0].type === "text" ? res.content[0].text.trim() : "";
+    if (!rawText) {
+      console.error("[validate-reply] Haiku returned empty content, stop_reason:", res.stop_reason);
+      return { valid: true, unsupportedClaims: [] };
+    }
+    const text = rawText.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
     const parsed = JSON.parse(text) as {
       valid: boolean;
       unsupported_claims?: string[];
@@ -53,7 +59,7 @@ Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["...
       unsupportedClaims: parsed.unsupported_claims ?? [],
     };
   } catch (err) {
-    console.error("[validate-reply] validator call failed, failing open:", (err as Error).message);
+    console.error("[validate-reply] validator call failed, failing open:", (err as Error).message, "| rawText:", JSON.stringify(rawText.slice(0, 200)));
     return { valid: true, unsupportedClaims: [] };
   }
 }
