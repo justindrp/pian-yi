@@ -5,6 +5,35 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { PendingAction } from "@/lib/claude/assistant-tools";
 
+// Web Speech API types not included in TypeScript's DOM lib
+interface SpeechRecognitionResult {
+  readonly 0: { readonly transcript: string };
+}
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+interface SpeechRecognitionEvent extends Event {
+  readonly results: SpeechRecognitionResultList;
+}
+interface SpeechRecognitionInstance extends EventTarget {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((e: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
+
 type Message = { id: string; role: "user" | "assistant"; content: string };
 
 function makeMessage(role: Message["role"], content: string): Message {
@@ -32,8 +61,23 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     null,
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(() =>
+    typeof window !== "undefined"
+      ? localStorage.getItem("jarvis_tts") !== "off"
+      : true,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const briefSentRef = useRef(false);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const ttsEnabledRef = useRef(ttsEnabled);
+  ttsEnabledRef.current = ttsEnabled;
+  // Updated each render so STT onend can access current handleSendText
+  const handleSendTextRef = useRef<(text: string) => void>(() => {});
+
+  const hasSpeechRecognition =
+    typeof window !== "undefined" &&
+    !!(window.SpeechRecognition ?? window.webkitSpeechRecognition);
 
   const conversationsQuery = useQuery<Conversation[]>({
     queryKey: ["assistant-conversations"],
@@ -80,6 +124,15 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       qc.invalidateQueries({ queryKey: ["assistant-messages", activeId] });
   }
 
+  function speak(text: string) {
+    if (!ttsEnabledRef.current || typeof window === "undefined") return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = "id-ID";
+    utt.rate = 1.05;
+    window.speechSynthesis.speak(utt);
+  }
+
   const send = useMutation({
     mutationFn: async (payload: {
       messages: Message[];
@@ -115,6 +168,12 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
           queryKey: ["assistant-messages", data.conversationId],
         });
       }
+      // TTS: speak reply text, or pending action label if no text
+      if (data.pendingAction) {
+        speak(`Perlu konfirmasi: ${data.pendingAction.label}`);
+      } else if (data.text) {
+        speak(data.text);
+      }
     },
   });
 
@@ -137,6 +196,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       setMessages((prev) => [...prev, makeMessage("assistant", text)]);
       setPendingAction(null);
       invalidateLists();
+      speak(text);
     },
     onError: (err) => {
       setMessages((prev) => [
@@ -169,6 +229,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
 
   function handleSendText(text: string) {
     if (!text || send.isPending) return;
+    if (typeof window !== "undefined") window.speechSynthesis.cancel();
 
     let base = messages;
     if (pendingAction) {
@@ -187,6 +248,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
       conversationId: activeId ?? undefined,
     });
   }
+  handleSendTextRef.current = handleSendText;
 
   function handleSend() {
     const trimmed = input.trim();
@@ -229,6 +291,56 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   function handleSelect(id: string) {
     setActiveId(id);
     setSidebarOpen(false);
+  }
+
+  function toggleTts() {
+    setTtsEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem("jarvis_tts", next ? "on" : "off");
+      if (!next && typeof window !== "undefined")
+        window.speechSynthesis.cancel();
+      return next;
+    });
+  }
+
+  function startListening() {
+    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = "id-ID";
+    rec.interimResults = true;
+    rec.continuous = false;
+
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      const parts: string[] = [];
+      for (let i = 0; i < e.results.length; i++) {
+        parts.push(e.results[i][0].transcript);
+      }
+      setInput(parts.join(""));
+    };
+
+    rec.onend = () => {
+      setIsRecording(false);
+      setInput((current) => {
+        const trimmed = current.trim();
+        if (trimmed) {
+          setTimeout(() => handleSendTextRef.current(trimmed), 0);
+          return "";
+        }
+        return current;
+      });
+    };
+
+    rec.onerror = () => setIsRecording(false);
+
+    recognitionRef.current = rec;
+    rec.start();
+    setIsRecording(true);
+  }
+
+  function stopListening() {
+    recognitionRef.current?.stop();
+    setIsRecording(false);
   }
 
   const containerHeight = fullPage ? "calc(100vh - 200px)" : "460px";
@@ -326,12 +438,20 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
           >
             ☰
           </button>
-          <span className="text-sm text-[#78716C] truncate">
+          <span className="flex-1 text-sm text-[#78716C] truncate">
             {activeId
               ? (conversationsQuery.data?.find((c) => c.id === activeId)
                   ?.title ?? "Obrolan")
               : "Obrolan baru"}
           </span>
+          <button
+            type="button"
+            onClick={toggleTts}
+            title={ttsEnabled ? "Matikan suara" : "Nyalakan suara"}
+            className="px-2 py-1 text-base text-[#A8A29E] hover:text-[#78716C] transition-colors"
+          >
+            {ttsEnabled ? "🔊" : "🔇"}
+          </button>
         </div>
 
         {/* Messages */}
@@ -453,7 +573,33 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
 
         {/* Input */}
         <div className="border-t border-[#EEECE8] px-3 py-3 bg-white">
+          {/* Desktop TTS toggle */}
+          <div className="hidden md:flex justify-end mb-1.5">
+            <button
+              type="button"
+              onClick={toggleTts}
+              title={ttsEnabled ? "Matikan suara" : "Nyalakan suara"}
+              className="px-2 py-0.5 text-sm text-[#A8A29E] hover:text-[#78716C] transition-colors"
+            >
+              {ttsEnabled ? "🔊" : "🔇"}
+            </button>
+          </div>
           <div className="flex gap-2 items-end">
+            {hasSpeechRecognition && (
+              <button
+                type="button"
+                onClick={isRecording ? stopListening : startListening}
+                disabled={send.isPending}
+                title={isRecording ? "Berhenti merekam" : "Bicara"}
+                className={`self-end p-2.5 rounded-xl border transition-colors disabled:opacity-40 ${
+                  isRecording
+                    ? "border-red-400 bg-red-50 text-red-500 animate-pulse"
+                    : "border-[#DDD9D4] text-[#78716C] hover:border-[#C4622D] hover:text-[#C4622D]"
+                }`}
+              >
+                🎙
+              </button>
+            )}
             <textarea
               className="flex-1 resize-none rounded-xl border border-[#DDD9D4] bg-[#FAFAF8] px-3 py-2.5 text-sm text-[#1C1917] placeholder:text-[#A8A29E] focus:outline-none focus:ring-2 focus:ring-[#C4622D]/20 focus:border-[#C4622D] transition-colors"
               rows={2}
