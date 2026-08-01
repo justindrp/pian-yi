@@ -802,38 +802,84 @@ export async function runTool(
     }
 
     case "query_lapsed_customers": {
-      const { data, error } = await db
-        .from("customer_state")
-        .select(
-          "customer_id, updated_at, customer:customers!inner(id, name, phone_number, area)",
-        )
-        .eq("state", "lapsed")
-        .order("updated_at", { ascending: true })
-        .limit(limit);
+      // Live query: customers with a completed order but no active/pending order.
+      // Ignores the cron-populated customer_state so results are always current.
+      const ACTIVE_STATUSES = [
+        "active",
+        "paused",
+        "pending_payment",
+        "payment_proof_received",
+      ];
+
+      const [{ data: activeOrders }, { data: completedOrders, error }] =
+        await Promise.all([
+          db
+            .from("orders")
+            .select("customer_id")
+            .in("status", ACTIVE_STATUSES)
+            .not("customer_id", "is", null),
+          db
+            .from("orders")
+            .select(
+              "customer_id, completed_at, customer:customers!orders_customer_id_fkey(id, name, phone_number, area)",
+            )
+            .eq("status", "completed")
+            .not("completed_at", "is", null)
+            .not("customer_id", "is", null)
+            .order("completed_at", { ascending: false }),
+        ]);
+
       if (error) return { error: error.message };
 
+      const activeIds = new Set(
+        (activeOrders ?? [])
+          .map((o) => o.customer_id)
+          .filter((id): id is string => id !== null),
+      );
+
       const now = Date.now();
-      const customers = (data ?? []).map((row) => {
-        const updatedAt = row.updated_at
-          ? new Date(row.updated_at).getTime()
-          : 0;
-        const daysInactive = updatedAt
-          ? Math.floor((now - updatedAt) / (1000 * 60 * 60 * 24))
-          : null;
+      const seen = new Set<string>();
+      const customers: {
+        customer_id: string;
+        name: string;
+        phone_number: string;
+        area: string;
+        last_completed_at: string | null;
+        days_since_last_order: number | null;
+      }[] = [];
+
+      for (const row of completedOrders ?? []) {
+        if (!row.customer_id) continue;
+        if (activeIds.has(row.customer_id)) continue;
+        if (seen.has(row.customer_id)) continue;
+        seen.add(row.customer_id);
+
         const cust = row.customer as {
           name?: string;
           phone_number?: string;
           area?: string;
         } | null;
-        return {
+        const completedMs = row.completed_at
+          ? new Date(row.completed_at).getTime()
+          : null;
+        customers.push({
           customer_id: row.customer_id,
           name: cust?.name ?? "Unknown",
           phone_number: cust?.phone_number ?? "?",
           area: cust?.area ?? "?",
-          lapsed_since: row.updated_at,
-          days_inactive: daysInactive,
-        };
-      });
+          last_completed_at: row.completed_at ?? null,
+          days_since_last_order: completedMs
+            ? Math.floor((now - completedMs) / (1000 * 60 * 60 * 24))
+            : null,
+        });
+
+        if (customers.length >= limit) break;
+      }
+
+      customers.sort(
+        (a, b) => (a.days_since_last_order ?? 0) - (b.days_since_last_order ?? 0),
+      );
+
       return { customers, count: customers.length };
     }
 
