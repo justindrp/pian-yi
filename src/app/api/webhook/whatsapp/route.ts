@@ -1044,7 +1044,7 @@ export async function processSavedCustomerMessage(params: {
       claudeResponse = await callClaude();
     } catch (firstErr) {
       const msg = (firstErr as Error).message;
-      if (!msg.includes("overloaded") && !msg.includes("529")) throw firstErr;
+      if (!msg.includes("overloaded") && !msg.includes("529") && !msg.includes("too busy") && !msg.includes("503")) throw firstErr;
       await new Promise((r) => setTimeout(r, 2000));
       claudeResponse = await callClaude();
     }
