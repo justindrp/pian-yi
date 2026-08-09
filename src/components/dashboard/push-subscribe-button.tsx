@@ -14,13 +14,31 @@ export default function PushSubscribeButton() {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     setIsIOS(ios);
 
-    // Use server as source of truth — browser may have a subscription the DB doesn't know about
-    fetch("/api/push/config")
-      .then((r) => r.json())
-      .then((data: { hasSubscription?: boolean }) => {
-        setSubscribed(data.hasSubscription === true);
-      })
-      .catch(() => {});
+    // Subscribed means: THIS browser holds a live push subscription AND the server
+    // knows that exact endpoint. Either half missing → show the button again.
+    (async () => {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      if (!existing) return;
+
+      const res = await fetch(
+        `/api/push/config?endpoint=${encodeURIComponent(existing.endpoint)}`,
+      );
+      const data = (await res.json()) as { hasSubscription?: boolean };
+      if (data.hasSubscription === true) {
+        setSubscribed(true);
+        return;
+      }
+
+      // Browser has a subscription the DB lost — re-save it silently
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(existing.toJSON()),
+      });
+      setSubscribed(true);
+    })().catch(() => {});
   }, []);
 
   function isStandalone() {

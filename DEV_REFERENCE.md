@@ -26,7 +26,9 @@ On-demand reference — read when working on the relevant area, not loaded every
 
 ## Push notifications (web-push)
 
-VAPID keys stored in env vars. Subscriptions stored in `push_subscriptions` table.
+VAPID keys stored in env vars. Subscriptions stored in `push_subscriptions` table, one row per browser/device (`endpoint` is the conflict key).
+
+Subscription state is per-device, never per-user: `PushSubscribeButton` reads `pushManager.getSubscription()` first and only hides itself when the server also knows that exact endpoint. If the browser holds a subscription the DB lost, the button re-POSTs it to `/api/push/subscribe` silently. iOS requires the PWA be opened from the Home Screen (standalone) before `pushManager.subscribe()` will work.
 
 Priority levels:
 

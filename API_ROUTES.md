@@ -112,7 +112,7 @@ A public, auth-free mobile page at `/dapur/[subcontractor-uuid]` shared with eac
 - `POST /api/whatsapp/send` — Admin sends a manual text message from the dashboard UI
 
 ### Push notifications
-- `GET /api/push/config` — VAPID public key + current subscription status
+- `GET /api/push/config?endpoint=<push-endpoint>` — VAPID public key + whether *this browser's* endpoint is stored. `hasSubscription` matches on `user_email` **and** `endpoint`; omitting `endpoint` returns `hasSubscription: false` (per-email matching hid the enable button on every other device)
 - `POST /api/push/subscribe` — Save a push subscription for this browser
 - `POST /api/push/test` — Send a test push notification to this browser
 
