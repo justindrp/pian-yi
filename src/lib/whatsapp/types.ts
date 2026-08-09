@@ -5,6 +5,10 @@ export interface WhatsAppMessage {
   text?: string;
   imageId?: string;
   imageCaption?: string;
+  documentId?: string;
+  documentFilename?: string;
+  documentCaption?: string;
+  documentMimeType?: string;
   locationName?: string;
   locationAddress?: string;
   locationLat?: number;
@@ -32,6 +36,12 @@ export interface WhatsAppWebhookPayload {
           timestamp: string;
           text?: { body: string };
           image?: { id: string; caption?: string; mime_type?: string };
+          document?: {
+            id: string;
+            caption?: string;
+            filename?: string;
+            mime_type?: string;
+          };
           location?: {
             latitude: number;
             longitude: number;
@@ -70,6 +80,10 @@ export function parseMessage(
     text: message.text?.body,
     imageId: message.image?.id,
     imageCaption: message.image?.caption,
+    documentId: message.document?.id,
+    documentFilename: message.document?.filename,
+    documentCaption: message.document?.caption,
+    documentMimeType: message.document?.mime_type,
     locationName: message.location?.name,
     locationAddress: message.location?.address,
     locationLat: message.location?.latitude,

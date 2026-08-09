@@ -72,13 +72,14 @@ export async function sendImageMessage(
 export async function uploadMediaToMeta(
   buffer: Buffer,
   mimeType: string,
+  filename?: string,
 ): Promise<string> {
   const form = new FormData();
   form.append("messaging_product", "whatsapp");
   const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
   form.append("file", buffer, {
     contentType: mimeType,
-    filename: `image.${ext}`,
+    filename: filename ?? `image.${ext}`,
   });
   const res = await axios.post<{ id: string }>(`${BASE_URL}/media`, form, {
     headers: {
@@ -102,6 +103,26 @@ export async function sendImageMessageById(
       to,
       type: "image",
       image: { id: mediaId, caption },
+    },
+    { headers: headers() },
+  ).catch(sanitizeAxiosError);
+  return getSentMessageId(res.data);
+}
+
+export async function sendDocumentMessageById(
+  to: string,
+  mediaId: string,
+  filename: string,
+  caption: string,
+): Promise<string> {
+  const res = await axios.post<MetaSendResponse>(
+    `${BASE_URL}/messages`,
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "document",
+      document: { id: mediaId, filename, caption },
     },
     { headers: headers() },
   ).catch(sanitizeAxiosError);

@@ -61,6 +61,26 @@ function getInboxImageSrc(
   return msg.content;
 }
 
+function getInboxDocument(
+  msg: Conversation & {
+    message_type?: string | null;
+    media_id?: string | null;
+  },
+) {
+  if (msg.message_type !== "document") return null;
+  if (msg.media_id) {
+    return {
+      href: `/api/inbox/media/${msg.media_id}`,
+      label: msg.content?.replace(/^\[Dokumen: (.+?)\]\s*/, "$1") ?? "Dokumen",
+    };
+  }
+  if (!msg.content?.startsWith("https://")) return null;
+  const filename = decodeURIComponent(
+    msg.content.split("/").pop() ?? "",
+  ).replace(/^\d+-/, "");
+  return { href: msg.content, label: filename || "Dokumen" };
+}
+
 const URL_PATTERN = /(https?:\/\/\S+)/g;
 
 function renderContentWithLinks(content: string | null | undefined) {
@@ -129,6 +149,8 @@ export default function InboxClient() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [sendingPdf, setSendingPdf] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [flags, setFlags] = useState<{
     escalated_to_human: boolean;
@@ -734,8 +756,14 @@ export default function InboxClient() {
   function onImagePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
-    setImagePreviewUrl(URL.createObjectURL(file));
+    if (file.type === "application/pdf") {
+      cancelImage();
+      setPdfFile(file);
+    } else {
+      setPdfFile(null);
+      setImageFile(file);
+      setImagePreviewUrl(URL.createObjectURL(file));
+    }
     // reset so same file can be picked again
     e.target.value = "";
   }
@@ -752,12 +780,18 @@ export default function InboxClient() {
       const items = e.clipboardData?.items;
       if (!items) return;
       for (const item of Array.from(items)) {
-        if (!item.type.startsWith("image/")) continue;
+        const isImage = item.type.startsWith("image/");
+        const isPdf = item.type === "application/pdf";
+        if (!isImage && !isPdf) continue;
         const file = item.getAsFile();
         if (!file) continue;
         e.preventDefault();
-        setImageFile(file);
-        setImagePreviewUrl(URL.createObjectURL(file));
+        if (isPdf) {
+          setPdfFile(file);
+        } else {
+          setImageFile(file);
+          setImagePreviewUrl(URL.createObjectURL(file));
+        }
         break;
       }
     }
@@ -784,6 +818,28 @@ export default function InboxClient() {
       return;
     }
     cancelImage();
+    await loadMessages(selectedCustomerId);
+  }
+
+  async function sendPdf() {
+    if (!selectedCustomerId || !pdfFile) return;
+    setSendingPdf(true);
+    const form = new FormData();
+    form.append("customer_id", selectedCustomerId);
+    form.append("file", pdfFile);
+    const res = await fetch("/api/inbox/manual-document", {
+      method: "POST",
+      body: form,
+    });
+    setSendingPdf(false);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      alert(`Failed to send PDF: ${body?.error ?? res.statusText}`);
+      return;
+    }
+    setPdfFile(null);
     await loadMessages(selectedCustomerId);
   }
 
@@ -1217,6 +1273,7 @@ export default function InboxClient() {
                 whatsapp_status?: string | null;
               };
               const imageSrc = getInboxImageSrc(msgWithExtras);
+              const docLink = getInboxDocument(msgWithExtras);
               const receiptLabel = !isUser
                 ? getReceiptLabel(msgWithExtras.whatsapp_status ?? null)
                 : null;
@@ -1243,6 +1300,20 @@ export default function InboxClient() {
                         />
                       ) : (
                         <div className="text-xs italic opacity-70">[Image]</div>
+                      )
+                    ) : msgWithExtras.message_type === "document" ? (
+                      docLink ? (
+                        <a
+                          href={docLink.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 underline break-all"
+                        >
+                          <span>📄</span>
+                          <span>{docLink.label}</span>
+                        </a>
+                      ) : (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
                       )
                     ) : (
                       <p className="whitespace-pre-wrap">
@@ -1322,11 +1393,43 @@ export default function InboxClient() {
                   </div>
                 </div>
               )}
+              {pdfFile && (
+                <div className="px-4 pt-3 pb-2 flex items-start gap-3 bg-gray-50">
+                  <div className="h-20 w-20 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-2xl flex-shrink-0">
+                    📄
+                  </div>
+                  <div className="flex flex-col gap-2 min-w-0 flex-1">
+                    <p className="text-xs text-gray-500 truncate">
+                      {pdfFile.name}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={sendPdf}
+                        disabled={sendingPdf}
+                        className="bg-orange-500 text-white hover:bg-orange-600"
+                      >
+                        {sendingPdf ? "Sending..." : "Send PDF"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPdfFile(null)}
+                        disabled={sendingPdf}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="px-4 py-3 flex gap-2">
                 <input
                   ref={imageInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   className="hidden"
                   onChange={onImagePicked}
                 />
@@ -1335,7 +1438,7 @@ export default function InboxClient() {
                   variant="outline"
                   size="sm"
                   onClick={pickImage}
-                  title="Attach image"
+                  title="Attach image or PDF"
                   className="px-2.5 text-gray-500"
                 >
                   📎

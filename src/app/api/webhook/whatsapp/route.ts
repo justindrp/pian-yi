@@ -94,6 +94,30 @@ function formatLocationMessage(message: {
     : `[Lokasi dibagikan: ${label}${zoneNote}]`;
 }
 
+function formatDocumentMessage(message: {
+  documentFilename?: string;
+  documentCaption?: string;
+}): string {
+  const name = message.documentFilename ?? "dokumen";
+  return message.documentCaption
+    ? `[Dokumen: ${name}] ${message.documentCaption}`
+    : `[Dokumen: ${name}]`;
+}
+
+function mediaMessageType(type: string): string {
+  return type === "image" || type === "document" ? type : "text";
+}
+
+function mediaIdOf(message: {
+  type: string;
+  imageId?: string;
+  documentId?: string;
+}): string | undefined {
+  if (message.type === "image") return message.imageId;
+  if (message.type === "document") return message.documentId;
+  return undefined;
+}
+
 export async function GET(req: NextRequest): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get("hub.mode");
@@ -274,9 +298,11 @@ export async function processWebhookAsync(
         ? (message.text ?? "")
         : message.type === "image"
           ? "[Image]"
-          : message.type === "location"
-            ? formatLocationMessage(message)
-            : `[${message.type}]`;
+          : message.type === "document"
+            ? formatDocumentMessage(message)
+            : message.type === "location"
+              ? formatLocationMessage(message)
+              : `[${message.type}]`;
     const escalatedIntent = await classifyIntent(escalatedText).catch(
       () => "other",
     );
@@ -286,8 +312,8 @@ export async function processWebhookAsync(
       content: escalatedText,
       messageId: message.messageId,
       intent: escalatedIntent,
-      messageType: message.type === "image" ? "image" : "text",
-      mediaId: message.type === "image" ? message.imageId : undefined,
+      messageType: mediaMessageType(message.type),
+      mediaId: mediaIdOf(message),
     });
     await tryLearnCustomerContext(customerId, db);
     if (message.type === "text" && escalatedText.trim()) {
@@ -317,9 +343,11 @@ export async function processWebhookAsync(
         ? (message.text ?? "")
         : message.type === "image"
           ? "[Image]"
-          : message.type === "location"
-            ? formatLocationMessage(message)
-            : `[${message.type}]`;
+          : message.type === "document"
+            ? formatDocumentMessage(message)
+            : message.type === "location"
+              ? formatLocationMessage(message)
+              : `[${message.type}]`;
     const pendingIntent = await classifyIntent(pendingText).catch(
       () => "other",
     );
@@ -329,8 +357,8 @@ export async function processWebhookAsync(
       content: pendingText,
       messageId: message.messageId,
       intent: pendingIntent,
-      messageType: message.type === "image" ? "image" : "text",
-      mediaId: message.type === "image" ? message.imageId : undefined,
+      messageType: mediaMessageType(message.type),
+      mediaId: mediaIdOf(message),
     });
     await tryLearnCustomerContext(customerId, db);
     await sendPushToAllAdmins(
@@ -380,6 +408,26 @@ export async function processWebhookAsync(
         .eq("message_id", message.messageId);
       return;
     }
+  }
+
+  // Documents (PDF etc.): save so they show in the inbox, then ask for text
+  if (message.type === "document" && message.documentId) {
+    await saveMessage({
+      customerId,
+      role: "user",
+      content: formatDocumentMessage(message),
+      messageId: message.messageId,
+      intent: "other",
+      messageType: "document",
+      mediaId: message.documentId,
+    });
+    const tmpl = await getTemplate("text_only");
+    await sendTextMessage(message.from, tmpl);
+    await db
+      .from("processed_messages")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("message_id", message.messageId);
+    return;
   }
 
   // Non-text messages
