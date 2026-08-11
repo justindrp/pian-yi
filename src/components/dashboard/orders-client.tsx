@@ -301,6 +301,7 @@ export default function OrdersClient() {
           <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
               <tr>
+                <th className="px-4 py-3 text-left w-12">No.</th>
                 <th className="px-4 py-3 text-left">Customer</th>
                 <th className="px-4 py-3 text-left">Package</th>
                 <th className="px-4 py-3 text-left">Size</th>
@@ -323,7 +324,7 @@ export default function OrdersClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredOrders.map((o) => (
+              {filteredOrders.map((o, i) => (
                 // biome-ignore lint/a11y/useSemanticElements: interactive table row
                 <tr
                   key={o.id}
@@ -338,6 +339,9 @@ export default function OrdersClient() {
                     }
                   }}
                 >
+                  <td className="px-4 py-3 text-gray-400 tabular-nums">
+                    {i + 1}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">
                       {o.customers?.name ?? "Unknown"}
@@ -386,7 +390,7 @@ export default function OrdersClient() {
               {filteredOrders.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-4 py-10 text-center text-gray-400"
                   >
                     No orders.
