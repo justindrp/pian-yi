@@ -46,19 +46,35 @@ function getInboxImageSrc(
   },
 ) {
   if (msg.message_type !== "image") return null;
+
+  // A stored copy wins over media_id: Meta deletes inbound media after about a
+  // week, so the proxy 404s for anything older. Rows backfilled by
+  // scripts/backfill-chat-media.ts keep media_id for reference but hold the
+  // bucket URL in content.
+  const storedPath = getStoragePath(msg.content, "chat-media");
+  if (storedPath) return `/api/inbox/chat-media/${storedPath}`;
+
   if (msg.media_id) return `/api/inbox/media/${msg.media_id}`;
   if (!msg.content?.startsWith("https://")) return null;
 
-  const deliveryProofPath = msg.content.split("/delivery-proofs/")[1];
+  const deliveryProofPath = getStoragePath(msg.content, "delivery-proofs");
   if (deliveryProofPath) {
-    const encodedPath = deliveryProofPath
-      .split("/")
-      .map((segment) => encodeURIComponent(segment))
-      .join("/");
-    return `/api/inbox/delivery-proofs/${encodedPath}`;
+    return `/api/inbox/delivery-proofs/${deliveryProofPath}`;
   }
 
   return msg.content;
+}
+
+// Pulls the object path out of a Supabase storage URL, encoded for use in our
+// proxy route. Returns null when the URL is not for that bucket.
+function getStoragePath(content: string | null | undefined, bucket: string) {
+  if (!content?.startsWith("https://")) return null;
+  const path = content.split(`/${bucket}/`)[1];
+  if (!path) return null;
+  return path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
 }
 
 function getInboxDocument(
@@ -68,6 +84,15 @@ function getInboxDocument(
   },
 ) {
   if (msg.message_type !== "document") return null;
+
+  const storedPath = getStoragePath(msg.content, "chat-media");
+  if (storedPath) {
+    return {
+      href: `/api/inbox/chat-media/${storedPath}`,
+      label: decodeURIComponent(storedPath.split("/").pop() ?? "") || "Dokumen",
+    };
+  }
+
   if (msg.media_id) {
     return {
       href: `/api/inbox/media/${msg.media_id}`,
