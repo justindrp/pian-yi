@@ -35,22 +35,33 @@ export async function GET(req: NextRequest): Promise<Response> {
       return NextResponse.json({ ok: true, data: [] });
   }
 
-  let query = db
-    .from("orders")
-    .select("*, customers!orders_customer_id_fkey(name, phone_number, area)")
-    .order("created_at", { ascending: false });
+  // PostgREST caps a single response at 1000 rows, so page through the result
+  // set — a fixed limit silently truncates the table once orders outgrow it.
+  const PAGE = 1000;
+  const page = (from: number) => {
+    let q = db
+      .from("orders")
+      .select("*, customers!orders_customer_id_fkey(name, phone_number, area)")
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (status) q = q.eq("status", status) as typeof q;
+    if (customerIds) q = q.in("customer_id", customerIds) as typeof q;
+    return q;
+  };
 
-  if (!search) query = query.limit(100) as typeof query;
-  if (status) query = query.eq("status", status);
-  if (customerIds) query = query.in("customer_id", customerIds);
+  const rows: NonNullable<Awaited<ReturnType<typeof page>>["data"]> = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from);
+    if (error)
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
+    rows.push(...(data ?? []));
+    if (data.length < PAGE) break;
+  }
 
-  const { data, error } = await query;
-  if (error)
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 },
-    );
-  return NextResponse.json({ ok: true, data });
+  return NextResponse.json({ ok: true, data: rows });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
