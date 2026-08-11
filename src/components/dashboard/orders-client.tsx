@@ -297,8 +297,8 @@ export default function OrdersClient() {
           ))}
         </div>
       ) : (
-        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white border border-gray-100 rounded-xl overflow-x-auto">
+          <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3 text-left">Customer</th>
