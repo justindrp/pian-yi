@@ -130,6 +130,8 @@ Payments page owns the payment queue: Awaiting payment lists `pending_payment`, 
 
 Orders page status dropdown defaults to "Active" and has no unfiltered view by default — an explicit "All" option (empty status, no `.eq` filter applied) was added alongside the per-status options so admins can see orders in any stage.
 
+Orders table sorts on two columns: "Start date" and "Created" (`created_at`). Clicking a header sorts by that column; clicking the active header flips direction. Only the active column shows an arrow. Default is Start date descending. The "Created" column exists to line orders up against the `package_orders` Google Sheet during data reconciliation.
+
 ### Meal time preference types
 
 - `lunch_only`

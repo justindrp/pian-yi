@@ -90,6 +90,9 @@ export default function OrdersClient() {
   const [busy, setBusy] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sortKey, setSortKey] = useState<"start_date" | "created_at">(
+    "start_date",
+  );
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -230,9 +233,21 @@ export default function OrdersClient() {
   const filteredOrders = (orders ?? [])
     .slice()
     .sort((a, b) => {
-      const cmp = (a.start_date ?? "").localeCompare(b.start_date ?? "");
+      const cmp = (a[sortKey] ?? "").localeCompare(b[sortKey] ?? "");
       return sortDir === "asc" ? cmp : -cmp;
     });
+
+  const sortArrow = (key: "start_date" | "created_at") =>
+    sortKey === key ? (sortDir === "asc" ? "↑" : "↓") : "";
+
+  function toggleSort(key: "start_date" | "created_at") {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
 
   return (
     <div>
@@ -294,9 +309,15 @@ export default function OrdersClient() {
                 <th className="px-4 py-3 text-left">Area</th>
                 <th
                   className="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-600"
-                  onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                  onClick={() => toggleSort("start_date")}
                 >
-                  Start date {sortDir === "asc" ? "↑" : "↓"}
+                  Start date {sortArrow("start_date")}
+                </th>
+                <th
+                  className="px-4 py-3 text-left cursor-pointer select-none hover:text-gray-600"
+                  onClick={() => toggleSort("created_at")}
+                >
+                  Created {sortArrow("created_at")}
                 </th>
                 <th className="px-4 py-3 text-left">Status</th>
               </tr>
@@ -350,6 +371,9 @@ export default function OrdersClient() {
                   </td>
                   <td className="px-4 py-3 text-gray-900">{o.customers?.area}</td>
                   <td className="px-4 py-3 text-gray-900">{o.start_date}</td>
+                  <td className="px-4 py-3 text-gray-900">
+                    {o.created_at?.slice(0, 10)}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[o.status] ?? "bg-gray-100 text-gray-500"}`}
@@ -362,7 +386,7 @@ export default function OrdersClient() {
               {filteredOrders.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-4 py-10 text-center text-gray-400"
                   >
                     No orders.
