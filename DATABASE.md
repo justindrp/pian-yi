@@ -1,6 +1,6 @@
 # Database Tables
 
-26 tables in the `public` schema.
+26 tables and 1 view in the `public` schema.
 
 ---
 
@@ -127,6 +127,8 @@ Custom instructions Annie adds via the Chatbot Training page. Active ones are ap
 Full chat history between customers and the bot. Rows are inserted once; only WhatsApp delivery metadata (`message_id`, `whatsapp_status`, `whatsapp_status_updated_at`) may be backfilled or advanced later when an outbound send completes or Meta posts a receipt webhook.
 
 Inbox thread ordering and the `Unread` filter both derive from the latest `conversations` row per customer. A thread is considered unread in the dashboard when that latest row has `role = "user"`.
+
+That "latest row per customer" is served by the `inbox_threads` view (see below), not by fetching a window of recent messages.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -504,3 +506,19 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | late_delivery_count | integer | Running total of late deliveries |
 | created_at | timestamp | |
 | updated_at | timestamp | |
+
+---
+
+# Views
+
+## inbox_threads
+
+Regular (non-materialized) view, added in migration `059_inbox_threads_view.sql`. Returns exactly one row per customer — that customer's most recent `conversations` row — and backs the admin inbox thread list.
+
+Implemented as `SELECT DISTINCT ON (customer_id) ... ORDER BY customer_id, created_at DESC`, supported by the `conversations_customer_created_idx` index on `(customer_id, created_at DESC)` so the query walks the index instead of sorting the whole table.
+
+Created `WITH (security_invoker = on)`, so the querying user's RLS applies and it inherits `admins_read_conversations` from `007_rls.sql` rather than bypassing it.
+
+Why it exists: the inbox previously fetched the newest 500 `conversations` rows and grouped them by customer in the browser. Past a few thousand messages that window only covered recently active customers — lapsed customers had no thread at all, and the search box (which filters already-loaded threads) could never find them.
+
+**Do not convert this to a materialized view.** Messages arrive continuously and the inbox is read occasionally, so a matview would pay a full refresh per inbound message to serve a handful of page loads, and would show a stale inbox whenever its refresh lagged or its trigger broke — a silent wrong answer rather than a slow one.

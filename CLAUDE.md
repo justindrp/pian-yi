@@ -64,6 +64,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 6. **Allowlist field updates** — when updating records, explicitly list permitted fields; never use mass assignment
 7. **Sensitive fields in separate tables** — rate limits, flags, internal status live in tables users cannot edit
 8. **Audit log append-only** — `edit_log`, `processed_messages`, `conversation_logs` are insert-only, never updated or deleted
+9. **Never fetch a fixed window and aggregate in the browser** — "newest N rows, then group/filter client-side" silently drops data once the table outgrows N, and the UI gives no signal that it happened. Aggregate in the database (a view, or a query that returns the answer) and paginate with `.range()` when a list must be complete. This has already caused three separate bugs: `GET /api/orders` capped at 100 of 432 orders (twice), and the inbox capped at 500 `conversations` rows, which hid every lapsed customer's thread.
 
 ## Business rules
 
@@ -88,6 +89,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 - Customer-facing chatbot prompt has the current Paket Personal S price list spelled out in `src/lib/claude/prompts/system.ts`; keep this in sync with `pricing_tiers` and `price_list_image_url`.
 - Existing orders lock in `price_per_portion` at order creation time
+- The inbox thread list reads the `inbox_threads` view (migration 059), which returns one row per customer holding their newest message, so every thread loads regardless of how old it is. The search box filters those loaded threads client-side, which is only correct because the list is complete — do not reintroduce a row limit on this query. See DATABASE.md for why this is a regular view and must not become a materialized one.
 - The admin inbox "Review extracted order" modal now shows server-computed `price_per_portion` and `total_price` before confirmation, but those values remain server-authoritative and are recomputed again on create.
 - Manual inbox extraction now reads a deeper chat window (60 messages instead of 20) and includes saved learned-context notes in the prompt, so extraction still works after later back-and-forth pushes the original order form out of the most recent messages.
 - Anthropic forced-tool extraction rejects conversations that end on an assistant turn; the inbox extraction path trims trailing assistant messages before calling Sonnet so old closed threads can still be parsed.

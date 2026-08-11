@@ -118,18 +118,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          pending_action: Json | null
           title: string
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
+          pending_action?: Json | null
           title?: string
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
+          pending_action?: Json | null
           title?: string
           updated_at?: string
         }
@@ -1193,7 +1196,31 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      inbox_threads: {
+        Row: {
+          content: string | null
+          created_at: string | null
+          customer_id: string | null
+          id: string | null
+          intent: string | null
+          media_id: string | null
+          message_id: string | null
+          message_type: string | null
+          model_used: string | null
+          role: string | null
+          whatsapp_status: string | null
+          whatsapp_status_updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       next_journal_reference: { Args: { p_year: number }; Returns: string }

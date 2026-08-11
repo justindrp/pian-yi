@@ -206,24 +206,29 @@ export default function InboxClient() {
   });
 
   const loadThreads = useCallback(async () => {
+    // inbox_threads (migration 059) is one row per customer holding their
+    // newest message, so every thread loads — not just recently active ones.
     const { data } = await supabase
-      .from("conversations")
-      .select("*, customers!conversations_customer_id_fkey(*)")
-      .order("created_at", { ascending: false })
-      .limit(500);
+      .from("inbox_threads")
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (!data) return;
 
-    const seen = new Set<string>();
-    const grouped: Thread[] = [];
+    // Fetched unfiltered rather than by id list — an .in() of every thread's
+    // uuid produces a request URL long enough to be rejected.
+    const { data: customerRows } = await supabase.from("customers").select("*");
+    const customerById = new Map((customerRows ?? []).map((c) => [c.id, c]));
 
+    const grouped: Thread[] = [];
     for (const row of data) {
-      const customerId = row.customer_id;
-      if (!customerId || seen.has(customerId)) continue;
-      seen.add(customerId);
+      const customer = row.customer_id
+        ? customerById.get(row.customer_id)
+        : null;
+      if (!customer) continue;
       grouped.push({
-        customer: row.customers as unknown as Customer,
-        lastMessage: row,
+        customer,
+        lastMessage: row as unknown as Conversation,
         unread: row.role === "user",
         menuShown: false,
         unanswered: false,
