@@ -12,12 +12,21 @@ export async function GET(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
   const cutoff = takeoverCutoff();
 
+  // Capped per run because each candidate costs one Claude call (learning the
+  // context the admin handled). A 30-row backlog took over two minutes and
+  // Railway's proxy hung up mid-run — the work happened to finish, but a longer
+  // one could be killed partway. Leftovers are picked up on the next tick, and
+  // by the inline resume in the webhook the moment the customer writes.
+  const BATCH_SIZE = 10;
+
   const { data: candidates, error: selectError } = await db
     .from("customer_flags")
     .select("customer_id")
     .eq("escalated_to_human", true)
     .lt("last_human_activity_at", cutoff)
-    .not("last_human_activity_at", "is", null);
+    .not("last_human_activity_at", "is", null)
+    .order("last_human_activity_at", { ascending: true })
+    .limit(BATCH_SIZE);
 
   if (selectError) {
     console.error("[auto-resume-bot]", selectError.message);
@@ -28,23 +37,39 @@ export async function GET(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: true, resumed: 0 });
   }
 
-  await Promise.all(
-    candidates.map(({ customer_id }) => tryLearnCustomerContext(customer_id, db)),
+  // Each customer's flags are cleared right after their own context lands, so a
+  // run cut short leaves every customer either fully resumed or fully untouched
+  // — never "context learned, still escalated", which would pay for the Claude
+  // call and hand nothing back.
+  const results = await Promise.all(
+    candidates.map(async ({ customer_id }) => {
+      try {
+        await tryLearnCustomerContext(customer_id, db);
+        const { error } = await db
+          .from("customer_flags")
+          .update({
+            escalated_to_human: false,
+            escalation_reason: null,
+            last_human_activity_at: null,
+          })
+          .eq("customer_id", customer_id);
+        if (error) throw new Error(error.message);
+        return true;
+      } catch (err) {
+        console.error(
+          `[auto-resume-bot] ${customer_id} failed:`,
+          (err as Error).message,
+        );
+        return false;
+      }
+    }),
   );
 
-  const ids = candidates.map((c) => c.customer_id);
-  const { error: updateError } = await db
-    .from("customer_flags")
-    .update({ escalated_to_human: false, escalation_reason: null, last_human_activity_at: null })
-    .in("customer_id", ids);
-
-  if (updateError) {
-    console.error("[auto-resume-bot] update failed:", updateError.message);
-    return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
-  }
-
-  console.log(`[auto-resume-bot] learned context and resumed bot for ${ids.length} customer(s)`);
-  return NextResponse.json({ ok: true, resumed: ids.length });
+  const resumed = results.filter(Boolean).length;
+  console.log(
+    `[auto-resume-bot] learned context and resumed bot for ${resumed} of ${candidates.length} customer(s)`,
+  );
+  return NextResponse.json({ ok: true, resumed, attempted: candidates.length });
 }
 
 export const dynamic = "force-dynamic";

@@ -124,12 +124,16 @@ A public, auth-free mobile page at `/dapur/[subcontractor-uuid]` shared with eac
 - `GET /api/health` — Liveness probe (returns 200 OK)
 
 ### Cron (all require `CRON_SECRET` header)
-- `GET /api/cron/auto-resume-bot` — Resume chatbot for escalated customers whose admin has been inactive longer than `TAKEOVER_INACTIVITY_MINUTES` (30, from `src/lib/customers/takeover.ts`), read off `last_human_activity_at`. Learns customer context first, then clears `escalated_to_human`, `escalation_reason`, and `last_human_activity_at`. Rows with a NULL `last_human_activity_at` are never resumed — there is no clock on them, so they stay with the human. This sweep is the backstop for threads whose customer never writes again; the webhook resumes inline (see below) when they do.
-- `GET /api/cron/abandoned-recovery` — Re-message customers stuck in ordering state with no completed order
-- `POST /api/cron/cancel-unpaid` — Cancel orders that remain unpaid after N hours; notify customer
-- `POST /api/cron/daily-summary` — Push notification with yesterday's metrics (runs at 9am)
-- `GET /api/cron/generate-deliveries` — Pre-create `daily_deliveries` rows for tomorrow
-- `GET /api/cron/lapsed-customers` — Detect customers who haven't ordered recently; send re-engagement message
-- `GET /api/cron/post-delivery-followup` — Send satisfaction follow-up WhatsApp message after delivery
-- `GET /api/cron/renewal-reminders` — Warn quota customers whose balance is running low
-- `POST /api/cron/send-reminders` — Send payment reminder to customers with unpaid orders
+Triggered by the in-app scheduler (`src/lib/cron/scheduler.ts`, started from `src/instrumentation.ts`, enabled by `CRON_IN_APP=true`), which calls each route handler in-process with the secret header. They stay ordinary HTTP routes, so any of them can still be run by hand with curl. `generate-deliveries` is the exception — it is in no schedule and only runs manually.
+
+- `GET /api/cron/auto-resume-bot` — Resume chatbot for escalated customers whose admin has been inactive longer than `TAKEOVER_INACTIVITY_MINUTES` (30, from `src/lib/customers/takeover.ts`), read off `last_human_activity_at`. Learns customer context first, then clears `escalated_to_human`, `escalation_reason`, and `last_human_activity_at`. Rows with a NULL `last_human_activity_at` are never resumed — there is no clock on them, so they stay with the human. This sweep is the backstop for threads whose customer never writes again; the webhook resumes inline (see below) when they do. Capped at 10 customers per run (each costs one Claude call); leftovers roll to the next tick. Runs every 15 min.
+- `GET /api/cron/abandoned-recovery` — Re-message customers stuck in ordering state with no completed order (hourly)
+- `POST /api/cron/cancel-unpaid` — Cancel orders that remain unpaid after N hours; notify customer (hourly)
+- `POST /api/cron/daily-summary` — Push notification with yesterday's metrics (09:00 WIB)
+- `POST /api/cron/deduct-daily-quota` — Draw one portion per delivered meal off each quota order's `portions_remaining` (21:00 WIB)
+- `GET /api/cron/generate-deliveries` — Pre-create `daily_deliveries` rows for tomorrow (manual only — on no schedule)
+- `GET /api/cron/lapsed-customers` — Detect customers who haven't ordered recently; send re-engagement message (10:00 WIB)
+- `GET /api/cron/post-delivery-followup` — Send satisfaction follow-up WhatsApp message after delivery (15:00 WIB)
+- `GET /api/cron/refresh-wa-window` — Keep the 24-hour WhatsApp service window open on active threads (08:00 and 20:00 WIB)
+- `GET /api/cron/renewal-reminders` — Warn quota customers whose balance is running low (hourly)
+- `POST /api/cron/send-reminders` — Send payment reminder to customers with unpaid orders (every 2 hours)
