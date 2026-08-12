@@ -1,6 +1,10 @@
 /**
  * Rescues inbound WhatsApp media before Meta deletes it.
  *
+ * One-off rescue for rows saved before the webhook started storing media at
+ * receipt time (migration 060 / `src/lib/whatsapp/media-store.ts`). New messages
+ * no longer need this.
+ *
  * The inbox never stored image bytes — it saved Meta's `media_id` and resolved
  * it live through /api/inbox/media/[mediaId] on every page view. Meta keeps
  * inbound media for roughly a week — the first run of this script found the

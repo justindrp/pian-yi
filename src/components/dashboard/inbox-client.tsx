@@ -43,15 +43,18 @@ function getInboxImageSrc(
   msg: Conversation & {
     message_type?: string | null;
     media_id?: string | null;
+    media_url?: string | null;
   },
 ) {
   if (msg.message_type !== "image") return null;
 
   // A stored copy wins over media_id: Meta deletes inbound media after about a
-  // week, so the proxy 404s for anything older. Rows backfilled by
-  // scripts/backfill-chat-media.ts keep media_id for reference but hold the
-  // bucket URL in content.
-  const storedPath = getStoragePath(msg.content, "chat-media");
+  // week, so the proxy 404s for anything older. The webhook writes media_url at
+  // receipt time; rows backfilled by scripts/backfill-chat-media.ts predate that
+  // column and hold the bucket URL in content instead.
+  const storedPath =
+    getStoragePath(msg.media_url, "chat-media") ??
+    getStoragePath(msg.content, "chat-media");
   if (storedPath) return `/api/inbox/chat-media/${storedPath}`;
 
   if (msg.media_id) return `/api/inbox/media/${msg.media_id}`;
@@ -81,11 +84,14 @@ function getInboxDocument(
   msg: Conversation & {
     message_type?: string | null;
     media_id?: string | null;
+    media_url?: string | null;
   },
 ) {
   if (msg.message_type !== "document") return null;
 
-  const storedPath = getStoragePath(msg.content, "chat-media");
+  const storedPath =
+    getStoragePath(msg.media_url, "chat-media") ??
+    getStoragePath(msg.content, "chat-media");
   if (storedPath) {
     return {
       href: `/api/inbox/chat-media/${storedPath}`,
@@ -752,6 +758,7 @@ export default function InboxClient() {
       message_type: null,
       message_id: null,
       media_id: null,
+      media_url: null,
       input_tokens: null,
       output_tokens: null,
       whatsapp_status: "sent",

@@ -45,6 +45,7 @@ import {
   sendTextMessage,
   sendTypingIndicator,
 } from "@/lib/whatsapp/client";
+import { storeInboundMedia } from "@/lib/whatsapp/media-store";
 import {
   parseMessage,
   parseStatusUpdates,
@@ -275,6 +276,28 @@ export async function processWebhookAsync(
       ),
   ]);
 
+  // Meta deletes inbound media after roughly a week, so the bytes are copied
+  // into our own storage now, at receipt time — a saved `media_id` alone rots.
+  // Memoized because several save paths below ask for the same URL; lazy
+  // because text messages and payment proofs (which store their own copy in
+  // `payment-proofs`) must not pay for a download they never use.
+  let storedMediaUrl: Promise<string | null> | undefined;
+  const inboundMediaUrl = async (): Promise<string | undefined> => {
+    const mediaId = mediaIdOf(message);
+    if (!mediaId) return undefined;
+    storedMediaUrl ??= storeInboundMedia({
+      mediaId,
+      customerId,
+      mimeType:
+        message.type === "image"
+          ? message.imageMimeType
+          : message.documentMimeType,
+      filename:
+        message.type === "document" ? message.documentFilename : undefined,
+    });
+    return (await storedMediaUrl) ?? undefined;
+  };
+
   const { data: stateRow } = await db
     .from("customer_state")
     .select("state, menu_shown")
@@ -314,6 +337,7 @@ export async function processWebhookAsync(
       intent: escalatedIntent,
       messageType: mediaMessageType(message.type),
       mediaId: mediaIdOf(message),
+      mediaUrl: await inboundMediaUrl(),
     });
     await tryLearnCustomerContext(customerId, db);
     if (message.type === "text" && escalatedText.trim()) {
@@ -359,6 +383,7 @@ export async function processWebhookAsync(
       intent: pendingIntent,
       messageType: mediaMessageType(message.type),
       mediaId: mediaIdOf(message),
+      mediaUrl: await inboundMediaUrl(),
     });
     await tryLearnCustomerContext(customerId, db);
     await sendPushToAllAdmins(
@@ -399,6 +424,7 @@ export async function processWebhookAsync(
         intent: "other",
         messageType: "image",
         mediaId: message.imageId,
+        mediaUrl: await inboundMediaUrl(),
       });
       const tmpl = await getTemplate("text_only");
       await sendTextMessage(message.from, tmpl);
@@ -420,6 +446,7 @@ export async function processWebhookAsync(
       intent: "other",
       messageType: "document",
       mediaId: message.documentId,
+      mediaUrl: await inboundMediaUrl(),
     });
     const tmpl = await getTemplate("text_only");
     await sendTextMessage(message.from, tmpl);
@@ -455,6 +482,7 @@ export async function processWebhookAsync(
     intent,
     messageType: message.type === "image" ? "image" : "text",
     mediaId: message.type === "image" ? message.imageId : undefined,
+    mediaUrl: await inboundMediaUrl(),
   });
   const normalizedCustomerState = normalizeCustomerState(stateRow?.state);
   if (
@@ -624,6 +652,7 @@ export async function processWebhookAsync(
         intent,
         messageType: message.type === "image" ? "image" : "text",
         mediaId: message.type === "image" ? message.imageId : undefined,
+        mediaUrl: await inboundMediaUrl(),
       });
       await tryLearnCustomerContext(customerId, db);
 

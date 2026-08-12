@@ -5,6 +5,7 @@ export interface WhatsAppMessage {
   text?: string;
   imageId?: string;
   imageCaption?: string;
+  imageMimeType?: string;
   documentId?: string;
   documentFilename?: string;
   documentCaption?: string;
@@ -80,6 +81,7 @@ export function parseMessage(
     text: message.text?.body,
     imageId: message.image?.id,
     imageCaption: message.image?.caption,
+    imageMimeType: message.image?.mime_type,
     documentId: message.document?.id,
     documentFilename: message.document?.filename,
     documentCaption: message.document?.caption,

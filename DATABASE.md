@@ -138,7 +138,8 @@ That "latest row per customer" is served by the `inbox_threads` view (see below)
 | content | text | Message text. For image rows, this is usually the public image URL displayed by the Inbox |
 | message_id | text | WhatsApp message ID. Inbound rows save this immediately; outbound rows backfill it after Meta accepts the send so status webhooks can match the row |
 | message_type | text | "text" or "image" |
-| media_id | text | WhatsApp media ID for inbound media; used by `/api/inbox/media/[mediaId]` proxy. Outbound/manual image rows usually keep this null and store the public URL in `content` |
+| media_id | text | WhatsApp media ID for inbound media; used by `/api/inbox/media/[mediaId]` proxy. Outbound/manual image rows usually keep this null and store the public URL in `content`. Not durable on its own — Meta deletes inbound media after about a week, so `media_url` is the reference that survives |
+| media_url | text | Supabase Storage URL in the private `chat-media` bucket, written by the webhook at receipt time (migration 060) and served through `/api/inbox/chat-media/[...path]`. NULL for rows saved before that, and for rows rescued by `scripts/backfill-chat-media.ts`, which wrote the URL into `content` instead. Kept separate from `content` so captions and `[Dokumen: name]` labels — which the bot reads back as conversation context — are not overwritten |
 | intent | text | Haiku classification (e.g. "ordering", "inquiry") |
 | model_used | text | Which Claude model replied, "human" for manual/admin-assistant sends, or "system" for automated welcome/menu rows |
 | input_tokens | integer | Tokens consumed on input (assistant turns) |
@@ -516,6 +517,8 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 Regular (non-materialized) view, added in migration `059_inbox_threads_view.sql`. Returns exactly one row per customer — that customer's most recent `conversations` row — and backs the admin inbox thread list.
 
 Implemented as `SELECT DISTINCT ON (customer_id) ... ORDER BY customer_id, created_at DESC`, supported by the `conversations_customer_created_idx` index on `(customer_id, created_at DESC)` so the query walks the index instead of sorting the whole table.
+
+Migration `061_inbox_threads_media_url.sql` added `media_url` to the column list. It sits last, not beside `media_id`: `CREATE OR REPLACE VIEW` can only append columns, and inserting one mid-list fails with `cannot change name of view column` (42P16). Any future column goes on the end too, or the view has to be dropped and recreated.
 
 Created `WITH (security_invoker = on)`, so the querying user's RLS applies and it inherits `admins_read_conversations` from `007_rls.sql` rather than bypassing it.
 

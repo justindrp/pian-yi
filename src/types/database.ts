@@ -290,6 +290,7 @@ export type Database = {
           input_tokens: number | null
           intent: string | null
           media_id: string | null
+          media_url: string | null
           message_id: string | null
           message_type: string | null
           model_used: string | null
@@ -306,6 +307,7 @@ export type Database = {
           input_tokens?: number | null
           intent?: string | null
           media_id?: string | null
+          media_url?: string | null
           message_id?: string | null
           message_type?: string | null
           model_used?: string | null
@@ -322,6 +324,7 @@ export type Database = {
           input_tokens?: number | null
           intent?: string | null
           media_id?: string | null
+          media_url?: string | null
           message_id?: string | null
           message_type?: string | null
           model_used?: string | null
@@ -1204,6 +1207,7 @@ export type Database = {
           id: string | null
           intent: string | null
           media_id: string | null
+          media_url: string | null
           message_id: string | null
           message_type: string | null
           model_used: string | null

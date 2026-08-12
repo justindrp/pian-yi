@@ -35,6 +35,7 @@ export async function saveMessage(params: {
   intent?: string;
   messageType?: string;
   mediaId?: string;
+  mediaUrl?: string;
   whatsappStatus?: WhatsAppMessageStatus;
   whatsappStatusUpdatedAt?: string;
 }): Promise<string | null> {
@@ -52,6 +53,7 @@ export async function saveMessage(params: {
       intent: params.intent ?? null,
       message_type: params.messageType ?? "text",
       media_id: params.mediaId ?? null,
+      media_url: params.mediaUrl ?? null,
       whatsapp_status: params.whatsappStatus ?? null,
       whatsapp_status_updated_at: params.whatsappStatusUpdatedAt ?? null,
     })
