@@ -39,6 +39,8 @@ VAPID keys stored in env vars. Subscriptions stored in `push_subscriptions` tabl
 
 Subscription state is per-device, never per-user: `PushSubscribeButton` reads `pushManager.getSubscription()` first and only hides itself when the server also knows that exact endpoint. If the browser holds a subscription the DB lost, the button re-POSTs it to `/api/push/subscribe` silently. iOS requires the PWA be opened from the Home Screen (standalone) before `pushManager.subscribe()` will work.
 
+Threads in takeover (`escalated_to_human`) take an earlier branch in `processWebhookAsync` that never reaches that push, so they need their own — "New message — you have this thread", high priority, sent for **every** inbound message. It was previously in the `else` of a message-type check, so images and locations notified but plain text did not, which is nearly all traffic. On an escalated thread the bot is silent by design, so the admin who took it over is the only person who can reply; not telling them is how threads go quiet for days. `analyzeCustomerMessage` is not a substitute — it only surfaces anything when it proposes a write action.
+
 The "New message from X" push is sent in exactly one place — `processWebhookAsync`, before it hands off to `processSavedCustomerMessage`. Do not add one to `processSavedCustomerMessage`: it runs on the same inbound message right after, and `/api/inbox/replay-latest` runs it again over a message the admin is already reading. Having it in both is what made every message notify twice.
 
 Priority levels:

@@ -340,19 +340,23 @@ export async function processWebhookAsync(
       mediaUrl: await inboundMediaUrl(),
     });
     await tryLearnCustomerContext(customerId, db);
+    // The push is unconditional. It used to sit in the `else`, so a plain text
+    // message — the overwhelmingly common case — notified nobody: the bot is
+    // silent on an escalated thread, so the admin who took it over was the only
+    // one who could answer, and they were never told. analyzeCustomerMessage is
+    // not a substitute; it only surfaces anything when it proposes a write.
+    await sendPushToAllAdmins(
+      "New message — you have this thread",
+      `${customer.name ?? message.from}: ${escalatedText.slice(0, 80)}`,
+      "/inbox",
+      "high",
+    );
     if (message.type === "text" && escalatedText.trim()) {
       analyzeCustomerMessage({
         customerId,
         customerName: customer.name ?? null,
         text: escalatedText,
       }).catch((err) => console.error("[webhook] analyzeCustomerMessage failed:", err));
-    } else {
-      await sendPushToAllAdmins(
-        "New message from escalated customer",
-        `${customer.name ?? message.from}: ${escalatedText.slice(0, 80)}`,
-        "/inbox",
-        "medium",
-      );
     }
     await db
       .from("processed_messages")
