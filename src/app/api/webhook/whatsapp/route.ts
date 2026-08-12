@@ -788,7 +788,13 @@ export async function processSavedCustomerMessage(params: {
     | undefined;
   text: string;
   messageId?: string | null;
-}): Promise<void> {
+  // Draft mode: generate the reply, send nothing, save nothing, run no tools,
+  // and hand the text back so an admin can edit it before it goes out. Every
+  // side effect on this path is irreversible from the customer's side, so the
+  // rule is simple — in draft mode the only thing that happens is the model
+  // call. Returns the draft text; normal mode always returns null.
+  draft?: boolean;
+}): Promise<string | null> {
   const {
     customerId,
     customerName,
@@ -798,12 +804,13 @@ export async function processSavedCustomerMessage(params: {
     stateRow,
     text,
     messageId,
+    draft = false,
   } = params;
   const db = createAdminClient();
 
   // Rate limit check. Must stay above analyzeCustomerMessage: that is a Haiku
   // call, and a rate-limited customer should not cost a model call at all.
-  if (!shouldHandlePaymentProof(latestOrderStatus)) {
+  if (!draft && !shouldHandlePaymentProof(latestOrderStatus)) {
     const rateCheck = await checkRateLimit(customerId);
     if (!rateCheck.allowed) {
       const tmpl = await getTemplate("rate_limit_exceeded");
@@ -814,11 +821,15 @@ export async function processSavedCustomerMessage(params: {
         "/inbox",
         "medium",
       );
-      return;
+      return null;
     }
   }
 
-  if (text.trim()) {
+  // Skipped when drafting: this is a second Sonnet call that can open an
+  // assistant thread and push every admin. An admin asking for a draft has
+  // already read the message, and re-drafting three times should not raise
+  // three alerts.
+  if (!draft && text.trim()) {
     analyzeCustomerMessage({ customerId, customerName, text }).catch((err) =>
       console.error("[webhook] analyzeCustomerMessage failed:", err),
     );
@@ -830,20 +841,24 @@ export async function processSavedCustomerMessage(params: {
 
   // Prompt injection
   if (detectInjection(text)) {
-    const tmpl = await getTemplate("chatbot_unavailable");
-    await sendTextMessage(phone, tmpl);
+    if (!draft) {
+      const tmpl = await getTemplate("chatbot_unavailable");
+      await sendTextMessage(phone, tmpl);
+    }
     await db
       .from("customer_flags")
       .update({ is_suspicious: true })
       .eq("customer_id", customerId);
-    return;
+    return null;
   }
 
   // Circuit breaker check
   if (isCircuitOpen()) {
-    const tmpl = await getTemplate("chatbot_unavailable");
-    await sendTextMessage(phone, tmpl);
-    return;
+    if (!draft) {
+      const tmpl = await getTemplate("chatbot_unavailable");
+      await sendTextMessage(phone, tmpl);
+    }
+    return null;
   }
 
   // Load history
@@ -1101,7 +1116,11 @@ export async function processSavedCustomerMessage(params: {
         max_tokens: 1000,
         system: systemPrompt,
         messages: [...history, { role: "user", content: text }],
-        tools,
+        // No tools when drafting. Every tool here writes something the customer
+        // sees or the books record (create_order, send_menu_image), and a draft
+        // the admin then discards must leave nothing behind. Without tools the
+        // model always answers in text, which is what the compose box needs.
+        ...(draft ? {} : { tools }),
       });
     try {
       claudeResponse = await callClaude();
@@ -1121,9 +1140,11 @@ export async function processSavedCustomerMessage(params: {
       "/inbox",
       "high",
     ).catch(console.error);
-    const tmpl = await getTemplate("chatbot_unavailable");
-    await sendTextMessage(phone, tmpl);
-    return;
+    if (!draft) {
+      const tmpl = await getTemplate("chatbot_unavailable");
+      await sendTextMessage(phone, tmpl);
+    }
+    return null;
   }
 
   // Extract text reply and tool use
@@ -1133,6 +1154,19 @@ export async function processSavedCustomerMessage(params: {
   for (const block of claudeResponse.content) {
     if (block.type === "text") replyText = block.text;
     if (block.type === "tool_use") toolUse = block;
+  }
+
+  if (draft) {
+    const text = extractText(claudeResponse);
+    if (!text) {
+      console.error(
+        "[webhook] empty draft, stop_reason:",
+        claudeResponse.stop_reason,
+        "block types:",
+        claudeResponse.content.map((b) => b.type).join(","),
+      );
+    }
+    return text || null;
   }
 
   if (!replyText && !toolUse) {
@@ -1148,7 +1182,7 @@ export async function processSavedCustomerMessage(params: {
       "/inbox",
       "high",
     ).catch(console.error);
-    return;
+    return null;
   }
 
   // Run the tool before asking for the accompanying text, so the follow-up call
@@ -1210,7 +1244,7 @@ export async function processSavedCustomerMessage(params: {
         "/inbox",
         "medium",
       );
-      return;
+      return null;
     }
   }
 
@@ -1347,6 +1381,8 @@ export async function processSavedCustomerMessage(params: {
       status: "sent",
     });
   }
+
+  return null;
 }
 
 async function handleSubcontractorMessage(

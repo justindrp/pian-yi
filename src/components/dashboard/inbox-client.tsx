@@ -574,31 +574,30 @@ export default function InboxClient() {
     setFlags(nextFlags);
   }
 
-  async function regenerateReply() {
+  // Hands the thread back to the bot and lets it answer the customer's last
+  // message for real. Unlike regenerateReply this does send, because that is
+  // the point of resuming — the customer is waiting on an answer the bot
+  // paused to ask about.
+  async function resumeBot() {
     if (!selectedCustomerId || !flags) return;
     setRegenerating(true);
     setRegenerateStatus(null);
-    if (flags.escalated_to_human || flags.pending_bot_response) {
-      const takeoverRes = await fetch("/api/inbox/takeover", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_id: selectedCustomerId,
-          escalated: false,
-        }),
-      });
-      if (!takeoverRes.ok) {
-        setRegenerating(false);
-        setRegenerateStatus("Failed to clear thread state");
-        return;
-      }
-      setFlags({
-        ...flags,
-        escalated_to_human: false,
-        pending_bot_response: false,
-        pending_bot_question: null,
-      });
+    const takeoverRes = await fetch("/api/inbox/takeover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId, escalated: false }),
+    });
+    if (!takeoverRes.ok) {
+      setRegenerating(false);
+      setRegenerateStatus("Failed to clear thread state");
+      return;
     }
+    setFlags({
+      ...flags,
+      escalated_to_human: false,
+      pending_bot_response: false,
+      pending_bot_question: null,
+    });
     const res = await fetch("/api/inbox/replay-latest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -611,15 +610,46 @@ export default function InboxClient() {
     } | null;
     setRegenerating(false);
     if (!res.ok || !body?.ok) {
-      setRegenerateStatus("Failed to regenerate reply");
+      setRegenerateStatus("Failed to resume bot");
       return;
     }
     if (!body.replayed) {
-      setRegenerateStatus(`Not regenerated: ${body.reason ?? "unknown"}`);
+      setRegenerateStatus(`Not resumed: ${body.reason ?? "unknown"}`);
       return;
     }
-    setRegenerateStatus("Analisis dikirim ke halaman Assistant.");
+    setRegenerateStatus("Bot resumed — reply sent to the customer.");
     await loadMessages(selectedCustomerId);
+  }
+
+  // Drafts a reply into the compose box. Sends nothing: the admin edits and
+  // presses Send. Deliberately does not clear escalated_to_human — drafting on
+  // a thread you took over must not hand it back to the bot.
+  async function regenerateReply() {
+    if (!selectedCustomerId) return;
+    setRegenerating(true);
+    setRegenerateStatus(null);
+    const res = await fetch("/api/inbox/replay-latest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: selectedCustomerId, draft: true }),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      replayed?: boolean;
+      reason?: string;
+      draft?: string;
+    } | null;
+    setRegenerating(false);
+    if (!res.ok || !body?.ok) {
+      setRegenerateStatus("Failed to draft reply");
+      return;
+    }
+    if (!body.replayed || !body.draft) {
+      setRegenerateStatus(`No draft: ${body.reason ?? "unknown"}`);
+      return;
+    }
+    setManualReply(body.draft);
+    setRegenerateStatus("Draft ready below — edit it, then press Send.");
   }
 
   async function extractOrder() {
@@ -1233,7 +1263,7 @@ export default function InboxClient() {
                       }}
                       disabled={regenerating}
                     >
-                      {regenerating ? "Regenerating..." : "Regenerate reply"}
+                      {regenerating ? "Drafting..." : "Draft bot reply"}
                     </button>
                     <button
                       type="button"
@@ -1319,7 +1349,7 @@ export default function InboxClient() {
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => void regenerateReply()}
+                  onClick={() => void resumeBot()}
                   disabled={regenerating}
                   className="shrink-0 bg-amber-600 text-white hover:bg-amber-700"
                 >

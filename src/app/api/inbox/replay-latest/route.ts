@@ -12,8 +12,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as { customer_id: string };
-  const { customer_id } = body;
+  const body = (await req.json()) as { customer_id: string; draft?: boolean };
+  const { customer_id, draft = false } = body;
 
   if (!customer_id) {
     return NextResponse.json({ ok: false, error: "customer_id required" }, { status: 400 });
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: true, replayed: false, reason: "empty_message" });
   }
 
-  await processSavedCustomerMessage({
+  const draftText = await processSavedCustomerMessage({
     customerId: customer.id,
     customerName: customer.name,
     customerNotes: (customer as { notes?: string | null }).notes ?? null,
@@ -86,7 +86,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     stateRow: stateRow ?? null,
     text: latestMessage.content,
     messageId: latestMessage.message_id ?? null,
+    draft,
   });
+
+  if (draft) {
+    if (!draftText) {
+      return NextResponse.json({ ok: true, replayed: false, reason: "empty_draft" });
+    }
+    return NextResponse.json({ ok: true, replayed: true, draft: draftText });
+  }
 
   return NextResponse.json({ ok: true, replayed: true });
 }
