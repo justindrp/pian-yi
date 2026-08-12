@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const res = await client.messages.create({
     model: HAIKU_MODEL,
-    max_tokens: 50,
+    max_tokens: 500,
     messages: [
       {
         role: "user",
@@ -122,11 +122,10 @@ export async function POST(req: NextRequest): Promise<Response> {
       },
     ],
   });
-  const sentiment = (
-    res.content[0].type === "text"
-      ? res.content[0].text.trim().toLowerCase()
-      : "neutral"
-  ) as "positive" | "neutral" | "negative";
+  const sentiment = (extractText(res).toLowerCase() || "neutral") as
+    | "positive"
+    | "neutral"
+    | "negative";
 
   await db
     .from("daily_deliveries")

@@ -1,4 +1,4 @@
-import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { extractJson, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 
 export interface ValidateReplyParams {
   reply: string;
@@ -40,17 +40,15 @@ Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["...
     const client = getAnthropicClient();
     const res = await client.messages.create({
       model: HAIKU_MODEL,
-      max_tokens: 200,
+      max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });
-    rawText =
-      res.content[0].type === "text" ? res.content[0].text.trim() : "";
+    rawText = extractJson(res);
     if (!rawText) {
       console.error("[validate-reply] Haiku returned empty content, stop_reason:", res.stop_reason);
       return { valid: true, unsupportedClaims: [] };
     }
-    const text = rawText.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-    const parsed = JSON.parse(text) as {
+    const parsed = JSON.parse(rawText) as {
       valid: boolean;
       unsupported_claims?: string[];
     };

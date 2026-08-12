@@ -7,6 +7,7 @@ import { buildPendingAction } from "@/lib/claude/assistant-tools";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/claude/client", () => ({
+  ...jest.requireActual("@/lib/claude/client"),
   getAnthropicClient: jest.fn(),
   SONNET_MODEL: "claude-sonnet-4-6",
 }));

@@ -2,6 +2,7 @@ import { getAnthropicClient } from "@/lib/claude/client";
 import { validateReply } from "@/lib/claude/validate-reply";
 
 jest.mock("@/lib/claude/client", () => ({
+  ...jest.requireActual("@/lib/claude/client"),
   getAnthropicClient: jest.fn(),
   HAIKU_MODEL: "claude-haiku-4-5",
 }));

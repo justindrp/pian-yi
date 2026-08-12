@@ -18,6 +18,7 @@ import { sendTextMessage, sendTypingIndicator } from "@/lib/whatsapp/client";
 jest.mock("@/lib/supabase/admin");
 jest.mock("@/lib/cache/settings");
 jest.mock("@/lib/claude/client", () => ({
+  ...jest.requireActual("@/lib/claude/client"),
   getAnthropicClient: jest.fn(),
   SONNET_MODEL: "claude-sonnet-4-6",
 }));

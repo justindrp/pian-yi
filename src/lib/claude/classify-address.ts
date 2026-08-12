@@ -1,4 +1,4 @@
-import { getAnthropicClient, SONNET_MODEL } from "./client";
+import { extractText, getAnthropicClient, SONNET_MODEL } from "./client";
 
 export type AddressType = "house" | "apartment" | "office";
 
@@ -6,7 +6,7 @@ export async function classifyAddress(address: string): Promise<AddressType> {
   const client = getAnthropicClient();
   const response = await client.messages.create({
     model: SONNET_MODEL,
-    max_tokens: 10,
+    max_tokens: 500,
     messages: [
       {
         role: "user",
@@ -15,10 +15,7 @@ export async function classifyAddress(address: string): Promise<AddressType> {
     ],
   });
 
-  const text =
-    response.content[0].type === "text"
-      ? response.content[0].text.trim().toLowerCase()
-      : "";
+  const text = extractText(response).toLowerCase();
 
   if (text === "house" || text === "apartment" || text === "office") return text;
   return "house";

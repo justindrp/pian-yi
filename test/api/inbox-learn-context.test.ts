@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/claude/client", () => ({
+  ...jest.requireActual("@/lib/claude/client"),
   getAnthropicClient: jest.fn(),
   HAIKU_MODEL: "claude-haiku-4-5",
 }));

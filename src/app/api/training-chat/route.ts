@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateCache } from "@/lib/cache/settings";
-import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
+import { extractText, getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     messages: body.messages as Anthropic.Messages.MessageParam[],
   });
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  const text = extractText(response);
 
   let savedInstruction: string | null = null;
 

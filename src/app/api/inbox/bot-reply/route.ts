@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateCache } from "@/lib/cache/settings";
-import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -14,7 +14,7 @@ async function saveAsPermanentRule(
   const anthropic = getAnthropicClient();
   const result = await anthropic.messages.create({
     model: HAIKU_MODEL,
-    max_tokens: 200,
+    max_tokens: 1000,
     messages: [
       {
         role: "user",
@@ -27,8 +27,7 @@ Output ONLY the instruction in Indonesian, one or two sentences, no preamble.`,
       },
     ],
   });
-  const instruction =
-    result.content[0].type === "text" ? result.content[0].text.trim() : "";
+  const instruction = extractText(result);
   if (!instruction) return;
 
   const db = createAdminClient();
@@ -150,7 +149,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const anthropic = getAnthropicClient();
   const polishResult = await anthropic.messages.create({
     model: HAIKU_MODEL,
-    max_tokens: 300,
+    max_tokens: 1000,
     messages: [
       {
         role: "user",
@@ -183,10 +182,7 @@ Rewrite ONLY the admin's note as the bot's reply:`,
     ],
   });
 
-  const result =
-    polishResult.content[0].type === "text"
-      ? polishResult.content[0].text.trim()
-      : (admin_answer ?? "");
+  const result = extractText(polishResult) || (admin_answer ?? "");
 
   // Preview mode: return polished text without sending
   if (preview_only) {

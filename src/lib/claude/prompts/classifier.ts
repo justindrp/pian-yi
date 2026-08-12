@@ -1,4 +1,4 @@
-import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 
 export type MessageIntent =
   | "faq"
@@ -12,15 +12,13 @@ export async function classifyIntent(message: string): Promise<MessageIntent> {
 
   const response = await client.messages.create({
     model: HAIKU_MODEL,
-    max_tokens: 20,
+    max_tokens: 500,
     messages: [{ role: "user", content: message }],
     system:
       "Classify this WhatsApp message into one of these categories: faq, ordering, complaint, payment, other. Reply with only the category word.",
   });
 
-  const content = response.content[0];
-  const text =
-    content.type === "text" ? content.text.trim().toLowerCase() : "other";
+  const text = extractText(response).toLowerCase() || "other";
   const valid: MessageIntent[] = [
     "faq",
     "ordering",

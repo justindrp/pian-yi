@@ -26,3 +26,12 @@ export function extractText(response: Message): string {
     .join("")
     .trim();
 }
+
+// Same, for callers that JSON.parse the result: a reasoning model routinely
+// wraps its JSON in a ```json fence, which JSON.parse chokes on.
+export function extractJson(response: Message): string {
+  return extractText(response)
+    .replace(/^```(?:json)?\n?/, "")
+    .replace(/\n?```$/, "")
+    .trim();
+}
