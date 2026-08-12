@@ -833,14 +833,9 @@ export async function processSavedCustomerMessage(params: {
     }
   }
 
-  // Notify admins of every incoming message
-  const displayName = customerName ?? phone;
-  await sendPushToAllAdmins(
-    `New message from ${displayName}`,
-    text.slice(0, 100),
-    "/inbox",
-    "low",
-  );
+  // No "new message" push here: processWebhookAsync already sent one before
+  // handing off, and replay-latest re-runs this function over a message the
+  // admin is already looking at. Both cases would notify about nothing new.
 
   // Prompt injection
   if (detectInjection(text)) {
