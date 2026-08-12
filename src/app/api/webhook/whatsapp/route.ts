@@ -5,7 +5,7 @@ import {
   getSetting,
   getTemplate,
 } from "@/lib/cache/settings";
-import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
+import { extractText, getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
 import {
   loadHistory,
   saveMessage,
@@ -1135,7 +1135,67 @@ export async function processSavedCustomerMessage(params: {
     if (block.type === "tool_use") toolUse = block;
   }
 
-  if (!replyText && !toolUse) return;
+  if (!replyText && !toolUse) {
+    console.error(
+      "[webhook] no text and no tool_use, stop_reason:",
+      claudeResponse.stop_reason,
+      "block types:",
+      claudeResponse.content.map((b) => b.type).join(","),
+    );
+    await sendPushToAllAdmins(
+      "Bot produced no reply",
+      `${customerName ?? phone} — stop_reason ${claudeResponse.stop_reason}`,
+      "/inbox",
+      "high",
+    ).catch(console.error);
+    return;
+  }
+
+  // Run the tool before asking for the accompanying text, so the follow-up call
+  // below can report the real result back to the model.
+  if (toolUse) {
+    await handleToolUse(toolUse, customerId, phone, customerName);
+  }
+
+  // A tool call with no text alongside it. Anthropic models answer and call a
+  // tool in the same response, so one round trip was enough; a reasoning model
+  // spends the turn on `thinking` + `tool_use` and emits no text, which left the
+  // customer with total silence whenever the tool was a no-op (Julie W got
+  // send_menu_image on an already-sent menu). Feed the tool result back and ask
+  // for the reply that should have come with it.
+  if (toolUse && !replyText) {
+    try {
+      const client = getAnthropicClient();
+      const followUp = await client.messages.create({
+        model: SONNET_MODEL,
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [
+          ...history,
+          { role: "user", content: text },
+          { role: "assistant", content: claudeResponse.content },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result" as const,
+                tool_use_id: toolUse.id,
+                content: "done",
+              },
+            ],
+          },
+        ],
+        tools,
+      });
+      replyText = extractText(followUp);
+      await updateTokenCount(
+        customerId,
+        followUp.usage.input_tokens + followUp.usage.output_tokens,
+      );
+    } catch (err) {
+      console.error("[webhook] tool follow-up call failed:", (err as Error).message);
+    }
+  }
 
   let replyConversationId: string | null = null;
 
@@ -1258,10 +1318,7 @@ export async function processSavedCustomerMessage(params: {
     claudeResponse.usage.input_tokens + claudeResponse.usage.output_tokens,
   );
 
-  // Handle tool use
-  if (toolUse) {
-    await handleToolUse(toolUse, customerId, phone, customerName);
-  }
+  // Tool already handled above, before the follow-up call that needs its result.
 
   // Update customer state based on stop reason
   if (claudeResponse.stop_reason === "end_turn" && replyText) {
