@@ -76,6 +76,11 @@ const COMPARISON =
 // they show up in real food notes like "nasi + 3 lauk per porsi".
 const ORDERING_MODEL =
   /pesan\s+bebas|jadwal\s+tetap|sistem\s+(?:pesan|fleksibel|pemesanan)|kuota|berturut-turut|porsi\s+bisa\s+dipakai|langganan/i;
+// "Makan siang saja" tells the kitchen nothing: the card is already under the
+// MAKAN SIANG heading. Anchored at both ends so only a clause that is nothing
+// but a meal-time reference is dropped — "siang ayam-malam daging" stays.
+const MEAL_ONLY =
+  /^(?:hanya\s+|khusus\s+)?(?:untuk\s+)?(?:pengiriman\s+|makan(?:an)?\s+)?(?:siang|malam|lunch|dinner)(?:\s*\([^)]*\))?(?:\s+saja)?$/i;
 
 // Filtering runs per clause, not per bullet: one line usually mixes something
 // the kitchen needs with something it shouldn't see ("Makan siang saja, porsi
@@ -90,7 +95,8 @@ function usefulClauses(value: string): string[] {
         clause &&
         !MONEY.test(clause) &&
         !COMPARISON.test(clause) &&
-        !ORDERING_MODEL.test(clause),
+        !ORDERING_MODEL.test(clause) &&
+        !MEAL_ONLY.test(clause),
     );
 }
 
@@ -104,7 +110,9 @@ function aiPreferences(notes: string): string | null {
       // Splitting can strand an opening paren whose closing half was in a
       // dropped clause; balance it rather than printing "porsi kecil (".
       const joined = kept.join(", ").replace(/\s*\($/, "");
-      const text = balanceParens(joined);
+      // Dropping a leading clause leaves the rest starting lowercase
+      // ("porsi kecil"), so restore sentence case.
+      const text = balanceParens(joined).replace(/^./, (c) => c.toUpperCase());
       if (text) prefs.push(text);
     }
   }
