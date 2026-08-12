@@ -82,7 +82,10 @@ export async function checkRateLimit(
     row.minute_message_count = 0;
   }
 
-  if ((row.daily_message_count ?? 0) >= 20)
+  // 20 was too tight once the double-count was fixed: filling in the fixed
+  // schedule order form alone takes ~13 messages. daily_token_count is the real
+  // cost backstop — Julie W hit 20 messages having spent 14k of 200k tokens.
+  if ((row.daily_message_count ?? 0) >= 40)
     return { allowed: false, reason: "daily_limit" };
   if ((row.minute_message_count ?? 0) >= 9)
     return { allowed: false, reason: "minute_limit" };
