@@ -112,6 +112,33 @@ function getInboxDocument(
   return { href: msg.content, label: filename || "Dokumen" };
 }
 
+// Rows saved before the webhook stored media (migration 060) carry only a
+// media_id, and Meta deletes inbound media after about a week — the proxy 404s
+// and the browser shows a broken-image icon with no explanation. Swap in a
+// caption so the gap reads as expired media rather than a bug.
+function InboxImage({ src }: { src: string }) {
+  const [expired, setExpired] = useState(false);
+
+  if (expired) {
+    return (
+      <div className="text-xs italic opacity-70">
+        Photo expired — no longer available from WhatsApp
+      </div>
+    );
+  }
+
+  return (
+    // biome-ignore lint/performance/noImgElement: media served via API route — next/image impractical
+    <img
+      src={src}
+      alt="Media"
+      className="max-w-full rounded-lg"
+      style={{ maxHeight: 300 }}
+      onError={() => setExpired(true)}
+    />
+  );
+}
+
 const URL_PATTERN = /(https?:\/\/\S+)/g;
 
 function renderContentWithLinks(content: string | null | undefined) {
@@ -1328,13 +1355,7 @@ export default function InboxClient() {
                   >
                     {msgWithExtras.message_type === "image" ? (
                       imageSrc ? (
-                        // biome-ignore lint/performance/noImgElement: media served via API route — next/image impractical
-                        <img
-                          src={imageSrc}
-                          alt="Media"
-                          className="max-w-full rounded-lg"
-                          style={{ maxHeight: 300 }}
-                        />
+                        <InboxImage key={imageSrc} src={imageSrc} />
                       ) : (
                         <div className="text-xs italic opacity-70">[Image]</div>
                       )
