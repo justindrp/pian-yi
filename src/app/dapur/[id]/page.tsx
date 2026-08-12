@@ -69,6 +69,30 @@ const MONEY = /\bRp\b|\d\s*(?:rb|ribu|k)\b|harga|ongkir|bayar|transfer|bca/i;
 // the word "dapur" on its own — "perlu konfirmasi ke dapur" is a normal note.
 const COMPARISON =
   /bandingk|perbandingan|kompetitor|pesaing|beralih|pindah\s+ke|(?:dapur|catering|katering|vendor|penyedia)\s+(?:lain|berbeda|sebelah|baru)/i;
+// The model also files our own ordering model under "Preferensi" ("sistem
+// fleksibel, porsi bisa dipakai kapan saja"). That is how our packages work,
+// not something the customer wants cooked differently — noise to the kitchen.
+// Matched narrowly: "per porsi" and "paket" are excluded on purpose, because
+// they show up in real food notes like "nasi + 3 lauk per porsi".
+const ORDERING_MODEL =
+  /pesan\s+bebas|jadwal\s+tetap|sistem\s+(?:pesan|fleksibel|pemesanan)|kuota|berturut-turut|porsi\s+bisa\s+dipakai|langganan/i;
+
+// Filtering runs per clause, not per bullet: one line usually mixes something
+// the kitchen needs with something it shouldn't see ("Makan siang saja, porsi
+// kecil, sistem fleksibel …"), and dropping the whole line loses the useful
+// half.
+function usefulClauses(value: string): string[] {
+  return value
+    .split(/[;,]/)
+    .map((clause) => clause.trim())
+    .filter(
+      (clause) =>
+        clause &&
+        !MONEY.test(clause) &&
+        !COMPARISON.test(clause) &&
+        !ORDERING_MODEL.test(clause),
+    );
+}
 
 function aiPreferences(notes: string): string | null {
   const prefs: string[] = [];
@@ -76,12 +100,24 @@ function aiPreferences(notes: string): string | null {
     for (const line of block.split("\n")) {
       const match = line.trim().match(PREF_BULLET);
       if (!match) continue;
-      const value = match[2];
-      if (MONEY.test(value) || COMPARISON.test(value)) continue;
-      prefs.push(value.replace(/\*\*/g, "").trim());
+      const kept = usefulClauses(match[2].replace(/\*\*/g, ""));
+      // Splitting can strand an opening paren whose closing half was in a
+      // dropped clause; balance it rather than printing "porsi kecil (".
+      const joined = kept.join(", ").replace(/\s*\($/, "");
+      const text = balanceParens(joined);
+      if (text) prefs.push(text);
     }
   }
   return prefs.join("; ") || null;
+}
+
+function balanceParens(text: string): string {
+  const opens = (text.match(/\(/g) ?? []).length;
+  const closes = (text.match(/\)/g) ?? []).length;
+  if (opens === closes) return text.trim();
+  // Unbalanced either way means the sentence was cut mid-parenthetical; strip
+  // the parens rather than leaving a dangling one.
+  return text.replace(/[()]/g, "").trim();
 }
 
 function kitchenPreferences(notes: string | null): string | null {
