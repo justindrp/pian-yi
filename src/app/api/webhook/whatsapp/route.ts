@@ -498,21 +498,11 @@ export async function processWebhookAsync(
 
   const learnedNotes = await tryLearnCustomerContext(customerId, db);
 
-  // Rate limit check
-  if (!shouldHandlePaymentProof(latestOrderStatus)) {
-    const rateCheck = await checkRateLimit(customerId);
-    if (!rateCheck.allowed) {
-      const tmpl = await getTemplate("rate_limit_exceeded");
-      await sendTextMessage(message.from, tmpl);
-      await sendPushToAllAdmins(
-        "Rate limit hit",
-        `${message.from} hit ${rateCheck.reason}`,
-        "/inbox",
-        "medium",
-      );
-      return;
-    }
-  }
+  // No rate limit check here. checkRateLimit() increments the counter as a side
+  // effect, and processSavedCustomerMessage() below always runs it too, so a
+  // check at this point charged every inbound message twice and turned the
+  // 20/day cap into an effective 10. That one gates the Sonnet call itself and
+  // is also the only gate on the replay-latest path, so it is the one to keep.
 
   // Notify admins of every incoming message
   const customerName = customer?.name ?? message.from;
@@ -811,13 +801,8 @@ export async function processSavedCustomerMessage(params: {
   } = params;
   const db = createAdminClient();
 
-  if (text.trim()) {
-    analyzeCustomerMessage({ customerId, customerName, text }).catch((err) =>
-      console.error("[webhook] analyzeCustomerMessage failed:", err),
-    );
-  }
-
-  // Rate limit check
+  // Rate limit check. Must stay above analyzeCustomerMessage: that is a Haiku
+  // call, and a rate-limited customer should not cost a model call at all.
   if (!shouldHandlePaymentProof(latestOrderStatus)) {
     const rateCheck = await checkRateLimit(customerId);
     if (!rateCheck.allowed) {
@@ -831,6 +816,12 @@ export async function processSavedCustomerMessage(params: {
       );
       return;
     }
+  }
+
+  if (text.trim()) {
+    analyzeCustomerMessage({ customerId, customerName, text }).catch((err) =>
+      console.error("[webhook] analyzeCustomerMessage failed:", err),
+    );
   }
 
   // No "new message" push here: processWebhookAsync already sent one before
