@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
-
-const INACTIVITY_MINUTES = 10;
+import { takeoverCutoff } from "@/lib/customers/takeover";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const secret = req.headers.get("x-cron-secret");
@@ -11,7 +10,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   const db = createAdminClient();
-  const cutoff = new Date(Date.now() - INACTIVITY_MINUTES * 60 * 1000).toISOString();
+  const cutoff = takeoverCutoff();
 
   const { data: candidates, error: selectError } = await db
     .from("customer_flags")

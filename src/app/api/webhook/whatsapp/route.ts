@@ -36,6 +36,7 @@ import {
   normalizeCustomerState,
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
+import { shouldAutoResume } from "@/lib/customers/takeover";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -308,14 +309,35 @@ export async function processWebhookAsync(
   const { data: flags } = await db
     .from("customer_flags")
     .select(
-      "escalated_to_human, is_blacklisted, pending_bot_response, pending_bot_question",
+      "escalated_to_human, is_blacklisted, pending_bot_response, pending_bot_question, last_human_activity_at",
     )
     .eq("customer_id", customerId)
     .single();
 
   if (flags?.is_blacklisted) return;
 
-  if (flags?.escalated_to_human) {
+  // Hand the thread back inline, before the escalated branch swallows the
+  // message. Admins forget to press "Resume bot", so threads stayed with a
+  // human indefinitely and the customer talked to nobody. The auto-resume cron
+  // also clears these, but only on its own schedule — resuming here means the
+  // bot answers *this* message instead of the customer waiting for the sweep.
+  const autoResumed =
+    flags?.escalated_to_human === true &&
+    shouldAutoResume(flags.last_human_activity_at);
+  if (autoResumed) {
+    await tryLearnCustomerContext(customerId, db);
+    await db
+      .from("customer_flags")
+      .update({
+        escalated_to_human: false,
+        escalation_reason: null,
+        last_human_activity_at: null,
+      })
+      .eq("customer_id", customerId);
+    console.log(`[webhook] auto-resumed bot for ${customerId} on new message`);
+  }
+
+  if (flags?.escalated_to_human && !autoResumed) {
     const escalatedText =
       message.type === "text"
         ? (message.text ?? "")

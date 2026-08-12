@@ -124,7 +124,7 @@ A public, auth-free mobile page at `/dapur/[subcontractor-uuid]` shared with eac
 - `GET /api/health` — Liveness probe (returns 200 OK)
 
 ### Cron (all require `CRON_SECRET` header)
-- `GET /api/cron/auto-resume-bot` — Resume chatbot for escalated customers whose admin has been inactive > 15 min (checks `last_human_activity_at`)
+- `GET /api/cron/auto-resume-bot` — Resume chatbot for escalated customers whose admin has been inactive longer than `TAKEOVER_INACTIVITY_MINUTES` (30, from `src/lib/customers/takeover.ts`), read off `last_human_activity_at`. Learns customer context first, then clears `escalated_to_human`, `escalation_reason`, and `last_human_activity_at`. Rows with a NULL `last_human_activity_at` are never resumed — there is no clock on them, so they stay with the human. This sweep is the backstop for threads whose customer never writes again; the webhook resumes inline (see below) when they do.
 - `GET /api/cron/abandoned-recovery` — Re-message customers stuck in ordering state with no completed order
 - `POST /api/cron/cancel-unpaid` — Cancel orders that remain unpaid after N hours; notify customer
 - `POST /api/cron/daily-summary` — Push notification with yesterday's metrics (runs at 9am)

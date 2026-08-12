@@ -41,6 +41,15 @@ Subscription state is per-device, never per-user: `PushSubscribeButton` reads `p
 
 Threads in takeover (`escalated_to_human`) take an earlier branch in `processWebhookAsync` that never reaches that push, so they need their own — "New message — you have this thread", high priority, sent for **every** inbound message. It was previously in the `else` of a message-type check, so images and locations notified but plain text did not, which is nearly all traffic. On an escalated thread the bot is silent by design, so the admin who took it over is the only person who can reply; not telling them is how threads go quiet for days. `analyzeCustomerMessage` is not a substitute — it only surfaces anything when it proposes a write action.
 
+### Handing a thread back to the bot
+
+`escalated_to_human` has no expiry of its own, and admins routinely forget to press "Resume bot" — most threads ever taken over never went back to the bot at all. Two paths clear it, both reading `TAKEOVER_INACTIVITY_MINUTES` (30) from `src/lib/customers/takeover.ts` so they can never disagree:
+
+1. **Inline, in `processWebhookAsync`** — evaluated *before* the `escalated_to_human` branch. If the customer writes and the last admin activity is older than the timeout, the flags are cleared and the message falls through to the normal bot flow, so the bot answers that same message instead of the customer waiting for a sweep.
+2. **`GET /api/cron/auto-resume-bot`** — the backstop for threads whose customer never writes again. Needs its own Railway cron service; when it is missing, path 1 still covers every thread that is actually alive.
+
+Both call `tryLearnCustomerContext` before clearing, so whatever the human said is folded into the customer's notes before the bot picks the thread back up. Neither touches a row whose `last_human_activity_at` is NULL — with no clock there is no way to tell "handled a minute ago" from "abandoned in June".
+
 The "New message from X" push is sent in exactly one place — `processWebhookAsync`, before it hands off to `processSavedCustomerMessage`. Do not add one to `processSavedCustomerMessage`: it runs on the same inbound message right after, and `/api/inbox/replay-latest` runs it again over a message the admin is already reading. Having it in both is what made every message notify twice.
 
 Priority levels:
