@@ -38,16 +38,46 @@ function formatDateID(dateStr: string): string {
 
 // customers.notes mixes two things: manual admin notes (dietary/drop-off
 // instructions the kitchen needs) and an [AI learned context] block written by
-// the chatbot, which summarizes pricing and service coverage. This page is
-// unauthenticated and shared with the subcontractor, so the AI block never
-// leaves the dashboard.
-function manualNotesOnly(notes: string | null): string | null {
-  if (!notes) return null;
-  const stripped = notes.replace(/\[AI learned context\][\s\S]*?\[\/AI learned context\]/g, "");
+// the chatbot, which also summarizes pricing and service coverage. This page is
+// unauthenticated and shared with the subcontractor, so nothing from the AI
+// block reaches it except what the two helpers below explicitly allow through.
+
+const AI_BLOCK = /\[AI learned context\][\s\S]*?\[\/AI learned context\]/g;
+
+function manualNotesOnly(notes: string): string | null {
+  const stripped = notes.replace(AI_BLOCK, "");
   // An unterminated opening tag would otherwise survive the replace and print
   // the whole block; drop everything from it.
   const open = stripped.indexOf("[AI learned context]");
   return (open === -1 ? stripped : stripped.slice(0, open)).trim() || null;
+}
+
+// Some customers have no manual notes at all — everything the kitchen needs
+// ("tidak ada seafood", "diambil di security") is inside the AI block. Pull the
+// "Preferensi*" bullets back out of it, and only those: the sibling labels
+// (Catatan, Pesanan, Area layanan, Harga…) carry cutoffs, bank details, and
+// price points that the subcontractor has no reason to see.
+const PREF_BULLET = /^[-•*]\s*\**\s*(Preferensi[^:*]{0,30})\**\s*:\s*(.+)$/i;
+// Belt-and-braces: the model sometimes writes prices into a Preferensi bullet
+// anyway ("Halal, harga terjangkau mulai 27RB, gratis ongkir"). Drop any line
+// that mentions money — a dropped preference is recoverable, a leaked price
+// list is not.
+const MONEY = /\bRp\b|\d\s*(?:rb|ribu|k)\b|harga|ongkir|bayar|transfer|bca/i;
+
+function aiPreferences(notes: string): string | null {
+  const prefs: string[] = [];
+  for (const block of notes.match(AI_BLOCK) ?? []) {
+    for (const line of block.split("\n")) {
+      const match = line.trim().match(PREF_BULLET);
+      if (match && !MONEY.test(match[2])) prefs.push(match[2].replace(/\*\*/g, "").trim());
+    }
+  }
+  return prefs.join("; ") || null;
+}
+
+function kitchenPreferences(notes: string | null): string | null {
+  if (!notes) return null;
+  return manualNotesOnly(notes) ?? aiPreferences(notes);
 }
 
 type Customer = {
@@ -81,7 +111,7 @@ function DeliveryCard({ d }: { d: Delivery }) {
   const address = slot === 2 ? (c?.address_2 ?? c?.address) : c?.address;
   const mapsLink = slot === 2 ? (c?.google_maps_link_2 ?? c?.google_maps_link) : c?.google_maps_link;
   const location = [area, subArea].filter(Boolean).join(" · ");
-  const preference = manualNotesOnly(c?.notes ?? null);
+  const preference = kitchenPreferences(c?.notes ?? null);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
