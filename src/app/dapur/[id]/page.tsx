@@ -36,8 +36,23 @@ function formatDateID(dateStr: string): string {
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+// customers.notes mixes two things: manual admin notes (dietary/drop-off
+// instructions the kitchen needs) and an [AI learned context] block written by
+// the chatbot, which summarizes pricing and service coverage. This page is
+// unauthenticated and shared with the subcontractor, so the AI block never
+// leaves the dashboard.
+function manualNotesOnly(notes: string | null): string | null {
+  if (!notes) return null;
+  const stripped = notes.replace(/\[AI learned context\][\s\S]*?\[\/AI learned context\]/g, "");
+  // An unterminated opening tag would otherwise survive the replace and print
+  // the whole block; drop everything from it.
+  const open = stripped.indexOf("[AI learned context]");
+  return (open === -1 ? stripped : stripped.slice(0, open)).trim() || null;
+}
+
 type Customer = {
   name: string | null;
+  notes: string | null;
   area: string | null;
   sub_area: string | null;
   address: string | null;
@@ -66,6 +81,7 @@ function DeliveryCard({ d }: { d: Delivery }) {
   const address = slot === 2 ? (c?.address_2 ?? c?.address) : c?.address;
   const mapsLink = slot === 2 ? (c?.google_maps_link_2 ?? c?.google_maps_link) : c?.google_maps_link;
   const location = [area, subArea].filter(Boolean).join(" · ");
+  const preference = manualNotesOnly(c?.notes ?? null);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
@@ -86,6 +102,11 @@ function DeliveryCard({ d }: { d: Delivery }) {
         >
           Lihat di Maps
         </a>
+      )}
+      {preference && (
+        <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded mt-1">
+          Preferensi: {preference}
+        </div>
       )}
       {d.notes && (
         <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded mt-1">
@@ -126,7 +147,7 @@ export default async function DapurPage({
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, address_slot, customers(name, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, customers(name, notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date)
