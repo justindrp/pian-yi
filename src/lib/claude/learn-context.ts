@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
 import { updateTokenCount } from "@/lib/claude/safety";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
@@ -44,7 +44,11 @@ export async function learnCustomerContext(
   const anthropic = getAnthropicClient();
   const response = await anthropic.messages.create({
     model: HAIKU_MODEL,
-    max_tokens: 300,
+    // A reasoning model spends this budget on its thinking block before it
+    // writes anything: at 300 the whole allowance went to thinking and the
+    // response came back stop_reason "max_tokens" with no text at all. The
+    // summary itself is still 3-6 bullets.
+    max_tokens: 1500,
     messages: [
       {
         role: "user",
@@ -63,10 +67,14 @@ ${transcript}`,
     ],
   });
 
-  const rawText =
-    response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+  const rawText = extractText(response);
   if (!rawText) {
-    console.error("[learn-context] Haiku returned empty content, stop_reason:", response.stop_reason, "content length:", response.content.length);
+    console.error(
+      "[learn-context] empty content, stop_reason:",
+      response.stop_reason,
+      "block types:",
+      response.content.map((b) => b.type).join(","),
+    );
     throw new Error("Could not summarize conversation");
   }
   const summary = rawText;

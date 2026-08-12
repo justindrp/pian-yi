@@ -14,6 +14,13 @@ On-demand reference — read when working on the relevant area, not loaded every
 8. **Monitoring** — dashboard widgets for spend/tokens, push notifications on anomalies, daily 9am digest email
 9. **Kill switch** — toggle in Settings to disable AI chatbot entirely
 
+## Reading model responses
+
+`ANTHROPIC_BASE_URL` and `CLAUDE_SONNET_MODEL` / `CLAUDE_HAIKU_MODEL` can point the app at an Anthropic-compatible provider, so the model answering may be a **reasoning** model even though the code says "Haiku". That changes the response shape in two ways, and both have already broken a feature in production:
+
+- **The first content block is `thinking`, not `text`.** `response.content[0].type === "text"` is then false and the caller sees an empty reply while the answer sits in a later block. Use `extractText(response)` from `src/lib/claude/client.ts`, which filters by block type. The old pattern still exists at ~11 other call sites (`bot-reply`, `validate-reply`, `photo-matcher`, `classify-address`, `classifier`, `training-chat`, `broadcasts/preview`, `post-delivery-followup`) and each is a latent instance of the same bug.
+- **`max_tokens` is spent on thinking first.** `learn-context` asked for 300, the thinking block consumed all of it, and the call returned `stop_reason: "max_tokens"` with zero text — surfacing in the inbox as "Could not summarize conversation". Budget for the thinking, not just the answer.
+
 ## Performance principles
 
 - **Database indexes** on every column used in WHERE/JOIN/ORDER BY (especially `phone_number`, `message_id`, `status`, `created_at`)
