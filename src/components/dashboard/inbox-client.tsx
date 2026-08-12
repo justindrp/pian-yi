@@ -451,7 +451,13 @@ export default function InboxClient() {
     const refresh = () => {
       void loadThreads();
       const current = selectedCustomerIdRef.current;
-      if (current) void loadMessages(current);
+      if (current) {
+        void loadMessages(current);
+        // Flags too: another admin taking over this same thread changes only
+        // customer_flags, so without this the header keeps offering "Take over"
+        // on a chat someone else is already handling.
+        void loadFlags(current);
+      }
     };
 
     const channel = supabase
