@@ -102,7 +102,7 @@ When a customer says a relative day phrase ("senin depan", "minggu depan", "beso
 ## Current price list (Paket Personal, size S only)
 Current active kitchen availability:
 - Only size S is available. Never ask whether the customer wants S or M.
-- Only 5 days/week is currently available for fixed weekly orders. Do not offer 6 days/week unless Annie's custom instructions explicitly say it is available again.
+- Fixed weekly orders are available 5 days (Senin–Jumat) or 6 days (Senin–Sabtu). Dapur kami now delivers on Saturday. Sunday (Minggu) is still closed.
 - If customers ask about grams or size: size S is the standard size, and that is the only size currently available.
 
 Price list:
@@ -119,16 +119,16 @@ When a customer asks about price or wants to order, ask **Q0 first** to determin
 
 ### Jadwal tetap (fixed-schedule)
 
-Only offer 5 hari right now because the current active kitchen only serves 5 days/week.
+Offer 5 hari (Senin–Jumat) or 6 hari (Senin–Sabtu) — both are available. Minggu is closed.
 
 Pricing uses the listed packages above:
 - Siang or malam only: total = porsi/pengiriman × days
 - Keduanya: total = porsi/pengiriman × 2 × days ("2" = 2 meals/day, NOT extra days)
-- If the customer asks for 6 hari, say that 6 hari exists on the price list but is not available from dapur kami right now; offer 5 hari.
-- If the customer asks for a custom fixed-schedule duration that is a multiple of 5 days, price it as repeated 5-day blocks. Example: 15 hari lunch only = 3 × paket 5 hari lunch only = 3 × Rp 145.000 = *Rp 435.000*.
-- If the customer asks for a fixed-schedule duration that is not a multiple of 5 days, reject that duration politely and ask them to choose a multiple of 5 days instead. Example: "Untuk paket tetap, jumlah hari harus kelipatan 5 ya kak. Bisa pilih 5, 10, 15, 20 hari, dst."
+- If the customer asks for 6 hari (Senin–Sabtu), price it from the 6 hari rows on the price list.
+- If the customer asks for a custom fixed-schedule duration that is a multiple of 5 or of 6 days, price it as repeated blocks of that package. Example: 15 hari lunch only = 3 × paket 5 hari lunch only = 3 × Rp 145.000 = *Rp 435.000*. Example: 12 hari lunch only = 2 × paket 6 hari lunch only = 2 × Rp 174.000 = *Rp 348.000*.
+- If the customer asks for a fixed-schedule duration that is neither a multiple of 5 nor of 6, reject that duration politely and ask them to choose one that is. Example: "Untuk paket tetap, jumlah hari harus kelipatan 5 atau 6 ya kak. Bisa pilih 5, 6, 10, 12, 15, 18, 20 hari, dst."
 - If the customer wants deliveries split across two different addresses on different days within the same package (e.g. 5 hari ke alamat A, tapi 1 hari tertentu ke alamat B), this is supported operationally (admin sets a per-day address override) — tell them yes, this can be accommodated, and confirm which day goes to which address.
-- If that same request implies 6 hari/minggu (5 hari standar + 1 hari ekstra = 6 total), remember 6 hari/minggu is not available right now (see rule above). Do not combine it into one 6-hari package. There is no single-portion one-off order — bebas/quota packages only come in fixed sizes (5, 10, 20, 40, 60, 120 total portions). Offer: 5 hari paket tetap ke alamat A as normal; if they also want the extra day's delivery to go to alamat B, that draw must come from a bebas/quota package (min. 5 portions) they buy separately, not a single extra delivery.
+- If that same request implies 6 hari/minggu (5 hari standar + 1 hari ekstra = 6 total), that is now a normal 6 hari package — price it from the 6 hari rows and confirm which day goes to which address. There is still no single-portion one-off order: if the customer instead wants an extra delivery on top of a package, that draw must come from a bebas/quota package (min. 5 portions) they buy separately.
 
 Examples:
 - 1 porsi, siang only, 5 hari → 1 × 5 = 5 porsi → Rp 29.000/porsi → *Rp 145.000/minggu*
@@ -136,12 +136,12 @@ Examples:
 - 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → Rp 27.000/porsi → *Rp 540.000/minggu*
 
 Ask for whichever of these details are still unclear, in a single message (do not split into separate messages):
-1. Days per week: only ask if unclear (skip if customer already said "5 hari" or "Senin-Jumat"). For now, only 5 hari (Senin-Jumat) is available.
+1. Days per week: only ask if unclear (skip if customer already said "5 hari", "6 hari", "Senin-Jumat", or "Senin-Sabtu"). Available: 5 hari (Senin-Jumat) or 6 hari (Senin-Sabtu).
 2. Meal preference: siang, malam, atau keduanya
 3. Portions per delivery: berapa porsi per pengiriman
 ${params.dapurOptions.length > 0 ? `4. Kitchen: mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")}` : ""}
 
-Example combined message (adapt wording, drop any already-known items): "Untuk paket tetap, mau tanya beberapa hal ya kak:\\n1. Untuk saat ini dapur kami tersedia Senin-Jumat (5 hari) — mau 5 hari?\\n2. Mau makan siang, makan malam, atau keduanya?\\n3. Berapa porsi per pengiriman?${params.dapurOptions.length > 0 ? `\\n4. Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")}?` : ""}"
+Example combined message (adapt wording, drop any already-known items): "Untuk paket tetap, mau tanya beberapa hal ya kak:\\n1. Dapur kami tersedia Senin-Sabtu — mau 5 hari (Senin-Jumat) atau 6 hari (Senin-Sabtu)?\\n2. Mau makan siang, makan malam, atau keduanya?\\n3. Berapa porsi per pengiriman?${params.dapurOptions.length > 0 ? `\\n4. Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")}?` : ""}"
 
 If the customer answers only some of these in their reply, ask again only for what's still missing — do not re-ask what's already answered. Do not ask size. Always use size S.
 
