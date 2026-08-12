@@ -63,13 +63,22 @@ const PREF_BULLET = /^[-•*]\s*\**\s*(Preferensi[^:*]{0,30})\**\s*:\s*(.+)$/i;
 // that mentions money — a dropped preference is recoverable, a leaked price
 // list is not.
 const MONEY = /\bRp\b|\d\s*(?:rb|ribu|k)\b|harga|ongkir|bayar|transfer|bca/i;
+// A preference can also record that the customer is shopping around ("tertarik
+// mencoba dapur berbeda untuk membandingkan menu dan kualitas"). True, but not
+// something to hand the kitchen being compared. Matches comparison intent, not
+// the word "dapur" on its own — "perlu konfirmasi ke dapur" is a normal note.
+const COMPARISON =
+  /bandingk|perbandingan|kompetitor|pesaing|beralih|pindah\s+ke|(?:dapur|catering|katering|vendor|penyedia)\s+(?:lain|berbeda|sebelah|baru)/i;
 
 function aiPreferences(notes: string): string | null {
   const prefs: string[] = [];
   for (const block of notes.match(AI_BLOCK) ?? []) {
     for (const line of block.split("\n")) {
       const match = line.trim().match(PREF_BULLET);
-      if (match && !MONEY.test(match[2])) prefs.push(match[2].replace(/\*\*/g, "").trim());
+      if (!match) continue;
+      const value = match[2];
+      if (MONEY.test(value) || COMPARISON.test(value)) continue;
+      prefs.push(value.replace(/\*\*/g, "").trim());
     }
   }
   return prefs.join("; ") || null;
