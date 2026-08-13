@@ -41,6 +41,12 @@ jest.mock("@/lib/claude/validate-reply", () => ({
     .fn()
     .mockResolvedValue({ valid: true, unsupportedClaims: [] }),
 }));
+// Sentiment analysis is fire-and-forget and calls Haiku through the same
+// Anthropic client these tests mock, so leaving it real makes it steal
+// responses from the createFn queue and inflate every call count.
+jest.mock("@/lib/claude/analyze-customer-message", () => ({
+  analyzeCustomerMessage: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/push/send");
 jest.mock("@/lib/utils/delay", () => ({
@@ -307,10 +313,10 @@ describe("processWebhookAsync", () => {
     await processWebhookAsync(makePayload("Tolong bantu saya"));
 
     expect(sendPushToAllAdmins).toHaveBeenCalledWith(
-      "New message from escalated customer",
+      "New message — you have this thread",
       expect.any(String),
       "/inbox",
-      "medium",
+      "high",
     );
     expect(getAnthropicClient).not.toHaveBeenCalled();
   });

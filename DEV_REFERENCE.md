@@ -225,6 +225,8 @@ Jest suite in `test/`. Uses `next/jest`, `testEnvironment: "node"`, `jest.mock()
 
 Suites: `webhook`, `orders`, `orders-post`, `customers-delete`, `customers-post`, `inbox`, `assistant`, `assistant-execute`, `assistant-history`, `delivery-proofs`, `accounting`, `accounting-accounts`, `accounting-reports`, `addable-customers`, `settings`.
 
+Any fire-and-forget Claude call in a route under test must be mocked, not just ignored. `analyzeCustomerMessage` is unawaited but goes through the same `getAnthropicClient` mock the webhook tests count calls on, so leaving it real stole responses off the `mockResolvedValueOnce` queue, inflated every `toHaveBeenCalledTimes` by one, and — because it is unawaited — failed on different lines in isolation than in the full suite. `test/webhook.test.ts` mocks it at module level.
+
 Pre-push hook (`.git/hooks/pre-push`): `pnpm lint && pnpm typecheck && pnpm test` — blocks on any failure.
 
 When adding new API routes or webhook code paths, add a corresponding test in `test/`.

@@ -127,7 +127,9 @@ describe("POST /api/inbox/replay-latest", () => {
       phone: "+6281234567890",
       stateRow: { state: "ordering", menu_shown: true },
       text: "saya jadi ambil 1 minggu",
-      messageId: null,
+      messageId: "wamid.1",
+      draft: false,
+      latestOrderStatus: null,
     });
   });
 

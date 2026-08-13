@@ -42,12 +42,14 @@ describe("customer chatbot system prompt", () => {
     expect(prompt).toContain("Only size S is available");
     expect(prompt).toContain("- 5 hari siang/malam saja: Rp 145.000");
     expect(prompt).toContain("- 72 hari siang + malam: Rp 3.600.000");
-    expect(prompt).toContain("Only 5 days/week is currently available");
+    expect(prompt).toContain(
+      "Fixed weekly orders are available 5 days (Senin–Jumat) or 6 days (Senin–Sabtu)",
+    );
     expect(prompt).not.toContain("M (+Rp 2.000/porsi)");
     expect(prompt).not.toContain("Mau ukuran S");
   });
 
-  test("prices custom fixed schedules that are multiples of five as 5-day blocks", async () => {
+  test("prices off-list totals at the tier below, not as repeated packages", async () => {
     const prompt = await buildSystemPrompt({
       casual: false,
       customerState: "new",
@@ -62,11 +64,21 @@ describe("customer chatbot system prompt", () => {
       activeOrder: null,
     });
 
-    expect(prompt).toContain("multiple of 5 days");
-    expect(prompt).toContain("15 hari lunch only = 3 × paket 5 hari lunch only");
-    expect(prompt).toContain("3 × Rp 145.000 = *Rp 435.000*");
-    expect(prompt).toContain("not a multiple of 5 days");
-    expect(prompt).toContain("reject that duration politely");
-    expect(prompt).toContain("jumlah hari harus kelipatan 5");
+    expect(prompt).toContain("is a multiple of 5 or of 6");
+    expect(prompt).toContain(
+      "15 porsi → largest listed size below 15 is 12 → Rp 28.000/porsi → 15 × Rp 28.000 = *Rp 420.000*",
+    );
+    expect(prompt).toContain(
+      "25 porsi → largest listed size below 25 is 24 → Rp 27.000/porsi → 25 × Rp 27.000 = *Rp 675.000*",
+    );
+    expect(prompt).toContain(
+      "Never build the price out of repeated smaller packages",
+    );
+    expect(prompt).toContain(
+      "neither on the list nor a multiple of 5 or of 6: reject it",
+    );
+    // The block-pricing rule this replaced must not come back — it charged the
+    // small-package rate on large orders, so 25 porsi cost more than 24.
+    expect(prompt).not.toContain("Rp 435.000");
   });
 });
