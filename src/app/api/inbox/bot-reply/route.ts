@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateCache } from "@/lib/cache/settings";
-import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { HAIKU_MODEL, NO_THINKING, extractText, getAnthropicClient } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +14,7 @@ async function saveAsPermanentRule(
   const anthropic = getAnthropicClient();
   const result = await anthropic.messages.create({
     model: HAIKU_MODEL,
+    ...NO_THINKING,
     max_tokens: 1000,
     messages: [
       {
@@ -149,6 +150,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const anthropic = getAnthropicClient();
   const polishResult = await anthropic.messages.create({
     model: HAIKU_MODEL,
+    ...NO_THINKING,
     max_tokens: 1000,
     messages: [
       {

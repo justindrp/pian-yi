@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { extractJson, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { HAIKU_MODEL, NO_THINKING, extractJson, getAnthropicClient } from "@/lib/claude/client";
 
 interface BroadcastFilter {
   areas?: string[];
@@ -61,6 +61,7 @@ Respond ONLY with valid JSON in this exact shape:
   const claude = getAnthropicClient();
   const response = await claude.messages.create({
     model: HAIKU_MODEL,
+    ...NO_THINKING,
     max_tokens: 1500,
     system: systemPrompt,
     messages: [{ role: "user", content: instruction }],

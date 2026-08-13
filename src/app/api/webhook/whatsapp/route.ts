@@ -5,7 +5,7 @@ import {
   getSetting,
   getTemplate,
 } from "@/lib/cache/settings";
-import { extractText, getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
+import { NO_THINKING, SONNET_MODEL, extractText, getAnthropicClient } from "@/lib/claude/client";
 import {
   loadHistory,
   saveMessage,
@@ -1139,6 +1139,7 @@ export async function processSavedCustomerMessage(params: {
     const callClaude = () =>
       client.messages.create({
         model: SONNET_MODEL,
+        ...NO_THINKING,
         max_tokens: 1000,
         system: systemPrompt,
         messages: [...history, { role: "user", content: text }],
@@ -1228,6 +1229,7 @@ export async function processSavedCustomerMessage(params: {
       const client = getAnthropicClient();
       const followUp = await client.messages.create({
         model: SONNET_MODEL,
+        ...NO_THINKING,
         max_tokens: 1000,
         system: systemPrompt,
         messages: [
@@ -1304,6 +1306,7 @@ export async function processSavedCustomerMessage(params: {
         const client = getAnthropicClient();
         const retryResponse = await client.messages.create({
           model: SONNET_MODEL,
+          ...NO_THINKING,
           max_tokens: 1000,
           system: systemPrompt,
           messages: [

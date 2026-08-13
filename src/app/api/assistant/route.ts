@@ -1,6 +1,6 @@
 import type { MessageParam, ToolResultBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { NextResponse } from "next/server";
-import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
+import { NO_THINKING, SONNET_MODEL, getAnthropicClient } from "@/lib/claude/client";
 import { getAssistantSystemPrompt } from "@/lib/claude/assistant-prompt";
 import { assistantTools, runTool, isWriteTool, buildPendingAction } from "@/lib/claude/assistant-tools";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
@@ -52,6 +52,7 @@ export async function POST(request: Request) {
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await client.messages.create({
       model: SONNET_MODEL,
+      ...NO_THINKING,
       max_tokens: 2000,
       system: getAssistantSystemPrompt(),
       tools: assistantTools,

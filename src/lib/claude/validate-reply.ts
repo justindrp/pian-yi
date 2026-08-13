@@ -1,4 +1,4 @@
-import { extractJson, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { HAIKU_MODEL, NO_THINKING, extractJson, getAnthropicClient } from "@/lib/claude/client";
 
 export interface ValidateReplyParams {
   reply: string;
@@ -40,6 +40,7 @@ Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["...
     const client = getAnthropicClient();
     const res = await client.messages.create({
       model: HAIKU_MODEL,
+      ...NO_THINKING,
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });

@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateCache } from "@/lib/cache/settings";
-import { extractText, getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
+import { NO_THINKING, SONNET_MODEL, extractText, getAnthropicClient } from "@/lib/claude/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const client = getAnthropicClient();
   const response = await client.messages.create({
     model: SONNET_MODEL,
+    ...NO_THINKING,
     max_tokens: 600,
     system: TRAINING_SYSTEM_PROMPT,
     messages: body.messages as Anthropic.Messages.MessageParam[],

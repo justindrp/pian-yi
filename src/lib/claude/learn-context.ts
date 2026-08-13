@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { HAIKU_MODEL, NO_THINKING, extractText, getAnthropicClient } from "@/lib/claude/client";
 import { updateTokenCount } from "@/lib/claude/safety";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
@@ -44,6 +44,7 @@ export async function learnCustomerContext(
   const anthropic = getAnthropicClient();
   const response = await anthropic.messages.create({
     model: HAIKU_MODEL,
+    ...NO_THINKING,
     // A reasoning model spends this budget on its thinking block before it
     // writes anything: at 300 the whole allowance went to thinking and the
     // response came back stop_reason "max_tokens" with no text at all. The

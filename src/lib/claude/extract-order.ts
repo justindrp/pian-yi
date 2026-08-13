@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { getSetting } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
-import { getAnthropicClient, SONNET_MODEL } from "@/lib/claude/client";
+import { NO_THINKING, SONNET_MODEL, getAnthropicClient } from "@/lib/claude/client";
 import {
   loadHistory,
   saveMessage,
@@ -196,6 +196,7 @@ ${dapurList || "none"}`;
   try {
     response = await anthropic.messages.create({
       model: SONNET_MODEL,
+      ...NO_THINKING,
       max_tokens: 1024,
       system,
       messages: history,

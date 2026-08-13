@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { HAIKU_MODEL, NO_THINKING, extractText, getAnthropicClient } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -114,6 +114,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const res = await client.messages.create({
     model: HAIKU_MODEL,
+    ...NO_THINKING,
     max_tokens: 500,
     messages: [
       {

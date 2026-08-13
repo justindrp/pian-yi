@@ -1,4 +1,4 @@
-import { extractText, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { HAIKU_MODEL, NO_THINKING, extractText, getAnthropicClient } from "@/lib/claude/client";
 
 export type MessageIntent =
   | "faq"
@@ -12,6 +12,7 @@ export async function classifyIntent(message: string): Promise<MessageIntent> {
 
   const response = await client.messages.create({
     model: HAIKU_MODEL,
+    ...NO_THINKING,
     max_tokens: 500,
     messages: [{ role: "user", content: message }],
     system:

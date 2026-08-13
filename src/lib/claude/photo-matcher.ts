@@ -1,5 +1,5 @@
 import { getSetting } from "@/lib/cache/settings";
-import { extractJson, getAnthropicClient, HAIKU_MODEL } from "@/lib/claude/client";
+import { HAIKU_MODEL, NO_THINKING, extractJson, getAnthropicClient } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -84,6 +84,7 @@ If no match is confident, return { "customer_id": null, "confidence": 0, "reason
     const client = getAnthropicClient();
     const res = await client.messages.create({
       model: HAIKU_MODEL,
+      ...NO_THINKING,
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });
