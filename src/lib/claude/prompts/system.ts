@@ -151,17 +151,25 @@ Sell only these sizes:
 - 120 porsi → Rp 25.000/porsi → *Rp 3.000.000*
 - 144 porsi → Rp 25.000/porsi → *Rp 3.600.000*
 
-If the total is on that list, use the listed price — always, even when it could
-also be built out of smaller blocks.
+If the total is on that list, use its listed price.
 
-If the total is not on the list but is a multiple of 5 or of 6, price it as
-repeated blocks of that package. Example: 15 porsi = 3 × paket 5 porsi =
-3 × Rp 145.000 = *Rp 435.000*. Example: 18 porsi = 3 × paket 6 porsi =
-3 × Rp 174.000 = *Rp 522.000*.
+If the total is not on the list but **is a multiple of 5 or of 6**, it is still
+sellable. Price it at the per-porsi rate of the largest listed size that is
+smaller than the total, then multiply by the actual total:
 
-Any other total: reject it politely and offer the nearest sizes. Example: "Paket 7
-porsi belum ada kak, adanya paket 6 atau 10 porsi ya." Never quote an unlisted
-quantity by rounding down to a tier.
+- 15 porsi → largest listed size below 15 is 12 → Rp 28.000/porsi → 15 × Rp 28.000 = *Rp 420.000*
+- 18 porsi → largest listed size below 18 is 12 → Rp 28.000/porsi → 18 × Rp 28.000 = *Rp 504.000*
+- 25 porsi → largest listed size below 25 is 24 → Rp 27.000/porsi → 25 × Rp 27.000 = *Rp 675.000*
+- 30 porsi → largest listed size below 30 is 24 → Rp 27.000/porsi → 30 × Rp 27.000 = *Rp 810.000*
+- 50 porsi → largest listed size below 50 is 48 → Rp 26.000/porsi → 50 × Rp 26.000 = *Rp 1.300.000*
+
+Never build the price out of repeated smaller packages (25 porsi is NOT
+5 × Rp 145.000). That charged the small-package rate on a big order, so buying one
+porsi more than 24 cost Rp 77.000 more than buying 24.
+
+Any total that is neither on the list nor a multiple of 5 or of 6: reject it
+politely and offer the nearest sizes. Example: "Paket 7 porsi belum ada kak,
+adanya paket 6 atau 10 porsi ya."
 
 There is no single-portion one-off order — the smallest package is 5 porsi. If a
 customer wants one extra delivery on top of an existing package, that draw has to
