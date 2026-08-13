@@ -46,12 +46,6 @@ import { createClient } from "@supabase/supabase-js";
 
 const APPLY = process.argv.includes("--apply");
 
-// A package recorded as 0 portions has no capacity, so FIFO walks past it and
-// pushes its deliveries onto the neighbouring packages — which then look
-// over-drawn while the zero one looks untouched. That is a worse record than
-// what is there now, so customers holding such a package are left out until
-// their real package_size is backfilled. 72 customers, 765 of the 1570 moves.
-const INCLUDE_ZERO_PACKAGE = process.argv.includes("--include-zero-package");
 
 type Order = {
   id: string;
@@ -164,6 +158,7 @@ async function main() {
   const drewAhead: string[] = [];
   const overCapacity: string[] = [];
   const zeroPackage: string[] = [];
+  const noRealPackage: string[] = [];
 
   for (const [customerId, custOrders] of ordersByCustomer) {
     const custDeliveries = (deliveriesByCustomer.get(customerId) ?? []).sort(
@@ -178,18 +173,32 @@ async function main() {
     );
     if (custDeliveries.length === 0) continue;
 
-    const drawn = new Map<string, number>(custOrders.map((o) => [o.id, 0]));
     const name = nameOf.get(customerId) ?? customerId;
 
-    const hasZeroPackage = custOrders.some((o) => (o.package_size ?? 0) === 0);
-    if (hasZeroPackage) {
-      for (const o of custOrders) {
-        if ((o.package_size ?? 0) === 0) {
-          zeroPackage.push(`${name}  order ${o.id.slice(0, 8)} ${o.status} pkg=0`);
-        }
+    // A pkg=0 row is not a package with no capacity — it is not a package at
+    // all. All 88 of them carry total_price=0 and have no row in the verified
+    // package_orders sheet, and for 76 of the 77 customers holding one, the
+    // customer's real orders already account for every sheet row. They are
+    // import artifacts.
+    //
+    // The first version of this script skipped any customer holding one, on the
+    // theory that a zero-capacity package would make FIFO dump its deliveries
+    // onto a neighbour. That reasoning was backwards: the neighbour is the real
+    // package, and moving the draws there is the correction, not the damage.
+    const realOrders = custOrders.filter((o) => (o.package_size ?? 0) > 0);
+    for (const o of custOrders) {
+      if ((o.package_size ?? 0) === 0) {
+        zeroPackage.push(`${name}  order ${o.id.slice(0, 8)} ${o.status} pkg=0`);
       }
-      if (!INCLUDE_ZERO_PACKAGE) continue;
     }
+    // Nothing to fill: every order this customer has is an artifact, so their
+    // deliveries have no real package to draw from. Leave them alone and report.
+    if (realOrders.length === 0) {
+      noRealPackage.push(`${name}  ${custDeliveries.length} deliveries, no real package`);
+      continue;
+    }
+
+    const drawn = new Map<string, number>(realOrders.map((o) => [o.id, 0]));
 
     // Index of the package currently being filled. It only ever moves forward:
     // once a package is full its remaining capacity is spent, and a later
@@ -199,15 +208,15 @@ async function main() {
     for (const d of custDeliveries) {
       // Advance past packages that are full, or that cannot take this delivery
       // whole. Never advance onto a package that had not started on this date.
-      while (cursor < custOrders.length - 1) {
-        const cur = custOrders[cursor];
+      while (cursor < realOrders.length - 1) {
+        const cur = realOrders[cursor];
         const room = (cur.package_size ?? 0) - (drawn.get(cur.id) ?? 0);
         if (room >= d.portions) break;
-        if (!hasStarted(custOrders[cursor + 1], d.delivery_date)) break;
+        if (!hasStarted(realOrders[cursor + 1], d.delivery_date)) break;
         cursor++;
       }
 
-      const target = custOrders[cursor];
+      const target = realOrders[cursor];
       const room = (target.package_size ?? 0) - (drawn.get(target.id) ?? 0);
 
       if (room < d.portions) {
@@ -215,7 +224,7 @@ async function main() {
         // package started, or they are past everything they ever bought. Either
         // way it lands here and the balance goes negative, which is the true
         // record of an over-draw.
-        const isLast = cursor === custOrders.length - 1;
+        const isLast = cursor === realOrders.length - 1;
         (isLast ? overCapacity : drewAhead).push(
           `${name}  ${d.delivery_date} ${d.meal_type} x${d.portions}  → ${target.id.slice(0, 8)} (room ${room})`,
         );
@@ -233,7 +242,7 @@ async function main() {
       }
     }
 
-    for (const o of custOrders) {
+    for (const o of realOrders) {
       const used = drawn.get(o.id) ?? 0;
       const shouldBe = (o.package_size ?? 0) - used;
       if (o.portions_remaining !== shouldBe) {
@@ -271,9 +280,14 @@ async function main() {
   for (const o of overCapacity) console.log(`  ${o}`);
 
   console.log(
-    `\n=== packages recorded as 0 portions (${zeroPackage.length}) — customers ${INCLUDE_ZERO_PACKAGE ? "INCLUDED above" : "excluded from this run"} ===`,
+    `\n=== import artifacts, pkg=0 — ignored as draw targets, delete separately (${zeroPackage.length}) ===`,
   );
   for (const z of zeroPackage) console.log(`  ${z}`);
+
+  console.log(
+    `\n=== customers whose ONLY orders are artifacts — left untouched (${noRealPackage.length}) ===`,
+  );
+  for (const n of noRealPackage) console.log(`  ${n}`);
 
   if (!APPLY) {
     console.log("\nDRY RUN — nothing written. Re-run with --apply to write.");
