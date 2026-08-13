@@ -1166,7 +1166,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "send_menu_image",
       description:
-        "Sends the current menu image(s) to the customer. Use when the customer asks what today's or tomorrow's menu is. Safe to call even if menu was previously sent.",
+        "Sends THIS WEEK's menu image(s) to the customer. Use when the customer asks what today's or tomorrow's menu is. Do NOT use it to answer a question about next week's menu — next week's is published on Friday and this tool cannot send it. Safe to call even if menu was previously sent.",
       input_schema: { type: "object", properties: {} },
     },
   ];
@@ -1778,6 +1778,10 @@ async function handleToolUse(
     const { data: menuSubsRaw } = await db
       .from("subcontractors")
       .select("customer_nickname, menu_image_url")
+      // Inactive kitchens keep their last menu_image_url forever, and nobody
+      // refreshes it once they stop cooking. Without this filter the customer
+      // got the live menu plus a months-old one from a kitchen we no longer use.
+      .eq("is_active", true)
       .not("menu_image_url", "is", null);
     const menuSubs = (menuSubsRaw ?? []).filter((s) => !!s.menu_image_url);
     for (const sub of menuSubs) {

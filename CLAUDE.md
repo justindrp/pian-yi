@@ -154,6 +154,12 @@ Orders table sorts on two columns: "Start date" and "Created" (`created_at`). Cl
 - One order form for everyone. The four scheduling fields at the bottom (meal preference, porsi per pengiriman, tanggal mulai, tanggal selesai) are optional and dropped entirely for a customer ordering bebas — their absence is not a missing field.
 - Relative date phrases ("senin depan", "besok", "lusa") must resolve to the nearest upcoming occurrence from Today, not one cycle further out; an explicit date the customer states later always overrides the bot's earlier interpretation of a relative phrase — the bot must never silently "correct" a date the customer already confirmed.
 
+### Weekly menu
+
+- The menu image on `subcontractors.menu_image_url` is always the **current** week (Senin–Sabtu). Next week's menu is published every **Friday**.
+- Asked about next week's menu before it is out, the bot says it isn't up yet and goes live Friday. It must not send the current image as if it were next week's — that is exactly what it did on 2026-08-13, answering "menu minggu depan udah ada kak" while attaching Batch 49 (10–15 Agustus, the current week).
+- `send_menu_image` sends every **active** kitchen's image. The `is_active` filter is load-bearing: inactive kitchens keep a stale `menu_image_url` indefinitely, and without it the same reply carried Batch 49 and Batch 39 (1–6 Juni) from a kitchen retired in June.
+
 ### Confidentiality flow for subcontractor issues
 
 When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi"

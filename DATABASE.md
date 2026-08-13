@@ -498,7 +498,7 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | delivery_areas | json | Array of area strings this kitchen serves (e.g. ["BSD Baru", "Gading Serpong"]) |
 | cost_per_portion | integer | What we pay per portion in IDR — used for Route 2 (kitchen delivers) |
 | cost_per_portion_route1 | integer | Override cost for Route 1 (we use own courier, cheaper). NULL = same as cost_per_portion. Thenie: 19,500 (R1) / 21,000 (R2) |
-| menu_image_url | text | URL of the current weekly menu image (shown to new customers) |
+| menu_image_url | text | URL of the current weekly menu image (shown to new customers). Inactive kitchens keep their last image forever — nobody refreshes it once they stop cooking, so every read of this column must filter `is_active = true`. The `send_menu_image` tool did not, and sent customers a live menu plus a two-month-old one. |
 | menu_text | text | Plain-text menu description injected into the chatbot system prompt |
 | notes | text | Internal notes about this kitchen |
 | is_active | boolean | Whether this kitchen is currently accepting orders |
