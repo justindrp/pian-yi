@@ -34,11 +34,14 @@
 //
 // Cancelled and skipped deliveries draw nothing and are ignored throughout.
 //
-// Dry run by default. Pass --apply to write.
+// Dry run by default. --apply writes, and first dumps every value it is about
+// to overwrite to scripts/rollback-<timestamp>.json, which --rollback replays.
 //
 //   pnpm tsx scripts/reassign-draw-orders.ts
 //   pnpm tsx scripts/reassign-draw-orders.ts --apply
+//   pnpm tsx scripts/reassign-draw-orders.ts --rollback scripts/rollback-….json
 
+import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
 const APPLY = process.argv.includes("--apply");
@@ -277,6 +280,21 @@ async function main() {
     return;
   }
 
+  // The writes are ~890 separate statements over PostgREST, not one
+  // transaction, so a crash partway leaves the data half-changed. The whole
+  // undo plan is written to disk first, complete, before a single row is
+  // touched — a file written afterwards would be missing exactly the rows that
+  // a crash had already changed.
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const rollbackPath = `scripts/rollback-${stamp}.json`;
+  const plan: RollbackPlan = {
+    created_at: new Date().toISOString(),
+    deliveries: moves.map((m) => ({ id: m.id, before: m.from, after: m.to })),
+    orders: balanceFixes.map((b) => ({ id: b.id, before: b.was, after: b.now })),
+  };
+  writeFileSync(rollbackPath, JSON.stringify(plan, null, 2));
+  console.log(`\nrollback plan written: ${rollbackPath}`);
+
   const client = db();
   let moved = 0;
   for (const m of moves) {
@@ -305,9 +323,97 @@ async function main() {
   }
 
   console.log(`\nAPPLIED: ${moved} deliveries re-pointed, ${fixed} balances corrected.`);
+  console.log(`Undo with: pnpm tsx scripts/reassign-draw-orders.ts --rollback ${rollbackPath}`);
 }
 
-main().catch((err) => {
+type RollbackPlan = {
+  created_at: string;
+  deliveries: { id: string; before: string | null; after: string }[];
+  orders: { id: string; before: number | null; after: number }[];
+};
+
+// Puts back what the apply changed.
+//
+// A row is only restored when it still holds the value this script wrote. If
+// something else has touched it since — an admin saving a daily sheet, the
+// nightly quota cron — the newer value is left alone and reported, because
+// undoing this script must not also undo somebody else's work.
+async function rollback(path: string): Promise<void> {
+  const plan = JSON.parse(readFileSync(path, "utf8")) as RollbackPlan;
+  console.log(
+    `rolling back ${path} (applied ${plan.created_at}): ${plan.deliveries.length} deliveries, ${plan.orders.length} orders`,
+  );
+
+  const client = db();
+  let restored = 0;
+  let changedSince = 0;
+
+  for (const d of plan.deliveries) {
+    const { data } = await client
+      .from("daily_deliveries")
+      .select("order_id")
+      .eq("id", d.id)
+      .maybeSingle();
+    if (!data) continue;
+    if (data.order_id !== d.after) {
+      changedSince++;
+      console.log(
+        `  skipped delivery ${d.id.slice(0, 8)}: now ${data.order_id?.slice(0, 8) ?? "NULL"}, not the ${d.after.slice(0, 8)} this script set`,
+      );
+      continue;
+    }
+    const { error } = await client
+      .from("daily_deliveries")
+      .update({ order_id: d.before })
+      .eq("id", d.id);
+    if (error) {
+      console.error(`  FAILED delivery ${d.id}: ${error.message}`);
+      continue;
+    }
+    restored++;
+  }
+
+  for (const o of plan.orders) {
+    const { data } = await client
+      .from("orders")
+      .select("portions_remaining")
+      .eq("id", o.id)
+      .maybeSingle();
+    if (!data) continue;
+    if (data.portions_remaining !== o.after) {
+      changedSince++;
+      console.log(
+        `  skipped order ${o.id.slice(0, 8)}: now ${data.portions_remaining}, not the ${o.after} this script set`,
+      );
+      continue;
+    }
+    const { error } = await client
+      .from("orders")
+      .update({ portions_remaining: o.before })
+      .eq("id", o.id);
+    if (error) {
+      console.error(`  FAILED order ${o.id}: ${error.message}`);
+      continue;
+    }
+    restored++;
+  }
+
+  console.log(
+    `\nROLLED BACK: ${restored} rows restored, ${changedSince} left alone because something else changed them since.`,
+  );
+}
+
+const rollbackFlag = process.argv.indexOf("--rollback");
+const entry =
+  rollbackFlag !== -1
+    ? (() => {
+        const path = process.argv[rollbackFlag + 1];
+        if (!path) throw new Error("--rollback needs a path to a rollback JSON file");
+        return rollback(path);
+      })()
+    : main();
+
+entry.catch((err) => {
   console.error(err);
   process.exit(1);
 });
