@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { processSavedCustomerMessage } from "@/app/api/webhook/whatsapp/route";
+import { replayLatestCustomerMessage } from "@/lib/inbox/replay-latest";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,84 +19,26 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: "customer_id required" }, { status: 400 });
   }
 
-  const db = createAdminClient();
+  const result = await replayLatestCustomerMessage(
+    customer_id,
+    createAdminClient(),
+    { draft },
+  );
 
-  const [
-    { data: customer, error: customerError },
-    { data: flags, error: flagError },
-    { data: latestMessage, error: latestError },
-    { data: stateRow },
-    { data: latestOrder },
-  ] = await Promise.all([
-    db.from("customers").select("id, name, phone_number, notes").eq("id", customer_id).single(),
-    db
-      .from("customer_flags")
-      .select("escalated_to_human, pending_bot_response, is_blacklisted")
-      .eq("customer_id", customer_id)
-      .single(),
-    db
-      .from("conversations")
-      .select("role, content, message_id, message_type")
-      .eq("customer_id", customer_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single(),
-    db
-      .from("customer_state")
-      .select("state, menu_shown")
-      .eq("customer_id", customer_id)
-      .single(),
-    db
-      .from("orders")
-      .select("status")
-      .eq("customer_id", customer_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single(),
-  ]);
-
-  if (customerError || !customer) {
-    return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
-  }
-  if (flagError || !flags) {
-    return NextResponse.json({ ok: false, error: "Customer flags not found" }, { status: 404 });
-  }
-  if (latestError || !latestMessage) {
-    return NextResponse.json({ ok: false, error: "No messages found" }, { status: 404 });
-  }
-  if (flags.is_blacklisted) {
-    return NextResponse.json({ ok: true, replayed: false, reason: "blacklisted" });
-  }
-  if (latestMessage.role !== "user") {
-    return NextResponse.json({ ok: true, replayed: false, reason: "latest_not_user" });
-  }
-  if ((latestMessage.message_type ?? "text") !== "text") {
-    return NextResponse.json({ ok: true, replayed: false, reason: "latest_not_text" });
-  }
-  if (!latestMessage.content?.trim()) {
-    return NextResponse.json({ ok: true, replayed: false, reason: "empty_message" });
+  if (result.status) {
+    return NextResponse.json(
+      { ok: false, error: result.reason },
+      { status: result.status },
+    );
   }
 
-  const draftText = await processSavedCustomerMessage({
-    customerId: customer.id,
-    customerName: customer.name,
-    customerNotes: (customer as { notes?: string | null }).notes ?? null,
-    latestOrderStatus: latestOrder?.status ?? null,
-    phone: customer.phone_number,
-    stateRow: stateRow ?? null,
-    text: latestMessage.content,
-    messageId: latestMessage.message_id ?? null,
-    draft,
-  });
-
-  if (draft) {
-    if (!draftText) {
-      return NextResponse.json({ ok: true, replayed: false, reason: "empty_draft" });
-    }
-    return NextResponse.json({ ok: true, replayed: true, draft: draftText });
+  if (!result.replayed) {
+    return NextResponse.json({ ok: true, replayed: false, reason: result.reason });
   }
 
-  return NextResponse.json({ ok: true, replayed: true });
+  return draft
+    ? NextResponse.json({ ok: true, replayed: true, draft: result.draft })
+    : NextResponse.json({ ok: true, replayed: true });
 }
 
 export const dynamic = "force-dynamic";
