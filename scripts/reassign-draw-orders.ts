@@ -7,21 +7,32 @@
 // deliveries after it was full. Fixed in code by pickDrawOrder (commit
 // 6bad2a7); this script cleans up what the old behaviour already wrote.
 //
-// Assignment rule: a delivery is re-pointed only when exactly one order's
-// [start_date, end_date] window contains its date and that is not the order it
-// currently points at. Anything else is reported, not touched.
+// Assignment rule: FIFO. Per customer, walk the deliveries oldest-first and
+// fill the packages in the order they were bought — the first 20 deliveries go
+// to a 20-portion package, the next 40 to the 40-portion package bought after
+// it, and so on.
 //
-// The rule started out cleverer — pack deliveries into whichever covering order
-// still had capacity — and that was wrong. Many legacy imported orders have a
-// null end_date, so their windows overlap for months and the "right" order is
-// not recoverable from dates. On Jennifer Valerie it churned 147 rows just to
-// shuffle a 7-portion deficit between two identical pkg-20 orders. Where the
-// data cannot say which order a delivery belonged to, this script must not
-// invent an answer.
+// This is what a prepaid quota means: portions bought first are used first. An
+// order has no end date because it does not end on a date, it ends when its
+// portions run out, so capacity — not the calendar — is the boundary between
+// one package and the next. An earlier version of this script tried to match
+// deliveries to orders by date window, which could not attribute anything for a
+// customer holding several open-ended packages (Jennifer Valerie: 5 packages,
+// 167 deliveries, nothing decidable) and left ~1274 rows untouched.
 //
-// Balances are only recomputed for customers whose deliveries are all
-// unambiguous. For the rest, the drawn total depends on assignments nobody can
-// verify, so the counter is left alone and the customer is listed for a human.
+// Two guards on the fill:
+//   - A delivery is never charged to a package that had not started yet on its
+//     date. If the next package has not begun, the current one absorbs the
+//     delivery and goes negative — that is a customer who drew ahead of buying,
+//     and the negative is the honest record of it.
+//   - A delivery is never split across two packages. If 1 portion of capacity
+//     is left and a 2-portion delivery arrives, the whole delivery moves to the
+//     next package and the leftover portion stays unused.
+//
+// Portions past the customer's total capacity land on their newest package,
+// which is where an over-draw is visible today.
+//
+// Cancelled and skipped deliveries draw nothing and are ignored throughout.
 //
 // Dry run by default. Pass --apply to write.
 //
@@ -31,6 +42,13 @@
 import { createClient } from "@supabase/supabase-js";
 
 const APPLY = process.argv.includes("--apply");
+
+// A package recorded as 0 portions has no capacity, so FIFO walks past it and
+// pushes its deliveries onto the neighbouring packages — which then look
+// over-drawn while the zero one looks untouched. That is a worse record than
+// what is there now, so customers holding such a package are left out until
+// their real package_size is backfilled. 72 customers, 765 of the 1570 moves.
+const INCLUDE_ZERO_PACKAGE = process.argv.includes("--include-zero-package");
 
 type Order = {
   id: string;
@@ -80,11 +98,19 @@ async function fetchAll<T>(
   }
 }
 
-function covers(order: Order, date: string): boolean {
-  if (order.start_date && date < order.start_date) return false;
-  if (order.end_date && date > order.end_date) return false;
-  return true;
+// A package cannot be drawn from before it exists.
+function hasStarted(order: Order, date: string): boolean {
+  const from = order.start_date ?? order.created_at.slice(0, 10);
+  return date >= from;
 }
+
+// Cancelled and refunded packages hold no quota to draw from.
+const DEAD_STATUSES = new Set([
+  "cancelled_unpaid",
+  "cancelled_by_customer",
+  "cancelled_by_admin",
+  "refunded",
+]);
 
 async function main() {
   const orders = await fetchAll<Order>(
@@ -99,6 +125,7 @@ async function main() {
   const ordersByCustomer = new Map<string, Order[]>();
   for (const o of orders) {
     if (!o.customer_id) continue;
+    if (DEAD_STATUSES.has(o.status)) continue;
     const list = ordersByCustomer.get(o.customer_id) ?? [];
     list.push(o);
     ordersByCustomer.set(o.customer_id, list);
@@ -112,7 +139,7 @@ async function main() {
   const deliveriesByCustomer = new Map<string, Delivery[]>();
   for (const d of deliveries) {
     if (!d.customer_id) continue;
-    if (d.status === "cancelled") continue;
+    if (d.status === "cancelled" || d.status === "skipped") continue;
     const list = deliveriesByCustomer.get(d.customer_id) ?? [];
     list.push(d);
     deliveriesByCustomer.set(d.customer_id, list);
@@ -131,9 +158,9 @@ async function main() {
     was: number | null;
     now: number;
   }[] = [];
-  const unresolved: string[] = [];
-  const ambiguous: string[] = [];
-  const skippedBalances: string[] = [];
+  const drewAhead: string[] = [];
+  const overCapacity: string[] = [];
+  const zeroPackage: string[] = [];
 
   for (const [customerId, custOrders] of ordersByCustomer) {
     const custDeliveries = (deliveriesByCustomer.get(customerId) ?? []).sort(
@@ -149,30 +176,48 @@ async function main() {
     if (custDeliveries.length === 0) continue;
 
     const drawn = new Map<string, number>(custOrders.map((o) => [o.id, 0]));
-    let certain = true;
+    const name = nameOf.get(customerId) ?? customerId;
+
+    const hasZeroPackage = custOrders.some((o) => (o.package_size ?? 0) === 0);
+    if (hasZeroPackage) {
+      for (const o of custOrders) {
+        if ((o.package_size ?? 0) === 0) {
+          zeroPackage.push(`${name}  order ${o.id.slice(0, 8)} ${o.status} pkg=0`);
+        }
+      }
+      if (!INCLUDE_ZERO_PACKAGE) continue;
+    }
+
+    // Index of the package currently being filled. It only ever moves forward:
+    // once a package is full its remaining capacity is spent, and a later
+    // delivery never goes back to it.
+    let cursor = 0;
 
     for (const d of custDeliveries) {
-      const covering = custOrders.filter((o) => covers(o, d.delivery_date));
-
-      if (covering.length === 0) {
-        certain = false;
-        unresolved.push(
-          `${nameOf.get(customerId)}  ${d.delivery_date} ${d.meal_type} x${d.portions}  (no order covers this date)`,
-        );
-        if (d.order_id) drawn.set(d.order_id, (drawn.get(d.order_id) ?? 0) + d.portions);
-        continue;
+      // Advance past packages that are full, or that cannot take this delivery
+      // whole. Never advance onto a package that had not started on this date.
+      while (cursor < custOrders.length - 1) {
+        const cur = custOrders[cursor];
+        const room = (cur.package_size ?? 0) - (drawn.get(cur.id) ?? 0);
+        if (room >= d.portions) break;
+        if (!hasStarted(custOrders[cursor + 1], d.delivery_date)) break;
+        cursor++;
       }
 
-      if (covering.length > 1) {
-        certain = false;
-        ambiguous.push(
-          `${nameOf.get(customerId)}  ${d.delivery_date} ${d.meal_type} x${d.portions}  (${covering.length} orders cover this date)`,
+      const target = custOrders[cursor];
+      const room = (target.package_size ?? 0) - (drawn.get(target.id) ?? 0);
+
+      if (room < d.portions) {
+        // Nowhere left to put it: either the customer drew before their next
+        // package started, or they are past everything they ever bought. Either
+        // way it lands here and the balance goes negative, which is the true
+        // record of an over-draw.
+        const isLast = cursor === custOrders.length - 1;
+        (isLast ? overCapacity : drewAhead).push(
+          `${name}  ${d.delivery_date} ${d.meal_type} x${d.portions}  → ${target.id.slice(0, 8)} (room ${room})`,
         );
-        if (d.order_id) drawn.set(d.order_id, (drawn.get(d.order_id) ?? 0) + d.portions);
-        continue;
       }
 
-      const target = covering[0];
       drawn.set(target.id, (drawn.get(target.id) ?? 0) + d.portions);
 
       if (d.order_id !== target.id) {
@@ -180,14 +225,9 @@ async function main() {
           id: d.id,
           from: d.order_id,
           to: target.id,
-          label: `${nameOf.get(customerId)}  ${d.delivery_date} ${d.meal_type} x${d.portions}  ${d.order_id?.slice(0, 8) ?? "NULL"} → ${target.id.slice(0, 8)}`,
+          label: `${name}  ${d.delivery_date} ${d.meal_type} x${d.portions}  ${d.order_id?.slice(0, 8) ?? "NULL"} → ${target.id.slice(0, 8)}`,
         });
       }
-    }
-
-    if (!certain) {
-      skippedBalances.push(nameOf.get(customerId) ?? customerId);
-      continue;
     }
 
     for (const o of custOrders) {
@@ -218,17 +258,19 @@ async function main() {
   );
 
   console.log(
-    `\n=== left alone: date covered by more than one order (${ambiguous.length}) ===`,
+    `\n=== drew before the next package started (${drewAhead.length}) ===`,
   );
-  for (const a of ambiguous) console.log(`  ${a}`);
-
-  console.log(`\n=== left alone: no order covers the date (${unresolved.length}) ===`);
-  for (const u of unresolved) console.log(`  ${u}`);
+  for (const a of drewAhead) console.log(`  ${a}`);
 
   console.log(
-    `\n=== customers whose balances were NOT recomputed, needs a human (${skippedBalances.length}) ===`,
+    `\n=== delivered past everything the customer ever bought (${overCapacity.length}) ===`,
   );
-  for (const s of skippedBalances) console.log(`  ${s}`);
+  for (const o of overCapacity) console.log(`  ${o}`);
+
+  console.log(
+    `\n=== packages recorded as 0 portions (${zeroPackage.length}) — customers ${INCLUDE_ZERO_PACKAGE ? "INCLUDED above" : "excluded from this run"} ===`,
+  );
+  for (const z of zeroPackage) console.log(`  ${z}`);
 
   if (!APPLY) {
     console.log("\nDRY RUN — nothing written. Re-run with --apply to write.");
