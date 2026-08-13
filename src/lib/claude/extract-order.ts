@@ -384,7 +384,6 @@ export async function createOrderFromExtraction(
     .from("orders")
     .insert({
       customer_id: customerId,
-      ...(schedule ? { order_type: "scheduled" } : {}),
       package_size: packageSize,
       price_per_portion: pricePerPortion,
       total_price: totalPrice,

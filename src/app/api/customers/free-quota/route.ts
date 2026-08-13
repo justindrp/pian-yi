@@ -48,7 +48,6 @@ export async function POST(req: Request): Promise<Response> {
   const rows = grants.map((g) => {
     return {
       customer_id: g.customer_id as string,
-      order_type: "scheduled" as const,
       status: "active" as const,
       price_per_portion: 0,
       total_price: 0,

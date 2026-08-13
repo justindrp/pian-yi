@@ -40,10 +40,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const { data: order } = await db
     .from("orders")
-    .select("id, order_type")
+    .select("id")
     .eq("customer_id", customer_id)
     .eq("status", "active")
-    .in("order_type", ["recurring", "scheduled"])
     .limit(1)
     .maybeSingle();
 

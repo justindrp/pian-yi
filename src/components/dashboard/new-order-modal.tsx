@@ -244,7 +244,6 @@ export default function NewOrderModal({
     try {
       const common = {
         customer_id: selectedCustomer.id,
-        order_type: orderType,
         price_per_portion: Number(pricePerPortion) + (size === "m" ? 2000 : 0),
         portions_per_delivery: Number(portionsPerDelivery),
         subcontractor_id: subcontractorId || null,

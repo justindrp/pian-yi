@@ -1,0 +1,23 @@
+-- Drop orders.order_type.
+--
+-- The column claimed to record a product the customer chose — 'recurring'
+-- (a subscription) vs 'scheduled' (a one-off set of dates). No such choice
+-- exists: both branches of POST /api/orders priced the order identically
+-- (package_size x price_per_portion), and the customer-facing prompt asked a
+-- question ("jadwal tetap atau pesan bebas?") that 78% of customers answered by
+-- booking a block of days upfront regardless of which one they picked.
+--
+-- Worse, the column did not even record its own distinction reliably. It
+-- defaulted to 'recurring' on every insert, so 252 of 301 active orders carried
+-- 'recurring' while their meal_time_preference said per_day_decision. Every
+-- delivery-generating query filtered on order_type = 'recurring', which meant
+-- the daily sheet's Generate button was one click away from writing lunch AND
+-- dinner rows for all 252 of them.
+--
+-- The one real question those filters were asking is whether an order's days
+-- can be worked out without asking the customer. meal_time_preference already
+-- answers it — see FIXED_SCHEDULE_PREFS in
+-- src/lib/orders/build-recurring-deliveries.ts, which buildRecurringDeliveryRows
+-- has always used in preference to this column.
+
+ALTER TABLE orders DROP COLUMN order_type;

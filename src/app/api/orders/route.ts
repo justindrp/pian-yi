@@ -77,12 +77,10 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const body = (await req.json()) as {
     customer_id: string;
-    order_type: "recurring" | "scheduled";
     price_per_portion: number;
     portions_per_delivery: number;
     subcontractor_id: string | null;
     status: "pending_payment" | "active" | "completed";
-    // Recurring
     start_date?: string;
     end_date?: string;
     meal_time_preference?: string;
@@ -93,7 +91,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     // Standing per-meal delivery-address rule (1=primary, 2=secondary/address_2)
     lunch_address_slot?: number;
     dinner_address_slot?: number;
-    // Scheduled
+    // Optional. When present the customer's days are already decided, so the
+    // rows are written here and package_size/start_date/end_date are derived
+    // from them. When absent the order is a plain quota package and its
+    // deliveries get written later, as the customer requests them.
     delivery_schedule?: {
       date: string;
       meal_type: "lunch" | "dinner";
@@ -103,7 +104,6 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   if (
     !body.customer_id ||
-    !body.order_type ||
     !body.price_per_portion ||
     !body.portions_per_delivery
   ) {
@@ -120,75 +120,42 @@ export async function POST(req: NextRequest): Promise<Response> {
   const lunchSlot = body.lunch_address_slot === 2 ? 2 : 1;
   const dinnerSlot = body.dinner_address_slot === 2 ? 2 : 1;
 
-  if (body.order_type === "recurring") {
-    if (!body.start_date || !body.meal_time_preference || !body.package_size) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "start_date, meal_time_preference, and package_size are required for recurring orders",
-        },
-        { status: 400 },
-      );
-    }
+  // Every order is the same product: a quota of portions. An optional
+  // delivery_schedule says the customer's days are already decided, which only
+  // changes where three numbers come from — an enumerated schedule already
+  // states how many portions were bought and when the package starts and ends,
+  // so deriving them here is safer than trusting the caller to send both.
+  const schedule = body.delivery_schedule ?? [];
+  const hasSchedule = schedule.length > 0;
 
-    const totalPrice = body.package_size * body.price_per_portion;
+  const packageSize = hasSchedule
+    ? schedule.reduce((sum, s) => sum + s.portions, 0)
+    : (body.package_size ?? 0);
 
-    const { data: order, error } = await db
-      .from("orders")
-      .insert({
-        customer_id: body.customer_id,
-        order_type: "recurring",
-        status: body.status,
-        price_per_portion: body.price_per_portion,
-        portions_per_delivery: body.portions_per_delivery,
-        package_size: body.package_size,
-        portions_remaining: body.package_size,
-        total_price: totalPrice,
-        subcontractor_id: body.subcontractor_id,
-        start_date: body.start_date,
-        end_date: body.end_date ?? null,
-        meal_time_preference: body.meal_time_preference,
-        portions_lunch: body.portions_lunch ?? null,
-        portions_dinner: body.portions_dinner ?? null,
-        size: (body.size ?? "s") as "s" | "m",
-        lunch_address_slot: lunchSlot,
-        dinner_address_slot: dinnerSlot,
-      })
-      .select("id, order_type, status, total_price")
-      .single();
+  const dates = hasSchedule ? schedule.map((s) => s.date).sort() : [];
+  const startDate = hasSchedule ? dates[0] : body.start_date;
+  const endDate = hasSchedule ? dates[dates.length - 1] : (body.end_date ?? null);
 
-    if (error)
-      return NextResponse.json(
-        { ok: false, error: error.message },
-        { status: 500 },
-      );
-    return NextResponse.json({ ok: true, data: order });
-  }
-
-  // Scheduled
-  const schedule = body.delivery_schedule;
-  if (!schedule || schedule.length === 0) {
+  if (!packageSize || !startDate) {
     return NextResponse.json(
       {
         ok: false,
-        error: "delivery_schedule is required for scheduled orders",
+        error:
+          "package_size and start_date are required unless delivery_schedule is provided",
       },
       { status: 400 },
     );
   }
 
-  const packageSize = schedule.reduce((sum, s) => sum + s.portions, 0);
   const totalPrice = packageSize * body.price_per_portion;
-  const dates = schedule.map((s) => s.date).sort();
-  const startDate = dates[0];
-  const endDate = dates[dates.length - 1];
 
+  // meal_time_preference stays optional: a customer who decides day by day has
+  // no standing preference to record, and downstream auto-expansion already
+  // keys on this being absent or flexible rather than on an order-type flag.
   const { data: order, error: insertErr } = await db
     .from("orders")
     .insert({
       customer_id: body.customer_id,
-      order_type: "scheduled",
       status: body.status,
       price_per_portion: body.price_per_portion,
       portions_per_delivery: body.portions_per_delivery,
@@ -198,11 +165,14 @@ export async function POST(req: NextRequest): Promise<Response> {
       subcontractor_id: body.subcontractor_id,
       start_date: startDate,
       end_date: endDate,
+      meal_time_preference: body.meal_time_preference ?? null,
+      portions_lunch: body.portions_lunch ?? null,
+      portions_dinner: body.portions_dinner ?? null,
       size: (body.size ?? "s") as "s" | "m",
       lunch_address_slot: lunchSlot,
       dinner_address_slot: dinnerSlot,
     })
-    .select("id, order_type, status, total_price")
+    .select("id, status, total_price")
     .single();
 
   if (insertErr || !order)
@@ -210,6 +180,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       { ok: false, error: insertErr?.message ?? "Insert failed" },
       { status: 500 },
     );
+
+  if (!hasSchedule) return NextResponse.json({ ok: true, data: order });
 
   // Fetch subcontractor cost for COGS journals
   let subCost = 0;
@@ -403,14 +375,6 @@ export async function PATCH(req: NextRequest): Promise<Response> {
           { status: 400 },
         );
       update.size = f.size;
-    }
-    if ("order_type" in f) {
-      if (f.order_type !== "recurring" && f.order_type !== "scheduled")
-        return NextResponse.json(
-          { ok: false, error: "Invalid order_type" },
-          { status: 400 },
-        );
-      update.order_type = f.order_type;
     }
     if ("start_date" in f && f.start_date)
       update.start_date = String(f.start_date);

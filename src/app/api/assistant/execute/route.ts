@@ -21,7 +21,6 @@ const ALLOWED_ORDER_FIELDS = new Set([
   "portions_dinner",
   "start_date",
   "end_date",
-  "order_type",
 ]);
 const NUMERIC_ORDER_FIELDS = new Set([
   "portions_per_delivery",
@@ -627,7 +626,6 @@ export async function POST(request: Request) {
 
     case "create_order": {
       const customerId = input.customer_id as string;
-      const orderType = input.order_type as string;
       const packageSize = input.package_size as number;
       const portionsPerDelivery = input.portions_per_delivery as number;
       const pricePerPortion = input.price_per_portion as number;
@@ -648,7 +646,6 @@ export async function POST(request: Request) {
         .from("orders")
         .insert({
           customer_id: customerId,
-          order_type: orderType,
           package_size: packageSize,
           portions_per_delivery: portionsPerDelivery,
           price_per_portion: pricePerPortion,

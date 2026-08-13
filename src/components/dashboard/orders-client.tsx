@@ -19,7 +19,6 @@ interface Order {
   meal_time_preference: string;
   size: string;
   created_at: string;
-  order_type: string;
   subcontractor_id: string | null;
   end_date: string | null;
   price_per_portion: number;
@@ -74,11 +73,9 @@ type EditForm = {
   portions_lunch: string;
   portions_dinner: string;
   portions_per_delivery: string;
-  order_type: string;
   start_date: string;
 };
 
-const ORDER_TYPES = ["recurring", "scheduled"];
 
 export default function OrdersClient() {
   const [statusFilter, setStatusFilter] = useState("active");
@@ -134,7 +131,6 @@ export default function OrdersClient() {
       portions_dinner: o.portions_dinner == null ? "" : String(o.portions_dinner),
       portions_per_delivery:
         o.portions_per_delivery == null ? "" : String(o.portions_per_delivery),
-      order_type: o.order_type ?? "",
       start_date: o.start_date ?? "",
     });
   }
@@ -443,19 +439,6 @@ export default function OrdersClient() {
                   {selected.customers?.phone_number}
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div>
-                    <Label htmlFor="order-type" className="text-xs text-gray-500 block mb-1">Type</Label>
-                    <select
-                      id="order-type"
-                      value={editForm.order_type}
-                      onChange={(e) => setEditForm({ ...editForm, order_type: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-                    >
-                      {ORDER_TYPES.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
                   <div>
                     <span className="text-xs text-gray-500 block mb-1">Package (porsi)</span>
                     <p className="text-sm text-gray-900 py-2">{selected.package_size}</p>

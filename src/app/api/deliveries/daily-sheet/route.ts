@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { getSetting } from "@/lib/cache/settings";
+import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("orders")
     .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, pause_until, subcontractor_id, customers(name, phone_number, area, subcontractor_id)")
     .eq("status", "active")
-    .eq("order_type", "recurring")
+    .in("meal_time_preference", FIXED_SCHEDULE_PREFS)
     .lte("start_date", date);
 
   if (!orders) return NextResponse.json({ ok: true, data: [] });
@@ -68,8 +69,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const pref = order.meal_time_preference;
 
-    const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_lunch" || pref === "per_day_decision";
-    const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_dinner" || pref === "per_day_decision";
+    const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_lunch";
+    const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_dinner";
 
     if (isLunch && !order.customer_id) continue;
 

@@ -374,7 +374,6 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | id | uuid | Primary key |
 | customer_id | uuid | FK → customers |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen fulfills this order |
-| order_type | text | "recurring" (cron auto-generates daily rows) or "scheduled" (daily rows inserted at order creation) — default "recurring" |
 | status | text | "pending_payment", "payment_proof_received", "active", "paused", "completed", "cancelled_unpaid", "cancelled_by_customer", "cancelled_by_admin", "refunded" |
 | package_size | integer | Total portions bought (e.g. 20) |
 | portions_per_delivery | integer | Portions per meal per delivery (e.g. 1 or 2) |

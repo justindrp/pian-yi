@@ -902,7 +902,6 @@ export type Database = {
           id: string
           lunch_address_slot: number
           meal_time_preference: string | null
-          order_type: string
           package_size: number
           paid_at: string | null
           pause_until: string | null
@@ -939,7 +938,6 @@ export type Database = {
           id?: string
           lunch_address_slot?: number
           meal_time_preference?: string | null
-          order_type?: string
           package_size: number
           paid_at?: string | null
           pause_until?: string | null
@@ -976,7 +974,6 @@ export type Database = {
           id?: string
           lunch_address_slot?: number
           meal_time_preference?: string | null
-          order_type?: string
           package_size?: number
           paid_at?: string | null
           pause_until?: string | null

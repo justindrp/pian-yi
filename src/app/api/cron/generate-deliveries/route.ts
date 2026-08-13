@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("orders")
     .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, customers!orders_customer_id_fkey(name, phone_number, area, subcontractor_id)")
     .eq("status", "active")
-    .eq("order_type", "recurring")
+    .in("meal_time_preference", FIXED_SCHEDULE_PREFS)
     .lte("start_date", date);
 
   if (!orders?.length) return NextResponse.json({ ok: true, generated: 0, date });
@@ -46,8 +47,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (order.pause_until && new Date(order.pause_until) >= targetDate) continue;
 
     const pref = order.meal_time_preference;
-    const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_lunch" || pref === "per_day_decision";
-    const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_dinner" || pref === "per_day_decision";
+    const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_lunch";
+    const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_dinner";
 
     if (isLunch) {
       rows.push({

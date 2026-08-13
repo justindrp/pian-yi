@@ -40,7 +40,7 @@ AVAILABLE TOOLS (write — each requires admin confirmation before executing):
 - resume_order: reactivate a paused order
 - send_payment_details: resend bank transfer details to a customer for a pending_payment order
 - mark_payment_proof_received: advance an order from pending_payment to payment_proof_received after customer sends proof
-- update_order: update a single editable field on an order (meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date, order_type)
+- update_order: update a single editable field on an order (meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date)
 - create_customer: create a new customer record (phone_number, address, area required)
 - create_order: create a new pending_payment order for an existing customer (does not send payment details — use send_payment_details as a follow-up)
 

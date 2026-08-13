@@ -23,8 +23,7 @@ export async function GET(): Promise<Response> {
     .select(
       "id, customer_id, portions_per_delivery, portions_lunch, portions_dinner, meal_time_preference, size",
     )
-    .eq("status", "active")
-    .eq("order_type", "recurring");
+    .eq("status", "active");
 
   const orderByCustomer = new Map<string, NonNullable<typeof orders>[number]>();
   const orderById = new Map<string, NonNullable<typeof orders>[number]>();

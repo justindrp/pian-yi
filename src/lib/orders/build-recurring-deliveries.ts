@@ -26,6 +26,24 @@ type DeliveryRow = {
   subcontractor_id: string | null;
 };
 
+// An order has a fixed schedule when its meal_time_preference names a standing
+// pattern, so its delivery days can be worked out without asking the customer.
+// Everything else — per_day_decision, custom_schedule, null — is a plain quota
+// package whose delivery rows only exist once the customer asks for them.
+//
+// This replaced the order_type column. order_type claimed to draw the same line
+// but defaulted to 'recurring' on every insert, so 252 of 301 active orders
+// carried 'recurring' while their preference said per_day_decision. Generating
+// from the flag meant generating lunch AND dinner for every one of them.
+export const FIXED_SCHEDULE_PREFS = [
+  "lunch_only",
+  "dinner_only",
+  "both_fixed",
+  "keduanya",
+  "default_lunch",
+  "default_dinner",
+];
+
 function parseIsoDate(date: string): Date {
   return new Date(`${date}T00:00:00Z`);
 }

@@ -386,7 +386,6 @@ export const assistantTools: Tool[] = [
             "portions_dinner",
             "start_date",
             "end_date",
-            "order_type",
           ],
           description: "Which field to update",
         },
@@ -433,11 +432,6 @@ export const assistantTools: Tool[] = [
       type: "object" as const,
       properties: {
         customer_id: { type: "string", description: "Customer UUID" },
-        order_type: {
-          type: "string",
-          enum: ["recurring", "scheduled"],
-          description: "Order type",
-        },
         package_size: {
           type: "number",
           description: "Total portions in the package",
@@ -463,7 +457,6 @@ export const assistantTools: Tool[] = [
       },
       required: [
         "customer_id",
-        "order_type",
         "package_size",
         "portions_per_delivery",
         "price_per_portion",
@@ -707,7 +700,7 @@ export async function runTool(
         db
           .from("orders")
           .select(
-            "id, end_date, portions_remaining, order_type, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+            "id, end_date, portions_remaining, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
           )
           .eq("status", "active")
           .not("end_date", "is", null)
@@ -717,10 +710,9 @@ export async function runTool(
         db
           .from("orders")
           .select(
-            "id, end_date, portions_remaining, order_type, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+            "id, end_date, portions_remaining, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
           )
           .eq("status", "active")
-          .eq("order_type", "recurring")
           .lt("portions_remaining", 5)
           .order("portions_remaining", { ascending: true }),
       ]);
@@ -1174,7 +1166,7 @@ export async function buildPendingAction(
       const { data: order } = await db
         .from("orders")
         .select(
-          "id, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date, order_type, customers!orders_customer_id_fkey(name)",
+          "id, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date, customers!orders_customer_id_fkey(name)",
         )
         .eq("id", input.order_id as string)
         .single();
@@ -1239,7 +1231,7 @@ export async function buildPendingAction(
         label: `Create order — Rp ${formatted}`,
         details: [
           `Customer: ${(customer as { name?: string }).name}`,
-          `Package: ${packageSize} porsi (${input.order_type as string})`,
+          `Package: ${packageSize} porsi`,
           `Price: Rp ${new Intl.NumberFormat("id-ID").format(pricePerPortion)}/porsi`,
           `Total: Rp ${formatted}`,
           `Start: ${input.start_date as string}`,
