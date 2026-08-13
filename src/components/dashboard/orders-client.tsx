@@ -761,7 +761,7 @@ export default function OrdersClient() {
                                     .join(" · ")}
                             </td>
                             <td
-                              className={`px-2 py-1.5 text-right tabular-nums ${r.change < 0 ? "text-gray-700" : "text-green-600"}`}
+                              className={`px-2 py-1.5 text-right font-medium tabular-nums ${r.change < 0 ? "text-red-600" : "text-green-600"}`}
                             >
                               {r.change > 0 ? `+${r.change}` : r.change}
                             </td>
