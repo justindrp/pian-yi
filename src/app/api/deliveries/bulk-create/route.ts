@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -38,13 +39,16 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  const { data: order } = await db
+  // Every active order, then pick — `.limit(1)` with no ORDER BY took whichever
+  // row came back first, which for a customer holding two packages was the one
+  // created earliest, drained or not.
+  const { data: activeOrders } = await db
     .from("orders")
-    .select("id")
+    .select("id, portions_remaining, start_date, created_at")
     .eq("customer_id", customer_id)
-    .eq("status", "active")
-    .limit(1)
-    .maybeSingle();
+    .eq("status", "active");
+
+  const order = pickDrawOrder(activeOrders ?? []);
 
   if (!order) {
     return NextResponse.json(

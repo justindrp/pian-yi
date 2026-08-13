@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,17 +22,27 @@ export async function GET(): Promise<Response> {
   const { data: orders } = await db
     .from("orders")
     .select(
-      "id, customer_id, portions_per_delivery, portions_lunch, portions_dinner, meal_time_preference, size",
+      "id, customer_id, portions_per_delivery, portions_lunch, portions_dinner, meal_time_preference, size, portions_remaining, start_date, created_at",
     )
     .eq("status", "active");
 
-  const orderByCustomer = new Map<string, NonNullable<typeof orders>[number]>();
+  // Group first, then pick per customer. Taking the first row a customer had in
+  // this result was the old behaviour and it charged draws to whichever order
+  // Postgres returned first — see pickDrawOrder for what that cost.
+  const ordersByCustomer = new Map<string, NonNullable<typeof orders>>();
   const orderById = new Map<string, NonNullable<typeof orders>[number]>();
   for (const o of orders ?? []) {
     orderById.set(o.id, o);
-    if (o.customer_id && !orderByCustomer.has(o.customer_id)) {
-      orderByCustomer.set(o.customer_id, o);
-    }
+    if (!o.customer_id) continue;
+    const list = ordersByCustomer.get(o.customer_id);
+    if (list) list.push(o);
+    else ordersByCustomer.set(o.customer_id, [o]);
+  }
+
+  const orderByCustomer = new Map<string, NonNullable<typeof orders>[number]>();
+  for (const [customerId, list] of ordersByCustomer) {
+    const picked = pickDrawOrder(list);
+    if (picked) orderByCustomer.set(customerId, picked);
   }
 
   const { data: customers, error } = await db

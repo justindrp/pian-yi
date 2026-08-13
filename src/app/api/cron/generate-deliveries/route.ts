@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
+import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -15,14 +16,28 @@ export async function POST(req: NextRequest): Promise<Response> {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const date = tomorrow.toISOString().slice(0, 10);
 
-  const { data: orders } = await db
+  const { data: allOrders } = await db
     .from("orders")
-    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, customers!orders_customer_id_fkey(name, phone_number, area, subcontractor_id)")
+    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, portions_remaining, start_date, created_at, customers!orders_customer_id_fkey(name, phone_number, area, subcontractor_id)")
     .eq("status", "active")
     .in("meal_time_preference", FIXED_SCHEDULE_PREFS)
     .lte("start_date", date);
 
-  if (!orders?.length) return NextResponse.json({ ok: true, generated: 0, date });
+  if (!allOrders?.length) return NextResponse.json({ ok: true, generated: 0, date });
+
+  // One order per customer, same as the daily sheet's Generate button — two
+  // standing orders would otherwise race for the same (date, customer, meal)
+  // slot and the upsert would keep an arbitrary winner.
+  const byCustomer = new Map<string, typeof allOrders>();
+  for (const o of allOrders) {
+    if (!o.customer_id) continue;
+    const list = byCustomer.get(o.customer_id);
+    if (list) list.push(o);
+    else byCustomer.set(o.customer_id, [o]);
+  }
+  const orders = [...byCustomer.values()]
+    .map((list) => pickDrawOrder(list))
+    .filter((o): o is NonNullable<typeof o> => o != null);
 
   const targetDate = new Date(date);
 
