@@ -343,6 +343,21 @@ export type Database = {
           },
         ]
       }
+      cron_runs: {
+        Row: {
+          job_name: string
+          last_run_at: string
+        }
+        Insert: {
+          job_name: string
+          last_run_at: string
+        }
+        Update: {
+          job_name?: string
+          last_run_at?: string
+        }
+        Relationships: []
+      }
       customer_flags: {
         Row: {
           created_at: string | null

@@ -122,6 +122,17 @@ Custom instructions Annie adds via the Chatbot Training page. Active ones are ap
 
 ---
 
+## cron_runs
+
+When each scheduled job last completed successfully — one row per job, not a run history. Written by the in-app scheduler (`src/lib/cron/scheduler.ts`) through the service-role client; nothing in the dashboard reads it.
+
+Its only purpose is to let the scheduler tell "already ran today" from "missed it while the app was restarting", which is what the boot-time catch-up for daily jobs turns on. Only successful runs are recorded, so a failed job still looks missed and is retried. A job with no row is seeded without running.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| job_name | text | Primary key — matches `name` in the scheduler's `JOBS` table |
+| last_run_at | timestamptz | Set on successful completion only |
+
 ## conversations
 
 Full chat history between customers and the bot. Rows are inserted once; only WhatsApp delivery metadata (`message_id`, `whatsapp_status`, `whatsapp_status_updated_at`) may be backfilled or advanced later when an outbound send completes or Meta posts a receipt webhook.
