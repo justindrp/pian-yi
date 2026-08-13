@@ -7,6 +7,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import NewOrderModal from "./new-order-modal";
 
+type LedgerRow = {
+  id: string;
+  kind: "package" | "draw";
+  date: string;
+  label: string;
+  meal_type: string | null;
+  change: number;
+  status: string | null;
+  scheduled: boolean;
+  balance: number;
+};
+
+type LedgerData = {
+  rows: LedgerRow[];
+  packageSize: number;
+  totalDrawn: number;
+  remaining: number;
+  storedRemaining: number | null;
+  remainingToday: number;
+};
+
 interface Order {
   id: string;
   customer_id: string;
@@ -96,6 +117,16 @@ export default function OrdersClient() {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  const { data: ledger, isLoading: ledgerLoading } = useQuery({
+    queryKey: ["order-ledger", selected?.id],
+    enabled: !!selected?.id,
+    queryFn: async () => {
+      const res = await fetch(`/api/orders/${selected?.id}/ledger`);
+      const json = (await res.json()) as { ok: boolean; data: LedgerData };
+      return json.data;
+    },
+  });
 
   const { data: subcontractors } = useQuery({
     queryKey: ["subcontractors"],
@@ -673,6 +704,78 @@ export default function OrdersClient() {
                     <option value="cancelled_by_admin">Cancelled (Admin)</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Draw ledger — this package's credit and every delivery
+                  charged against it. Unlike the customer ledger, a wrong
+                  order_id shows up here as a balance that goes negative. */}
+              <div className="border-t border-gray-100 pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    Draw history
+                  </p>
+                  {ledger && (
+                    <p className="text-xs text-gray-500">
+                      Sisa:{" "}
+                      <span
+                        className={`font-semibold ${ledger.remaining < 0 ? "text-red-600" : "text-gray-900"}`}
+                      >
+                        {ledger.remaining}
+                      </span>
+                      {ledger.storedRemaining != null &&
+                        ledger.storedRemaining !== ledger.remaining && (
+                          <span className="ml-2 text-amber-600">
+                            (tersimpan: {ledger.storedRemaining})
+                          </span>
+                        )}
+                    </p>
+                  )}
+                </div>
+                {ledgerLoading ? (
+                  <p className="text-sm text-gray-400">Memuat…</p>
+                ) : !ledger || ledger.rows.length === 0 ? (
+                  <p className="text-sm text-gray-400">Belum ada riwayat.</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto border border-gray-100 rounded-lg">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr className="text-gray-500">
+                          <th className="text-left px-2 py-1.5 font-medium">Tanggal</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Keterangan</th>
+                          <th className="text-right px-2 py-1.5 font-medium">Porsi</th>
+                          <th className="text-right px-2 py-1.5 font-medium">Sisa</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {ledger.rows.map((r) => (
+                          <tr
+                            key={r.id}
+                            className={r.scheduled ? "text-gray-400" : "text-gray-700"}
+                          >
+                            <td className="px-2 py-1.5 whitespace-nowrap">{r.date || "—"}</td>
+                            <td className="px-2 py-1.5">
+                              {r.kind === "package"
+                                ? r.label
+                                : [r.meal_type === "dinner" ? "Malam" : "Siang", r.label]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                            </td>
+                            <td
+                              className={`px-2 py-1.5 text-right tabular-nums ${r.change < 0 ? "text-gray-700" : "text-green-600"}`}
+                            >
+                              {r.change > 0 ? `+${r.change}` : r.change}
+                            </td>
+                            <td
+                              className={`px-2 py-1.5 text-right tabular-nums font-medium ${r.balance < 0 ? "text-red-600" : "text-gray-900"}`}
+                            >
+                              {r.balance}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               <div className="border-t border-gray-100 pt-4 space-y-3">
