@@ -133,20 +133,34 @@ async function main() {
     );
   }
 
+  const { data: customers } = await db()
+    .from("customers")
+    .select("id, name, linked_order_id")
+    .range(0, 4999);
+  const nameOf = new Map((customers ?? []).map((c) => [c.id, c.name ?? c.id]));
+
+  // A customer with linked_order_id draws from someone else's package — the
+  // split-payer case, e.g. Darren Dior eats off his sister Daryn's order. Their
+  // deliveries belong in the owner's FIFO run, not their own: they share one
+  // balance, so filling them separately would let the same portions be counted
+  // twice. Group by quota owner, not by who ate.
+  const quotaOwner = new Map<string, string>();
+  const ownerOfOrder = new Map(orders.map((o) => [o.id, o.customer_id]));
+  for (const c of customers ?? []) {
+    if (!c.linked_order_id) continue;
+    const owner = ownerOfOrder.get(c.linked_order_id);
+    if (owner && owner !== c.id) quotaOwner.set(c.id, owner);
+  }
+
   const deliveriesByCustomer = new Map<string, Delivery[]>();
   for (const d of deliveries) {
     if (!d.customer_id) continue;
     if (d.status === "cancelled" || d.status === "skipped") continue;
-    const list = deliveriesByCustomer.get(d.customer_id) ?? [];
+    const key = quotaOwner.get(d.customer_id) ?? d.customer_id;
+    const list = deliveriesByCustomer.get(key) ?? [];
     list.push(d);
-    deliveriesByCustomer.set(d.customer_id, list);
+    deliveriesByCustomer.set(key, list);
   }
-
-  const { data: customers } = await db()
-    .from("customers")
-    .select("id, name")
-    .range(0, 4999);
-  const nameOf = new Map((customers ?? []).map((c) => [c.id, c.name ?? c.id]));
 
   const moves: { id: string; from: string | null; to: string; label: string }[] = [];
   const balanceFixes: {
@@ -219,6 +233,13 @@ async function main() {
       const target = realOrders[cursor];
       const room = (target.package_size ?? 0) - (drawn.get(target.id) ?? 0);
 
+      // Borrowed rows are filed under the quota owner, so name whoever actually
+      // ate — otherwise Darren's deliveries read as Daryn's in the report.
+      const who =
+        d.customer_id && d.customer_id !== customerId
+          ? `${nameOf.get(d.customer_id) ?? d.customer_id} (via ${name})`
+          : name;
+
       if (room < d.portions) {
         // Nowhere left to put it: either the customer drew before their next
         // package started, or they are past everything they ever bought. Either
@@ -226,7 +247,7 @@ async function main() {
         // record of an over-draw.
         const isLast = cursor === realOrders.length - 1;
         (isLast ? overCapacity : drewAhead).push(
-          `${name}  ${d.delivery_date} ${d.meal_type} x${d.portions}  → ${target.id.slice(0, 8)} (room ${room})`,
+          `${who}  ${d.delivery_date} ${d.meal_type} x${d.portions}  → ${target.id.slice(0, 8)} (room ${room})`,
         );
       }
 
@@ -237,7 +258,7 @@ async function main() {
           id: d.id,
           from: d.order_id,
           to: target.id,
-          label: `${name}  ${d.delivery_date} ${d.meal_type} x${d.portions}  ${d.order_id?.slice(0, 8) ?? "NULL"} → ${target.id.slice(0, 8)}`,
+          label: `${who}  ${d.delivery_date} ${d.meal_type} x${d.portions}  ${d.order_id?.slice(0, 8) ?? "NULL"} → ${target.id.slice(0, 8)}`,
         });
       }
     }
