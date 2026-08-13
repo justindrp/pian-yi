@@ -133,6 +133,31 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
 
+  // A delivery must draw from an order. Rows saved without one looked fine on
+  // the sheet but silently skipped both the order deduction (below) and the
+  // revenue/COGS journal, so the portions left and the books were both wrong
+  // with nothing on screen to say so. 21 rows reached production this way,
+  // entered on the sheet days before anyone keyed in the matching order.
+  //
+  // Reject the whole save rather than dropping the offending rows: a partial
+  // write is harder to notice than a refusal, and the admin needs to go create
+  // the order before this day's sheet means anything.
+  const unbacked = body.rows.filter((r) => !r.cancel && !r.order_id);
+  if (unbacked.length > 0) {
+    const { data: who } = await db
+      .from("customers")
+      .select("name")
+      .in("id", unbacked.map((r) => r.customer_id));
+    const names = [...new Set((who ?? []).map((c) => c.name ?? "?"))].join(", ");
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Belum ada order aktif untuk: ${names}. Buat ordernya dulu, baru isi pengiriman.`,
+      },
+      { status: 400 },
+    );
+  }
+
   // Pre-fetch subcontractor costs to avoid N+1 queries in the loop
   const { data: rawSubs } = await db
     .from("subcontractors")
