@@ -37,6 +37,7 @@ type LedgerData = {
   totalPackage: number;
   totalDrawn: number;
   balance: number;
+  balanceToday: number;
 };
 
 const PAGE_SIZE = 200;
@@ -1572,12 +1573,22 @@ export default function CustomersClient() {
                   </p>
                   {ledger && (
                     <span className="text-xs text-gray-500">
-                      sisa{" "}
+                      sisa hari ini{" "}
                       <span
-                        className={`font-semibold ${ledger.balance < 0 ? "text-red-600" : "text-gray-900"}`}
+                        className={`font-semibold ${ledger.balanceToday < 0 ? "text-red-600" : "text-gray-900"}`}
                       >
-                        {ledger.balance}
-                      </span>{" "}
+                        {ledger.balanceToday}
+                      </span>
+                      {ledger.balance !== ledger.balanceToday && (
+                        <>
+                          {" · setelah terjadwal "}
+                          <span
+                            className={`font-semibold ${ledger.balance < 0 ? "text-red-600" : "text-gray-900"}`}
+                          >
+                            {ledger.balance}
+                          </span>
+                        </>
+                      )}{" "}
                       porsi
                     </span>
                   )}

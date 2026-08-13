@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 
 // GET — per-customer draw ledger: every package purchase (+N credit) and every
 // daily delivery (−portions debit), chronological, with a running balance.
+// Returns two totals: balanceToday (draws up to today) and balance (all draws,
+// including deliveries already scheduled ahead).
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -106,9 +108,23 @@ export async function GET(
   const totalPackage = rows.filter((r) => r.kind === "package").reduce((s, r) => s + r.change, 0);
   const totalDrawn = rows.filter((r) => r.kind === "draw").reduce((s, r) => s + r.change, 0); // negative
 
+  // Two balances, because they answer different questions and admins need both.
+  //
+  // balanceToday — draws dated today or earlier only. What the customer has
+  // left right now, so it is the number to compare against a physical count or
+  // against customers.portions_remaining when hunting a mismatch.
+  //
+  // balance — every draw, including deliveries already booked for future dates.
+  // What the customer will have once the current schedule finishes running, so
+  // it is the number that says whether they need to top up.
+  //
+  // Package credits count in both: quota is paid for and usable from the moment
+  // the order exists, even when start_date is still ahead.
+  const balanceToday = rows.reduce((s, r) => (r.scheduled ? s : s + r.change), 0);
+
   return NextResponse.json({
     ok: true,
-    data: { rows, totalPackage, totalDrawn, balance },
+    data: { rows, totalPackage, totalDrawn, balance, balanceToday },
   });
 }
 
