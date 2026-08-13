@@ -56,7 +56,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 1. **HTTP 200 first, process after** — webhook returns 200 to Meta immediately, then processes async
 2. **Idempotency everywhere** — every webhook event has a `message_id`, check against `processed_messages` table before processing
-3. **Defense in depth** — 9 layers of cost protection (see "AI cost controls" in `DEV_REFERENCE.md`)
+3. **Defense in depth** — 10 layers of cost protection (see "AI cost controls" in `DEV_REFERENCE.md`)
 4. **Settings over hardcoding** — anything that might change goes in the `settings` table, edited via UI
 5. **Server-controlled fields** — `id`, `created_at`, `updated_at`, `status`, `total_price` are always set by server, never accepted from client input
 6. **Allowlist field updates** — when updating records, explicitly list permitted fields; never use mass assignment

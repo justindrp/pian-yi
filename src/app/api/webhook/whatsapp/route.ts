@@ -54,6 +54,10 @@ import {
 } from "@/lib/whatsapp/types";
 import { verifySignature } from "@/lib/whatsapp/webhook";
 
+// How long an inbound message waits to see whether the customer is still
+// typing. See the burst-coalescing block in processSavedCustomerMessage.
+const BURST_WINDOW_MS = 15_000;
+
 function normalizeWhatsAppStatus(status: string): WhatsAppMessageStatus | null {
   switch (status) {
     case "sent":
@@ -790,6 +794,7 @@ export async function processWebhookAsync(
     stateRow,
     text,
     messageId: message.messageId,
+    coalesceBurst: true,
   });
 
   // Mark processed
@@ -820,6 +825,10 @@ export async function processSavedCustomerMessage(params: {
   // rule is simple — in draft mode the only thing that happens is the model
   // call. Returns the draft text; normal mode always returns null.
   draft?: boolean;
+  // Hold this message for BURST_WINDOW_MS and drop it if the customer sends
+  // another one meanwhile. Only the live webhook sets this; an admin asking for
+  // a replay or a draft wants an answer to the message they picked, now.
+  coalesceBurst?: boolean;
 }): Promise<string | null> {
   const {
     customerId,
@@ -831,8 +840,38 @@ export async function processSavedCustomerMessage(params: {
     text,
     messageId,
     draft = false,
+    coalesceBurst = false,
   } = params;
   const db = createAdminClient();
+
+  // Customers type the way they talk: four messages in twenty seconds, one
+  // thought each. The webhook treats every inbound message as its own turn, so
+  // Cindy's four-message complaint on 13 Aug drew four separate apologies, each
+  // its own model call. The echo guard could not catch it — it compares reply
+  // text exactly, and four differently-worded apologies are not equal strings.
+  //
+  // So hold the message briefly and drop it if a newer one arrives: the last
+  // message of a burst is the one that answers, and because history loads
+  // further down (after this wait) that surviving call sees the whole burst and
+  // writes one reply covering all of it. Costs every reply this much latency,
+  // which reads as human on WhatsApp, and cuts a burst's model spend to one call.
+  if (coalesceBurst && messageId) {
+    await sleep(BURST_WINDOW_MS);
+    const { data: newest } = await db
+      .from("conversations")
+      .select("message_id")
+      .eq("customer_id", customerId)
+      .eq("role", "user")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (newest?.message_id && newest.message_id !== messageId) {
+      console.log(
+        `[webhook] ${messageId} superseded by ${newest.message_id}, no reply`,
+      );
+      return null;
+    }
+  }
 
   // Rate limit check. Must stay above analyzeCustomerMessage: that is a Haiku
   // call, and a rate-limited customer should not cost a model call at all.

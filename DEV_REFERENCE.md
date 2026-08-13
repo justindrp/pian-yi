@@ -2,17 +2,18 @@
 
 On-demand reference — read when working on the relevant area, not loaded every session.
 
-## AI cost controls (9 layers)
+## AI cost controls (10 layers)
 
 1. **Anthropic console budget cap** — $100/month hard limit, configured outside this codebase
 2. **API key hygiene** — keys only in `.env` and Railway env vars, never committed
 3. **Per-customer rate limits** — 40 bot replies/day, 9 bot replies/minute, 200,000 tokens/day per customer, enforced by `checkRateLimit()` in `src/lib/claude/safety.ts`. Exception: messages while a customer is `awaiting_payment` bypass this gate, so payment and proof-of-payment follow-up can continue even after the usual limit is hit. **`checkRateLimit()` increments the counter as a side effect, so it must be called exactly once per inbound message.** The webhook used to call it twice — once in `processWebhookAsync` and again in `processSavedCustomerMessage`, which the first always calls — which silently halved the daily cap to 10 real messages and cut off customers mid-order. The single remaining call lives in `processSavedCustomerMessage`, which is both the gate on the Sonnet call and the only gate on the `replay-latest` path. It must stay above `analyzeCustomerMessage()` there: that is a Haiku call, and a rate-limited customer should not cost a model call at all.
 4. **Token budget per request** — max 20 messages from history, max 4000 input tokens, max 1000 output tokens, max 3000 token system prompt
 5. **Loop prevention** — idempotency, circuit breaker (stop calling Claude for 5min if 5 errors in 60s), echo detection (don't send duplicate replies), retry budget (max 3 retries per message)
-6. **Prompt injection defense** — system prompt forbids long/repetitive responses, hard `max_tokens` cap, pattern detection before calling Claude
-7. **Model routing** — Sonnet 5 only for full conversational responses; Haiku 4.5 for photo matching, classification, sentiment, and any preprocessing step
-8. **Monitoring** — dashboard widgets for spend/tokens, push notifications on anomalies, daily 9am digest email
-9. **Kill switch** — toggle in Settings to disable AI chatbot entirely
+6. **Burst coalescing** — an inbound message waits `BURST_WINDOW_MS` (15s, `src/app/api/webhook/whatsapp/route.ts`) and is dropped if a newer one from the same customer arrives meanwhile; only the last message of a burst is answered. Customers type one thought per message, and the webhook otherwise treats each as its own turn — Cindy's four-message complaint on 13 Aug 2026 drew four separate apologies, four model calls, in 50 seconds. Echo detection cannot catch this: `detectEcho()` compares the previous reply exactly, and four differently-worded apologies are not equal strings. History loads *after* the wait, so the surviving call sees the whole burst and answers all of it at once. Only the live webhook opts in (`coalesceBurst: true`); replay and draft paths answer the message the admin picked, immediately.
+7. **Prompt injection defense** — system prompt forbids long/repetitive responses, hard `max_tokens` cap, pattern detection before calling Claude
+8. **Model routing** — the "Sonnet" role (full conversational responses) and the "Haiku" role (photo matching, classification, sentiment, any preprocessing step) are separate constants, so they can point at different models. In production both are `deepseek-v4-flash`; see the AI line in `CLAUDE.md`.
+9. **Monitoring** — dashboard widgets for spend/tokens, push notifications on anomalies, daily 9am digest email
+10. **Kill switch** — toggle in Settings to disable AI chatbot entirely
 
 ## Reading model responses
 

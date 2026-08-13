@@ -525,4 +525,18 @@ describe("processWebhookAsync", () => {
     );
     expect(getAnthropicClient).not.toHaveBeenCalled();
   });
+
+  test("T15 — burst: a message superseded by a newer one draws no reply", async () => {
+    const db = makeDefaultDb({
+      // Whatever this message's id is, the newest saved inbound is a different
+      // one — the customer kept typing while this one was held.
+      conversations: { data: { message_id: "wamid.NEWER" }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await processWebhookAsync(makePayload("Ini kenapa datengnya sapi ya?"));
+
+    expect(getAnthropicClient).not.toHaveBeenCalled();
+    expect(sendTextMessage).not.toHaveBeenCalled();
+  });
 });
