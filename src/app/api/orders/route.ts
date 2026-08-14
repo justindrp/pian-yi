@@ -181,6 +181,21 @@ export async function POST(req: NextRequest): Promise<Response> {
       { status: 500 },
     );
 
+  // Credit the customer-level counter. Only the free-quota route did this
+  // before, so a purchased package left customers.portions_remaining at 0 while
+  // the order itself held the full balance — which is what the Customers page
+  // reads, and what the deduct-daily-quota cron used to close orders on.
+  const { data: custQuota } = await db
+    .from("customers")
+    .select("portions_remaining")
+    .eq("id", body.customer_id)
+    .single();
+
+  await db
+    .from("customers")
+    .update({ portions_remaining: (custQuota?.portions_remaining ?? 0) + packageSize })
+    .eq("id", body.customer_id);
+
   if (!hasSchedule) return NextResponse.json({ ok: true, data: order });
 
   // Fetch subcontractor cost for COGS journals
@@ -260,6 +275,23 @@ export async function POST(req: NextRequest): Promise<Response> {
       .from("orders")
       .update({ portions_remaining: packageSize - deliveredPortions })
       .eq("id", order.id);
+
+    // Mirror the same deduction on the customer counter credited above, or a
+    // backfilled order would leave the customer reading more quota than it has.
+    const { data: c } = await db
+      .from("customers")
+      .select("portions_remaining")
+      .eq("id", body.customer_id)
+      .single();
+    await db
+      .from("customers")
+      .update({
+        portions_remaining: Math.max(
+          0,
+          (c?.portions_remaining ?? 0) - deliveredPortions,
+        ),
+      })
+      .eq("id", body.customer_id);
   }
 
   return NextResponse.json({ ok: true, data: order });

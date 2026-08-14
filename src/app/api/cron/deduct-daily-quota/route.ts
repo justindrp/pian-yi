@@ -60,44 +60,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   let deducted = 0;
 
-  for (const [customerId, { totalPortions, deliveryIds }] of byCustomer) {
-    const { data: cust } = await db
-      .from("customers")
-      .select("portions_remaining")
-      .eq("id", customerId)
-      .single();
-
-    if (!cust) continue;
-
-    const newRemaining = Math.max(0, cust.portions_remaining - totalPortions);
-
-    await db
-      .from("customers")
-      .update({ portions_remaining: newRemaining })
-      .eq("id", customerId);
-
-    // Complete active orders when quota is exhausted
-    if (newRemaining === 0) {
-      await db
-        .from("orders")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-        })
-        .eq("customer_id", customerId)
-        .eq("status", "active");
-    }
-
-    // Mark delivery rows as deducted
-    await db
-      .from("daily_deliveries")
-      .update({ quota_deducted: true })
-      .in("id", deliveryIds);
-
-    deducted += deliveryIds.length;
-  }
-
-  // Also deduct orders.portions_remaining per-row (tracks per-order balance)
+  // Deduct orders.portions_remaining per row first. This has to happen before
+  // the completion check below, which reads the balance this loop writes.
+  const touchedOrders = new Set<string>();
   for (const d of rows) {
     const { data: ord } = await db
       .from("orders")
@@ -112,7 +77,61 @@ export async function POST(req: NextRequest): Promise<Response> {
           portions_remaining: Math.max(0, ord.portions_remaining - d.portions),
         })
         .eq("id", d.order_id);
+      touchedOrders.add(d.order_id);
     }
+  }
+
+  // Complete an order when that order's own quota is exhausted.
+  //
+  // This used to key on customers.portions_remaining instead, and complete
+  // every active order the customer had whenever that counter hit zero. The
+  // counter is only ever credited by the free-quota route — POST /api/orders
+  // never credited it — so a purchased order left it at 0, the Math.max clamp
+  // read 0 as "exhausted", and the order was closed with its full package
+  // untouched. That is how Jordy's 5-porsi package was completed on
+  // 2026-08-13 with 4 portions left, blocking his next delivery.
+  for (const orderId of touchedOrders) {
+    const { data: ord } = await db
+      .from("orders")
+      .select("portions_remaining, status")
+      .eq("id", orderId)
+      .single();
+
+    if (ord?.status === "active" && (ord.portions_remaining ?? 0) <= 0) {
+      await db
+        .from("orders")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", orderId)
+        .eq("status", "active");
+    }
+  }
+
+  for (const [customerId, { totalPortions, deliveryIds }] of byCustomer) {
+    const { data: cust } = await db
+      .from("customers")
+      .select("portions_remaining")
+      .eq("id", customerId)
+      .single();
+
+    if (!cust) continue;
+
+    await db
+      .from("customers")
+      .update({
+        portions_remaining: Math.max(0, cust.portions_remaining - totalPortions),
+      })
+      .eq("id", customerId);
+
+    // Mark delivery rows as deducted
+    await db
+      .from("daily_deliveries")
+      .update({ quota_deducted: true })
+      .in("id", deliveryIds);
+
+    deducted += deliveryIds.length;
   }
 
   console.log(
