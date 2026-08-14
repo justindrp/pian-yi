@@ -19,6 +19,15 @@ type CustomerListRow = Customer & {
   customer_state: CustomerState | null;
   customer_flags: CustomerFlags | null;
   display_state: string;
+  // Derived from the customer's open orders, not read from the cached
+  // customers.portions_remaining / avg_price_per_portion columns. Those are the
+  // unfinished half of migration 035 (a WAC model that was never completed):
+  // six code paths write them, one cell read them, and nothing kept them in
+  // sync — 65 of 333 customers had a wrong balance and 127 a wrong avg price,
+  // including one showing Rp 32.333, above any tier that has ever existed.
+  // Deriving here makes this page agree with Orders and the customer ledger.
+  derived_remaining: number;
+  derived_avg_price: number;
 };
 
 type LedgerRow = {
@@ -220,12 +229,38 @@ export default function CustomersClient() {
       const { data: orders } = customerIds.length
         ? await supabase
             .from("orders")
-            .select("customer_id, status, created_at")
+            .select(
+              "customer_id, status, created_at, portions_remaining, price_per_portion",
+            )
             .in("customer_id", customerIds)
             .order("created_at", { ascending: false })
         : {
-            data: [] as Pick<Order, "customer_id" | "status" | "created_at">[],
+            data: [] as Pick<
+              Order,
+              | "customer_id"
+              | "status"
+              | "created_at"
+              | "portions_remaining"
+              | "price_per_portion"
+            >[],
           };
+
+      // Quota the customer can actually draw on today. Same statuses the
+      // customer ledger counts as real credit, minus `completed` — a completed
+      // order holding portions is a bug, not spendable balance. Weighted
+      // average price is migration 035's own formula, computed on read.
+      const OPEN_STATUSES = ["active", "paused", "payment_proof_received"];
+      const quota = new Map<string, { portions: number; value: number }>();
+      for (const order of orders ?? []) {
+        if (!order.customer_id) continue;
+        if (!OPEN_STATUSES.includes(order.status)) continue;
+        const remaining = order.portions_remaining ?? 0;
+        if (remaining <= 0) continue;
+        const entry = quota.get(order.customer_id) ?? { portions: 0, value: 0 };
+        entry.portions += remaining;
+        entry.value += remaining * (order.price_per_portion ?? 0);
+        quota.set(order.customer_id, entry);
+      }
       const latestOrderByCustomer = new Map<string, Pick<Order, "status">>();
       for (const order of orders ?? []) {
         if (
@@ -238,13 +273,19 @@ export default function CustomersClient() {
       }
 
       return {
-        customers: customers.map((customer) => ({
-          ...customer,
-          display_state: deriveCustomerDisplayState(
-            customer.customer_state?.state,
-            latestOrderByCustomer.get(customer.id)?.status ?? null,
-          ),
-        })) as CustomerListRow[],
+        customers: customers.map((customer) => {
+          const q = quota.get(customer.id);
+          return {
+            ...customer,
+            display_state: deriveCustomerDisplayState(
+              customer.customer_state?.state,
+              latestOrderByCustomer.get(customer.id)?.status ?? null,
+            ),
+            derived_remaining: q?.portions ?? 0,
+            derived_avg_price:
+              q && q.portions > 0 ? Math.round(q.value / q.portions) : 0,
+          };
+        }) as CustomerListRow[],
         total: count ?? 0,
       };
     },
@@ -742,11 +783,11 @@ export default function CustomersClient() {
                         )}
                       </td>
                       <td className="hidden sm:table-cell px-4 py-3 text-right tabular-nums text-gray-700">
-                        {c.portions_remaining > 0 ? c.portions_remaining : "—"}
+                        {c.derived_remaining > 0 ? c.derived_remaining : "—"}
                       </td>
                       <td className="hidden sm:table-cell px-4 py-3 text-right tabular-nums text-gray-500 text-xs">
-                        {c.avg_price_per_portion > 0
-                          ? `Rp ${c.avg_price_per_portion.toLocaleString("id-ID")}`
+                        {c.derived_avg_price > 0
+                          ? `Rp ${c.derived_avg_price.toLocaleString("id-ID")}`
                           : "—"}
                       </td>
                       <td className="px-4 py-3">
