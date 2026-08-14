@@ -43,3 +43,5 @@ next-env.d.ts
 # Rollback plans written by scripts/reassign-draw-orders.ts --apply.
 # Keep them out of git: they hold a snapshot of production row values.
 scripts/rollback-*.json
+# Rollback dumps hold full customer rows (names, phones, addresses)
+scripts/rollback/
