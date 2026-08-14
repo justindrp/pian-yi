@@ -221,7 +221,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 |--------|------|-------|
 | id | uuid | Primary key |
 | customer_number | integer | Short human-friendly customer number |
-| phone_number | text | WhatsApp number in international format (+628...) |
+| phone_number | text | WhatsApp number in international format (+628...). Unique — partial index `customers_phone_number_unique` (migration 065) excluding `IMPORT_%` slugs. Always write the canonical `+62` form; before migration 065 the same person could exist twice as `+628...` and `628...` |
 | name | text | Full name (filled in when they place an order) |
 | address | text | Delivery address |
 | area | text | Delivery zone (e.g. "BSD Baru", "Gading Serpong") |
