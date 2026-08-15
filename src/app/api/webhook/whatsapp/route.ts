@@ -21,6 +21,7 @@ import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
+import { describeMenuWeeks } from "@/lib/menu/week";
 import {
   checkRateLimit,
   detectEcho,
@@ -960,7 +961,7 @@ export async function processSavedCustomerMessage(params: {
     db
       .from("subcontractors")
       .select(
-        "id, customer_nickname, menu_image_url, menu_text, delivery_areas",
+        "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas",
       )
       .eq("is_active", true)
       .not("customer_nickname", "is", null),
@@ -983,6 +984,7 @@ export async function processSavedCustomerMessage(params: {
       customer_nickname: string;
       menu_image_url: string | null;
       menu_text: string | null;
+      menu_week_start: string | null;
       delivery_areas: string[] | null;
     } => s.customer_nickname !== null,
   );
@@ -1020,6 +1022,10 @@ export async function processSavedCustomerMessage(params: {
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,
     dapurMenuTexts,
+    // Only the kitchens whose image can actually be sent decide the week.
+    menuWeek: describeMenuWeeks(
+      rawSubs.filter((s) => !!s.menu_image_url).map((s) => s.menu_week_start),
+    ),
     servedAreas,
     neighborhoods,
     activeOrder,
@@ -1166,7 +1172,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "send_menu_image",
       description:
-        "Sends THIS WEEK's menu image(s) to the customer. Use when the customer asks what today's or tomorrow's menu is. Do NOT use it to answer a question about next week's menu — next week's is published on Friday and this tool cannot send it. Safe to call even if menu was previously sent.",
+        "Sends the menu image(s) currently on file. Which week those cover is stated in your system prompt — check it before you describe what you are sending, and do not claim a week the prompt does not say you have. Safe to call even if the menu was previously sent.",
       input_schema: { type: "object", properties: {} },
     },
   ];

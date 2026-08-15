@@ -21,6 +21,7 @@ export async function PATCH(
     is_active?: boolean;
     cost_per_portion?: number;
     menu_text?: string | null;
+    menu_week_start?: string | null;
   };
 
   const allowed: Record<string, unknown> = {};
@@ -33,6 +34,17 @@ export async function PATCH(
   if (body.is_active !== undefined) allowed.is_active = body.is_active;
   if (body.cost_per_portion !== undefined) allowed.cost_per_portion = body.cost_per_portion;
   if (body.menu_text !== undefined) allowed.menu_text = body.menu_text;
+  // The upload default is a guess from the upload day; the uploader corrects it here.
+  if (body.menu_week_start !== undefined) {
+    const week = body.menu_week_start;
+    if (week !== null && !/^\d{4}-\d{2}-\d{2}$/.test(week)) {
+      return NextResponse.json(
+        { ok: false, error: "menu_week_start must be YYYY-MM-DD" },
+        { status: 400 },
+      );
+    }
+    allowed.menu_week_start = week;
+  }
 
   const db = createAdminClient();
   const { data, error } = await db

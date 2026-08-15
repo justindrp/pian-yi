@@ -1166,6 +1166,7 @@ export type Database = {
           late_delivery_count: number | null
           menu_image_url: string | null
           menu_text: string | null
+          menu_week_start: string | null
           name: string
           notes: string | null
           total_delivery_count: number | null
@@ -1184,6 +1185,7 @@ export type Database = {
           late_delivery_count?: number | null
           menu_image_url?: string | null
           menu_text?: string | null
+          menu_week_start?: string | null
           name: string
           notes?: string | null
           total_delivery_count?: number | null
@@ -1202,6 +1204,7 @@ export type Database = {
           late_delivery_count?: number | null
           menu_image_url?: string | null
           menu_text?: string | null
+          menu_week_start?: string | null
           name?: string
           notes?: string | null
           total_delivery_count?: number | null

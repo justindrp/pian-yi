@@ -24,6 +24,8 @@ export async function buildSystemPrompt(params: {
   menuShown: boolean;
   dapurOptions: { id: string; nickname: string }[];
   dapurMenuTexts: { nickname: string; menuText: string }[];
+  /** Which week the menu image on file covers, relative to today. */
+  menuWeek: { relation: "current" | "next" | "past" | "unknown"; weekStart: string | null };
   servedAreas: string[];
   neighborhoods: Record<string, string[]>;
   activeOrder: {
@@ -66,6 +68,25 @@ export async function buildSystemPrompt(params: {
 
   const areasDisplay = params.servedAreas.join(", ");
 
+  // The menu image on file is not always the current week's. It is published
+  // ahead — Batch 50 (17–22 Agustus) was already up on Saturday 2026-08-15 —
+  // and the prompt used to flatly assert the image was always the current week.
+  // So the bot told Vania next week's menu wasn't out yet while holding exactly
+  // the image she asked for, and an admin had to send it by hand.
+  const menuWeekGuidance = (() => {
+    const week = params.menuWeek.weekStart;
+    switch (params.menuWeek.relation) {
+      case "next":
+        return `The menu image on file is for NEXT week (Senin ${week} onward) — next week's menu is already out. If a customer asks for next week's menu, send it with send_menu_image. If they ask what today's or tomorrow's menu is, this image does not answer that: say the current week's menu is the one already sent earlier and offer next week's instead. Never describe this image as the current week's.`;
+      case "current":
+        return `The menu image on file is for the CURRENT week (Senin ${week}–Sabtu). Next week's is published every Friday and is NOT out yet. If a customer asks about next week's menu, say it isn't up yet and that it goes live Friday — do NOT send the image, and never pass the current week's off as next week's.`;
+      case "past":
+        return `The menu image on file is STALE — it covers the week of Senin ${week}, which has already passed, and neither this week's nor next week's menu has been uploaded. Do not send it and do not describe any week's menu as available. If a customer asks for the menu, call ask_admin_for_help.`;
+      default:
+        return `You do not know which week the menu image on file covers. Do not make any claim about which week it is. If a customer asks specifically about this week's or next week's menu, call ask_admin_for_help instead of guessing.`;
+    }
+  })();
+
   const escalationList = (() => {
     try {
       return (JSON.parse(escalationKeywords) as string[]).join(", ");
@@ -88,7 +109,7 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Halal
 - Menu rotates daily. ${params.dapurMenuTexts.length > 0 ? `Menu per dapur:\n${params.dapurMenuTexts.map((d) => `${d.nickname}:\n${d.menuText}`).join("\n\n")}` : "Menu details change daily — you don't have the specific menu text right now. Tell customers the menu image has been sent (or will be sent), and they can check it there. Do NOT call ask_admin_for_help just because you don't know today's menu."}
   - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different menus — menu and price list images are sent automatically to new customers. If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image.
-  - The menu image you can send is always the CURRENT week's menu (Senin–Sabtu). Next week's menu is published every Friday. If a customer asks about next week's menu ("menu minggu depan udah ada?") before it is out, say it isn't up yet and that it goes live on Friday — do NOT send the menu image, and never claim next week's menu is ready when what you have is this week's.
+  - ${menuWeekGuidance}
   - Dapur 1 serves the same menu for lunch and dinner — if a customer asks whether siang and malam menus differ for Dapur 1, answer: sama (same menu for both meals).
   - When referring to kitchens always say "dapur kami" — never mention subcontractor or kitchen names
 - Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})

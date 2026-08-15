@@ -76,8 +76,8 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 ### Subcontractors
 - `GET /api/subcontractors` — List all subcontractors with off days
 - `POST /api/subcontractors` — Create a new subcontractor
-- `PATCH /api/subcontractors/[id]` — Update allowlisted fields (name, nickname, phone, areas, notes, cost, menu_text, etc.)
-- `POST /api/subcontractors/[id]/menu-image` — Upload menu image to `menu-images` bucket → save URL to subcontractor row
+- `PATCH /api/subcontractors/[id]` — Update allowlisted fields (name, nickname, phone, areas, notes, cost, menu_text, menu_week_start, etc.). `menu_week_start` must be `YYYY-MM-DD` or null (400 otherwise).
+- `POST /api/subcontractors/[id]/menu-image` — Upload menu image to `menu-images` bucket → save URL to subcontractor row, plus `menu_week_start` (the Monday the image covers). Accepts an optional `menu_week_start` form field; otherwise defaults from the upload day via `defaultMenuWeekStart()`. Returns it in the JSON so the form can show it back for correction.
 - `GET /api/subcontractors/[id]/daily-sheet` — **Dapur Sheet** API: public (no auth), returns tomorrow's `daily_deliveries` for this subcontractor with lunch/dinner × rute1/rute2 summary. Supports `?date=YYYY-MM-DD`. Respects `address_slot` so slot-2 customers show their secondary address.
 - `POST /api/subcontractors/off-days` — Add an off day for a subcontractor
 - `DELETE /api/subcontractors/off-days` — Remove an off day

@@ -511,6 +511,7 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | cost_per_portion_route1 | integer | Override cost for Route 1 (we use own courier, cheaper). NULL = same as cost_per_portion. Thenie: 19,500 (R1) / 21,000 (R2) |
 | menu_image_url | text | URL of the current weekly menu image (shown to new customers). Inactive kitchens keep their last image forever — nobody refreshes it once they stop cooking, so every read of this column must filter `is_active = true`. The `send_menu_image` tool did not, and sent customers a live menu plus a two-month-old one. |
 | menu_text | text | Plain-text menu description injected into the chatbot system prompt |
+| menu_week_start | date | Monday of the week `menu_image_url` covers. Added in migration 066 because nothing recorded the week, so the prompt hardcoded "always the current week" and the bot refused to send an already-uploaded next-week menu. Defaulted on upload by `defaultMenuWeekStart()` (Thursday onward → next week) and editable on the subcontractor form — the upload day is a guess, not the answer. Null means unknown, and the bot then makes no claim about which week it holds. |
 | notes | text | Internal notes about this kitchen |
 | is_active | boolean | Whether this kitchen is currently accepting orders |
 | total_delivery_count | integer | Running total of deliveries completed |

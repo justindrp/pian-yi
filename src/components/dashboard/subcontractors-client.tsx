@@ -72,6 +72,7 @@ interface Subcontractor {
   cost_per_portion: number;
   menu_image_url: string | null;
   menu_text: string | null;
+  menu_week_start: string | null;
   late_delivery_count: number;
   total_delivery_count: number;
   created_at: string;
@@ -85,7 +86,7 @@ function SubMenuImageUploader({
 }: {
   subId: string;
   currentUrl: string | null;
-  onSuccess: (url: string) => void;
+  onSuccess: (url: string, menuWeekStart: string | null) => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
@@ -105,12 +106,13 @@ function SubMenuImageUploader({
     const json = (await res.json()) as {
       ok: boolean;
       url?: string;
+      menu_week_start?: string | null;
       error?: string;
     };
     setUploading(false);
     if (json.ok && json.url) {
       setUploaded(true);
-      onSuccess(json.url);
+      onSuccess(json.url, json.menu_week_start ?? null);
       setTimeout(() => setUploaded(false), 3000);
     } else setError(json.error ?? "Upload failed");
     e.target.value = "";
@@ -423,11 +425,36 @@ export default function SubcontractorsClient() {
               <SubMenuImageUploader
                 subId={selected.id}
                 currentUrl={editForm.menu_image_url ?? null}
-                onSuccess={(url) => {
-                  setEditForm((f) => ({ ...f, menu_image_url: url }));
+                onSuccess={(url, week) => {
+                  setEditForm((f) => ({
+                    ...f,
+                    menu_image_url: url,
+                    menu_week_start: week,
+                  }));
                   qc.invalidateQueries({ queryKey: ["subcontractors"] });
                 }}
               />
+            </div>
+            <div>
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Menu week (Senin)
+              </Label>
+              <Input
+                type="date"
+                className="text-sm"
+                value={(editForm.menu_week_start as string) ?? ""}
+                onChange={(e) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    menu_week_start: e.target.value || null,
+                  }))
+                }
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                Which week the uploaded image covers. Set from the upload day as
+                a guess — correct it here, because the chatbot uses it to decide
+                whether it may send this image as next week's menu.
+              </p>
             </div>
             <div>
               <Label className="block text-xs text-gray-500 mb-1 font-normal">
@@ -461,6 +488,7 @@ export default function SubcontractorsClient() {
                   notes: editForm.notes,
                   cost_per_portion: editForm.cost_per_portion,
                   menu_text: editForm.menu_text as string | null,
+                  menu_week_start: editForm.menu_week_start as string | null,
                 })
               }
               className="w-full"
