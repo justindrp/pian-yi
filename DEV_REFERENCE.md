@@ -154,6 +154,8 @@ pian-yi/
 │   │   │   └── types.ts
 │   │   ├── accounting/
 │   │   │   └── journal.ts (post balanced journal entries: revenue/COGS, mark-paid, free-quota)
+│   │   ├── grants/
+│   │   │   └── parse-paste.ts (spreadsheet paste → free-quota rows; name/phone matching, refuses ambiguous names)
 │   │   ├── cache/
 │   │   │   └── settings.ts (in-memory settings/templates cache, refreshed every 60s)
 │   │   ├── images/
@@ -172,7 +174,7 @@ pian-yi/
 │   │   │   ├── push-subscribe-button.tsx (browser push opt-in button, used on dashboard home)
 │   │   │   ├── inbox-client.tsx (WhatsApp thread list, admin-guided bot replies, human takeover)
 │   │   │   ├── inbox-filters.ts (All/Unread/Unanswered filter + search logic for inbox-client)
-│   │   │   ├── customers-client.tsx (customer list, detail panel, free-quota grants)
+│   │   │   ├── customers-client.tsx (customer list, detail panel, free-quota grant batch table)
 │   │   │   ├── orders-client.tsx (orders table, detail slide-over, mark-paid, status changes)
 │   │   │   ├── new-order-modal.tsx (create-order modal used from orders-client / customers-client)
 │   │   │   ├── deliveries-client.tsx (Daily Sheet, proof-of-delivery uploads)

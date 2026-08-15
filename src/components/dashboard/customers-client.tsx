@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { deriveCustomerDisplayState } from "@/lib/customers/lifecycle";
+import { matchCustomerByName, parseGrantPaste } from "@/lib/grants/parse-paste";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
@@ -48,6 +49,41 @@ type LedgerData = {
   balance: number;
   balanceToday: number;
 };
+
+// One line of the free-quota batch table. customer_id is "" until a customer is
+// picked (or a pasted name is matched), which is what marks a row incomplete —
+// customer_name doubles as the combobox's search text so a pasted name stays
+// visible while the admin resolves it.
+type GrantRow = {
+  key: string;
+  customer_id: string;
+  customer_name: string;
+  portions: number | null;
+  date: string;
+  reason: string;
+};
+
+function grantRowValid(r: GrantRow): boolean {
+  return (
+    r.customer_id !== "" &&
+    r.portions !== null &&
+    r.portions > 0 &&
+    r.reason.trim() !== ""
+  );
+}
+
+let grantRowSeq = 0;
+function newGrantRow(date: string, reason = ""): GrantRow {
+  grantRowSeq += 1;
+  return {
+    key: `g${grantRowSeq}`,
+    customer_id: "",
+    customer_name: "",
+    portions: null,
+    date,
+    reason,
+  };
+}
 
 const PAGE_SIZE = 200;
 const MONTHS = [
@@ -105,27 +141,15 @@ export default function CustomersClient() {
   >({});
   const [showGrant, setShowGrant] = useState(false);
   const [grantError, setGrantError] = useState<string | null>(null);
-  const [grantRows, setGrantRows] = useState<
-    {
-      key: string;
-      customer_id: string;
-      customer_name: string;
-      portions: number;
-      date: string;
-      reason: string;
-    }[]
-  >([]);
-  const [grantSearch, setGrantSearch] = useState("");
-  const [grantDropdownOpen, setGrantDropdownOpen] = useState(false);
-  const [grantCustomer, setGrantCustomer] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [grantPortions, setGrantPortions] = useState(1);
-  const [grantDate, setGrantDate] = useState(() =>
+  const [grantRows, setGrantRows] = useState<GrantRow[]>([]);
+  // Which row's customer dropdown is open — one at a time, by row key.
+  const [grantOpenRow, setGrantOpenRow] = useState<string | null>(null);
+  const [grantPaste, setGrantPaste] = useState("");
+  const [showGrantPaste, setShowGrantPaste] = useState(false);
+  const [grantBulkDate, setGrantBulkDate] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
-  const [grantReason, setGrantReason] = useState("");
+  const [grantBulkReason, setGrantBulkReason] = useState("");
   const [addForm, setAddForm] = useState({
     name: "",
     phone_number: "",
@@ -375,7 +399,7 @@ export default function CustomersClient() {
   });
 
   const grantMutation = useMutation({
-    mutationFn: async (rows: typeof grantRows) => {
+    mutationFn: async (rows: GrantRow[]) => {
       const res = await fetch("/api/customers/free-quota", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -384,7 +408,7 @@ export default function CustomersClient() {
             customer_id: r.customer_id,
             portions: r.portions,
             date: r.date,
-            reason: r.reason,
+            reason: r.reason.trim(),
           })),
         }),
       });
@@ -424,35 +448,54 @@ export default function CustomersClient() {
     },
   });
 
-  function addGrantRow() {
+  // Save is all-or-nothing: the API validates every grant and rejects the whole
+  // batch, so a single incomplete row would lose the other ninety-nine.
+  const grantInvalidCount = grantRows.filter((r) => !grantRowValid(r)).length;
+
+  function addGrantRows(count: number) {
     setGrantError(null);
-    if (!grantCustomer) {
-      setGrantError("Pilih pelanggan");
-      return;
-    }
-    if (!grantPortions || grantPortions <= 0) {
-      setGrantError("Porsi harus lebih dari 0");
-      return;
-    }
-    if (!grantReason.trim()) {
-      setGrantError("Alasan wajib diisi");
-      return;
-    }
     setGrantRows((rows) => [
       ...rows,
-      {
-        key: `${grantCustomer.id}-${Date.now()}`,
-        customer_id: grantCustomer.id,
-        customer_name: grantCustomer.name,
-        portions: grantPortions,
-        date: grantDate,
-        reason: grantReason.trim(),
-      },
+      ...Array.from({ length: count }, () =>
+        newGrantRow(grantBulkDate, grantBulkReason),
+      ),
     ]);
-    setGrantCustomer(null);
-    setGrantSearch("");
-    setGrantPortions(1);
-    setGrantReason("");
+  }
+
+  function patchGrantRow(key: string, patch: Partial<GrantRow>) {
+    setGrantRows((rows) =>
+      rows.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+    );
+  }
+
+  /**
+   * Appends the pasted spreadsheet rows. A name that doesn't resolve to exactly
+   * one customer is kept as text with no customer_id, so it shows up as an
+   * unmatched row for the admin to pick rather than landing on the wrong ledger.
+   */
+  function applyGrantPaste() {
+    setGrantError(null);
+    const parsed = parseGrantPaste(grantPaste);
+    if (parsed.length === 0) {
+      setGrantError("Tidak ada baris yang bisa dibaca");
+      return;
+    }
+    const customers = allCustomers ?? [];
+    setGrantRows((rows) => [
+      ...rows,
+      ...parsed.map((p) => {
+        const row = newGrantRow(p.date ?? grantBulkDate, p.reason || grantBulkReason);
+        const match = matchCustomerByName(p.name, customers);
+        return {
+          ...row,
+          customer_id: match?.id ?? "",
+          customer_name: match ? (match.name ?? p.name) : p.name,
+          portions: p.portions,
+        };
+      }),
+    ]);
+    setGrantPaste("");
+    setShowGrantPaste(false);
   }
 
   const deleteMutation = useMutation({
@@ -558,7 +601,7 @@ export default function CustomersClient() {
             variant="outline"
             onClick={() => {
               setGrantError(null);
-              setGrantRows([]);
+              setGrantRows([newGrantRow(grantBulkDate, grantBulkReason)]);
               setShowGrant(true);
             }}
             className="text-sm rounded-lg"
@@ -1039,7 +1082,7 @@ export default function CustomersClient() {
       {/* Grant free quota modal */}
       {showGrant && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 w-full max-w-5xl space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">Grant Free Quota</h2>
               <Button
@@ -1052,111 +1095,217 @@ export default function CustomersClient() {
               </Button>
             </div>
 
-            <div className="relative">
-              <Label className="text-xs text-gray-500 block mb-1">
-                Customer
-              </Label>
-              <Input
-                value={grantCustomer ? grantCustomer.name : grantSearch}
-                onChange={(e) => {
-                  setGrantCustomer(null);
-                  setGrantSearch(e.target.value);
-                  setGrantDropdownOpen(true);
-                }}
-                onFocus={() => setGrantDropdownOpen(true)}
-                placeholder="Search by name or phone..."
-              />
-              {grantDropdownOpen && (
-                <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
-                  {(allCustomers ?? [])
-                    .filter((c) => {
-                      const q = grantSearch.toLowerCase();
-                      if (!q) return true;
-                      return (
-                        (c.name ?? "").toLowerCase().includes(q) ||
-                        (c.phone_number ?? "").toLowerCase().includes(q)
-                      );
-                    })
-                    .slice(0, 20)
-                    .map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          onMouseDown={() => {
-                            setGrantCustomer({
-                              id: c.id,
-                              name: c.name ?? c.phone_number ?? c.id,
-                            });
-                            setGrantDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-3 py-1.5 hover:bg-gray-50"
-                        >
-                          {c.name ?? "—"}{" "}
-                          <span className="text-gray-400">
-                            {c.phone_number}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                </ul>
+            {/* Bulk defaults — applied to new rows, and to every row on demand,
+                because a backfill is usually one date and one reason. */}
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <Label className="text-xs text-gray-500 block mb-1">
+                  Default date
+                </Label>
+                <Input
+                  type="date"
+                  value={grantBulkDate}
+                  onChange={(e) => setGrantBulkDate(e.target.value)}
+                  className="w-40"
+                />
+              </div>
+              <div className="flex-1 min-w-[12rem]">
+                <Label className="text-xs text-gray-500 block mb-1">
+                  Default reason
+                </Label>
+                <Input
+                  value={grantBulkReason}
+                  onChange={(e) => setGrantBulkReason(e.target.value)}
+                  placeholder="e.g. kompensasi keterlambatan"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setGrantRows((rows) =>
+                    rows.map((r) => ({
+                      ...r,
+                      date: grantBulkDate,
+                      reason: grantBulkReason || r.reason,
+                    })),
+                  )
+                }
+                disabled={grantRows.length === 0}
+                className="text-sm rounded-lg"
+              >
+                Apply to all rows
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => addGrantRows(1)}
+                className="text-sm rounded-lg"
+              >
+                + Add row
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => addGrantRows(10)}
+                className="text-sm rounded-lg"
+              >
+                + Add 10 rows
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowGrantPaste((v) => !v)}
+                className="text-sm rounded-lg"
+              >
+                Paste from spreadsheet
+              </Button>
+              {grantRows.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setGrantRows([])}
+                  className="text-sm text-gray-500 hover:text-red-600 rounded-lg"
+                >
+                  Clear all
+                </Button>
               )}
             </div>
 
-            <div>
-              <Label className="text-xs text-gray-500 block mb-1">
-                Portions
-              </Label>
-              <Input
-                type="number"
-                min={1}
-                value={grantPortions}
-                onChange={(e) => setGrantPortions(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500 block mb-1">Date</Label>
-              <Input
-                type="date"
-                value={grantDate}
-                onChange={(e) => setGrantDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500 block mb-1">Reason</Label>
-              <Input
-                value={grantReason}
-                onChange={(e) => setGrantReason(e.target.value)}
-                placeholder="e.g. compensation for late delivery"
-              />
-            </div>
+            {showGrantPaste && (
+              <div className="space-y-2 border border-gray-100 rounded-lg p-3">
+                <p className="text-xs text-gray-500">
+                  One row per line, columns:{" "}
+                  <span className="font-mono">nama · porsi · tanggal · alasan</span>.
+                  Tanggal dan alasan opsional. Angka negatif dibaca sebagai
+                  besarnya kekurangan (−3 = 3 porsi). Nama yang tidak cocok
+                  persis akan ditandai untuk dipilih manual.
+                </p>
+                <Textarea
+                  rows={6}
+                  value={grantPaste}
+                  onChange={(e) => setGrantPaste(e.target.value)}
+                  placeholder={"Defi Lugito\t6\t2026-08-14\tkompensasi\nValen\t4"}
+                  className="font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={applyGrantPaste}
+                  disabled={!grantPaste.trim()}
+                  className="text-sm rounded-lg"
+                >
+                  Add pasted rows
+                </Button>
+              </div>
+            )}
 
             {grantError && <p className="text-xs text-red-600">{grantError}</p>}
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={addGrantRow}
-              className="w-full text-sm rounded-lg"
-            >
-              + Add to batch
-            </Button>
-
             {grantRows.length > 0 && (
-              <div className="border border-gray-100 rounded-lg divide-y divide-gray-50">
-                {grantRows.map((r) => (
+              <div className="border border-gray-100 rounded-lg">
+                <div className="grid grid-cols-[2rem_1fr_5rem_9rem_1fr_2rem] gap-2 px-3 py-2 text-xs text-gray-500 border-b border-gray-100">
+                  <span>#</span>
+                  <span>Customer</span>
+                  <span>Porsi</span>
+                  <span>Tanggal</span>
+                  <span>Alasan</span>
+                  <span />
+                </div>
+                {grantRows.map((r, i) => (
                   <div
                     key={r.key}
-                    className="flex items-center justify-between px-3 py-2 text-sm"
+                    className="grid grid-cols-[2rem_1fr_5rem_9rem_1fr_2rem] gap-2 px-3 py-1.5 items-center border-b border-gray-50 last:border-0"
                   >
-                    <div>
-                      <span className="font-medium text-gray-900">
-                        {r.customer_name}
-                      </span>{" "}
-                      <span className="text-gray-500">
-                        +{r.portions} porsi · {r.date}
-                      </span>
-                      <p className="text-xs text-gray-400">{r.reason}</p>
+                    <span className="text-xs text-gray-400">{i + 1}</span>
+                    <div className="relative">
+                      <Input
+                        value={r.customer_name}
+                        onChange={(e) => {
+                          patchGrantRow(r.key, {
+                            customer_id: "",
+                            customer_name: e.target.value,
+                          });
+                          setGrantOpenRow(r.key);
+                        }}
+                        onFocus={() => setGrantOpenRow(r.key)}
+                        onBlur={() =>
+                          setGrantOpenRow((k) => (k === r.key ? null : k))
+                        }
+                        placeholder="Nama atau nomor..."
+                        className={
+                          r.customer_id
+                            ? "h-8 text-sm"
+                            : "h-8 text-sm border-amber-400 bg-amber-50"
+                        }
+                      />
+                      {grantOpenRow === r.key && (
+                        <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
+                          {(allCustomers ?? [])
+                            .filter((c) => {
+                              const q = r.customer_name.toLowerCase();
+                              if (!q) return true;
+                              return (
+                                (c.name ?? "").toLowerCase().includes(q) ||
+                                (c.phone_number ?? "").toLowerCase().includes(q)
+                              );
+                            })
+                            .slice(0, 20)
+                            .map((c) => (
+                              <li key={c.id}>
+                                <button
+                                  type="button"
+                                  onMouseDown={() => {
+                                    patchGrantRow(r.key, {
+                                      customer_id: c.id,
+                                      customer_name:
+                                        c.name ?? c.phone_number ?? c.id,
+                                    });
+                                    setGrantOpenRow(null);
+                                  }}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-gray-50"
+                                >
+                                  {c.name ?? "—"}{" "}
+                                  <span className="text-gray-400">
+                                    {c.phone_number}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                        </ul>
+                      )}
                     </div>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={r.portions ?? ""}
+                      onChange={(e) =>
+                        patchGrantRow(r.key, {
+                          portions:
+                            e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                      className="h-8 text-sm"
+                    />
+                    <Input
+                      type="date"
+                      value={r.date}
+                      onChange={(e) =>
+                        patchGrantRow(r.key, { date: e.target.value })
+                      }
+                      className="h-8 text-sm"
+                    />
+                    <Input
+                      value={r.reason}
+                      onChange={(e) =>
+                        patchGrantRow(r.key, { reason: e.target.value })
+                      }
+                      placeholder="Alasan"
+                      className="h-8 text-sm"
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -1174,6 +1323,13 @@ export default function CustomersClient() {
               </div>
             )}
 
+            {grantRows.length > 0 && grantInvalidCount > 0 && (
+              <p className="text-xs text-amber-700">
+                {grantInvalidCount} baris belum lengkap (pelanggan, porsi &gt; 0,
+                dan alasan wajib diisi).
+              </p>
+            )}
+
             {grantMutation.isError && (
               <p className="text-xs text-red-600">
                 {(grantMutation.error as Error).message}
@@ -1184,7 +1340,11 @@ export default function CustomersClient() {
               <Button
                 type="button"
                 onClick={() => grantMutation.mutate(grantRows)}
-                disabled={grantRows.length === 0 || grantMutation.isPending}
+                disabled={
+                  grantRows.length === 0 ||
+                  grantInvalidCount > 0 ||
+                  grantMutation.isPending
+                }
                 className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40"
               >
                 {grantMutation.isPending
