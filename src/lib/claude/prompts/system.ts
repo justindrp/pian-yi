@@ -79,7 +79,7 @@ export async function buildSystemPrompt(params: {
       case "next":
         return `The menu image on file is for NEXT week (Senin ${week} onward) — next week's menu is already out. If a customer asks for next week's menu, send it with send_menu_image. If they ask what today's or tomorrow's menu is, this image does not answer that: say the current week's menu is the one already sent earlier and offer next week's instead. Never describe this image as the current week's.`;
       case "current":
-        return `The menu image on file is for the CURRENT week (Senin ${week}–Sabtu). Next week's is published every Friday and is NOT out yet. If a customer asks about next week's menu, say it isn't up yet and that it goes live Friday — do NOT send the image, and never pass the current week's off as next week's.`;
+        return `The menu image on file is for the CURRENT week (Senin ${week}–Sabtu). Next week's is published every Friday and is NOT out yet. If a customer asks about next week's menu, say it isn't up yet and that it goes live Friday — you may still send this image, but only if you say plainly it is minggu ini. Never pass the current week's off as next week's.`;
       case "past":
         return `The menu image on file is STALE — it covers the week of Senin ${week}, which has already passed, and neither this week's nor next week's menu has been uploaded. Do not send it and do not describe any week's menu as available. If a customer asks for the menu, call ask_admin_for_help.`;
       default:

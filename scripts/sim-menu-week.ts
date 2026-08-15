@@ -13,6 +13,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import { NO_THINKING, SONNET_MODEL } from "../src/lib/claude/client";
+import { looksEnglish, translateToIndonesian } from "../src/lib/claude/language";
 import { buildSystemPrompt } from "../src/lib/claude/prompts/system";
 import { describeMenuWeeks, jakartaDateString } from "../src/lib/menu/week";
 
@@ -107,9 +108,18 @@ async function main() {
       .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
       .map((b) => b.name);
 
+    // The webhook applies this before sending, so the simulator has to as well
+    // or it shows a reply the customer would never receive.
+    let reply = text.trim();
+    if (looksEnglish(reply)) {
+      const translated = await translateToIndonesian(reply);
+      console.log(`  [language guard fired on: ${reply}]`);
+      if (translated) reply = translated;
+    }
+
     console.log(`> ${q}`);
     console.log(`  tools: ${tools.length ? tools.join(", ") : "(none)"}`);
-    console.log(`  ${text.trim() || "(no text)"}\n`);
+    console.log(`  ${reply || "(no text)"}\n`);
   }
 }
 

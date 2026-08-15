@@ -76,7 +76,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 ### Language & tone
 
-- All customer-facing messages in Indonesian only
+- All customer-facing messages in Indonesian only. Enforced, not just asked for: `looksEnglish()` (`src/lib/claude/language.ts`) checks every outbound webhook reply after the hallucination validator, and an English one is translated by Haiku rather than regenerated — the reply is usually correct and already matches whatever tool was called alongside it. The model slips mainly on the short sentence accompanying a tool call ("I'll send the menu image for you to check." in a 2026-08-15 simulator run). The check needs zero Indonesian markers and two English ones, so borrowed words customers use anyway ("next week", "cancel") never trigger a rewrite.
 - Use "kak" as honorific
 - Bot replies under 200 words always
 - Use emojis sparingly but warmly

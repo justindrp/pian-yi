@@ -21,6 +21,7 @@ import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
+import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import {
   checkRateLimit,
@@ -1407,6 +1408,15 @@ export async function processSavedCustomerMessage(params: {
           "high",
         );
       }
+    }
+
+    // Language guard. The validator above only checks invented facts, so an
+    // English reply used to ship as-is. Runs after it so a reply that was
+    // rewritten or replaced is the one that gets checked.
+    if (looksEnglish(replyText)) {
+      console.warn("[webhook] reply was English, translating:", replyText);
+      const translated = await translateToIndonesian(replyText);
+      if (translated) replyText = translated;
     }
 
     const savedReplyId = await saveMessage({
