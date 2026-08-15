@@ -35,17 +35,28 @@ function parseDate(raw: string): string | null {
 }
 
 /**
+ * Confirmed typos, not different people — merged into the canonical spelling.
+ * Only add a name here once someone has verified it; a wrong merge takes the
+ * earlier first date and mis-dates the package.
+ */
+const NAME_ALIASES: Record<string, string> = {
+  camdra: "candra",
+  canrda: "candra",
+};
+
+/**
  * Groups "Verick", "verick ", "Verick 2" and "Verick (BSD)" together. The
  * trailing number is the sheet's own way of numbering a customer's repeat
  * packages, so it must not split them into separate people.
  */
 function normalize(name: string): string {
-  return name
+  const base = name
     .toLowerCase()
     .replace(/\(.*?\)/g, "")
     .replace(/\s+\d+$/, "")
     .replace(/\s+/g, " ")
     .trim();
+  return NAME_ALIASES[base] ?? base;
 }
 
 /** Levenshtein distance — same helper shape as scripts/audit-sheet-data.ts. */
@@ -153,7 +164,7 @@ async function main() {
   );
   out.push("");
   out.push(
-    "Names differing only by a trailing number, bracketed note, or case are folded together — the sheet numbers a customer's repeat packages that way. Every spelling seen is listed under Variants when there is more than one.",
+    "Names differing only by a trailing number, bracketed note, or case are folded together — the sheet numbers a customer's repeat packages that way. Verified typos are folded too, via `NAME_ALIASES` in the script (currently Camdra and Canrda → Candra). Every spelling seen is listed under Variants when there is more than one.",
   );
   out.push("");
   out.push(
