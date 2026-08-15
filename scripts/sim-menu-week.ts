@@ -123,4 +123,12 @@ async function main() {
   }
 }
 
-main();
+// The Supabase and Anthropic clients keep sockets open, so node hangs after the
+// last reply prints instead of exiting. Nothing here needs draining.
+main().then(
+  () => process.exit(0),
+  (err) => {
+    console.error(err);
+    process.exit(1);
+  },
+);
