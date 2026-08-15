@@ -1,12 +1,13 @@
 import { parse } from 'csv-parse/sync';
 import { createClient } from '@supabase/supabase-js';
+import { requiredEnv } from '../src/lib/env';
 
 const SHEET_ID = '13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI';
 const GID_PACKAGES = '341974326';
 
 const db = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  requiredEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
+  requiredEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY)
 );
 
 const TARGETS = ['Keren Hana', 'Nabila', 'Charloz', 'Wendy', 'Pak Lim', 'Nicholas Satria', 'Tia'];
@@ -51,8 +52,9 @@ async function main() {
     const price = digits(getCol(r, ['price_per_portion', 'harga', 'price']));
     const total = digits(getCol(r, ['total']));
     if (porsi === 0 && total === 0) continue;
-    if (!byName.has(nama)) byName.set(nama, []);
-    byName.get(nama)!.push({ date, porsi, price, total });
+    const rows = byName.get(nama) ?? [];
+    if (rows.length === 0) byName.set(nama, rows);
+    rows.push({ date, porsi, price, total });
   }
   for (const [, v] of byName) v.sort((a, b) => a.date.localeCompare(b.date));
 

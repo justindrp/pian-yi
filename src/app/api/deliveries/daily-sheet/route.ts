@@ -273,8 +273,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
       if (ord?.price_per_portion) {
         const mealType = row.meal_type;
-        if (!journalAccum.has(mealType)) journalAccum.set(mealType, []);
-        journalAccum.get(mealType)!.push({
+        const lines = journalAccum.get(mealType) ?? [];
+        if (lines.length === 0) journalAccum.set(mealType, lines);
+        lines.push({
           portions: row.portions,
           pricePerPortion: ord.price_per_portion,
           addonCostPerPortion: ord.addon_cost_per_portion ?? 0,

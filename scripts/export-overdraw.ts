@@ -30,10 +30,14 @@ async function all<T>(table: string, cols: string): Promise<T[]> {
   return out;
 }
 
+type Cust = { id: string; name: string | null; phone_number: string | null; linked_order_id: string | null };
+type Ord = { id: string; customer_id: string | null; package_size: number | null; status: string; source: string | null };
+type Del = { id: string; customer_id: string | null; portions: number | null; delivery_date: string };
+
 async function main() {
-  const custs = await all<any>("customers", "id, name, phone_number, linked_order_id");
-  const orders = await all<any>("orders", "id, customer_id, package_size, status, source");
-  const dels = await all<any>("daily_deliveries", "id, customer_id, portions, delivery_date");
+  const custs = await all<Cust>("customers", "id, name, phone_number, linked_order_id");
+  const orders = await all<Ord>("orders", "id, customer_id, package_size, status, source");
+  const dels = await all<Del>("daily_deliveries", "id, customer_id, portions, delivery_date");
 
   const orderOwner = new Map(orders.map((o) => [o.id, o.customer_id]));
   // A customer with linked_order_id eats from another customer's package, so

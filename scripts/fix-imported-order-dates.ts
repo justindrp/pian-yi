@@ -126,8 +126,9 @@ async function loadPurchases(): Promise<Map<string, Purchase[]>> {
     // Purchases from Jun 29 onward were entered in-app — exclude from import fix
     if (date >= '2026-06-29') continue;
 
-    if (!byName.has(nama)) byName.set(nama, []);
-    byName.get(nama)!.push({ date, porsi, price, total });
+    const rows = byName.get(nama) ?? [];
+    if (rows.length === 0) byName.set(nama, rows);
+    rows.push({ date, porsi, price, total });
   }
 
   // Sort each customer's purchases by date
@@ -164,8 +165,9 @@ async function main() {
   const ordersByCust = new Map<string, DbOrder[]>();
   for (const o of allOrders ?? []) {
     if (!o.customer_id) continue;
-    if (!ordersByCust.has(o.customer_id)) ordersByCust.set(o.customer_id, []);
-    ordersByCust.get(o.customer_id)!.push(o as DbOrder);
+    const list = ordersByCust.get(o.customer_id) ?? [];
+    if (list.length === 0) ordersByCust.set(o.customer_id, list);
+    list.push(o as DbOrder);
   }
 
   const skipped: string[] = [];

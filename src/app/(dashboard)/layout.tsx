@@ -44,7 +44,8 @@ export default async function DashboardLayout({
     .map(({ href, label }) => ({
       href,
       label,
-      badge: href === "/assistant" && (pendingBotCount ?? 0) > 0 ? pendingBotCount! : undefined,
+      badge:
+        href === "/assistant" && pendingBotCount ? pendingBotCount : undefined,
     }));
 
   return (

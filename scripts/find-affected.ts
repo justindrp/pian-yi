@@ -85,8 +85,9 @@ async function main() {
     const price = digits(getCol(r, ['harga', 'price']));
     const total = digits(getCol(r, ['total']));
 
-    if (!byName.has(nama)) byName.set(nama, []);
-    byName.get(nama)!.push({ date: parseDate(tanggal), porsi, price, total });
+    const rows = byName.get(nama) ?? [];
+    if (rows.length === 0) byName.set(nama, rows);
+    rows.push({ date: parseDate(tanggal), porsi, price, total });
   }
 
   // Show Febby specifically to debug
@@ -112,7 +113,16 @@ async function main() {
     const dbCust = custByNameLower.get(sheetName.toLowerCase());
     const custId = dbCust?.id;
 
-    let dbOrders: any[] = [];
+    let dbOrders: {
+      id: string;
+      status: string;
+      package_size: number | null;
+      portions_remaining: number | null;
+      price_per_portion: number | null;
+      total_price: number | null;
+      start_date: string | null;
+      created_at: string | null;
+    }[] = [];
     if (custId) {
       const { data } = await db.from('orders').select('id, status, package_size, portions_remaining, price_per_portion, total_price, start_date, created_at')
         .eq('customer_id', custId)

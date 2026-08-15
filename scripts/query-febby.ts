@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
+import { requiredEnv } from '../src/lib/env';
 
 async function main() {
   const db = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    requiredEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
+    requiredEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY)
   );
 
   const { data: custs } = await db.from('customers').select('id, name, portions_remaining, avg_price_per_portion').ilike('name', '%febby%');
