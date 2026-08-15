@@ -72,6 +72,19 @@ function grantRowValid(r: GrantRow): boolean {
   );
 }
 
+// Offered in the reason dropdown. Grounded in the six reasons already in the
+// database plus the backfill this table was built for. The field stays free
+// text — these are shortcuts, not an allowlist, because a one-off reason like
+// "Harusnya tanpa sapi, tapi yang dikirim sapi" must still be writable.
+const GRANT_REASONS = [
+  "Backfill kuota historis",
+  "Kompensasi keterlambatan",
+  "Menu tidak sesuai pesanan",
+  "Kuota terpotong salah",
+  "Promo reaktivasi",
+  "Barter influencer",
+];
+
 let grantRowSeq = 0;
 function newGrantRow(date: string, reason = ""): GrantRow {
   grantRowSeq += 1;
@@ -1114,10 +1127,16 @@ export default function CustomersClient() {
                   Default reason
                 </Label>
                 <Input
+                  list="grant-reasons"
                   value={grantBulkReason}
                   onChange={(e) => setGrantBulkReason(e.target.value)}
-                  placeholder="e.g. kompensasi keterlambatan"
+                  placeholder="Pilih atau ketik alasan..."
                 />
+                <datalist id="grant-reasons">
+                  {GRANT_REASONS.map((r) => (
+                    <option key={r} value={r} />
+                  ))}
+                </datalist>
               </div>
               <Button
                 type="button"
@@ -1299,6 +1318,7 @@ export default function CustomersClient() {
                       className="h-8 text-sm"
                     />
                     <Input
+                      list="grant-reasons"
                       value={r.reason}
                       onChange={(e) =>
                         patchGrantRow(r.key, { reason: e.target.value })
