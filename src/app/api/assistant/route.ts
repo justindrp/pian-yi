@@ -6,6 +6,7 @@ import { assistantTools, runTool, isWriteTool, buildPendingAction } from "@/lib/
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createConversation, saveTurn } from "@/lib/claude/assistant-history";
+import type { Json } from "@/types/database";
 
 export async function POST(request: Request) {
   const session = await getSessionWithRole();
@@ -84,8 +85,9 @@ export async function POST(request: Request) {
         if (conversationId) {
           Promise.resolve(
             db.from("assistant_conversations")
-              // biome-ignore lint/suspicious/noExplicitAny: pending_action not in generated types yet
-              .update({ pending_action: pendingAction } as any)
+              // PendingAction carries Record<string, unknown> tool input, which
+              // TS won't narrow to Json even though it always serializes to one.
+              .update({ pending_action: pendingAction as unknown as Json })
               .eq("id", conversationId),
           ).catch((err: unknown) => console.error("[assistant] save pending_action:", err));
         }

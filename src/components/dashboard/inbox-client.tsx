@@ -501,7 +501,7 @@ export default function InboxClient() {
   }, [loadThreads, loadMessages, loadFlags, supabase]);
 
   // Scroll to bottom when switching threads; on message updates only if already near bottom
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional deps
+  // biome-ignore lint/correctness/useExhaustiveDependencies: must fire on thread switch only — adding messages would yank the view to the bottom mid-scroll on every poll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [selectedCustomerId]);

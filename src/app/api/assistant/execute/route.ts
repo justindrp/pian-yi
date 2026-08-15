@@ -12,9 +12,37 @@ import {
   sendTextMessage,
   uploadMediaToMeta,
 } from "@/lib/whatsapp/client";
+import type { Database } from "@/types/database";
 
-const ALLOWED_CUSTOMER_FIELDS = new Set(["name", "address", "area", "notes"]);
-const ALLOWED_ORDER_FIELDS = new Set([
+// Typed against the generated row types, so a field added to either allowlist
+// that is not actually an editable column fails typecheck instead of failing at
+// runtime. Neither list may contain a server-controlled field (id, status,
+// price_per_portion, total_price, created_at).
+type CustomersUpdate = Database["public"]["Tables"]["customers"]["Update"];
+type OrdersUpdate = Database["public"]["Tables"]["orders"]["Update"];
+// Extract, not a bare literal union: a name that is not a real updatable column
+// collapses to never here and the Set below stops accepting it.
+type CustomerField = Extract<
+  keyof CustomersUpdate,
+  "name" | "address" | "area" | "notes"
+>;
+type OrderField = Extract<
+  keyof OrdersUpdate,
+  | "meal_time_preference"
+  | "portions_per_delivery"
+  | "portions_lunch"
+  | "portions_dinner"
+  | "start_date"
+  | "end_date"
+>;
+
+const ALLOWED_CUSTOMER_FIELDS = new Set<CustomerField>([
+  "name",
+  "address",
+  "area",
+  "notes",
+]);
+const ALLOWED_ORDER_FIELDS = new Set<OrderField>([
   "meal_time_preference",
   "portions_per_delivery",
   "portions_lunch",
@@ -22,7 +50,7 @@ const ALLOWED_ORDER_FIELDS = new Set([
   "start_date",
   "end_date",
 ]);
-const NUMERIC_ORDER_FIELDS = new Set([
+const NUMERIC_ORDER_FIELDS = new Set<OrderField>([
   "portions_per_delivery",
   "portions_lunch",
   "portions_dinner",
@@ -69,8 +97,7 @@ export async function POST(request: Request) {
       );
       Promise.resolve(
         db.from("assistant_conversations")
-          // biome-ignore lint/suspicious/noExplicitAny: pending_action not in generated types yet
-          .update({ pending_action: null } as any)
+          .update({ pending_action: null })
           .eq("id", conversationId),
       ).catch((err: unknown) => console.error("[execute] clear pending_action:", err));
     }
@@ -388,17 +415,19 @@ export async function POST(request: Request) {
       const field = input.field as string;
       const value = input.value as string;
 
-      if (!ALLOWED_CUSTOMER_FIELDS.has(field)) {
+      if (!ALLOWED_CUSTOMER_FIELDS.has(field as CustomerField)) {
         return NextResponse.json(
           { ok: false, error: `Field '${field}' is not editable` },
           { status: 400 },
         );
       }
+      const patch = { [field]: value } as Partial<
+        Pick<CustomersUpdate, CustomerField>
+      >;
 
       const { error: updateErr } = await db
         .from("customers")
-        // biome-ignore lint/suspicious/noExplicitAny: dynamic field from validated allowlist
-        .update({ [field]: value } as any)
+        .update(patch)
         .eq("id", customerId);
       if (updateErr) {
         return NextResponse.json(
@@ -451,8 +480,7 @@ export async function POST(request: Request) {
       const pauseUntil = (input.pause_until as string | undefined) ?? null;
       const { error } = await db
         .from("orders")
-        // biome-ignore lint/suspicious/noExplicitAny: pause_until not in generated types
-        .update({ status: "paused", pause_until: pauseUntil } as any)
+        .update({ status: "paused", pause_until: pauseUntil })
         .eq("id", orderId)
         .eq("status", "active");
       if (error) {
@@ -469,8 +497,7 @@ export async function POST(request: Request) {
       const orderId = input.order_id as string;
       const { error } = await db
         .from("orders")
-        // biome-ignore lint/suspicious/noExplicitAny: pause_until not in generated types
-        .update({ status: "active", pause_until: null } as any)
+        .update({ status: "active", pause_until: null })
         .eq("id", orderId)
         .eq("status", "paused");
       if (error) {
@@ -552,17 +579,21 @@ export async function POST(request: Request) {
       const field = input.field as string;
       const rawValue = input.value as string;
 
-      if (!ALLOWED_ORDER_FIELDS.has(field)) {
+      if (!ALLOWED_ORDER_FIELDS.has(field as OrderField)) {
         return NextResponse.json(
           { ok: false, error: `Field '${field}' is not editable` },
           { status: 400 },
         );
       }
-      const coercedValue = NUMERIC_ORDER_FIELDS.has(field) ? Number(rawValue) : rawValue;
+      const coercedValue = NUMERIC_ORDER_FIELDS.has(field as OrderField)
+        ? Number(rawValue)
+        : rawValue;
+      const patch = { [field]: coercedValue } as Partial<
+        Pick<OrdersUpdate, OrderField>
+      >;
       const { error } = await db
         .from("orders")
-        // biome-ignore lint/suspicious/noExplicitAny: dynamic field from validated allowlist
-        .update({ [field]: coercedValue } as any)
+        .update(patch)
         .eq("id", orderId);
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

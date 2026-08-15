@@ -5,6 +5,7 @@ import { assistantTools, runTool, isWriteTool, buildPendingAction } from "@/lib/
 import { createConversation, saveTurn } from "@/lib/claude/assistant-history";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/types/database";
 
 const MAX_TURNS = 5;
 
@@ -87,8 +88,8 @@ export async function analyzeCustomerMessage({
 
   await db
     .from("assistant_conversations")
-    // biome-ignore lint/suspicious/noExplicitAny: jsonb column not in generated types yet
-    .update({ pending_action: pendingAction } as any)
+    // PendingAction's Record<string, unknown> input won't narrow to Json.
+    .update({ pending_action: pendingAction as unknown as Json })
     .eq("id", conversationId);
 
   await sendPushToAllAdmins(
