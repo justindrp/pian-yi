@@ -1805,6 +1805,7 @@ export default function InboxClient() {
                       <div className="space-y-1">
                         {(o.delivery_schedule ?? []).map((slot, idx) => (
                           <div
+                            // biome-ignore lint/suspicious/noArrayIndexKey: a slot has no stable id — the row is addressed by position (updateScheduleRow/removeScheduleRow take idx) and two slots can share a date, so position is the only thing identifying it. Every input is controlled, so a shifted key re-renders from props rather than keeping stale text.
                             key={`${slot.date}-${idx}`}
                             className="flex gap-1 items-center"
                           >

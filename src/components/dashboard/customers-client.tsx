@@ -2032,9 +2032,8 @@ export default function CustomersClient() {
                 </div>
                 {/* Grid */}
                 <div className="grid grid-cols-7 gap-1">
-                  {Array.from({ length: firstDay }, (_, i) => (
-                    <div key={`e${i}`} />
-                  ))}
+                  {/* No blank placeholder cells: the 1st is pushed to its
+                      weekday column instead, so every child has a real key. */}
                   {Array.from({ length: daysInMonth }, (_, i) => {
                     const day = i + 1;
                     const k = dKey(calYear, calMonth, day);
@@ -2045,6 +2044,7 @@ export default function CustomersClient() {
                     return (
                       <div
                         key={k}
+                        style={day === 1 ? { gridColumnStart: firstDay + 1 } : undefined}
                         className={`border rounded-lg p-1.5 flex flex-col gap-1 min-h-[72px] transition-colors ${
                           isActive
                             ? "bg-orange-50 border-orange-200"
