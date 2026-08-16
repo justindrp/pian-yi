@@ -2,8 +2,29 @@ import {
   defaultMenuWeekStart,
   describeMenuWeek,
   describeMenuWeeks,
+  formatMenuWeekRange,
   mondayOf,
 } from "@/lib/menu/week";
+
+describe("formatMenuWeekRange", () => {
+  test("Batch 50 reads as its full span, not just the Monday", () => {
+    expect(formatMenuWeekRange("2026-08-17")).toBe(
+      "Senin 17 – Sabtu 22 Agustus 2026",
+    );
+  });
+
+  test("a week spanning two months names both", () => {
+    expect(formatMenuWeekRange("2026-08-31")).toBe(
+      "Senin 31 Agustus – Sabtu 5 September 2026",
+    );
+  });
+
+  test("a week spanning the new year carries the end year", () => {
+    expect(formatMenuWeekRange("2026-12-28")).toBe(
+      "Senin 28 Desember – Sabtu 2 Januari 2027",
+    );
+  });
+});
 
 describe("mondayOf", () => {
   test("Monday maps to itself, Sunday back to the Monday that started its week", () => {
@@ -76,9 +97,9 @@ describe("describeMenuWeeks", () => {
   });
 
   test("any missing value makes the whole set unknown", () => {
-    expect(
-      describeMenuWeeks(["2026-08-17", null], "2026-08-15").relation,
-    ).toBe("unknown");
+    expect(describeMenuWeeks(["2026-08-17", null], "2026-08-15").relation).toBe(
+      "unknown",
+    );
     expect(describeMenuWeeks([], "2026-08-15").relation).toBe("unknown");
   });
 });
