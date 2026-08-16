@@ -3,6 +3,31 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type WhatsAppMessageStatus = "sent" | "delivered" | "read" | "failed";
 
+/**
+ * Every image we send is stored with the raw file URL as its `content` — that
+ * is what the inbox renders. Fed back verbatim, the model sees past assistant
+ * turns that are nothing but a Supabase link and copies the pattern: on
+ * 2026-08-16 it answered "ini dia menu untuk minggu depan ya:" followed by the
+ * bare storage URL as text, instead of calling `send_menu_image`. The customer
+ * got a link they had to open by hand.
+ *
+ * So a URL never reaches the model as message text. Captions and labels do —
+ * only content that is itself a bare link is replaced.
+ */
+export function historyContent(row: {
+  role: string;
+  content: string;
+  message_type: string | null;
+}): string {
+  const isMedia =
+    row.message_type === "image" || row.message_type === "document";
+  if (!isMedia || !/^https?:\/\/\S+$/.test(row.content.trim()))
+    return row.content;
+  return row.role === "assistant"
+    ? "[gambar terkirim ke customer]"
+    : "[customer mengirim gambar]";
+}
+
 export async function loadHistory(
   customerId: string,
   limit = 20,
@@ -10,7 +35,7 @@ export async function loadHistory(
   const db = createAdminClient();
   const { data } = await db
     .from("conversations")
-    .select("role, content")
+    .select("role, content, message_type")
     .eq("customer_id", customerId)
     .in("role", ["user", "assistant"])
     .order("created_at", { ascending: false })
@@ -20,7 +45,7 @@ export async function loadHistory(
 
   return data.reverse().map((row) => ({
     role: row.role as "user" | "assistant",
-    content: row.content,
+    content: historyContent(row),
   }));
 }
 
