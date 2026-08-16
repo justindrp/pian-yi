@@ -71,3 +71,38 @@ describe("sanitizeReply — leaked reasoning", () => {
     expect(sanitizeReply(reply)).toBe(reply);
   });
 });
+
+describe("sanitizeReply — retracted false start", () => {
+  it("drops everything the model corrects itself on", () => {
+    // Verbatim from the 2026-08-16 pricing run, asked for 13 porsi.
+    const leaked =
+      "Maaf kak, untuk paket 13 porsi belum tersedia. Kami punya paket 12 porsi (Rp 336.000) atau 14...\nSebentar, izinkan saya cek lagi. Paket yang tersedia: 12 porsi (Rp 336.000) atau 15 porsi (Rp 420.000) kak.";
+    expect(sanitizeReply(leaked)).toBe(
+      "Paket yang tersedia: 12 porsi (Rp 336.000) atau 15 porsi (Rp 420.000) kak.",
+    );
+  });
+
+  it("keeps a genuine 'give me a moment' reply", () => {
+    const reply = "Sebentar ya kak, saya cek dulu ke dapur.";
+    expect(sanitizeReply(reply)).toBe(reply);
+  });
+
+  it("keeps a retraction with no answer after it", () => {
+    // Nothing to promote, so cutting would leave the customer with nothing.
+    const reply = "Harga 15 porsi Rp 420.000 kak. Maaf salah.";
+    expect(sanitizeReply(reply)).toBe(reply);
+  });
+});
+
+describe("sanitizeReply — WhatsApp formatting", () => {
+  it("rewrites markdown bold as WhatsApp bold", () => {
+    expect(sanitizeReply("Totalnya **Rp 1.300.000** kak")).toBe(
+      "Totalnya *Rp 1.300.000* kak",
+    );
+  });
+
+  it("leaves WhatsApp bold alone", () => {
+    const reply = "Totalnya *Rp 420.000* kak";
+    expect(sanitizeReply(reply)).toBe(reply);
+  });
+});

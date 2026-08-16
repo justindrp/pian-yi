@@ -78,9 +78,51 @@ function stripReasoning(paragraphs: string[]): string[] {
   return unglued.slice(firstAnswer);
 }
 
+/**
+ * Drops a false start the model then retracts.
+ *
+ * The Indonesian sibling of the reasoning leak, and invisible to `isReasoning`
+ * because every word of it is Indonesian. Asked for 13 porsi on 2026-08-16 the
+ * bot shipped: "Kami punya paket 12 porsi (Rp 336.000) atau 14... Sebentar,
+ * izinkan saya cek lagi. Paket yang tersedia: 12 porsi atau 15 porsi kak." The
+ * customer sees the wrong answer, the truncation, and the model checking itself.
+ *
+ * Only unambiguous self-corrections count. "Sebentar ya kak, saya cek dulu" is a
+ * real thing to say to a customer while asking an admin, and must survive — as
+ * must any retraction with nothing after it, which is that same promise.
+ */
+const RETRACTIONS =
+  /(sebentar,?\s+izinkan saya cek lagi|izinkan saya cek lagi|maaf,?\s+saya koreksi|saya koreksi|koreksi:|maaf salah|ralat:)/gi;
+
+function stripRetraction(text: string): string {
+  RETRACTIONS.lastIndex = 0;
+  let last: RegExpExecArray | null = null;
+  for (let m = RETRACTIONS.exec(text); m !== null; m = RETRACTIONS.exec(text)) {
+    last = m;
+  }
+  // Nothing retracted if the reply opens with it — that is a plain "give me a
+  // moment", not a correction of something already said.
+  if (!last || last.index === 0) return text;
+
+  const after = text.slice(last.index + last[0].length);
+  const end = after.search(/[.!?]/);
+  if (end === -1) return text;
+  const answer = after.slice(end + 1).trim();
+  return answer.length > 0 ? answer : text;
+}
+
+/**
+ * WhatsApp bold is `*one asterisk*`. Markdown `**two**` renders literally, and
+ * the model mixes the two within a single conversation — the 2026-08-16 pricing
+ * run sent `*Rp 420.000*` and `**Rp 1.300.000**` two replies apart.
+ */
+function normalizeBold(text: string): string {
+  return text.replace(/\*\*([^*]+)\*\*/g, "*$1*");
+}
+
 export function sanitizeReply(text: string): string {
   const paragraphs = stripReasoning(
-    unquote(text)
+    stripRetraction(unquote(text))
       .split(/\n{2,}/)
       .map((p) => unquote(p))
       .filter((p) => p.length > 0),
@@ -100,5 +142,5 @@ export function sanitizeReply(text: string): string {
     seen.push(key);
   }
 
-  return kept.join("\n\n").trim();
+  return normalizeBold(kept.join("\n\n").trim());
 }
