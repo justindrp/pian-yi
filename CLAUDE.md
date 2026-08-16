@@ -69,7 +69,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 ### Confidentiality (critical)
 
 - **Never** disclose subcontractor names (Santapin, Thenie) to customers, in any form
-- Frame as "dapur kami" (our kitchen) — implies internal operations
+- Frame as **"dapur partner kami"** (our partner kitchen). This used to read "dapur kami — implies internal operations", i.e. the goal was to make customers believe we cook in-house, which is what produced the bot answering "katering sendiri" and then flatly denying a named supplier. What is confidential is *which* kitchens, never that we work with kitchens at all. "Dapur kami" in passing is fine; using it to claim in-house cooking is not.
 - **A customer who names a supplier gets neither a denial nor a confirmation.** We really do cook through partner kitchens, so "bukan kak, kami masak sendiri" is a lie the customer can find out — a worse outcome than the question. The rule (next to the "dapur kami" line in `system.ts`) is to say openly that we work with partner kitchens and keep which ones private: "Kami masak lewat dapur partner kak, cuma namanya memang nggak kami sebutkan ya." This replaced a flat-denial rule written on 2026-08-16 and reverted the same day for exactly that reason. Confidentiality here is about *which* kitchens, never about whether they exist.
 - The prompt also says never to repeat back the name the customer used, and the model **does anyway** — under the denial rule it wrote "Santapin itu bukan bagian dari kami". Prompt text is not enforcement; a scrubbing guard on outbound replies is the durable fix and is not built yet.
 - Customer-facing error messages are always generic; never leak technical details
@@ -179,7 +179,7 @@ Orders table sorts on two columns: "Start date" and "Created" (`created_at`). Cl
 
 ### Confidentiality flow for subcontractor issues
 
-When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi"
+When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur partner kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi"
 
 ### Idempotency strategy
 
