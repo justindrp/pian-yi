@@ -4,6 +4,7 @@ import {
   describeMenuWeeks,
   formatMenuWeekRange,
   mondayOf,
+  weekAfter,
 } from "@/lib/menu/week";
 
 describe("formatMenuWeekRange", () => {
@@ -101,5 +102,14 @@ describe("describeMenuWeeks", () => {
       "unknown",
     );
     expect(describeMenuWeeks([], "2026-08-15").relation).toBe("unknown");
+  });
+});
+
+describe("weekAfter", () => {
+  test("the first week we have no menu for", () => {
+    expect(weekAfter("2026-08-17")).toBe("2026-08-24");
+    expect(formatMenuWeekRange(weekAfter("2026-08-17"))).toBe(
+      "Senin 24 – Sabtu 29 Agustus 2026",
+    );
   });
 });

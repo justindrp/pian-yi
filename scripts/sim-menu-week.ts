@@ -18,6 +18,7 @@ import {
   translateToIndonesian,
 } from "../src/lib/claude/language";
 import { buildSystemPrompt } from "../src/lib/claude/prompts/system";
+import { sanitizeReply } from "../src/lib/claude/sanitize-reply";
 import { describeMenuWeeks, jakartaDateString } from "../src/lib/menu/week";
 
 const db = createClient(
@@ -92,6 +93,15 @@ async function main() {
     baseURL: process.env.ANTHROPIC_BASE_URL,
   });
 
+  const TOOLS = [
+    {
+      name: "send_menu_image",
+      description:
+        "Sends the menu image(s) currently on file. Which week those cover is stated in your system prompt — check it before you describe what you are sending, and do not claim a week the prompt does not say you have. Safe to call even if the menu was previously sent.",
+      input_schema: { type: "object" as const, properties: {} },
+    },
+  ];
+
   for (const q of questions) {
     const res = await client.messages.create({
       model: SONNET_MODEL,
@@ -99,32 +109,61 @@ async function main() {
       max_tokens: 1000,
       system: systemPrompt,
       messages: [{ role: "user", content: q }],
-      tools: [
-        {
-          name: "send_menu_image",
-          description:
-            "Sends the menu image(s) currently on file. Which week those cover is stated in your system prompt — check it before you describe what you are sending, and do not claim a week the prompt does not say you have. Safe to call even if the menu was previously sent.",
-          input_schema: { type: "object", properties: {} },
-        },
-      ],
+      tools: TOOLS,
     });
 
     const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("");
-    const tools = res.content
-      .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
-      .map((b) => b.name);
+    const toolUse = res.content.find(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+    );
+    const tools = toolUse ? [toolUse.name] : [];
 
-    // The webhook applies this before sending, so the simulator has to as well
-    // or it shows a reply the customer would never receive.
     let reply = text.trim();
+
+    // A reasoning model spends the turn on tool_use and emits no text, so the
+    // webhook feeds the tool result back and asks for the words that should
+    // have come with it. Without the same second call this script reports
+    // "(no text)" for replies the customer does receive.
+    if (toolUse && !reply) {
+      const followUp = await client.messages.create({
+        model: SONNET_MODEL,
+        ...NO_THINKING,
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: q },
+          { role: "assistant", content: res.content },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result" as const,
+                tool_use_id: toolUse.id,
+                content: "done",
+              },
+            ],
+          },
+        ],
+        tools: TOOLS,
+      });
+      reply = followUp.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
+    }
+
+    // The webhook applies these before sending, so the simulator has to as well
+    // or it shows a reply the customer would never receive.
     if (looksEnglish(reply)) {
       const translated = await translateToIndonesian(reply);
       console.log(`  [language guard fired on: ${reply}]`);
       if (translated) reply = translated;
     }
+    reply = sanitizeReply(reply);
 
     console.log(`> ${q}`);
     console.log(`  tools: ${tools.length ? tools.join(", ") : "(none)"}`);

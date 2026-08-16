@@ -5,7 +5,13 @@ import {
   getSetting,
   getTemplate,
 } from "@/lib/cache/settings";
-import { NO_THINKING, SONNET_MODEL, extractText, getAnthropicClient } from "@/lib/claude/client";
+import { analyzeCustomerMessage } from "@/lib/claude/analyze-customer-message";
+import {
+  extractText,
+  getAnthropicClient,
+  NO_THINKING,
+  SONNET_MODEL,
+} from "@/lib/claude/client";
 import {
   loadHistory,
   saveMessage,
@@ -16,13 +22,11 @@ import {
   createOrderFromExtraction,
   type ExtractedOrderInput,
 } from "@/lib/claude/extract-order";
-import { analyzeCustomerMessage } from "@/lib/claude/analyze-customer-message";
+import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
-import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
-import { describeMenuWeeks } from "@/lib/menu/week";
 import {
   checkRateLimit,
   detectEcho,
@@ -32,6 +36,7 @@ import {
   recordSuccess,
   updateTokenCount,
 } from "@/lib/claude/safety";
+import { sanitizeReply } from "@/lib/claude/sanitize-reply";
 import { validateReply } from "@/lib/claude/validate-reply";
 import {
   hasCurrentOrder,
@@ -39,6 +44,7 @@ import {
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
 import { shouldAutoResume } from "@/lib/customers/takeover";
+import { describeMenuWeeks } from "@/lib/menu/week";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -163,7 +169,11 @@ export async function processWebhookAsync(
       const normalizedStatus = normalizeWhatsAppStatus(statusUpdate.status);
       if (!normalizedStatus) continue;
       if (normalizedStatus === "failed" && statusUpdate.errors?.length) {
-        console.error("[webhook] message delivery failed:", statusUpdate.messageId, JSON.stringify(statusUpdate.errors));
+        console.error(
+          "[webhook] message delivery failed:",
+          statusUpdate.messageId,
+          JSON.stringify(statusUpdate.errors),
+        );
       }
       await updateMessageReceipt({
         messageId: statusUpdate.messageId,
@@ -384,7 +394,9 @@ export async function processWebhookAsync(
         customerId,
         customerName: customer.name ?? null,
         text: escalatedText,
-      }).catch((err) => console.error("[webhook] analyzeCustomerMessage failed:", err));
+      }).catch((err) =>
+        console.error("[webhook] analyzeCustomerMessage failed:", err),
+      );
     }
     await db
       .from("processed_messages")
@@ -783,7 +795,6 @@ export async function processWebhookAsync(
       } catch (e) {
         console.error("[welcome] tnc send failed:", e);
       }
-
     }
   }
 
@@ -1199,7 +1210,13 @@ export async function processSavedCustomerMessage(params: {
       claudeResponse = await callClaude();
     } catch (firstErr) {
       const msg = (firstErr as Error).message;
-      if (!msg.includes("overloaded") && !msg.includes("529") && !msg.includes("too busy") && !msg.includes("503")) throw firstErr;
+      if (
+        !msg.includes("overloaded") &&
+        !msg.includes("529") &&
+        !msg.includes("too busy") &&
+        !msg.includes("503")
+      )
+        throw firstErr;
       await new Promise((r) => setTimeout(r, 2000));
       claudeResponse = await callClaude();
     }
@@ -1301,7 +1318,10 @@ export async function processSavedCustomerMessage(params: {
         followUp.usage.input_tokens + followUp.usage.output_tokens,
       );
     } catch (err) {
-      console.error("[webhook] tool follow-up call failed:", (err as Error).message);
+      console.error(
+        "[webhook] tool follow-up call failed:",
+        (err as Error).message,
+      );
     }
   }
 
@@ -1418,6 +1438,10 @@ export async function processSavedCustomerMessage(params: {
       const translated = await translateToIndonesian(replyText);
       if (translated) replyText = translated;
     }
+
+    // Last, so it also cleans up a validator retry or a translated reply. Saved
+    // in its cleaned form too — the inbox must show what the customer got.
+    replyText = sanitizeReply(replyText);
 
     const savedReplyId = await saveMessage({
       customerId,
@@ -1586,7 +1610,7 @@ async function handlePaymentProofImage(
     content: imageUrl ?? "[Bukti pembayaran dikirim]",
     messageId: message.messageId,
     messageType: "image",
-    mediaId: imageUrl ? undefined : message.imageId ?? undefined,
+    mediaId: imageUrl ? undefined : (message.imageId ?? undefined),
   });
   await tryLearnCustomerContext(customerId, db);
 

@@ -90,6 +90,13 @@ export function formatMenuWeekRange(weekStart: string): string {
   return `${head} – Sabtu ${end.getUTCDate()} ${endMonth} ${end.getUTCFullYear()}`;
 }
 
+/** The Monday one week on — the first week we do NOT have a menu for. */
+export function weekAfter(weekStart: string): string {
+  const d = new Date(`${weekStart}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 7);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * How the menu on file relates to today: the week it covers, in words the model
  * can act on without having to do date arithmetic itself.

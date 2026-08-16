@@ -144,6 +144,7 @@ pian-yi/
 │   │   │   ├── safety.ts (rate limits, circuit breaker, echo detection)
 │   │   │   ├── validate-reply.ts (Haiku hallucination check before send)
 │   │   │   ├── language.ts (Indonesian-only guard: looksEnglish + Haiku translate)
+│   │   │   ├── sanitize-reply.ts (last pass: unquote, dedupe, cut leaked reasoning)
 │   │   │   ├── learn-context.ts (Haiku auto-summarizes durable customer notes)
 │   │   │   ├── assistant-prompt.ts (system prompt for the Admin Assistant)
 │   │   │   ├── assistant-tools.ts (Admin Assistant's read/write tool definitions + handlers)
