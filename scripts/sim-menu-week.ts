@@ -13,7 +13,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import { NO_THINKING, SONNET_MODEL } from "../src/lib/claude/client";
-import { looksEnglish, translateToIndonesian } from "../src/lib/claude/language";
+import {
+  looksEnglish,
+  translateToIndonesian,
+} from "../src/lib/claude/language";
 import { buildSystemPrompt } from "../src/lib/claude/prompts/system";
 import { describeMenuWeeks, jakartaDateString } from "../src/lib/menu/week";
 
@@ -22,13 +25,17 @@ const db = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string,
 );
 
-const QUESTIONS = [
+const DEFAULT_QUESTIONS = [
   "halo minta menu next week dong",
   "menu hari ini apa ya kak",
 ];
 
 async function main() {
   const today = process.argv[2] ?? jakartaDateString();
+  // Any further args are asked instead of the defaults, each as a fresh
+  // conversation, so a new phrasing can be replayed without editing this file.
+  const questions =
+    process.argv.length > 3 ? process.argv.slice(3) : DEFAULT_QUESTIONS;
 
   const { data: activeSubs } = await db
     .from("subcontractors")
@@ -38,7 +45,9 @@ async function main() {
     .eq("is_active", true)
     .not("customer_nickname", "is", null);
 
-  const rawSubs = (activeSubs ?? []).filter((s) => s.customer_nickname !== null);
+  const rawSubs = (activeSubs ?? []).filter(
+    (s) => s.customer_nickname !== null,
+  );
   const menuWeek = describeMenuWeeks(
     rawSubs.filter((s) => !!s.menu_image_url).map((s) => s.menu_week_start),
     today,
@@ -83,7 +92,7 @@ async function main() {
     baseURL: process.env.ANTHROPIC_BASE_URL,
   });
 
-  for (const q of QUESTIONS) {
+  for (const q of questions) {
     const res = await client.messages.create({
       model: SONNET_MODEL,
       ...NO_THINKING,
