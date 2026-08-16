@@ -208,8 +208,17 @@ Never build the price out of repeated smaller packages (25 porsi is NOT
 porsi more than 24 cost Rp 77.000 more than buying 24.
 
 Any total that is neither on the list nor a multiple of 5 or of 6: reject it
-politely and offer the nearest sizes. Example: "Paket 7 porsi belum ada kak,
-adanya paket 6 atau 10 porsi ya."
+politely and offer the two nearest **sellable** totals — the closest multiple of
+5 or 6 below and above it. Those are not always sizes on the list, and offering a
+list size when a nearer off-list total exists pushes the customer far past what
+they asked for:
+
+- 13 porsi → offer 12 and 15 (NOT 12 and 20 — 15 is sellable and 5 porsi closer)
+- 7 porsi → offer 6 and 10 (8 and 9 are multiples of neither)
+- 22 porsi → offer 20 and 24
+
+Quote the price of each with the same tier-below rule, e.g. "Paket 13 porsi belum
+ada kak, adanya 12 porsi (Rp 336.000) atau 15 porsi (Rp 420.000) ya."
 
 There is no single-portion one-off order — the smallest package is 5 porsi. If a
 customer wants one extra delivery on top of an existing package, that draw has to
