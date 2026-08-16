@@ -40,19 +40,17 @@ export async function buildSystemPrompt(params: {
     mealTimePreference: string | null;
   } | null;
 }): Promise<string> {
-  const [
-    businessName,
-    ,
-    bankName,
-    bankAccountNumber,
-    bankAccountName,
-    escalationKeywords,
-  ] = await Promise.all([
+  // The account number and holder name are deliberately not fetched. The
+  // payment message is composed and sent by createOrderFromExtraction, so the
+  // model never needs them — and cannot hand them to a stranger who simply
+  // asks. It did exactly that in a 2026-08-16 simulator run: a customer with no
+  // order, no agreed price and no confirmation asked "rekeningnya berapa kak?"
+  // and got the full BCA number, because this prompt listed it as plain
+  // business info. Only the bank's name is safe to state.
+  const [businessName, , bankName, escalationKeywords] = await Promise.all([
     getSetting("business_name"),
     getSetting("instagram_handle"),
     getSetting("bank_name"),
-    getSetting("bank_account_number"),
-    getSetting("bank_account_name"),
     getSetting("escalation_keywords"),
   ]);
 
@@ -130,7 +128,8 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
   - NEVER write an image URL or any link in your reply. Images go out only through send_menu_image. If you cannot call the tool, say the image will be sent — do not paste a link.
   - Dapur 1 serves the same menu for lunch and dinner — if a customer asks whether siang and malam menus differ for Dapur 1, answer: sama (same menu for both meals).
   - When referring to kitchens always say "dapur kami" — never mention subcontractor or kitchen names
-- Payment via ${bankName} transfer to ${bankAccountNumber} (a.n. ${bankAccountName})
+  - If a customer names a supplier and asks whether we use them ("ini dari X ya?"), deny it warmly and plainly — "Bukan kak, kami masak di dapur kami sendiri" — then carry on with their question as normal. Never repeat the name back, and never answer with a dodge about how we refer to our kitchen: refusing to say no reads as a yes.
+- Payment via ${bankName} transfer. You do NOT have the account number and must never invent one. It is sent automatically, by the system, only after an order is confirmed. If a customer asks for the rekening before that, say the details will be sent once their order is confirmed, and help them settle the order first: "Nanti nomor rekeningnya kami kirim setelah pesanannya dikonfirmasi ya kak."
 - Order deadline: ${deadlineTime} the day before delivery — same cutoff for changes and skip requests on existing orders
 - Delivery windows: siang 10:00–12:00 WIB, malam 16:00–18:00 WIB (dinner guaranteed by 18:30)
 - Closed on all Indonesian national public holidays (tanggal merah). On ALL other days, we are operational — if a customer asks whether we're still open or still operating, always answer yes confidently. Do NOT call ask_admin_for_help for operational status questions.
@@ -299,8 +298,7 @@ ${Object.entries(params.neighborhoods)
 Show a summary and ask customer to confirm with YA before calling extract_order tool.
 
 ## After order confirmation
-After customer says YA, call extract_order tool, then send payment details:
-"Terima kasih kak {name}! 🎉 Silakan transfer ke:\\n🏦 ${bankName}: ${bankAccountNumber}\\n👤 a.n. ${bankAccountName}\\n💰 Nominal: Rp {total}\\n\\nSetelah transfer, mohon kirim bukti pembayaran ya kak."
+After customer says YA, call extract_order. The transfer details (bank, account number, account holder, total) are then sent automatically as a separate message — you do not write them, and you do not have the account number. Do not repeat, summarize or pre-empt that message; anything you add would be a second, conflicting set of payment instructions.
 
 ## Daily quota ordering
 ${

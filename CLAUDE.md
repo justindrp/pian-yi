@@ -70,9 +70,10 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 - **Never** disclose subcontractor names (Santapin, Thenie) to customers, in any form
 - Frame as "dapur kami" (our kitchen) — implies internal operations
+- **A customer who names a supplier gets a plain, warm denial** — "Bukan kak, kami masak di dapur kami sendiri" — then the conversation carries on. Asked "temen saya bilang ini dari santapin ya?" on 2026-08-16 the bot answered "kami selalu menyebutnya dengan nama dapur kami saja": no leak, but refusing to say no reads as a yes. The rule sits next to the "dapur kami" line in `system.ts`. It also says never to repeat the name back, and the model **does anyway** — after the fix it denied correctly but wrote "Santapin itu bukan bagian dari kami". Prompt text is not enforcement here; a scrubbing guard on outbound replies is the durable fix and is not built yet.
 - Customer-facing error messages are always generic; never leak technical details
 - Never reveal COGS, profit margins, or internal operations
-- Bank account details only sent after order confirmation, never proactively
+- **The account number is not in the model's context at all.** `buildSystemPrompt` deliberately fetches only `bank_name` — never `bank_account_number` or `bank_account_name` — because the payment message is composed and sent by `createOrderFromExtraction` (`src/lib/claude/extract-order.ts`), so the model has never needed them. It used to list the full number as plain business info, and on 2026-08-16 a simulated stranger with no order, no agreed price and no confirmation asked "rekeningnya berapa kak?" and got it. The prompt now states the number is sent automatically after confirmation and gives the deflection line; that is the second layer, not the fix. Do not re-add the number to the prompt — the "After order confirmation" section no longer carries the transfer template for the same reason.
 
 ### Language & tone
 
