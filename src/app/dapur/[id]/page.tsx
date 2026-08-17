@@ -1,6 +1,7 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { formatIDR } from "@/lib/utils/format";
 import { DatePicker } from "./date-picker";
 
 export const dynamic = "force-dynamic";
@@ -162,14 +163,19 @@ function DeliveryCard({ d }: { d: Delivery }) {
   const area = slot === 2 ? (c?.area_2 ?? c?.area) : c?.area;
   const subArea = slot === 2 ? (c?.sub_area_2 ?? c?.sub_area) : c?.sub_area;
   const address = slot === 2 ? (c?.address_2 ?? c?.address) : c?.address;
-  const mapsLink = slot === 2 ? (c?.google_maps_link_2 ?? c?.google_maps_link) : c?.google_maps_link;
+  const mapsLink =
+    slot === 2
+      ? (c?.google_maps_link_2 ?? c?.google_maps_link)
+      : c?.google_maps_link;
   const location = [area, subArea].filter(Boolean).join(" · ");
   const preference = kitchenPreferences(c?.notes ?? null);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
       <div className="flex items-start justify-between gap-2">
-        <span className="font-semibold text-gray-900 text-base">{c?.name ?? "—"}</span>
+        <span className="font-semibold text-gray-900 text-base">
+          {c?.name ?? "—"}
+        </span>
         <span className="text-sm font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded shrink-0">
           {d.portions} porsi
         </span>
@@ -200,11 +206,71 @@ function DeliveryCard({ d }: { d: Delivery }) {
   );
 }
 
-function Section({ title, deliveries }: { title: string; deliveries: Delivery[] }) {
+type RouteBill = { portions: number; rate: number; amount: number };
+
+function RouteRow({ label, bill }: { label: string; bill: RouteBill }) {
+  return (
+    <div className="flex justify-between items-baseline gap-3">
+      <span className="min-w-0">
+        {label}{" "}
+        <span className="text-gray-400 whitespace-nowrap">
+          {bill.portions} × {bill.rate.toLocaleString("id-ID")}
+        </span>
+      </span>
+      <span className="font-medium text-gray-800 whitespace-nowrap">
+        {formatIDR(bill.amount)}
+      </span>
+    </div>
+  );
+}
+
+function MealSummary({
+  title,
+  portions,
+  amount,
+  subName,
+  route1,
+  route2,
+}: {
+  title: string;
+  portions: number;
+  amount: number;
+  subName: string;
+  route1: RouteBill;
+  route2: RouteBill;
+}) {
+  return (
+    <div className="px-4 py-3 space-y-2">
+      <div className="flex justify-between items-baseline gap-3">
+        <span className="font-medium text-gray-800">
+          {title}{" "}
+          <span className="text-sm text-gray-500">{portions} porsi</span>
+        </span>
+        <span className="font-semibold text-gray-900 whitespace-nowrap">
+          {formatIDR(amount)}
+        </span>
+      </div>
+      <div className="pl-3 space-y-1 text-sm text-gray-600 border-l-2 border-gray-100">
+        <RouteRow label="Rute 1 (Pian Yi)" bill={route1} />
+        <RouteRow label={`Rute 2 (${subName})`} bill={route2} />
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  deliveries,
+}: {
+  title: string;
+  deliveries: Delivery[];
+}) {
   if (deliveries.length === 0) return null;
   return (
     <div className="space-y-3">
-      <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 px-1">{title}</h2>
+      <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 px-1">
+        {title}
+      </h2>
       {deliveries.map((d) => (
         <DeliveryCard key={d.id} d={d} />
       ))}
@@ -226,7 +292,11 @@ export default async function DapurPage({
   const db = createAdminClient();
 
   const [{ data: sub }, { data: rows }] = await Promise.all([
-    db.from("subcontractors").select("id, name").eq("id", id).single(),
+    db
+      .from("subcontractors")
+      .select("id, name, cost_per_portion, cost_per_portion_route1")
+      .eq("id", id)
+      .single(),
     db
       .from("daily_deliveries")
       .select(
@@ -262,6 +332,18 @@ export default async function DapurPage({
   const dinner = dinnerRute1 + dinnerRute2;
   const total = lunch + dinner;
 
+  // Route 1 is our own courier, so the kitchen charges less for it. A null
+  // override means this kitchen bills one rate for both routes.
+  const rate2 = sub.cost_per_portion ?? 0;
+  const rate1 = sub.cost_per_portion_route1 ?? rate2;
+  const billLunchR1 = lunchRute1 * rate1;
+  const billLunchR2 = lunchRute2 * rate2;
+  const billDinnerR1 = dinnerRute1 * rate1;
+  const billDinnerR2 = dinnerRute2 * rate2;
+  const billLunch = billLunchR1 + billLunchR2;
+  const billDinner = billDinnerR1 + billDinnerR2;
+  const billTotal = billLunch + billDinner;
+
   const lunchR1 = deliveries.filter(
     (d) => d.meal_type === "lunch" && (d.customers?.delivery_route ?? 1) === 1,
   );
@@ -280,7 +362,9 @@ export default async function DapurPage({
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Pian Yi Catering</h1>
+            <h1 className="text-xl font-bold text-gray-900">
+              Pian Yi Catering
+            </h1>
             <p className="text-gray-500 text-sm mt-0.5">{formatDateID(date)}</p>
           </div>
           <DatePicker id={id} date={date} />
@@ -288,44 +372,41 @@ export default async function DapurPage({
 
         {/* Summary */}
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-          <div className="flex justify-between items-center px-4 py-3">
+          <div className="flex justify-between items-center gap-3 px-4 py-3">
             <span className="font-bold text-gray-900">Total</span>
-            <span className="text-lg font-bold text-gray-900">{total} porsi</span>
-          </div>
-
-          <div className="px-4 py-3 space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-gray-800">Makan Siang</span>
-              <span className="font-semibold text-gray-900">{lunch} porsi</span>
-            </div>
-            <div className="pl-3 space-y-1 text-sm text-gray-600 border-l-2 border-gray-100">
-              <div className="flex justify-between">
-                <span>Rute 1 (diantar Pian Yi)</span>
-                <span className="font-medium text-gray-800">{lunchRute1}</span>
+            <div className="text-right">
+              <div className="text-lg font-bold text-gray-900">
+                {formatIDR(billTotal)}
               </div>
-              <div className="flex justify-between">
-                <span>Rute 2 (diantar {sub.name})</span>
-                <span className="font-medium text-gray-800">{lunchRute2}</span>
-              </div>
+              <div className="text-sm text-gray-500">{total} porsi</div>
             </div>
           </div>
 
-          <div className="px-4 py-3 space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-gray-800">Makan Malam</span>
-              <span className="font-semibold text-gray-900">{dinner} porsi</span>
-            </div>
-            <div className="pl-3 space-y-1 text-sm text-gray-600 border-l-2 border-gray-100">
-              <div className="flex justify-between">
-                <span>Rute 1 (diantar Pian Yi)</span>
-                <span className="font-medium text-gray-800">{dinnerRute1}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Rute 2 (diantar {sub.name})</span>
-                <span className="font-medium text-gray-800">{dinnerRute2}</span>
-              </div>
-            </div>
-          </div>
+          <MealSummary
+            title="Makan Siang"
+            portions={lunch}
+            amount={billLunch}
+            subName={sub.name}
+            route1={{ portions: lunchRute1, rate: rate1, amount: billLunchR1 }}
+            route2={{ portions: lunchRute2, rate: rate2, amount: billLunchR2 }}
+          />
+
+          <MealSummary
+            title="Makan Malam"
+            portions={dinner}
+            amount={billDinner}
+            subName={sub.name}
+            route1={{
+              portions: dinnerRute1,
+              rate: rate1,
+              amount: billDinnerR1,
+            }}
+            route2={{
+              portions: dinnerRute2,
+              rate: rate2,
+              amount: billDinnerR2,
+            }}
+          />
         </div>
 
         {/* Order lists */}
@@ -335,10 +416,22 @@ export default async function DapurPage({
           </p>
         ) : (
           <div className="space-y-8">
-            <Section title="Makan Siang — Rute 1 (Pian Yi)" deliveries={lunchR1} />
-            <Section title={`Makan Siang — Rute 2 (${sub.name})`} deliveries={lunchR2} />
-            <Section title="Makan Malam — Rute 1 (Pian Yi)" deliveries={dinnerR1} />
-            <Section title={`Makan Malam — Rute 2 (${sub.name})`} deliveries={dinnerR2} />
+            <Section
+              title="Makan Siang — Rute 1 (Pian Yi)"
+              deliveries={lunchR1}
+            />
+            <Section
+              title={`Makan Siang — Rute 2 (${sub.name})`}
+              deliveries={lunchR2}
+            />
+            <Section
+              title="Makan Malam — Rute 1 (Pian Yi)"
+              deliveries={dinnerR1}
+            />
+            <Section
+              title={`Makan Malam — Rute 2 (${sub.name})`}
+              deliveries={dinnerR2}
+            />
           </div>
         )}
       </div>
