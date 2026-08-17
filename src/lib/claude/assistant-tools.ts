@@ -438,7 +438,11 @@ export const assistantTools: Tool[] = [
         },
         portions_per_delivery: {
           type: "number",
-          description: "Portions per daily delivery",
+          // Spelled out because the model got this wrong on a real order: asked
+          // to renew a 5-porsi package it passed 5 here, and every one of the
+          // five days was generated at 5 portions.
+          description:
+            "Portions in ONE day's delivery — almost always 1. This is NOT the package total: a 5-porsi package eaten one a day is package_size 5, portions_per_delivery 1.",
         },
         price_per_portion: {
           type: "number",
@@ -1232,9 +1236,13 @@ export async function buildPendingAction(
         details: [
           `Customer: ${(customer as { name?: string }).name}`,
           `Package: ${packageSize} porsi`,
+          // Shown because it decides how many portions each generated delivery
+          // draws. It was absent from this card while the model was getting it
+          // wrong, so there was nothing on screen for the admin to catch.
+          `Per pengiriman: ${input.portions_per_delivery as number} porsi`,
           `Price: Rp ${new Intl.NumberFormat("id-ID").format(pricePerPortion)}/porsi`,
           `Total: Rp ${formatted}`,
-          `Start: ${input.start_date as string}`,
+          `Start: ${input.start_date as string}${input.end_date ? ` → ${input.end_date as string}` : ""}`,
           `Meal: ${input.meal_time_preference as string}`,
         ],
         dangerous: false,

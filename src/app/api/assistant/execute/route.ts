@@ -665,6 +665,24 @@ export async function POST(request: Request) {
       const endDate = (input.end_date as string | undefined) ?? null;
       const totalPrice = packageSize * pricePerPortion;
 
+      // A per-delivery count above the package size means the model confused the
+      // two, and every generated day would draw the whole package. Julian S's
+      // renewal was created that way: package 5, per-delivery 5, four days each
+      // billing 5 portions.
+      if (
+        !Number.isFinite(portionsPerDelivery) ||
+        portionsPerDelivery < 1 ||
+        portionsPerDelivery > packageSize
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `portions_per_delivery (${portionsPerDelivery}) must be between 1 and package_size (${packageSize}) — it is one day's portions, not the package total`,
+          },
+          { status: 400 },
+        );
+      }
+
       const { data: existingCustomer } = await db.from("customers").select("id").eq("id", customerId).single();
       if (!existingCustomer) {
         return NextResponse.json(
