@@ -155,6 +155,7 @@ type Delivery = {
   notes: string | null;
   address_slot: number | null;
   customers: Customer | null;
+  orders: { addon_cost_per_portion: number | null } | null;
 };
 
 function DeliveryCard({ d }: { d: Delivery }) {
@@ -206,15 +207,51 @@ function DeliveryCard({ d }: { d: Delivery }) {
   );
 }
 
-type RouteBill = { portions: number; rate: number; amount: number };
+type RateLine = { rate: number; portions: number };
+type RouteBill = { lines: RateLine[]; portions: number; amount: number };
 
-function RouteRow({ label, bill }: { label: string; bill: RouteBill }) {
+// An order can carry an addon the kitchen charges us on top of its route rate
+// (Cindy's nasi merah, Rp 5.000/porsi), so one route can hold portions at more
+// than one rate. Group by the effective rate rather than assuming a single one —
+// the same grouping the COGS journal does.
+function billFor(deliveries: Delivery[], baseRate: number): RouteBill {
+  const byRate = new Map<number, number>();
+  for (const d of deliveries) {
+    const rate = baseRate + (d.orders?.addon_cost_per_portion ?? 0);
+    byRate.set(rate, (byRate.get(rate) ?? 0) + (d.portions ?? 0));
+  }
+  const lines = [...byRate.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([rate, portions]) => ({ rate, portions }));
+  return {
+    lines,
+    portions: lines.reduce((s, l) => s + l.portions, 0),
+    amount: lines.reduce((s, l) => s + l.rate * l.portions, 0),
+  };
+}
+
+function RouteRow({
+  label,
+  bill,
+  baseRate,
+}: {
+  label: string;
+  bill: RouteBill;
+  baseRate: number;
+}) {
+  const lines =
+    bill.lines.length > 0 ? bill.lines : [{ rate: baseRate, portions: 0 }];
   return (
     <div className="flex justify-between items-baseline gap-3">
       <span className="min-w-0">
         {label}{" "}
-        <span className="text-gray-400 whitespace-nowrap">
-          {bill.portions} × {bill.rate.toLocaleString("id-ID")}
+        <span className="text-gray-400">
+          {lines.map((l, i) => (
+            <span key={l.rate} className="whitespace-nowrap">
+              {i > 0 ? " + " : ""}
+              {l.portions} × {l.rate.toLocaleString("id-ID")}
+            </span>
+          ))}
         </span>
       </span>
       <span className="font-medium text-gray-800 whitespace-nowrap">
@@ -226,19 +263,21 @@ function RouteRow({ label, bill }: { label: string; bill: RouteBill }) {
 
 function MealSummary({
   title,
-  portions,
-  amount,
   subName,
   route1,
   route2,
+  rate1,
+  rate2,
 }: {
   title: string;
-  portions: number;
-  amount: number;
   subName: string;
   route1: RouteBill;
   route2: RouteBill;
+  rate1: number;
+  rate2: number;
 }) {
+  const portions = route1.portions + route2.portions;
+  const amount = route1.amount + route2.amount;
   return (
     <div className="px-4 py-3 space-y-2">
       <div className="flex justify-between items-baseline gap-3">
@@ -251,8 +290,12 @@ function MealSummary({
         </span>
       </div>
       <div className="pl-3 space-y-1 text-sm text-gray-600 border-l-2 border-gray-100">
-        <RouteRow label="Rute 1 (Pian Yi)" bill={route1} />
-        <RouteRow label={`Rute 2 (${subName})`} bill={route2} />
+        <RouteRow label="Rute 1 (Pian Yi)" bill={route1} baseRate={rate1} />
+        <RouteRow
+          label={`Rute 2 (${subName})`}
+          bill={route2}
+          baseRate={rate2}
+        />
       </div>
     </div>
   );
@@ -300,7 +343,7 @@ export default async function DapurPage({
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, address_slot, customers(name, notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion), customers(name, notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date)
@@ -310,39 +353,6 @@ export default async function DapurPage({
   if (!sub) notFound();
 
   const deliveries = (rows ?? []) as Delivery[];
-
-  let lunchRute1 = 0,
-    lunchRute2 = 0,
-    dinnerRute1 = 0,
-    dinnerRute2 = 0;
-
-  for (const d of deliveries) {
-    const route = d.customers?.delivery_route ?? 1;
-    const p = d.portions ?? 0;
-    if (d.meal_type === "lunch") {
-      if (route === 1) lunchRute1 += p;
-      else lunchRute2 += p;
-    } else if (d.meal_type === "dinner") {
-      if (route === 1) dinnerRute1 += p;
-      else dinnerRute2 += p;
-    }
-  }
-
-  const lunch = lunchRute1 + lunchRute2;
-  const dinner = dinnerRute1 + dinnerRute2;
-  const total = lunch + dinner;
-
-  // Route 1 is our own courier, so the kitchen charges less for it. A null
-  // override means this kitchen bills one rate for both routes.
-  const rate2 = sub.cost_per_portion ?? 0;
-  const rate1 = sub.cost_per_portion_route1 ?? rate2;
-  const billLunchR1 = lunchRute1 * rate1;
-  const billLunchR2 = lunchRute2 * rate2;
-  const billDinnerR1 = dinnerRute1 * rate1;
-  const billDinnerR2 = dinnerRute2 * rate2;
-  const billLunch = billLunchR1 + billLunchR2;
-  const billDinner = billDinnerR1 + billDinnerR2;
-  const billTotal = billLunch + billDinner;
 
   const lunchR1 = deliveries.filter(
     (d) => d.meal_type === "lunch" && (d.customers?.delivery_route ?? 1) === 1,
@@ -356,6 +366,19 @@ export default async function DapurPage({
   const dinnerR2 = deliveries.filter(
     (d) => d.meal_type === "dinner" && (d.customers?.delivery_route ?? 1) === 2,
   );
+
+  // Route 1 is our own courier, so the kitchen charges less for it. A null
+  // override means this kitchen bills one rate for both routes.
+  const rate2 = sub.cost_per_portion ?? 0;
+  const rate1 = sub.cost_per_portion_route1 ?? rate2;
+  const bills = {
+    lunchR1: billFor(lunchR1, rate1),
+    lunchR2: billFor(lunchR2, rate2),
+    dinnerR1: billFor(dinnerR1, rate1),
+    dinnerR2: billFor(dinnerR2, rate2),
+  };
+  const total = deliveries.reduce((s, d) => s + (d.portions ?? 0), 0);
+  const billTotal = Object.values(bills).reduce((s, b) => s + b.amount, 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -384,28 +407,20 @@ export default async function DapurPage({
 
           <MealSummary
             title="Makan Siang"
-            portions={lunch}
-            amount={billLunch}
             subName={sub.name}
-            route1={{ portions: lunchRute1, rate: rate1, amount: billLunchR1 }}
-            route2={{ portions: lunchRute2, rate: rate2, amount: billLunchR2 }}
+            route1={bills.lunchR1}
+            route2={bills.lunchR2}
+            rate1={rate1}
+            rate2={rate2}
           />
 
           <MealSummary
             title="Makan Malam"
-            portions={dinner}
-            amount={billDinner}
             subName={sub.name}
-            route1={{
-              portions: dinnerRute1,
-              rate: rate1,
-              amount: billDinnerR1,
-            }}
-            route2={{
-              portions: dinnerRute2,
-              rate: rate2,
-              amount: billDinnerR2,
-            }}
+            route1={bills.dinnerR1}
+            route2={bills.dinnerR2}
+            rate1={rate1}
+            rate2={rate2}
           />
         </div>
 

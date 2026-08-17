@@ -397,7 +397,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | source | text | "purchase" (default) or "free_quota" — free_quota rows are admin-granted goodwill/compensation portions (price_per_portion 0, total_price 0), created via `POST /api/customers/free-quota` |
 | grant_reason | text | Nullable. Why a free_quota order was granted (e.g. "late delivery compensation") |
 | granted_by | text | Nullable. Admin email who granted a free_quota order |
-| addon_cost_per_portion | integer | Extra cost per portion if applicable |
+| addon_cost_per_portion | integer | What the kitchen charges us extra per portion for an add-on (e.g. nasi merah, Rp 5.000). Cost side only — the customer's share of it is already inside `price_per_portion`. Added to the subcontractor's route rate by the COGS journal and by the `/dapur/[id]` bill. No UI: set by hand, per order |
 | lunch_address_slot | smallint | Standing address slot for lunch deliveries: 1 = primary, 2 = secondary (customers.address_2) — default 1. Generated daily_deliveries rows inherit it; per-day sheet flip overrides |
 | dinner_address_slot | smallint | Standing address slot for dinner deliveries: 1 = primary, 2 = secondary — default 1 |
 | meal_time_preference | text | Nullable. "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" — null for scheduled orders |
