@@ -37,7 +37,12 @@ export async function POST(request: Request) {
 
   const client = getAnthropicClient();
   const currentMessages: MessageParam[] = [...messages];
-  const MAX_TURNS = 5;
+  // A compound admin request ("renew Julian, and add a portion for tomorrow")
+  // spends one turn per round of read tools, and the model fans out 3-4 lookups
+  // per round. Measured at 5 turns exactly for that message, so 5 left no
+  // headroom at all — one extra lookup fell off the end of the loop and the
+  // admin got the generic failure string.
+  const MAX_TURNS = 10;
 
   // Persist this turn (user msg + assistant reply) to the thread.
   async function persist(assistantText: string) {
@@ -117,25 +122,42 @@ export async function POST(request: Request) {
       continue;
     }
 
+    // Anything else (max_tokens above all) means the model stopped mid-thought.
+    // Nothing to salvage from the loop, so drop out and let the wrap-up call
+    // below produce an answer.
+    console.error(
+      `[assistant] loop stopped early: stop_reason=${response.stop_reason} turn=${turn}`,
+    );
     break;
   }
 
-  const lastMsg = currentMessages.at(-1);
-  if (lastMsg?.role === "assistant") {
-    const content = lastMsg.content;
-    if (typeof content === "string") {
-      await persist(content);
-      return NextResponse.json({ ok: true, text: content, conversationId });
+  // The loop ended without an answer: either it ran out of turns, or the model
+  // stopped for a reason we can't continue from. The old code tried to salvage
+  // text off the last message, but on turn exhaustion that is always the
+  // tool_results `user` turn, so it never matched and every such request fell
+  // through to the generic string. Ask once more with tools removed instead —
+  // the model has all the lookups it made in context and must now answer.
+  try {
+    const wrapUp = await client.messages.create({
+      model: SONNET_MODEL,
+      ...NO_THINKING,
+      max_tokens: 2000,
+      system: getAssistantSystemPrompt(),
+      messages: currentMessages,
+    });
+    const textBlock = wrapUp.content.find((b) => b.type === "text");
+    const text = textBlock?.type === "text" ? textBlock.text : "";
+    if (text) {
+      await persist(text);
+      return NextResponse.json({ ok: true, text, conversationId });
     }
-    if (Array.isArray(content)) {
-      const textBlock = content.find((b) => typeof b === "object" && b.type === "text");
-      if (textBlock && typeof textBlock === "object" && textBlock.type === "text") {
-        await persist(textBlock.text);
-        return NextResponse.json({ ok: true, text: textBlock.text, conversationId });
-      }
-    }
+  } catch (err) {
+    console.error("[assistant] wrap-up call failed:", err);
   }
 
+  console.error(
+    `[assistant] no response after ${MAX_TURNS} turns; messages=${currentMessages.length}`,
+  );
   return NextResponse.json({ ok: true, text: "I couldn't generate a response. Please try again.", conversationId });
 }
 
