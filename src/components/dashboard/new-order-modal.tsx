@@ -98,6 +98,7 @@ export default function NewOrderModal({
 
   // Common fields
   const [pricePerPortion, setPricePerPortion] = useState("28000");
+  const [addonCost, setAddonCost] = useState("0");
   const [portionsPerDelivery, setPortionsPerDelivery] = useState("1");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [area, setArea] = useState("");
@@ -245,6 +246,7 @@ export default function NewOrderModal({
       const common = {
         customer_id: selectedCustomer.id,
         price_per_portion: Number(pricePerPortion) + (size === "m" ? 2000 : 0),
+        addon_cost_per_portion: Number(addonCost) || 0,
         portions_per_delivery: Number(portionsPerDelivery),
         subcontractor_id: subcontractorId || null,
         status,
@@ -423,6 +425,19 @@ export default function NewOrderModal({
                   onChange={(e) => setPricePerPortion(e.target.value)}
                   className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
                 />
+              </div>
+              <div>
+                <Label htmlFor="new-order-addon-cost" className="block text-xs font-medium text-gray-600 mb-1">Tambahan / porsi (Rp)</Label>
+                <Input
+                  id="new-order-addon-cost"
+                  type="number"
+                  value={addonCost}
+                  onChange={(e) => setAddonCost(e.target.value)}
+                  className="w-full border-gray-200 rounded-lg px-3 py-2 text-sm h-auto"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Biaya dapur, mis. nasi merah. Harga pelanggan sudah termasuk ini.
+                </p>
               </div>
               <div>
                 <Label htmlFor="new-order-portions-per-delivery" className="block text-xs font-medium text-gray-600 mb-1">Porsi / pengiriman</Label>

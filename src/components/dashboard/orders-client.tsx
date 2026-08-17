@@ -43,6 +43,7 @@ interface Order {
   subcontractor_id: string | null;
   end_date: string | null;
   price_per_portion: number;
+  addon_cost_per_portion: number | null;
   paid_at: string | null;
   portions_lunch: number | null;
   portions_dinner: number | null;
@@ -94,6 +95,7 @@ type EditForm = {
   portions_lunch: string;
   portions_dinner: string;
   portions_per_delivery: string;
+  addon_cost_per_portion: string;
   start_date: string;
 };
 
@@ -162,6 +164,7 @@ export default function OrdersClient() {
       portions_dinner: o.portions_dinner == null ? "" : String(o.portions_dinner),
       portions_per_delivery:
         o.portions_per_delivery == null ? "" : String(o.portions_per_delivery),
+      addon_cost_per_portion: String(o.addon_cost_per_portion ?? 0),
       start_date: o.start_date ?? "",
     });
   }
@@ -623,6 +626,24 @@ export default function OrdersClient() {
                     }
                   />
                 </div>
+              </div>
+
+              <div>
+                <Label htmlFor="order-addon" className="text-xs text-gray-500 block mb-1">
+                  Tambahan / porsi (Rp)
+                </Label>
+                <Input
+                  id="order-addon"
+                  type="number"
+                  value={editForm.addon_cost_per_portion}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, addon_cost_per_portion: e.target.value })
+                  }
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Biaya dapur, mis. nasi merah. Harga pelanggan sudah termasuk ini —
+                  ini hanya menaikkan COGS pengiriman berikutnya.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

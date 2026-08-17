@@ -88,6 +88,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     portions_dinner?: number;
     package_size?: number;
     size?: "s" | "m";
+    // What the kitchen charges us extra per portion for an add-on (nasi merah
+    // and the like). Cost side only — the customer's share of it is already
+    // inside price_per_portion, since we pass add-ons through at cost.
+    addon_cost_per_portion?: number;
     // Standing per-meal delivery-address rule (1=primary, 2=secondary/address_2)
     lunch_address_slot?: number;
     dinner_address_slot?: number;
@@ -169,6 +173,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       portions_lunch: body.portions_lunch ?? null,
       portions_dinner: body.portions_dinner ?? null,
       size: (body.size ?? "s") as "s" | "m",
+      addon_cost_per_portion: Number(body.addon_cost_per_portion) || 0,
       lunch_address_slot: lunchSlot,
       dinner_address_slot: dinnerSlot,
     })
@@ -408,6 +413,12 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         );
       update.size = f.size;
     }
+    // Cost side, not customer money: the add-on changes what we owe the kitchen
+    // per portion, never price_per_portion or total_price. Editing it only
+    // affects COGS journals posted from here on — journals already written are
+    // idempotent on source_id and have to be corrected by hand.
+    if ("addon_cost_per_portion" in f)
+      update.addon_cost_per_portion = Number(f.addon_cost_per_portion) || 0;
     if ("start_date" in f && f.start_date)
       update.start_date = String(f.start_date);
 
