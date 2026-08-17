@@ -1,4 +1,5 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
+import { describeUpcomingHolidays } from "@/lib/holidays/id";
 import { formatMenuWeekRange, weekAfter } from "@/lib/menu/week";
 
 const PRICE_LIST_LINES = [
@@ -61,6 +62,7 @@ export async function buildSystemPrompt(params: {
     : "Use polished Indonesian with proper punctuation. Default to no emojis; use at most one per message, only when warmth wouldn't otherwise come across.";
 
   const now = new Date();
+  const upcomingHolidays = describeUpcomingHolidays();
   const [deadlineHour, dailyDeadlineHour] = await Promise.all([
     getSetting("order_deadline_hour"),
     getSetting("order_deadline_daily_hour"),
@@ -133,6 +135,15 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Order deadline: ${deadlineTime} the day before delivery — same cutoff for changes and skip requests on existing orders
 - Delivery windows: siang 10:00–12:00 WIB, malam 16:00–18:00 WIB (dinner guaranteed by 18:30)
 - Closed on all Indonesian national public holidays (tanggal merah). On ALL other days, we are operational — if a customer asks whether we're still open or still operating, always answer yes confidently. Do NOT call ask_admin_for_help for operational status questions.
+${
+  upcomingHolidays
+    ? `- Upcoming closures. Resolve the date the customer means, match it against this list, and give the answer. Do all of that silently: the customer gets one short reply, never your working. Never narrate the steps, never quote a line of this list back, never write the word TUTUP, and never change your answer part-way through a message.
+${upcomingHolidays}
+  - A date marked TUTUP: say we are closed that day, name the holiday, offer the next working day.
+  - A cuti bersama: do NOT promise delivery and do NOT refuse. Say you need to check with dapur partner and call ask_admin_for_help — this is the one operational-status question you must escalate.
+  - Any date NOT on this list is a normal working day (except Minggu, which is always closed). Do not invent holidays and do not hedge about dates that are not listed.`
+    : "- No public holidays are listed for the period ahead. If a customer asks about a date you believe may be a holiday, do not guess — call ask_admin_for_help."
+}
 - For events (acara), we can supply custom orders: min. 10 portions, starting from Rp 18.000/porsi. Tell interested customers to contact us for details.
 
 ## Relative date words

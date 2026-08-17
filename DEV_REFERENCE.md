@@ -153,6 +153,8 @@ pian-yi/
 │   │   │   ├── client.ts (send messages, typing indicators)
 │   │   │   ├── webhook.ts (HMAC signature verification for inbound webhooks)
 │   │   │   └── types.ts
+│   │   ├── holidays/
+│   │   │   └── id.ts (2026 SKB libur nasional + cuti bersama; feeds upcoming closures into the prompt)
 │   │   ├── accounting/
 │   │   │   └── journal.ts (post balanced journal entries: revenue/COGS, mark-paid, free-quota)
 │   │   ├── grants/
