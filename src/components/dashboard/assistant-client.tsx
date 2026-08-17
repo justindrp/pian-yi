@@ -34,11 +34,34 @@ declare global {
   }
 }
 
-type Message = { id: string; role: "user" | "assistant"; content: string };
+/** One tool call the assistant made, shown live while it works. */
+type Step = { id: string; label: string; summary?: string };
 
-function makeMessage(role: Message["role"], content: string): Message {
-  return { id: crypto.randomUUID(), role, content };
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  // Only ever set on messages produced in this session — the saved thread keeps
+  // the answer, not the lookups behind it.
+  steps?: Step[];
+};
+
+function makeMessage(
+  role: Message["role"],
+  content: string,
+  steps?: Step[],
+): Message {
+  return { id: crypto.randomUUID(), role, content, steps };
 }
+
+type StreamEvent =
+  | { type: "conversation"; conversationId: string }
+  | { type: "text"; delta: string }
+  | { type: "step"; id: string; label: string }
+  | { type: "step_done"; id: string; summary: string }
+  | { type: "pending_action"; pendingAction: PendingAction }
+  | { type: "done" }
+  | { type: "error"; error: string };
 type Conversation = { id: string; title: string; updated_at: string };
 
 interface AssistantClientProps {
@@ -62,6 +85,11 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamText, setStreamText] = useState("");
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(() =>
     typeof window !== "undefined"
       ? localStorage.getItem("jarvis_tts") !== "off"
@@ -133,49 +161,130 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     window.speechSynthesis.speak(utt);
   }
 
-  const send = useMutation({
-    mutationFn: async (payload: {
-      messages: Message[];
-      conversationId?: string;
-    }) => {
-      const res = await fetch("/api/assistant", {
+  /**
+   * Streams one turn from /api/assistant/stream, painting text and tool steps
+   * as they arrive. The reply is only committed to `messages` at the end, so a
+   * half-finished answer never looks like a finished one.
+   */
+  async function runStream(outgoing: Message[]) {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsStreaming(true);
+    setStreamText("");
+    setSteps([]);
+    setStreamError(null);
+
+    let text = "";
+    let localSteps: Step[] = [];
+    let newConversationId: string | null = null;
+    let pending: PendingAction | null = null;
+    let failure: string | null = null;
+
+    function handle(event: StreamEvent) {
+      switch (event.type) {
+        case "conversation":
+          // Held until the stream finishes: switching activeId now would make
+          // the thread query refetch and overwrite the messages mid-answer.
+          newConversationId = event.conversationId;
+          break;
+        case "text":
+          text += event.delta;
+          setStreamText(text);
+          break;
+        case "step":
+          localSteps = [...localSteps, { id: event.id, label: event.label }];
+          setSteps(localSteps);
+          break;
+        case "step_done":
+          localSteps = localSteps.map((s) =>
+            s.id === event.id ? { ...s, summary: event.summary } : s,
+          );
+          setSteps(localSteps);
+          break;
+        case "pending_action":
+          pending = event.pendingAction;
+          break;
+        case "error":
+          failure = event.error;
+          break;
+        case "done":
+          break;
+      }
+    }
+
+    try {
+      const res = await fetch("/api/assistant/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: payload.messages as MessageParam[],
-          conversationId: payload.conversationId,
+          messages: outgoing as MessageParam[],
+          conversationId: activeId ?? undefined,
         }),
+        signal: controller.signal,
       });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error ?? "Request failed");
-      return json as {
-        text: string;
-        pendingAction?: PendingAction;
-        conversationId?: string;
-      };
-    },
-    onSuccess: (data) => {
-      if (data.conversationId && data.conversationId !== activeId) {
-        setActiveId(data.conversationId);
+      if (!res.ok || !res.body) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.error ?? "Request failed");
       }
-      if (data.text) {
-        setMessages((prev) => [...prev, makeMessage("assistant", data.text)]);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE frames are separated by a blank line; the tail is a partial frame
+        // that has to wait for the next chunk.
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          if (!frame.startsWith("data: ")) continue;
+          handle(JSON.parse(frame.slice(6)) as StreamEvent);
+        }
       }
-      setPendingAction(data.pendingAction ?? null);
-      qc.invalidateQueries({ queryKey: ["assistant-conversations"] });
-      if (data.conversationId) {
-        qc.invalidateQueries({
-          queryKey: ["assistant-messages", data.conversationId],
-        });
+    } catch (err) {
+      // Aborting is the admin pressing Stop, not an error — keep what arrived.
+      if (!controller.signal.aborted) {
+        failure = err instanceof Error ? err.message : "Terjadi kesalahan";
       }
-      // TTS: speak reply text, or pending action label if no text
-      if (data.pendingAction) {
-        speak(`Perlu konfirmasi: ${data.pendingAction.label}`);
-      } else if (data.text) {
-        speak(data.text);
-      }
-    },
-  });
+    }
+
+    setIsStreaming(false);
+    setStreamText("");
+    setSteps([]);
+    abortRef.current = null;
+
+    if (text) {
+      setMessages((prev) => [
+        ...prev,
+        makeMessage("assistant", text, localSteps),
+      ]);
+    }
+    if (failure) setStreamError(failure);
+    setPendingAction(pending);
+    if (newConversationId && newConversationId !== activeId) {
+      setActiveId(newConversationId);
+    }
+    qc.invalidateQueries({ queryKey: ["assistant-conversations"] });
+    if (newConversationId) {
+      qc.invalidateQueries({
+        queryKey: ["assistant-messages", newConversationId],
+      });
+    }
+
+    // Voice waits for the whole answer — speech synthesis cannot narrate text
+    // that is still arriving without reading half-sentences aloud.
+    if (pending) {
+      speak(`Perlu konfirmasi: ${(pending as PendingAction).label}`);
+    } else if (text && !controller.signal.aborted) {
+      speak(text);
+    }
+  }
+
+  function handleStop() {
+    abortRef.current?.abort();
+  }
 
   const confirm = useMutation({
     mutationFn: async (action: PendingAction) => {
@@ -222,13 +331,14 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     },
   });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: streamText and steps are not read in the body — they are listed so the view re-scrolls as the answer streams in, which is the whole point of the live bubble
   useEffect(() => {
-    if (!messages.length && !send.isPending && !pendingAction) return;
+    if (!messages.length && !isStreaming && !pendingAction) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, send.isPending, pendingAction]);
+  }, [messages, isStreaming, streamText, steps, pendingAction]);
 
   function handleSendText(text: string) {
-    if (!text || send.isPending) return;
+    if (!text || isStreaming) return;
     if (typeof window !== "undefined") window.speechSynthesis.cancel();
 
     let base = messages;
@@ -243,10 +353,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
 
     const newMessages: Message[] = [...base, makeMessage("user", text)];
     setMessages(newMessages);
-    send.mutate({
-      messages: newMessages,
-      conversationId: activeId ?? undefined,
-    });
+    void runStream(newMessages);
   }
   handleSendTextRef.current = handleSendText;
 
@@ -257,7 +364,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     handleSendText(trimmed);
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fires once on mount/new-chat; send.mutate and setMessages are stable
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fires once on mount/new-chat; runStream and setMessages are stable
   useEffect(() => {
     if (!fullPage || activeId !== null || briefSentRef.current) return;
     const today = new Date().toISOString().split("T")[0];
@@ -270,7 +377,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     const text = "Berikan briefing situasi bisnis hari ini";
     const newMessages: Message[] = [makeMessage("user", text)];
     setMessages(newMessages);
-    send.mutate({ messages: newMessages });
+    void runStream(newMessages);
   }, [fullPage, activeId]);
 
   function handleConfirm() {
@@ -493,6 +600,11 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
                     : "bg-white border border-[#EEECE8] shadow-sm text-[#292524] rounded-2xl rounded-bl-none"
                 }`}
               >
+                {msg.steps && msg.steps.length > 0 && (
+                  <div className="mb-2 pb-2 border-b border-[#F2F0ED]">
+                    <StepList steps={msg.steps} />
+                  </div>
+                )}
                 {msg.content}
               </div>
             </div>
@@ -550,20 +662,29 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
             </div>
           )}
 
-          {send.isPending && (
+          {isStreaming && (
             <div className="flex justify-start">
-              <div className="bg-white border border-[#EEECE8] shadow-sm px-4 py-3 rounded-2xl rounded-bl-none flex gap-1 items-center">
-                <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce" />
+              <div className="max-w-[80%] bg-white border border-[#EEECE8] shadow-sm px-4 py-2.5 rounded-2xl rounded-bl-none space-y-2">
+                <StepList steps={steps} />
+                {streamText ? (
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed text-[#292524]">
+                    {streamText}
+                  </p>
+                ) : (
+                  <div className="flex gap-1 items-center py-1">
+                    <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1.5 h-1.5 bg-[#A8A29E] rounded-full animate-bounce" />
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {send.isError && (
+          {streamError && (
             <div className="flex justify-start">
               <div className="max-w-[80%] bg-red-50 border border-red-100 text-red-700 px-4 py-2.5 rounded-2xl rounded-bl-none text-sm">
-                {send.error?.message}
+                {streamError}
               </div>
             </div>
           )}
@@ -589,7 +710,7 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
               <button
                 type="button"
                 onClick={isRecording ? stopListening : startListening}
-                disabled={send.isPending}
+                disabled={isStreaming}
                 title={isRecording ? "Berhenti merekam" : "Bicara"}
                 className={`self-end p-2.5 rounded-xl border transition-colors disabled:opacity-40 ${
                   isRecording
@@ -612,20 +733,67 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
                   handleSend();
                 }
               }}
-              disabled={send.isPending}
+              disabled={isStreaming}
             />
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={send.isPending || !input.trim()}
-              className="self-end px-4 py-2.5 rounded-xl bg-[#C4622D] text-white text-sm font-medium disabled:opacity-40 hover:bg-[#A8521F] transition-colors"
-            >
-              Kirim
-            </button>
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                className="self-end px-4 py-2.5 rounded-xl border border-[#DDD9D4] text-[#78716C] text-sm font-medium hover:border-red-400 hover:text-red-500 transition-colors"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!input.trim()}
+                className="self-end px-4 py-2.5 rounded-xl bg-[#C4622D] text-white text-sm font-medium disabled:opacity-40 hover:bg-[#A8521F] transition-colors"
+              >
+                Kirim
+              </button>
+            )}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The assistant's lookups, one dim line each. Collapsed behind a summary once
+ * there is more than a couple, so a long run doesn't push the answer off a
+ * phone screen.
+ */
+function StepList({ steps }: { steps: Step[] }) {
+  if (steps.length === 0) return null;
+
+  const list = (
+    <ul className="space-y-0.5">
+      {steps.map((s) => (
+        <li key={s.id} className="text-[11px] text-[#A8A29E] leading-snug">
+          <span className={s.summary ? "" : "animate-pulse"}>
+            {s.summary ? "✓" : "○"} {s.label}
+          </span>
+          {s.summary && (
+            <span className="text-[#C4C0BB]"> — {s.summary}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+
+  if (steps.length <= 3) return list;
+
+  return (
+    <details className="group">
+      <summary className="text-[11px] text-[#A8A29E] cursor-pointer list-none">
+        {steps.length} langkah pencarian
+        <span className="group-open:hidden"> ▸</span>
+        <span className="hidden group-open:inline"> ▾</span>
+      </summary>
+      <div className="mt-1">{list}</div>
+    </details>
   );
 }
 

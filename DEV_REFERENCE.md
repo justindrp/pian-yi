@@ -117,7 +117,7 @@ pian-yi/
 │   │       ├── orders/, customers/, deliveries/, subcontractors/, settings/, reports/ (CRUD for each dashboard page above)
 │   │       ├── inbox/ (bot-reply, learn-context, pipeline-stage, replay-latest, delivery-proofs proxy)
 │   │       ├── broadcasts/ (preview + send)
-│   │       ├── assistant/ (agentic chat + execute + conversation threads)
+│   │       ├── assistant/ (agentic chat + stream + execute + conversation threads)
 │   │       ├── accounting/ (journals, accounts, reports, ledger — owner-only)
 │   │       ├── context/ (customer/preview context lookups used by admin tooling)
 │   │       ├── chatbot-instructions/ (CRUD for saved chatbot instruction rules)
@@ -148,6 +148,7 @@ pian-yi/
 │   │   │   ├── learn-context.ts (Haiku auto-summarizes durable customer notes)
 │   │   │   ├── assistant-prompt.ts (system prompt for the Admin Assistant)
 │   │   │   ├── assistant-tools.ts (Admin Assistant's read/write tool definitions + handlers)
+│   │   │   ├── assistant-steps.ts (human-readable labels/summaries for streamed tool calls)
 │   │   │   └── assistant-history.ts (Admin Assistant conversation thread persistence)
 │   │   ├── whatsapp/ — Meta Cloud API integration
 │   │   │   ├── client.ts (send messages, typing indicators)
@@ -190,7 +191,7 @@ pian-yi/
 │   │   │   ├── settings-client.tsx (pricing tiers, templates, admins, kill-switch toggle)
 │   │   │   ├── kill-switch.tsx (chatbot on/off toggle, used inside settings-client)
 │   │   │   ├── accounting-client.tsx (journals, chart of accounts, financial reports, ledger)
-│   │   │   ├── assistant-client.tsx (agentic admin chat UI: query + write tools w/ confirm step)
+│   │   │   ├── assistant-client.tsx (streaming agentic admin chat UI: live text + tool steps, Stop button, write tools w/ confirm step)
 │   │   │   └── assistant-widget.tsx (floating shortcut into the assistant, embedded on other pages)
 │   │   └── shared/ (cross-page components: mobile nav, query provider, service worker registrar)
 │   └── types/
