@@ -458,7 +458,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const { data: order, error: fetchErr } = await db
     .from("orders")
     .select(
-      "id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number)",
+      "id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
     )
     .eq("id", body.id)
     .single();
@@ -534,7 +534,13 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       portions_lunch: order.portions_lunch ?? null,
       portions_per_delivery: order.portions_per_delivery ?? null,
       start_date: order.start_date ?? null,
-      subcontractor_id: order.subcontractor_id ?? null,
+      // The order's own kitchen is an override; the customer's is the default.
+      // Without the fallback a delivery row carries a null subcontractor_id, and
+      // /dapur/[id] filters strictly on it — so the kitchen never sees the
+      // delivery. Julian S's whole renewal was invisible that way. Same rule as
+      // the generate-deliveries cron.
+      subcontractor_id:
+        order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
     },
     today,
   );

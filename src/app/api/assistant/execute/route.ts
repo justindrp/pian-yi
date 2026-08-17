@@ -204,7 +204,7 @@ export async function POST(request: Request) {
       const { data: order, error: fetchErr } = await db
         .from("orders")
         .select(
-          "id, total_price, package_size, customer_id, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number)",
+          "id, total_price, package_size, customer_id, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
         )
         .eq("id", orderId)
         .single();
@@ -282,7 +282,11 @@ export async function POST(request: Request) {
         portions_lunch: order.portions_lunch ?? null,
         portions_per_delivery: order.portions_per_delivery ?? null,
         start_date: order.start_date ?? null,
-        subcontractor_id: order.subcontractor_id ?? null,
+        // Order kitchen overrides, customer kitchen is the default. A null here
+        // makes the delivery invisible on /dapur/[id], which filters strictly on
+        // subcontractor_id. Same rule as the generate-deliveries cron.
+        subcontractor_id:
+          order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
       });
       if (deliveryRows.length > 0) {
         const { error: deliveryErr } = await db
@@ -683,7 +687,11 @@ export async function POST(request: Request) {
         );
       }
 
-      const { data: existingCustomer } = await db.from("customers").select("id").eq("id", customerId).single();
+      const { data: existingCustomer } = await db
+        .from("customers")
+        .select("id, subcontractor_id")
+        .eq("id", customerId)
+        .single();
       if (!existingCustomer) {
         return NextResponse.json(
           { ok: false, error: `Customer ${customerId} not found — use query_customers to get the correct UUID` },
@@ -705,6 +713,10 @@ export async function POST(request: Request) {
           end_date: endDate,
           status: "pending_payment",
           size: "s",
+          // POST /api/orders takes the kitchen from the admin form; this path has
+          // no form, and leaving it null propagated into every generated delivery
+          // row, none of which then showed on the kitchen's own page.
+          subcontractor_id: existingCustomer.subcontractor_id,
         })
         .select("id")
         .single();
