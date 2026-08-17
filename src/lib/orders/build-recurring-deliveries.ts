@@ -52,9 +52,15 @@ function formatIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function isWeekday(date: Date): boolean {
+// Senin–Sabtu. The only active kitchen delivers on Saturday, so a weekly
+// schedule is 5 or 6 days and the 6-day package sizes are sellable — but this
+// function excluded Saturday, so no fixed-schedule order could ever generate
+// its sixth day. Every 6-day package came up one delivery short with nothing
+// saying so, and Julian S's 18–22 Agustus package generated four days for five
+// portions. Minggu stays closed.
+function isDeliveryDay(date: Date): boolean {
   const day = date.getUTCDay();
-  return day >= 1 && day <= 5;
+  return day >= 1 && day <= 6;
 }
 
 function getFixedMeals(order: RecurringDeliveryOrder) {
@@ -116,7 +122,7 @@ export function buildRecurringDeliveryRows(
       date <= end;
       date.setUTCDate(date.getUTCDate() + 1)
     ) {
-      if (!isWeekday(date)) continue;
+      if (!isDeliveryDay(date)) continue;
       const deliveryDate = formatIsoDate(date);
       for (const meal of meals) {
         rows.push({
@@ -140,7 +146,7 @@ export function buildRecurringDeliveryRows(
     remaining >= portionsPerDay;
     date.setUTCDate(date.getUTCDate() + 1)
   ) {
-    if (!isWeekday(date)) continue;
+    if (!isDeliveryDay(date)) continue;
     const deliveryDate = formatIsoDate(date);
     for (const meal of meals) {
       rows.push({
