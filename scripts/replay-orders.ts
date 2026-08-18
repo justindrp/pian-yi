@@ -119,13 +119,21 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     .single();
   if (error || !demo) throw new Error(`demo customer insert failed: ${error?.message}`);
 
+  // A case is one whole conversation against the live model, so a run is silent
+  // for minutes at a time between verdicts. Printing each turn as it lands makes
+  // a stalled case distinguishable from a slow one while the run is still going.
+  const label = (c.customerName ?? "?").slice(0, 18);
   for (const [i, turn] of c.turns.entries()) {
+    const startedAt = Date.now();
     try {
       await atTime(turn.at, () =>
         processWebhookAsync(payloadFor(phone, turn.text, turn.at, i)),
       );
+      console.log(
+        `  · ${label} turn ${i + 1}/${c.turns.length} (${Math.round((Date.now() - startedAt) / 1000)}s)`,
+      );
     } catch (err) {
-      console.error(`  turn ${i} threw:`, (err as Error).message);
+      console.log(`  · ${label} turn ${i + 1}/${c.turns.length} THREW ${(err as Error).message}`);
     }
   }
 
