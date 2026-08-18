@@ -15,6 +15,8 @@
  *    the turn, so "besok" and "senin depan" mean what they meant at the time and
  *    the expected delivery dates stay comparable.
  */
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { buildCorpus, type CorpusCase } from "./replay-corpus";
 import { processWebhookAsync } from "../src/app/api/webhook/whatsapp/route";
 import { createAdminClient } from "../src/lib/supabase/admin";
@@ -214,6 +216,12 @@ async function main() {
   const count = Number(args.find((a) => a.startsWith("--count="))?.split("=")[1] ?? 20);
   const only = args.find((a) => a.startsWith("--only="))?.split("=")[1];
   const keep = args.includes("--keep");
+  // Transcripts are printed in the summary, which only lands when the whole run
+  // is over — 20 conversations is an hour of model calls, and a run that is
+  // killed part-way (or simply still going) leaves nothing to read. Written per
+  // case, a failure is diagnosable while the rest of the round continues.
+  const outDir = args.find((a) => a.startsWith("--out="))?.split("=")[1];
+  if (outDir) mkdirSync(outDir, { recursive: true });
 
   if (args.includes("--cleanup-only")) {
     console.log(`cleaned ${await cleanupAllDemos()} demo customers`);
@@ -231,6 +239,12 @@ async function main() {
       const r = await replayCase(c);
       results.push(r);
       console.log(r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`);
+      if (outDir) {
+        writeFileSync(
+          join(outDir, `${r.orderId.slice(0, 8)}.json`),
+          JSON.stringify({ ...r, turns: c.turns }, null, 1),
+        );
+      }
     } catch (err) {
       console.log(`ERROR — ${(err as Error).message}`);
       results.push({ orderId: c.orderId, name: c.customerName, turns: c.turns.length, ok: false, notes: [`threw: ${(err as Error).message}`], got: null, expected: c.expected, transcript: [] });
