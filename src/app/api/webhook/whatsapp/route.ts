@@ -1454,6 +1454,18 @@ export async function processSavedCustomerMessage(params: {
     const validationParams = {
       customerName,
       customerNotes,
+      transcript: [
+        ...history.slice(-10).map((m) => ({
+          role: m.role as string,
+          content:
+            typeof m.content === "string"
+              ? m.content
+              : m.content
+                  .map((b) => (b.type === "text" ? b.text : `[${b.type}]`))
+                  .join(" "),
+        })),
+        { role: "user", content: text },
+      ],
       customerState: stateRow?.state ?? "new",
       activeOrder: activeOrder
         ? {
