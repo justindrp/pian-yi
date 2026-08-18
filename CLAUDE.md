@@ -227,6 +227,12 @@ Until a card is on file, **every business-initiated send is a dead letter** — 
 
 When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur partner kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi"
 
+### A parked or taken-over thread still banks a payment proof
+
+Both early-return branches in the webhook — `escalated_to_human` and `pending_bot_response` — used to save an inbound image as a bare `[Image]` and return, so `handlePaymentProofImage` never ran: the bytes were never copied into `payment-proofs`, the order stayed `pending_payment`, and it never appeared in the Payments page's Pending verification tab. Tiwi (`+6287808781094`) paid Rp 174.000 on 2026-08-18 into a thread parked by the validator bug, and her proof sat in the inbox as an unlabelled photo with nothing anywhere saying money had arrived.
+
+Capturing the proof is bookkeeping, not the bot talking, so both branches now call `handlePaymentProofImage(..., { sendConfirmation: false })` when the latest order is `pending_payment`. That advances the order and stores the image but sends the customer nothing — a thread a human is holding must not get an automated reply — and pushes to admins at **high** priority instead of medium, because on those threads no one else is watching. `scripts/rescue-payment-proof.ts` repairs a proof that was already swallowed.
+
 ### Idempotency strategy
 
 - Every incoming WhatsApp `message_id` is checked against `processed_messages` table before processing

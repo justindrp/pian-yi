@@ -436,6 +436,24 @@ export async function processWebhookAsync(
   }
 
   if (flags?.escalated_to_human && !autoResumed) {
+    if (
+      message.type === "image" &&
+      message.imageId &&
+      shouldHandlePaymentProof(latestOrderStatus)
+    ) {
+      await handlePaymentProofImage(
+        message,
+        customerId,
+        customer.name,
+        message.from,
+        { sendConfirmation: false },
+      );
+      await db
+        .from("processed_messages")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("message_id", message.messageId);
+      return;
+    }
     const escalatedText =
       message.type === "text"
         ? (message.text ?? "")
@@ -488,6 +506,24 @@ export async function processWebhookAsync(
   }
 
   if (flags?.pending_bot_response) {
+    if (
+      message.type === "image" &&
+      message.imageId &&
+      shouldHandlePaymentProof(latestOrderStatus)
+    ) {
+      await handlePaymentProofImage(
+        message,
+        customerId,
+        customer.name,
+        message.from,
+        { sendConfirmation: false },
+      );
+      await db
+        .from("processed_messages")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("message_id", message.messageId);
+      return;
+    }
     const pendingText =
       message.type === "text"
         ? (message.text ?? "")
@@ -1682,6 +1718,10 @@ async function handlePaymentProofImage(
   customerId: string,
   customerName: string | null,
   phone: string,
+  // A parked or taken-over thread still has to bank the proof and advance the
+  // order — that is bookkeeping, not the bot talking — but the customer must
+  // not get an automated reply on a thread a human is holding.
+  options?: { sendConfirmation?: boolean },
 ): Promise<void> {
   const db = createAdminClient();
 
@@ -1731,6 +1771,16 @@ async function handlePaymentProofImage(
     mediaId: imageUrl ? undefined : (message.imageId ?? undefined),
   });
   await tryLearnCustomerContext(customerId, db);
+
+  if (options?.sendConfirmation === false) {
+    await sendPushToAllAdmins(
+      `Bukti bayar diterima — ${customerName ?? phone}`,
+      "Thread sedang dipegang admin. Cek halaman Payments",
+      "/payments",
+      "high",
+    );
+    return;
+  }
 
   const confirmMsg =
     "Terima kasih kak! Bukti pembayaran sudah kami terima ya. Kami akan segera memverifikasi pembayaranmu dan menghubungimu kembali.";
