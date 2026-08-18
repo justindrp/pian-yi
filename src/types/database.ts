@@ -312,6 +312,7 @@ export type Database = {
           output_tokens: number | null
           role: string
           whatsapp_status: string | null
+          whatsapp_error: Json | null
           whatsapp_status_updated_at: string | null
         }
         Insert: {
@@ -329,6 +330,7 @@ export type Database = {
           output_tokens?: number | null
           role: string
           whatsapp_status?: string | null
+          whatsapp_error?: Json | null
           whatsapp_status_updated_at?: string | null
         }
         Update: {
@@ -345,6 +347,7 @@ export type Database = {
           model_used?: string | null
           output_tokens?: number | null
           role?: string
+          whatsapp_error?: Json | null
           whatsapp_status?: string | null
           whatsapp_status_updated_at?: string | null
         }

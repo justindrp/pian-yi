@@ -150,7 +150,7 @@ Its only purpose is to let the scheduler tell "already ran today" from "missed i
 
 ## conversations
 
-Full chat history between customers and the bot. Rows are inserted once; only WhatsApp delivery metadata (`message_id`, `whatsapp_status`, `whatsapp_status_updated_at`) may be backfilled or advanced later when an outbound send completes or Meta posts a receipt webhook.
+Full chat history between customers and the bot. Rows are inserted once; only WhatsApp delivery metadata (`message_id`, `whatsapp_status`, `whatsapp_status_updated_at`, `whatsapp_error`) may be backfilled or advanced later when an outbound send completes or Meta posts a receipt webhook.
 
 Inbox thread ordering and the `Unread` filter both derive from the latest `conversations` row per customer. A thread is considered unread in the dashboard when that latest row has `role = "user"`.
 
@@ -172,6 +172,7 @@ That "latest row per customer" is served by the `inbox_threads` view (see below)
 | output_tokens | integer | Tokens produced on output (assistant turns) |
 | whatsapp_status | text | Latest outbound WhatsApp receipt state for assistant rows: "sent", "delivered", "read", or "failed" |
 | whatsapp_status_updated_at | timestamptz | When `whatsapp_status` last changed |
+| whatsapp_error | jsonb | Meta's `errors[]` from a failed status webhook (`[{code, title, message}]`), null otherwise. Migration 069 — before it the code only reached `console.error`, so two months of failed delivery proofs could not be diagnosed after log rotation |
 | created_at | timestamp | |
 
 ---

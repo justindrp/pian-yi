@@ -259,6 +259,7 @@ export async function processWebhookAsync(
         messageId: statusUpdate.messageId,
         status: normalizedStatus,
         statusUpdatedAt: toStatusTimestamp(statusUpdate.timestamp),
+        errors: statusUpdate.errors,
       });
     }
     return;

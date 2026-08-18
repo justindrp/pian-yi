@@ -166,6 +166,13 @@ function renderContentWithLinks(content: string | null | undefined) {
   });
 }
 
+function getReceiptError(error: unknown): string | null {
+  if (!Array.isArray(error) || error.length === 0) return null;
+  const first = error[0] as { code?: number; title?: string; message?: string };
+  if (typeof first?.code !== "number") return null;
+  return `${first.code} — ${first.message ?? first.title ?? "no detail"}`;
+}
+
 function getReceiptLabel(status: string | null) {
   switch (status) {
     case "read":
@@ -829,6 +836,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       output_tokens: null,
       whatsapp_status: "sent",
       whatsapp_status_updated_at: new Date().toISOString(),
+      whatsapp_error: null,
     };
     setMessages((prev) => [...prev, optimistic]);
 
@@ -1376,12 +1384,17 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                 message_type?: string | null;
                 media_id?: string | null;
                 whatsapp_status?: string | null;
+                whatsapp_error?: unknown;
               };
               const imageSrc = getInboxImageSrc(msgWithExtras);
               const docLink = getInboxDocument(msgWithExtras);
               const receiptLabel = !isUser
                 ? getReceiptLabel(msgWithExtras.whatsapp_status ?? null)
                 : null;
+              // Meta's reason for a failed send. Without it on screen a red
+              // "Failed" is undiagnosable — 296 delivery proofs failed silently
+              // for two months because the code only ever reached the logs.
+              const receiptError = getReceiptError(msgWithExtras.whatsapp_error);
               return (
                 <div
                   key={msg.id}
@@ -1442,8 +1455,10 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                           className={`text-[10px] ${getReceiptClass(
                             msgWithExtras.whatsapp_status ?? null,
                           )}`}
+                          title={receiptError ?? undefined}
                         >
                           {receiptLabel}
+                          {receiptError ? ` · ${receiptError}` : ""}
                         </span>
                       )}
                     </div>

@@ -99,6 +99,7 @@ export async function updateMessageReceipt(params: {
   whatsappMessageId?: string | null;
   status: WhatsAppMessageStatus;
   statusUpdatedAt?: string;
+  errors?: Array<{ code: number; title: string; message?: string }>;
 }): Promise<void> {
   const db = createAdminClient();
   const updates = {
@@ -108,6 +109,9 @@ export async function updateMessageReceipt(params: {
     ...(params.whatsappMessageId
       ? { message_id: params.whatsappMessageId }
       : {}),
+    // Meta only ever explains a failure once, in the status webhook. Keep it on
+    // the row — the log line it used to go to does not survive log rotation.
+    whatsapp_error: params.errors?.length ? params.errors : null,
   };
 
   let query = db.from("conversations").update(updates);

@@ -200,6 +200,18 @@ Deliberately **not** added to: the re-engagement crons (`lapsed-customers`, `aba
 
 The welcome sequence only ever fires once per phone number, so it does nothing for existing customers — the order-confirmation copies are what reach them, at their next purchase. Both strings are hardcoded, matching the T&C block they sit beside; if either moves to `settings`, move both.
 
+### Templates do not help while the account is `LIMITED`
+
+An approved template is what Meta lets you send outside the 24h window — but only if the *account* is allowed to send business-initiated messages at all. `GET /{waba-id}?fields=health_status` reports this one, and on 2026-08-18 it read `can_send_message: LIMITED` with error `141010` on the BUSINESS entity: **Pian Yi Catering has never submitted business verification** (`verification_status: pending_submission`, business `1304799927697056`). The phone number is also stuck at `TIER_250` because the display name is unapproved.
+
+The effect is total and was invisible for two months. Every delivery-proof send since 20 Juni splits perfectly on the window: **219 sent inside it were delivered or read, and all 296 sent outside it failed** — no overlap in either direction. The API accepts each one and returns a wamid (so our row optimistically says "sent"), and delivery fails afterwards. Meta's Template Insights page only counts what got delivered — 192 sent / 192 delivered / 0 failed, `Amount spent: —` — so the failures appear nowhere on Meta's side. The inbox is the only place they show.
+
+Billing is the other gate that produces the identical symptom (template messages are paid per send, and a WABA with no working payment method fails the same way; a debit card failed on this account in Juli). `extendedcredits` is empty and the funding fields are BSP-only, so which gate is active cannot be read from the API — **the error code on the failed status webhook is the only thing that names it** (`131042` payment/eligibility, `131049`/`130472` policy limits).
+
+That code is now stored: `conversations.whatsapp_error` (jsonb, migration 069) holds Meta's `errors[]` from the status webhook, written by `updateMessageReceipt`, and the inbox prints it next to "Failed". It used to be a `console.error` only, which is why nothing from Juni survived to diagnose.
+
+Until verification (and billing) clear, treat **every** business-initiated send as delivered only if the window is open — that includes `jendela_24_jam` and the `refresh-wa-window` template fallback, which are dead letters in exactly the case they exist for.
+
 ### Confidentiality flow for subcontractor issues
 
 When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur partner kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi"

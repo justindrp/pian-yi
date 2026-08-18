@@ -117,7 +117,18 @@ export function parseStatusUpdates(
     const errors = Array.isArray(rawErrors)
       ? rawErrors.flatMap((e): Array<{ code: number; title: string; message?: string }> => {
           if (!isObject(e)) return [];
-          return [{ code: Number(e.code), title: String(e.title), message: typeof e.message === "string" ? e.message : undefined }];
+          // Meta puts the actionable sentence in error_data.details, not message.
+          const details = isObject(e.error_data) ? e.error_data.details : undefined;
+          return [{
+            code: Number(e.code),
+            title: String(e.title),
+            message:
+              typeof e.message === "string"
+                ? e.message
+                : typeof details === "string"
+                  ? details
+                  : undefined,
+          }];
         })
       : undefined;
 
