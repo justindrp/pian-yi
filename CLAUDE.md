@@ -239,9 +239,11 @@ The branch is gone. The flag now only shapes the prompt: `pendingAdminQuestion` 
 
 The prompt's Escalation section now states the rule directly: escalating never replaces creating the order, and total portions, prices, off-list sizes, package days, delivery area, Catatan notes and schedule/quota mismatches are never escalated at all.
 
-### `createOrderFromExtraction` checks its insert
+### `createOrderFromExtraction` checks its insert, and fills the two fields the model drops
 
-The `orders` insert discarded its error. A model that omits one required field (Nadya's replay dropped `package_size`) produced a rejected insert, an undefined order row, no deliveries, and then a crash on `input.customer_name.split(" ")` — with the customer already told the order was placed and nothing anywhere recording the failure. The insert error is now logged, pushed to admins at **high** priority, and thrown; `displayName` falls back to "kak".
+The `orders` insert discarded its error. A model that omits one required field (Nadya's replay dropped `package_size`) produced a rejected insert, an undefined order row, no deliveries, and then a crash on `input.customer_name.split(" ")` — with the customer already told the order was placed and nothing anywhere recording the failure. The insert error is now logged, pushed to admins at **high** priority, and thrown.
+
+Two inputs are also defaulted rather than trusted. `orders.start_date` is NOT NULL and a renewal usually carries no date — Julian S said "mau lanjut 5 porsi lagi", got the transfer details, paid Rp 145.000, and the order never existed; it now falls back to the next day we deliver (Senin–Sabtu, skipping libur nasional). And `customer_name` comes back as the literal string `"unknown"` when the customer never typed a name, which was written to `customers.name` and greeted the customer as "kak unknown" — that value is now discarded on both the record and the message.
 
 ### A parked or taken-over thread still banks a payment proof
 

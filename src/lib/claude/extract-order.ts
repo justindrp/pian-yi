@@ -381,6 +381,21 @@ function getPortionsPerDelivery(input: ExtractedOrderInput): number {
  * Same DB writes + payment-details WhatsApp message as the bot's own extract_order
  * tool handler — shared so the admin-triggered path and the live bot path can't drift apart.
  */
+/**
+ * The next date we deliver on, starting tomorrow: Senin–Sabtu, skipping libur
+ * nasional. Used only as a fallback when the conversation fixed no start date.
+ */
+function nextDeliveryDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  for (let i = 0; i < 14; i++) {
+    const ymd = d.toISOString().slice(0, 10);
+    if (d.getDay() !== 0 && !isClosedHoliday(ymd)) return ymd;
+    d.setDate(d.getDate() + 1);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 export async function createOrderFromExtraction(
   customerId: string,
   phone: string,
@@ -401,9 +416,14 @@ export async function createOrderFromExtraction(
   const sortedSchedule = schedule
     ? [...schedule].sort((a, b) => a.date.localeCompare(b.date))
     : null;
+  // orders.start_date is NOT NULL, and the model does not always supply one —
+  // a renewal ("mau lanjut 5 porsi lagi") often carries no date at all. The
+  // insert then failed, the error was discarded, and the customer still got the
+  // transfer details: Julian S paid Rp 145.000 on 2026-08-18 against an order
+  // that does not exist. Fall back to the next day we actually deliver.
   const startDate = sortedSchedule
     ? sortedSchedule[0].date
-    : ((input.start_date ?? null) as string);
+    : (input.start_date ?? nextDeliveryDate());
   const endDate = sortedSchedule
     ? sortedSchedule[sortedSchedule.length - 1].date
     : (input.end_date ?? null);
@@ -529,11 +549,15 @@ export async function createOrderFromExtraction(
     (oldRemaining * oldAvg + packageSize * pricePerPortion) / newRemaining,
   );
 
+  const nameFromModel = (input.customer_name ?? "").trim();
+  const rawNameForRecord =
+    nameFromModel && nameFromModel.toLowerCase() !== "unknown" ? nameFromModel : null;
+
   const addressType = await classifyAddress(input.address);
   await db
     .from("customers")
     .update({
-      name: input.customer_name,
+      ...(rawNameForRecord ? { name: rawNameForRecord } : {}),
       address: input.address,
       area: input.area,
       sub_area: input.sub_area ?? null,
@@ -563,7 +587,10 @@ export async function createOrderFromExtraction(
     getSetting("bank_account_number"),
     getSetting("bank_account_name"),
   ]);
-  const displayName = (input.customer_name ?? "").trim().split(" ")[0] || "kak";
+  // The model sometimes fills customer_name with the literal "unknown" when the
+  // customer never typed their name — Julian S's renewal was addressed to
+  // "kak unknown" on 2026-08-18. Neither that nor an empty string is a name.
+  const displayName = rawNameForRecord?.split(" ")[0] ?? "kak";
   const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
   const conversationId = await saveMessage({
     customerId,
