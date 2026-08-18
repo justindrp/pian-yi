@@ -62,6 +62,7 @@ import {
   type WhatsAppWebhookPayload,
 } from "@/lib/whatsapp/types";
 import { verifySignature } from "@/lib/whatsapp/webhook";
+import { WINDOW_NOTICE_WELCOME } from "@/lib/whatsapp/window-notice";
 
 // How long an inbound message waits to see whether the customer is still
 // typing. See the burst-coalescing block in processSavedCustomerMessage.
@@ -873,6 +874,29 @@ export async function processWebhookAsync(
         });
       } catch (e) {
         console.error("[welcome] tnc send failed:", e);
+      }
+
+      // Its own bubble, last in the welcome sequence. See
+      // src/lib/whatsapp/window-notice.ts for why this exists.
+      const windowNotice = WINDOW_NOTICE_WELCOME;
+      try {
+        const conversationId = await saveMessage({
+          customerId,
+          role: "assistant",
+          content: windowNotice,
+          modelUsed: "system",
+        });
+        const whatsappMessageId = await sendTextMessage(
+          message.from,
+          windowNotice,
+        );
+        await updateMessageReceipt({
+          conversationId,
+          whatsappMessageId,
+          status: "sent",
+        });
+      } catch (e) {
+        console.error("[welcome] 24h window notice send failed:", e);
       }
     }
   }

@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import type { Database } from "@/types/database";
+import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -572,7 +573,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   );
   if (customer?.phone_number && order.customer_id) {
     const firstName = (customer.name ?? "").split(" ")[0] || "kak";
-    const msg = `Halo kak ${firstName}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉`;
+    const msg = `Halo kak ${firstName}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉\n\n${WINDOW_NOTICE_SHORT}`;
     try {
       const conversationId = await saveMessage({
         customerId: order.customer_id,

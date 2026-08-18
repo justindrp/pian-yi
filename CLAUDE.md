@@ -184,6 +184,17 @@ Orders table sorts on two columns: "Start date" and "Created" (`created_at`). Cl
 - `send_menu_image` sends every **active** kitchen's image. The `is_active` filter is load-bearing: inactive kitchens keep a stale `menu_image_url` indefinitely, and without it the same reply carried Batch 49 and Batch 39 (1–6 Juni) from a kitchen retired in June.
 - **The model must never see a media URL as message text.** Every image we send is saved to `conversations` with the raw file URL as its `content` — the inbox renders from that. `loadHistory` fed it back verbatim, so the model's own history contained assistant turns that were nothing but a Supabase storage link, and on 2026-08-16 it copied the pattern: "Tentu kak, ini dia menu untuk minggu depan ya:" followed by the bare URL as text, with no `send_menu_image` call. The customer got a link to open by hand. `historyContent()` (`src/lib/claude/conversation.ts`) now replaces the content of an `image` / `document` row with a placeholder **only when the content is itself a bare link** — captions, `[Bukti pembayaran dikirim]` labels and maps pins pasted as text messages must survive, since the order form is filled from them. The prompt rule ("never write an image URL or any link") is the second layer, not the fix.
 
+### The 24-hour WhatsApp window is told to the customer, not hidden
+
+Meta blocks a business from writing first once 24 hours have passed since the customer's last inbound message, and nothing we send reopens it — only they can. Customers do not know this, so our enforced silence reads as being ignored. On 2026-08-18 Jordy, whose delivery had been missed, wrote "Saya gk mau tau, masa harus saya yang follow up tiap hari??" and threatened a refund; he had no way to know we were locked out of his thread.
+
+Both wordings live in `src/lib/whatsapp/window-notice.ts` and both end on the same explicit ask — *if it has been over 24 hours, message us first*:
+
+- `WINDOW_NOTICE_WELCOME` — its own bubble, sent last in the welcome sequence, after the T&C.
+- `WINDOW_NOTICE_SHORT` — appended to the payment-request message (`createOrderFromExtraction`) and to both `mark_paid` confirmations (`PATCH /api/orders`, assistant `mark_order_paid`). Those are the moments a customer has just paid and has no reason to write again for days, which is exactly how a window closes unnoticed.
+
+The welcome sequence only ever fires once per phone number, so it does nothing for existing customers — the order-confirmation copies are what reach them, at their next purchase. Both strings are hardcoded, matching the T&C block they sit beside; if either moves to `settings`, move both.
+
 ### Confidentiality flow for subcontractor issues
 
 When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur partner kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi"

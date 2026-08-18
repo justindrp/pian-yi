@@ -10,6 +10,7 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDeliveryRoute } from "@/lib/utils/format";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
 export interface DeliveryScheduleSlot {
   date: string;
@@ -469,7 +470,7 @@ export async function createOrderFromExtraction(
     getSetting("bank_account_name"),
   ]);
   const displayName = input.customer_name.split(" ")[0];
-  const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
+  const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
