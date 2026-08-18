@@ -24,7 +24,7 @@ const forcedPhone = process.argv[3] ?? null;
 
 const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-type Target = { id: string; name: string | null; phone: string; hoursSilent: number };
+type Target = { id: string | null; name: string | null; phone: string; hoursSilent: number };
 
 async function pickTarget(): Promise<Target> {
   if (forcedPhone) {
@@ -33,7 +33,9 @@ async function pickTarget(): Promise<Target> {
       .select("id, name, phone_number")
       .eq("phone_number", forcedPhone)
       .maybeSingle();
-    if (!data) throw new Error(`No customer with phone ${forcedPhone}`);
+    // A forced phone need not be a customer — testing against one of our own
+    // numbers is the cleanest probe. The receipt row then carries no customer.
+    if (!data) return { id: null, name: "(not a customer)", phone: forcedPhone, hoursSilent: -1 };
     return { id: data.id, name: data.name, phone: data.phone_number, hoursSilent: -1 };
   }
 

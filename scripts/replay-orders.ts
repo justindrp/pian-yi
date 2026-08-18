@@ -220,6 +220,7 @@ async function main() {
   // is over — 20 conversations is an hour of model calls, and a run that is
   // killed part-way (or simply still going) leaves nothing to read. Written per
   // case, a failure is diagnosable while the rest of the round continues.
+  const concurrency = Number(args.find((a) => a.startsWith("--concurrency="))?.split("=")[1] ?? 5);
   const outDir = args.find((a) => a.startsWith("--out="))?.split("=")[1];
   if (outDir) mkdirSync(outDir, { recursive: true });
 
@@ -233,24 +234,33 @@ async function main() {
   console.log(`replaying ${cases.length} conversations\n`);
 
   const results: Result[] = [];
-  for (const [i, c] of cases.entries()) {
-    process.stdout.write(`[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} (${c.turns.length} turns) ... `);
-    try {
-      const r = await replayCase(c);
-      results.push(r);
-      console.log(r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`);
-      if (outDir) {
-        writeFileSync(
-          join(outDir, `${r.orderId.slice(0, 8)}.json`),
-          JSON.stringify({ ...r, turns: c.turns }, null, 1),
-        );
+  let next = 0;
+  // Cases share nothing — a different demo customer, its own rows — so they run
+  // in parallel. Serially a 20-conversation round is over an hour of model
+  // calls, which is too slow to fix against.
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= cases.length) return;
+      const c = cases[i];
+      try {
+        const r = await replayCase(c);
+        results.push(r);
+        console.log(`[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} (${c.turns.length} turns) ... ${r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`}`);
+        if (outDir) {
+          writeFileSync(
+            join(outDir, `${r.orderId.slice(0, 8)}.json`),
+            JSON.stringify({ ...r, turns: c.turns }, null, 1),
+          );
+        }
+      } catch (err) {
+        console.log(`[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} ... ERROR — ${(err as Error).message}`);
+        results.push({ orderId: c.orderId, name: c.customerName, turns: c.turns.length, ok: false, notes: [`threw: ${(err as Error).message}`], got: null, expected: c.expected, transcript: [] });
       }
-    } catch (err) {
-      console.log(`ERROR — ${(err as Error).message}`);
-      results.push({ orderId: c.orderId, name: c.customerName, turns: c.turns.length, ok: false, notes: [`threw: ${(err as Error).message}`], got: null, expected: c.expected, transcript: [] });
+      if (!keep) await cleanupDemo(`+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
     }
-    if (!keep) await cleanupDemo(`+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
   }
+  await Promise.all(Array.from({ length: Math.min(concurrency, cases.length) }, worker));
 
   const passed = results.filter((r) => r.ok).length;
   console.log(`\n=== ${passed}/${results.length} passed ===`);
