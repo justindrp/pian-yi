@@ -15,6 +15,14 @@ const headers = () => ({
   "Content-Type": "application/json",
 });
 
+// axios has no default timeout, so a Meta socket that goes quiet blocks whatever
+// is awaiting it for as long as the process lives. Two replay turns on 2026-08-19
+// wedged for over five minutes on inbound media, and the same call sits in the
+// webhook's path — an unbounded wait there is a customer message that never gets
+// a reply. Media downloads get longer than sends because they carry bytes.
+const SEND_TIMEOUT_MS = 20_000;
+const MEDIA_TIMEOUT_MS = 60_000;
+
 function getSentMessageId(data: MetaSendResponse): string {
   const messageId = data.messages?.[0]?.id;
   if (!messageId) {
@@ -75,7 +83,7 @@ export async function sendTextMessage(
       type: "text",
       text: { body: text },
     },
-    { headers: headers() },
+    { headers: headers(), timeout: SEND_TIMEOUT_MS },
   ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
@@ -96,7 +104,7 @@ export async function sendImageMessage(
       type: "image",
       image: { link: imageUrl, caption },
     },
-    { headers: headers() },
+    { headers: headers(), timeout: SEND_TIMEOUT_MS },
   ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
@@ -138,7 +146,7 @@ export async function sendImageMessageById(
       type: "image",
       image: { id: mediaId, caption },
     },
-    { headers: headers() },
+    { headers: headers(), timeout: SEND_TIMEOUT_MS },
   ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
@@ -160,7 +168,7 @@ export async function sendDocumentMessageById(
       type: "document",
       document: { id: mediaId, filename, caption },
     },
-    { headers: headers() },
+    { headers: headers(), timeout: SEND_TIMEOUT_MS },
   ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
@@ -170,12 +178,13 @@ export async function downloadMedia(mediaId: string): Promise<Buffer> {
   const version = process.env.WHATSAPP_API_VERSION;
   const metaRes = await axios.get(
     `https://graph.facebook.com/${version}/${mediaId}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, timeout: SEND_TIMEOUT_MS },
   ).catch(sanitizeAxiosError);
   const mediaUrl = (metaRes.data as { url: string }).url;
   const dlRes = await axios.get(mediaUrl, {
     headers: { Authorization: `Bearer ${token}` },
     responseType: "arraybuffer",
+    timeout: MEDIA_TIMEOUT_MS,
   }).catch(sanitizeAxiosError);
   return Buffer.from(dlRes.data as ArrayBuffer);
 }
@@ -196,7 +205,7 @@ export async function sendTypingIndicator(
         message_id: messageId,
         typing_indicator: { type: "text" },
       },
-      { headers: headers() },
+      { headers: headers(), timeout: SEND_TIMEOUT_MS },
     )
     .catch(() => {});
 }
@@ -256,7 +265,7 @@ export async function sendTextTemplate(
             : [],
       },
     },
-    { headers: headers() },
+    { headers: headers(), timeout: SEND_TIMEOUT_MS },
   ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
@@ -290,7 +299,7 @@ export async function sendImageTemplate(
         ],
       },
     },
-    { headers: headers() },
+    { headers: headers(), timeout: SEND_TIMEOUT_MS },
   ).catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
