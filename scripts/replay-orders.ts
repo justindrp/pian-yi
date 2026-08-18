@@ -45,7 +45,8 @@ async function atTime<T>(iso: string, fn: () => Promise<T>): Promise<T> {
       return fixed;
     }
   }
-  (globalThis as { Date: DateConstructor }).Date = PinnedDate as unknown as DateConstructor;
+  (globalThis as { Date: DateConstructor }).Date =
+    PinnedDate as unknown as DateConstructor;
   try {
     return await fn();
   } finally {
@@ -63,7 +64,12 @@ async function atTime<T>(iso: string, fn: () => Promise<T>): Promise<T> {
 // and the run reports "NO ORDER CREATED" with no bug behind it.
 const RUN_NONCE = Math.random().toString(36).slice(2, 10).toUpperCase();
 
-function payloadFor(phone: string, text: string, at: string, n: number): WhatsAppWebhookPayload {
+function payloadFor(
+  phone: string,
+  text: string,
+  at: string,
+  n: number,
+): WhatsAppWebhookPayload {
   return {
     object: "whatsapp_business_account",
     entry: [
@@ -73,13 +79,18 @@ function payloadFor(phone: string, text: string, at: string, n: number): WhatsAp
           {
             value: {
               messaging_product: "whatsapp",
-              metadata: { display_phone_number: "REPLAY", phone_number_id: "REPLAY" },
+              metadata: {
+                display_phone_number: "REPLAY",
+                phone_number_id: "REPLAY",
+              },
               messages: [
                 {
                   id: `wamid.REPLAY_${RUN_NONCE}_${phone}_${n}`,
                   from: phone,
                   type: "text",
-                  timestamp: String(Math.floor(new RealDate(at).getTime() / 1000)),
+                  timestamp: String(
+                    Math.floor(new RealDate(at).getTime() / 1000),
+                  ),
                   text: { body: text },
                 },
               ],
@@ -98,7 +109,12 @@ interface Result {
   turns: number;
   ok: boolean;
   notes: string[];
-  got: { packageSize: number; pricePerPortion: number; totalPrice: number; deliveries: string[] } | null;
+  got: {
+    packageSize: number;
+    pricePerPortion: number;
+    totalPrice: number;
+    deliveries: string[];
+  } | null;
   expected: CorpusCase["expected"];
   /** What the bot actually said, so a failure can be read instead of guessed at. */
   transcript: { role: string; content: string }[];
@@ -118,7 +134,27 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     .insert({ phone_number: phone, name: null })
     .select("id")
     .single();
-  if (error || !demo) throw new Error(`demo customer insert failed: ${error?.message}`);
+  if (error || !demo)
+    throw new Error(`demo customer insert failed: ${error?.message}`);
+
+  // A hung turn used to stall a whole shard: nothing in the pipeline sets a socket
+  // timeout, so one model or database call that never returns held the run for as
+  // long as the process lived. On 2026-08-19 three shards sat idle for nine minutes
+  // with five cases unreported. A turn that blows the deadline is recorded as a
+  // failed turn and the case carries on, which is what the verdict should reflect.
+  const TURN_TIMEOUT_MS = 180_000;
+
+  function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+      work,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`turn exceeded ${ms / 1000}s deadline`)),
+          ms,
+        ).unref(),
+      ),
+    ]);
+  }
 
   // A case is one whole conversation against the live model, so a run is silent
   // for minutes at a time between verdicts. Printing each turn as it lands makes
@@ -127,14 +163,19 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   for (const [i, turn] of c.turns.entries()) {
     const startedAt = Date.now();
     try {
-      await atTime(turn.at, () =>
-        processWebhookAsync(payloadFor(phone, turn.text, turn.at, i)),
+      await withDeadline(
+        atTime(turn.at, () =>
+          processWebhookAsync(payloadFor(phone, turn.text, turn.at, i)),
+        ),
+        TURN_TIMEOUT_MS,
       );
       console.log(
         `  · ${label} turn ${i + 1}/${c.turns.length} (${Math.round((Date.now() - startedAt) / 1000)}s)`,
       );
     } catch (err) {
-      console.log(`  · ${label} turn ${i + 1}/${c.turns.length} THREW ${(err as Error).message}`);
+      console.log(
+        `  · ${label} turn ${i + 1}/${c.turns.length} THREW ${(err as Error).message}`,
+      );
     }
   }
 
@@ -178,7 +219,10 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     // so demanding the old number would score the bot for refusing to break a
     // current rule. A case whose history and current rules disagree is reported
     // as DRIFT with both numbers, never silently passed.
-    const rulePrice = await currentRulePrice(c.expected.packageSize, c.expected.pricePerPortion);
+    const rulePrice = await currentRulePrice(
+      c.expected.packageSize,
+      c.expected.pricePerPortion,
+    );
     if (rulePrice === null) {
       notes.push(
         `DRIFT: package ${c.expected.packageSize} is not sellable under current rules (sold at ${c.expected.pricePerPortion}); bot wrote ${got.pricePerPortion}`,
@@ -189,7 +233,9 @@ async function replayCase(c: CorpusCase): Promise<Result> {
       );
     }
     if (c.expected.deliveryDates.length > 0 && got.deliveries.length === 0)
-      notes.push(`no deliveries (real order had ${c.expected.deliveryDates.length})`);
+      notes.push(
+        `no deliveries (real order had ${c.expected.deliveryDates.length})`,
+      );
   }
 
   return {
@@ -200,7 +246,10 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     notes,
     got,
     expected: c.expected,
-    transcript: (convo ?? []).map((m) => ({ role: m.role, content: m.content ?? "" })),
+    transcript: (convo ?? []).map((m) => ({
+      role: m.role,
+      content: m.content ?? "",
+    })),
   };
 }
 
@@ -262,14 +311,18 @@ async function cleanupAllDemos(): Promise<number> {
 
 async function main() {
   const args = process.argv.slice(2);
-  const count = Number(args.find((a) => a.startsWith("--count="))?.split("=")[1] ?? 20);
+  const count = Number(
+    args.find((a) => a.startsWith("--count="))?.split("=")[1] ?? 20,
+  );
   const only = args.find((a) => a.startsWith("--only="))?.split("=")[1];
   const keep = args.includes("--keep");
   // Transcripts are printed in the summary, which only lands when the whole run
   // is over — 20 conversations is an hour of model calls, and a run that is
   // killed part-way (or simply still going) leaves nothing to read. Written per
   // case, a failure is diagnosable while the rest of the round continues.
-  const concurrency = Number(args.find((a) => a.startsWith("--concurrency="))?.split("=")[1] ?? 5);
+  const concurrency = Number(
+    args.find((a) => a.startsWith("--concurrency="))?.split("=")[1] ?? 5,
+  );
   const outDir = args.find((a) => a.startsWith("--out="))?.split("=")[1];
   const slice = args.find((a) => a.startsWith("--slice="))?.split("=")[1];
   if (outDir) mkdirSync(outDir, { recursive: true });
@@ -287,23 +340,33 @@ async function main() {
   // reason this is processes and not promises.
   if (!slice && concurrency > 1 && cases.length > 1) {
     const workers = Math.min(concurrency, cases.length);
-    console.log(`replaying ${cases.length} conversations over ${workers} processes\n`);
+    console.log(
+      `replaying ${cases.length} conversations over ${workers} processes\n`,
+    );
     const childArgs = args.filter(
       (a) => !a.startsWith("--concurrency=") && !a.startsWith("--slice="),
     );
     const codes = await Promise.all(
-      Array.from({ length: workers }, (_, k) =>
-        new Promise<number>((resolve) => {
-          const child = spawn(
-            "npx",
-            ["tsx", "scripts/replay-orders.ts", ...childArgs, `--slice=${k}/${workers}`],
-            { stdio: ["ignore", "inherit", "inherit"] },
-          );
-          child.on("close", (code) => resolve(code ?? 0));
-        }),
+      Array.from(
+        { length: workers },
+        (_, k) =>
+          new Promise<number>((resolve) => {
+            const child = spawn(
+              "npx",
+              [
+                "tsx",
+                "scripts/replay-orders.ts",
+                ...childArgs,
+                `--slice=${k}/${workers}`,
+              ],
+              { stdio: ["ignore", "inherit", "inherit"] },
+            );
+            child.on("close", (code) => resolve(code ?? 0));
+          }),
       ),
     );
-    if (!keep) console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
+    if (!keep)
+      console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
     process.exit(codes.some((c) => c !== 0) ? 1 : 0);
   }
 
@@ -330,7 +393,9 @@ async function main() {
       try {
         const r = await replayCase(c);
         results.push(r);
-        console.log(`[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} (${c.turns.length} turns) ... ${r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`}`);
+        console.log(
+          `[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} (${c.turns.length} turns) ... ${r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`}`,
+        );
         if (outDir) {
           writeFileSync(
             join(outDir, `${r.orderId.slice(0, 8)}.json`),
@@ -338,10 +403,22 @@ async function main() {
           );
         }
       } catch (err) {
-        console.log(`[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} ... ERROR — ${(err as Error).message}`);
-        results.push({ orderId: c.orderId, name: c.customerName, turns: c.turns.length, ok: false, notes: [`threw: ${(err as Error).message}`], got: null, expected: c.expected, transcript: [] });
+        console.log(
+          `[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} ... ERROR — ${(err as Error).message}`,
+        );
+        results.push({
+          orderId: c.orderId,
+          name: c.customerName,
+          turns: c.turns.length,
+          ok: false,
+          notes: [`threw: ${(err as Error).message}`],
+          got: null,
+          expected: c.expected,
+          transcript: [],
+        });
       }
-      if (!keep) await cleanupDemo(`+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
+      if (!keep)
+        await cleanupDemo(`+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
     }
   }
   await worker();
@@ -349,9 +426,15 @@ async function main() {
   const passed = results.filter((r) => r.ok).length;
   console.log(`\n=== ${passed}/${results.length} passed ===`);
   for (const r of results.filter((x) => !x.ok)) {
-    console.log(`\n${r.name ?? "?"} ${r.orderId.slice(0, 8)} (${r.turns} turns)`);
-    console.log(`  expected pkg=${r.expected.packageSize} @${r.expected.pricePerPortion} deliveries=${r.expected.deliveryDates.length}`);
-    console.log(`  got      ${r.got ? `pkg=${r.got.packageSize} @${r.got.pricePerPortion} deliveries=${r.got.deliveries.length}` : "nothing"}`);
+    console.log(
+      `\n${r.name ?? "?"} ${r.orderId.slice(0, 8)} (${r.turns} turns)`,
+    );
+    console.log(
+      `  expected pkg=${r.expected.packageSize} @${r.expected.pricePerPortion} deliveries=${r.expected.deliveryDates.length}`,
+    );
+    console.log(
+      `  got      ${r.got ? `pkg=${r.got.packageSize} @${r.got.pricePerPortion} deliveries=${r.got.deliveries.length}` : "nothing"}`,
+    );
     for (const n of r.notes) console.log(`  - ${n}`);
     for (const m of r.transcript) {
       const body = m.content.replace(/\s+/g, " ").slice(0, 220);
@@ -360,7 +443,14 @@ async function main() {
   }
   // Only the parent sweeps: a shard calling cleanupAllDemos() would delete the
   // customers its siblings are still replaying against.
-  if (!keep && !slice) console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
+  if (!keep && !slice)
+    console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
 }
 
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);
