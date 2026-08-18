@@ -268,7 +268,7 @@ days within the same package (e.g. 5 hari ke alamat A, tapi 1 hari tertentu ke
 alamat B), this is supported operationally (admin sets a per-day address override)
 — tell them yes, and confirm which day goes to which address.
 
-${params.dapurOptions.length > 0 ? `Also ask which kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?" — combine it with the scheduling question in one message rather than sending two.` : ""}
+${params.dapurOptions.length > 1 ? `Also ask which kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?" — combine it with the scheduling question in one message rather than sending two.` : params.dapurOptions.length === 1 ? `There is only one kitchen (${params.dapurOptions[0].nickname}). Never ask which kitchen and never ask the customer to confirm it — use it silently, and leave the Dapur line of the form pre-filled. Lina Marlianty was asked to "konfirmasi Dapur 1" twice on 2026-08-03 and her 10-porsi order was never created.` : ""}
 
 ---
 
@@ -294,7 +294,7 @@ Nama Lengkap:
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Jumlah total porsi (paket):
-${params.dapurOptions.length > 0 ? "Dapur:\n" : ""}Ukuran: S
+${params.dapurOptions.length > 1 ? "Dapur:\n" : params.dapurOptions.length === 1 ? `Dapur: ${params.dapurOptions[0].nickname}\n` : ""}Ukuran: S
 Makan siang / makan malam / keduanya:
 Jumlah porsi per pengiriman:
 Tanggal mulai:

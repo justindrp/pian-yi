@@ -246,6 +246,23 @@ ${dapurList || "none"}`;
 // amount on top of the route rate (`orders.addon_cost_per_portion`).
 export const NASI_MERAH_SURCHARGE = 5000;
 
+/**
+ * The smallest package we sell, read from pricing_tiers. Used to floor a size the
+ * model got wrong or dropped: DeepSeek omitted package_size entirely on two
+ * 2026-08-19 replays (NOT NULL violation, no order at all) and returned 3 on a
+ * third, for a customer who had agreed to 5.
+ */
+async function minPackageSize(): Promise<number> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("pricing_tiers")
+    .select("portions")
+    .order("portions", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.portions ?? 5;
+}
+
 export async function getExtractedOrderPricing(
   packageSize: number,
   nasiMerah = false,
@@ -257,10 +274,23 @@ export async function getExtractedOrderPricing(
     .lte("portions", packageSize)
     .order("portions", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  const pricePerPortion =
-    (tier?.price_per_portion ?? 0) + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
+  // A size below the smallest tier matches no row, and the price then came out
+  // Rp 0 — an order the kitchen cooks for free. Dewi's 2026-08-03 order was
+  // written that way (package 3, price 0). Fall back to the cheapest tier we
+  // publish; a price an admin adjusts beats a price of nothing.
+  const { data: smallestTier } = tier
+    ? { data: null }
+    : await db
+        .from("pricing_tiers")
+        .select("price_per_portion")
+        .order("portions", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+  const basePrice = tier?.price_per_portion ?? smallestTier?.price_per_portion ?? 0;
+  const pricePerPortion = basePrice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
   return {
     price_per_portion: pricePerPortion,
     total_price: pricePerPortion * packageSize,
@@ -406,9 +436,16 @@ export async function createOrderFromExtraction(
   const sendPaymentInfo = options?.sendPaymentInfo ?? true;
 
   const schedule = input.delivery_schedule?.length ? input.delivery_schedule : null;
-  const packageSize = schedule
+  const rawPackageSize = schedule
     ? schedule.reduce((sum, s) => sum + s.portions, 0)
     : input.package_size;
+  // package_size is NOT NULL and is the one field the model still drops — two
+  // replays on 2026-08-19 threw on the insert and left the customer with no
+  // order at all. Floor it at the smallest package we sell rather than fail.
+  const packageSize = Math.max(
+    typeof rawPackageSize === "number" && rawPackageSize > 0 ? rawPackageSize : 0,
+    await minPackageSize(),
+  );
   const nasiMerah = input.nasi_merah === true;
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
     await getExtractedOrderPricing(packageSize, nasiMerah);

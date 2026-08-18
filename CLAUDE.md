@@ -248,6 +248,10 @@ The `orders` insert discarded its error. A model that omits one required field (
 
 Two inputs are also defaulted rather than trusted. `orders.start_date` is NOT NULL and a renewal usually carries no date — Julian S said "mau lanjut 5 porsi lagi", got the transfer details, paid Rp 145.000, and the order never existed; it now falls back to the next day we deliver (Senin–Sabtu, skipping libur nasional). And `customer_name` comes back as the literal string `"unknown"` when the customer never typed a name, which was written to `customers.name` and greeted the customer as "kak unknown" — that value is now discarded on both the record and the message.
 
+### `package_size` is floored, never trusted blindly
+
+`orders.package_size` is NOT NULL and is the field DeepSeek drops most: two replays on 2026-08-19 (Kurniadi Tan, Fidela) threw `null value in column "package_size"` on the insert, so the customer got nothing. A third (Dewi) returned `3` for a customer who had agreed to 5, and 3 matched no `pricing_tiers` row — `.lte("portions", 3)` returned nothing and `?? 0` made it a **Rp 0 order**. Both are now floored: the size is `max(model value, smallest tier)` and the price falls back to the cheapest tier when no row is at or below the size. An approximate price an admin adjusts beats an order that does not exist or one the kitchen cooks for free.
+
 ### A parked or taken-over thread still banks a payment proof
 
 Both early-return branches in the webhook — `escalated_to_human` and `pending_bot_response` — used to save an inbound image as a bare `[Image]` and return, so `handlePaymentProofImage` never ran: the bytes were never copied into `payment-proofs`, the order stayed `pending_payment`, and it never appeared in the Payments page's Pending verification tab. Tiwi (`+6287808781094`) paid Rp 174.000 on 2026-08-18 into a thread parked by the validator bug, and her proof sat in the inbox as an unlabelled photo with nothing anywhere saying money had arrived.
