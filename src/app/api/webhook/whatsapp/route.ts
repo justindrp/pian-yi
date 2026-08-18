@@ -507,60 +507,27 @@ export async function processWebhookAsync(
     return;
   }
 
-  if (flags?.pending_bot_response) {
-    if (
-      message.type === "image" &&
-      message.imageId &&
-      shouldHandlePaymentProof(latestOrderStatus)
-    ) {
-      await handlePaymentProofImage(
-        message,
-        customerId,
-        customer.name,
-        message.from,
-        { sendConfirmation: false },
-      );
-      await db
-        .from("processed_messages")
-        .update({ processed_at: new Date().toISOString() })
-        .eq("message_id", message.messageId);
-      return;
-    }
-    const pendingText =
-      message.type === "text"
-        ? (message.text ?? "")
-        : message.type === "image"
-          ? "[Image]"
-          : message.type === "document"
-            ? formatDocumentMessage(message)
-            : message.type === "location"
-              ? formatLocationMessage(message)
-              : `[${message.type}]`;
-    const pendingIntent = await classifyIntent(pendingText).catch(
-      () => "other",
-    );
-    await saveMessage({
-      customerId,
-      role: "user",
-      content: pendingText,
-      messageId: message.messageId,
-      intent: pendingIntent,
-      messageType: mediaMessageType(message.type),
-      mediaId: mediaIdOf(message),
-      mediaUrl: await inboundMediaUrl(),
-    });
-    await tryLearnCustomerContext(customerId, db);
+  // A pending admin question no longer silences the bot. This branch used to
+  // save the message, push, and return — so one escalated side question ("bisa
+  // sampai sebelum 10.30?", "ada potongan PPh?") stopped the bot answering
+  // anything, for the rest of the thread, until a human cleared the flag. Both
+  // Tiwi and PT Bintang Lautan lost their whole order that way in replay: every
+  // customer turn after the escalation went unanswered, including the address,
+  // the portion count and "mohon kabari nomor rekening". The question still
+  // reaches an admin (the push below and `pending_bot_question`), and the model
+  // is told in the prompt not to answer it itself — but the ordering
+  // conversation keeps running, because nothing in creating an order needs a
+  // human.
+  const pendingAdminQuestion = flags?.pending_bot_response
+    ? (flags.pending_bot_question ?? "")
+    : null;
+  if (pendingAdminQuestion !== null) {
     await sendPushToAllAdmins(
-      "New message (awaiting bot reply)",
-      `${message.from}: ${pendingText.slice(0, 80)}`,
+      "New message — question still unanswered",
+      `${customer.name ?? message.from}: ${pendingAdminQuestion.slice(0, 80)}`,
       "/inbox",
-      "medium",
+      "high",
     );
-    await db
-      .from("processed_messages")
-      .update({ processed_at: new Date().toISOString() })
-      .eq("message_id", message.messageId);
-    return;
   }
 
   // Payment proof: capture image when the latest order is still pending payment
@@ -1165,6 +1132,17 @@ export async function processSavedCustomerMessage(params: {
       }
     : null;
 
+  // A question that is already with an admin and still unanswered. It no longer
+  // silences the bot — it only tells the model which one thing to leave alone.
+  const { data: pendingFlags } = await db
+    .from("customer_flags")
+    .select("pending_bot_response, pending_bot_question")
+    .eq("customer_id", customerId)
+    .single();
+  const pendingAdminQuestion = pendingFlags?.pending_bot_response
+    ? (pendingFlags.pending_bot_question ?? "")
+    : null;
+
   // Build system prompt
   const systemPrompt = await buildSystemPrompt({
     casual,
@@ -1182,6 +1160,7 @@ export async function processSavedCustomerMessage(params: {
     servedAreas,
     neighborhoods,
     activeOrder,
+    pendingAdminQuestion,
   });
 
   // Tool definitions

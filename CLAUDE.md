@@ -230,6 +230,18 @@ Until a card is on file, **every business-initiated send is a dead letter** — 
 
 When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur partner kami yang biasanya besok libur, besok kita akan kirim dari dapur yang satunya lagi"
 
+### A pending admin question no longer silences the bot
+
+`ask_admin_for_help` sets `pending_bot_response: true`, and the webhook used to treat that flag exactly like a takeover: save the inbound message, push, return. One escalated side question therefore ended the conversation — every later customer turn went unanswered until an admin cleared the flag by hand, which is human action inside the order-creation workflow. Replay on 2026-08-18 lost two orders to it outright: Tiwi asked whether delivery could arrive before 10.30, PT Bintang Lautan asked about PPh withholding, and everything after — address, portion count, "mohon kabari nomor rekening" — hit the dead branch.
+
+The branch is gone. The flag now only shapes the prompt: `pendingAdminQuestion` is read in `processSavedCustomerMessage` and rendered as a section telling the model not to answer that one question, not to re-ask it via the tool, and to keep taking the order. Admins still get a **high**-priority push on every new message while a question is open, and `pending_bot_question` still drives the inbox draft flow, so nothing is lost on the admin side. The hallucination validator's park (two rejected drafts) writes the same flag and is un-blocked by the same change — it retries on the next message instead of parking forever.
+
+The prompt's Escalation section now states the rule directly: escalating never replaces creating the order, and total portions, prices, off-list sizes, package days, delivery area, Catatan notes and schedule/quota mismatches are never escalated at all.
+
+### `createOrderFromExtraction` checks its insert
+
+The `orders` insert discarded its error. A model that omits one required field (Nadya's replay dropped `package_size`) produced a rejected insert, an undefined order row, no deliveries, and then a crash on `input.customer_name.split(" ")` — with the customer already told the order was placed and nothing anywhere recording the failure. The insert error is now logged, pushed to admins at **high** priority, and thrown; `displayName` falls back to "kak".
+
 ### A parked or taken-over thread still banks a payment proof
 
 Both early-return branches in the webhook — `escalated_to_human` and `pending_bot_response` — used to save an inbound image as a bare `[Image]` and return, so `handlePaymentProofImage` never ran: the bytes were never copied into `payment-proofs`, the order stayed `pending_payment`, and it never appeared in the Payments page's Pending verification tab. Tiwi (`+6287808781094`) paid Rp 174.000 on 2026-08-18 into a thread parked by the validator bug, and her proof sat in the inbox as an unlabelled photo with nothing anywhere saying money had arrived.

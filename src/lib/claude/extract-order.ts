@@ -12,6 +12,7 @@ import {
   FIXED_SCHEDULE_PREFS,
   buildRecurringDeliveryRows,
 } from "@/lib/orders/build-recurring-deliveries";
+import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDeliveryRoute } from "@/lib/utils/format";
 import { sendTextMessage } from "@/lib/whatsapp/client";
@@ -407,7 +408,7 @@ export async function createOrderFromExtraction(
     ? sortedSchedule[sortedSchedule.length - 1].date
     : (input.end_date ?? null);
 
-  const { data: insertedOrder } = await db
+  const { data: insertedOrder, error: insertError } = await db
     .from("orders")
     .insert({
       customer_id: customerId,
@@ -433,7 +434,25 @@ export async function createOrderFromExtraction(
     .select("id")
     .single();
 
-  if (insertedOrder) {
+  // The insert error used to be discarded. A model that omitted one required
+  // field — package_size on Nadya's 2026-08-18 replay — produced a rejected
+  // insert, an undefined `insertedOrder`, and then a crash further down on
+  // `customer_name.split`, with nothing anywhere saying the order had failed.
+  // The customer had already been told it was being placed.
+  if (insertError || !insertedOrder) {
+    console.error("[extract-order] order insert failed:", insertError, input);
+    await sendPushToAllAdmins(
+      "Order creation failed",
+      `${input.customer_name ?? phone}: ${insertError?.message ?? "insert returned no row"}`,
+      "/inbox",
+      "high",
+    );
+    throw new Error(
+      `createOrderFromExtraction: order insert failed — ${insertError?.message ?? "no row returned"}`,
+    );
+  }
+
+  {
     const today = new Date().toISOString().slice(0, 10);
     // The model supplies delivery_schedule when it has spelled the days out.
     // When it has not, a fixed-schedule order used to get an order row and no
@@ -544,7 +563,7 @@ export async function createOrderFromExtraction(
     getSetting("bank_account_number"),
     getSetting("bank_account_name"),
   ]);
-  const displayName = input.customer_name.split(" ")[0];
+  const displayName = (input.customer_name ?? "").trim().split(" ")[0] || "kak";
   const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
   const conversationId = await saveMessage({
     customerId,

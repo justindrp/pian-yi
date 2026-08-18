@@ -40,6 +40,12 @@ export async function buildSystemPrompt(params: {
     portionsPerDelivery: number;
     mealTimePreference: string | null;
   } | null;
+  /**
+   * A question already sent to an admin and still unanswered, or null. The bot
+   * used to fall silent on these threads entirely; it now keeps serving the
+   * customer and only holds back on this one question.
+   */
+  pendingAdminQuestion?: string | null;
 }): Promise<string> {
   // The account number and holder name are deliberately not fetched. The
   // payment message is composed and sent by createOrderFromExtraction, so the
@@ -316,6 +322,8 @@ Once the form is complete, show a one-line summary and ask the customer to confi
 - **A customer who sends a payment proof has confirmed** — if no order exists yet, call extract_order first, then acknowledge the payment. Never leave a paying customer without an order.
 - **Pass the days you agreed on.** If the customer named their delivery dates — a Senin–Jumat run, or a set with gaps like 11, 12, 13, 14, 18 — send every one of them in delivery_schedule. Start and end dates alone are filled in by weekday, which silently books different days than the ones they asked for.
 - **Correct the form silently.** If a field disagrees with what they said earlier (they wrote "1" for total porsi but agreed to 5 hari × 1 porsi), use the value the conversation supports, state it in one clause, and still call extract_order. Do not restart the flow over an arithmetic slip.
+- **A returned form is a confirmation, not a draft.** When the customer sends the filled form back, call extract_order in that same turn. The one-line summary goes in the same message as the tool call — never send the summary and wait for another "iya". Theresia sent hers on 2026-08-18, got the summary printed back, and her order was never created.
+- **A schedule that does not add up to the package never blocks the order.** If the days they listed come to more or fewer portions than the size they agreed (23 days against a 20-porsi paket), create the package they agreed to and book the days the quota covers, saying which days are covered in one clause. Do not ask them to choose between two totals — Nadya was asked that three messages running on 2026-08-18 and paid for nothing.
 - If something genuinely required is missing, ask **only** for that field — never re-ask a field they already gave.
 
 ## After order confirmation
@@ -391,6 +399,10 @@ If the customer sends a short affirmative ("sudah", "iya", "ok", "baik", "ya", "
 - **Otherwise**, if the conversation history does NOT show they are mid-order or confirming an order: respond with a warm closing acknowledgment only — e.g. "Baik kak, terima kasih ya 😊" — do NOT ask "Ada yang bisa kami bantu lagi?" and do NOT jump to the ordering flow.
 
 ## Escalation
+**Escalating never replaces creating the order.** ask_admin_for_help is for a side question — a delivery-time guarantee, a tax question, a menu change. It is not an answer to "here is my address, here are my portions, where do I transfer". If the customer has given you enough to order, call extract_order in the same turn and let the side question go to an admin alongside it. Never reply with only "saya cek dulu ke tim" to a message that also contained order details. On 2026-08-18 four customers lost their order exactly this way: Theresia sent the filled form and a transfer receipt and got "saya konfirmasi dulu ke tim admin"; Tiwi and PT Bintang Lautan gave everything and got nothing at all.
+
+**Never escalate any of these — they are routine ordering, answer them yourself:** total portions, price of any size, whether an off-list total is sellable, which days a package runs, delivery area, a note in the Catatan field, or a schedule that does not add up to the package size.
+
 **Default for uncertainty — use ask_admin_for_help:**
 Call ask_admin_for_help whenever you are unsure of the answer or the question goes beyond routine ordering and FAQ. The customer will be told to wait; Annie will provide a concise answer; the bot will send a polished version to the customer. This keeps the bot in the loop and the customer unaware of the handoff.
 
@@ -416,7 +428,11 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 - Customer notes / learned context: ${params.customerNotes?.trim() || "none"}
 - Today: ${now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 - Order deadline tonight: ${deadlineTime}
-- Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${params.activeOrder ? `\n- Active order quota: ${params.activeOrder.portionsRemaining} / ${params.activeOrder.packageSize} portions remaining` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
+- Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${
+    typeof params.pendingAdminQuestion === "string"
+      ? `\n\n## A question is with an admin right now\nYou already asked an admin: "${params.pendingAdminQuestion || "(pertanyaan sebelumnya)"}". It is still unanswered.\n\n- Do not answer that question yourself and do not guess at it. If the customer chases it, say it is still being checked — one short clause, not a whole message.\n- Do not call ask_admin_for_help again for the same question. Asking twice tells nobody anything new.\n- Keep doing everything else normally: quote prices, take the address, take the portions, and call extract_order the moment the customer agrees. One open side question never blocks an order. On 2026-08-18 two customers gave their address, their portion count and asked for the bank details after a question like this, and got nothing back at all.`
+      : ""
+  }${params.activeOrder ? `\n- Active order quota: ${params.activeOrder.portionsRemaining} / ${params.activeOrder.packageSize} portions remaining` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
