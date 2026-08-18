@@ -332,8 +332,9 @@ describe("POST /api/assistant", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    // create() must have been called at most MAX_TURNS (5) times
+    // At most MAX_TURNS (10) loop calls, plus the one tools-free wrap-up call
+    // the route makes when the loop ends without an answer.
     const mockCreate = (getAnthropicClient as jest.Mock).mock.results[0].value.messages.create;
-    expect(mockCreate.mock.calls.length).toBeLessThanOrEqual(5);
+    expect(mockCreate.mock.calls.length).toBeLessThanOrEqual(11);
   });
 });

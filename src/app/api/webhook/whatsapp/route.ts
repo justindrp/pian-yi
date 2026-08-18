@@ -47,6 +47,7 @@ import { shouldAutoResume } from "@/lib/customers/takeover";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/types/database";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
 import {
   downloadMedia,
@@ -152,12 +153,90 @@ export async function POST(req: NextRequest): Promise<Response> {
     return new Response("Forbidden", { status: 403 });
   }
 
+  const payload = JSON.parse(body) as WhatsAppWebhookPayload;
+
+  // Land the raw payload before acknowledging. The 200-then-process shape is
+  // still right — Meta's timeout is short and processing calls the model — but
+  // it used to mean a database outage ate customer messages in silence: the 200
+  // had already gone out, so Meta never retried and nothing recorded that the
+  // message ever arrived. Returning 500 when the write fails is what makes Meta
+  // retry, and the stored row is what makes a failed *processing* run replayable.
+  //
+  // Only inbound messages are worth this. Status updates are delivery receipts
+  // that Meta re-sends constantly; blocking on a write for those would add
+  // latency to the noisiest half of the traffic to protect nothing.
+  const message = parseMessage(payload);
+  let eventId: string | null = null;
+  if (message) {
+    eventId = await storeWebhookEvent(payload, message.messageId);
+    if (!eventId) {
+      // Meta retries a 500, so the message is not lost — it arrives again once
+      // the database is reachable, where the processed_messages guard makes the
+      // duplicate harmless.
+      return new Response("Storage unavailable", { status: 503 });
+    }
+  }
+
   // Return 200 immediately
   const response = new Response("OK", { status: 200 });
-  processWebhookAsync(JSON.parse(body) as WhatsAppWebhookPayload).catch(
-    console.error,
-  );
+  processWebhookAsync(payload)
+    .then(() => markWebhookEvent(eventId, null))
+    .catch((err: unknown) => {
+      console.error("[webhook] processing failed:", err);
+      markWebhookEvent(eventId, err instanceof Error ? err.message : String(err));
+    });
   return response;
+}
+
+/**
+ * Write the payload to `webhook_events`, returning its row id — or null if the
+ * database is unreachable, which is the caller's signal to refuse the delivery.
+ * A Meta retry lands on the same `event_key` and returns the existing row.
+ */
+async function storeWebhookEvent(
+  payload: WhatsAppWebhookPayload,
+  eventKey: string,
+): Promise<string | null> {
+  try {
+    const db = createAdminClient();
+    const { data, error } = await db
+      .from("webhook_events")
+      .upsert(
+        { event_key: eventKey, payload: payload as unknown as Json },
+        { onConflict: "event_key" },
+      )
+      .select("id")
+      .single();
+    if (error) {
+      console.error("[webhook] could not store event:", error.message);
+      return null;
+    }
+    return data.id;
+  } catch (err) {
+    console.error("[webhook] could not store event:", err);
+    return null;
+  }
+}
+
+/** Mark an event finished, or record why it failed. Never throws. */
+async function markWebhookEvent(
+  eventId: string | null,
+  error: string | null,
+): Promise<void> {
+  if (!eventId) return;
+  try {
+    const db = createAdminClient();
+    await db
+      .from("webhook_events")
+      .update(
+        error
+          ? { error }
+          : { processed_at: new Date().toISOString(), error: null },
+      )
+      .eq("id", eventId);
+  } catch (err) {
+    console.error("[webhook] could not mark event:", err);
+  }
 }
 
 export async function processWebhookAsync(

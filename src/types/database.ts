@@ -1212,6 +1212,33 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_events: {
+        Row: {
+          error: string | null
+          event_key: string | null
+          id: string
+          payload: Json
+          processed_at: string | null
+          received_at: string
+        }
+        Insert: {
+          error?: string | null
+          event_key?: string | null
+          id?: string
+          payload: Json
+          processed_at?: string | null
+          received_at?: string
+        }
+        Update: {
+          error?: string | null
+          event_key?: string | null
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          received_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       inbox_threads: {

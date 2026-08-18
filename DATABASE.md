@@ -446,6 +446,27 @@ Idempotency log for incoming WhatsApp messages. Checked before processing any we
 
 ---
 
+## webhook_events
+
+Raw WhatsApp webhook payloads, written **before** the route returns 200 to Meta (migration 067). Distinct from `processed_messages`, which is the idempotency key log: this table holds the actual payload so a delivery that arrived but never finished processing can be found and replayed.
+
+Only inbound messages are landed here. Status receipts (`statuses[]`) are acknowledged immediately — Meta re-sends them constantly, and blocking on a write for them would slow the noisiest half of the traffic to protect nothing.
+
+If the insert fails the webhook returns 503 rather than 200, so Meta retries; `processed_messages` makes the redelivery harmless. That is the whole point of the table — a 200 sent before the payload is durable is a message Meta will never send again.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| event_key | text | Unique — Meta's message id. A retry lands on the existing row. Null when unkeyable (still stored) |
+| payload | jsonb | The raw webhook body, as received |
+| received_at | timestamp | Default now() |
+| processed_at | timestamp | Set when processing finished cleanly; null means queued, in-flight, or failed |
+| error | text | Last failure reason, cleared on success |
+
+Find deliveries that arrived and never finished: `select * from webhook_events where processed_at is null` (partial index on `received_at` covers exactly this).
+
+---
+
 ## push_subscriptions
 
 Browser push notification subscriptions (Web Push / VAPID) for admin devices.

@@ -54,7 +54,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 ## Architectural principles
 
-1. **HTTP 200 first, process after** — webhook returns 200 to Meta immediately, then processes async
+1. **Land it, then 200, then process** — the webhook writes the raw payload to `webhook_events`, returns 200 to Meta, and processes async. Acknowledging before the payload is durable turns a database outage into silent message loss, since Meta never retries a 200 (see "Idempotency strategy")
 2. **Idempotency everywhere** — every webhook event has a `message_id`, check against `processed_messages` table before processing
 3. **Defense in depth** — 10 layers of cost protection (see "AI cost controls" in `DEV_REFERENCE.md`)
 4. **Settings over hardcoding** — anything that might change goes in the `settings` table, edited via UI
@@ -193,6 +193,7 @@ When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur par
 - Every incoming WhatsApp `message_id` is checked against `processed_messages` table before processing
 - A `select` pre-check is a cheap fast-path, not the guard — Meta redelivers events within milliseconds and two concurrent requests can both pass the `select` before either write lands
 - The real atomic guard is the `insert` itself (`message_id` is the table's primary key): its error must always be checked and treated as "another request already claimed this message_id" before proceeding to call Sonnet or send a reply
+- **The webhook returns 200 *after* landing the raw payload in `webhook_events` (migration 067), not before.** The 200-then-process shape is still right — Meta's timeout is short and processing calls the model — but it meant a database outage ate customer messages in total silence: the 200 was already sent, so Meta never retried, and nothing anywhere recorded that the message had arrived. On 2026-08-18 Supabase's REST layer wedged for 15 minutes (Postgres itself was healthy; PostgREST was not) and only an empty inbox that morning kept it from costing real messages. The route now writes the payload first and returns **503** if that write fails, which is what makes Meta retry — the redelivery is harmless because `processed_messages` still guards it. Only inbound messages get this treatment; `statuses[]` receipts are re-sent constantly by Meta and blocking on a write for them would add latency to the noisiest half of the traffic to protect nothing. Processing outcome is written back to the row (`processed_at`, or `error`), so `select * from webhook_events where processed_at is null` is the list of deliveries that arrived and never finished.
 
 ### User roles
 
