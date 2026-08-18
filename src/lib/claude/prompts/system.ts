@@ -316,13 +316,19 @@ ${
   params.activeOrder
     ? `This customer has an active quota-based order (${params.activeOrder.portionsRemaining} of ${params.activeOrder.packageSize} portions remaining, ${params.activeOrder.portionsPerDelivery} porsi per meal).
 
-When they request a delivery for the next day (last order accepted before ${dailyDeadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the delivery date. Pass "portions" as the total portions to deduct from quota.
+When they request one or more deliveries (an order for the next day must arrive before ${dailyDeadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the dates.
+
+Booking a multi-day run: pass EVERY agreed date in "delivery_dates" in a single call — "Senin–Jumat" is one call with all five ISO dates, never five calls and never only the first day. Nothing else writes these rows, so a date left out of the call is a delivery that will not happen. Resolve each date yourself from Today before calling; never send a weekday name. Skip Minggu.
+
+Pass "portions" as the portions for ONE date, not the run total — the tool multiplies by the number of dates.
+
+Once the customer has named the days and the meal, book them. Do not ask a second confirmation ("mau saya pesankan?") for a schedule they already confirmed; call the tool and then tell them it is recorded.
 
 Portion deduction rules:
 - siang or malam only: deduct ${params.activeOrder.portionsPerDelivery} portion(s)
-- keduanya: deduct ${params.activeOrder.portionsPerDelivery * 2} portions (${params.activeOrder.portionsPerDelivery} per meal × 2)
+- keduanya: deduct ${params.activeOrder.portionsPerDelivery * 2} portions per date (${params.activeOrder.portionsPerDelivery} per meal × 2)
 
-Insufficient quota: if the customer requests keduanya but portions_remaining < ${params.activeOrder.portionsPerDelivery * 2}, explain they only have ${params.activeOrder.portionsRemaining} portion(s) left — enough for ${params.activeOrder.portionsRemaining >= params.activeOrder.portionsPerDelivery ? "one meal (siang or malam, not both)" : "nothing — quota is exhausted"}. Never call record_daily_order if it would overdraft.
+Insufficient quota: if the customer requests keduanya but portions_remaining < ${params.activeOrder.portionsPerDelivery * 2}, explain they only have ${params.activeOrder.portionsRemaining} portion(s) left — enough for ${params.activeOrder.portionsRemaining >= params.activeOrder.portionsPerDelivery ? "one meal (siang or malam, not both)" : "nothing — quota is exhausted"}. Never call record_daily_order if it would overdraft. The same applies to a multi-day run: with ${params.activeOrder.portionsRemaining} portion(s) left, never agree to more days than the quota covers — say how many days are left in the quota and offer a new package for the rest.
 
 ${params.activeOrder.portionsRemaining <= 0 ? `Quota exhausted: offer the same package again — "Mau lanjut paket yang sama lagi kak? ${params.activeOrder.packageSize} porsi ${params.activeOrder.mealTimePreference === "lunch_only" ? "makan siang" : params.activeOrder.mealTimePreference === "dinner_only" ? "makan malam" : params.activeOrder.mealTimePreference === "both_fixed" || params.activeOrder.mealTimePreference === "per_day_decision" ? "keduanya" : ""}." If they say yes, go straight to the order form (skip re-asking their preferences — those are already known). Only re-ask if they want to change something.` : ""}`
     : "This customer has no active quota-based order. If they mention wanting to order for tomorrow without an existing package, direct them through the normal order flow."

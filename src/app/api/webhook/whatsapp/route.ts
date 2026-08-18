@@ -1230,14 +1230,15 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "record_daily_order",
       description:
-        "Called when a customer with an active quota-based order requests a delivery for the next day. Inserts the daily delivery and decrements their quota. Only call this for customers who already have an active order with portions_remaining > 0.",
+        "Called when a customer with an active quota-based order requests one or more deliveries. Inserts a daily delivery row per date and decrements their quota. Pass EVERY date the customer agreed to in one call — a Senin–Jumat run is one call with five dates, never five calls. Only call this for customers who already have an active order with portions_remaining > 0.",
       input_schema: {
         type: "object",
         properties: {
-          delivery_date: {
-            type: "string",
+          delivery_dates: {
+            type: "array",
+            items: { type: "string" },
             description:
-              "ISO date string YYYY-MM-DD — the requested delivery date (tomorrow unless customer specifies otherwise)",
+              "Every requested delivery date as ISO YYYY-MM-DD. One entry for a single day; all of them for a multi-day schedule.",
           },
           meal_type: {
             type: "string",
@@ -1246,11 +1247,11 @@ export async function processSavedCustomerMessage(params: {
           portions: {
             type: "number",
             description:
-              "Total portions to deduct from quota (e.g. 2 for 1-portion keduanya order — 1 lunch + 1 dinner)",
+              "Portions per delivery date, not the total (e.g. 2 for a 1-portion keduanya order — 1 lunch + 1 dinner on that date). Total deducted is this number times the number of dates.",
           },
           notes: { type: "string" },
         },
-        required: ["delivery_date", "meal_type", "portions"],
+        required: ["delivery_dates", "meal_type", "portions"],
       },
     },
     {
@@ -1343,11 +1344,13 @@ export async function processSavedCustomerMessage(params: {
 
   // Extract text reply and tool use
   let replyText = "";
-  let toolUse: Anthropic.Messages.ToolUseBlock | null = null;
+  // Every tool_use block, not just the last one: this used to keep only the
+  // final block, so a reply that called two tools silently ran one of them.
+  const toolUses: Anthropic.Messages.ToolUseBlock[] = [];
 
   for (const block of claudeResponse.content) {
     if (block.type === "text") replyText = block.text;
-    if (block.type === "tool_use") toolUse = block;
+    if (block.type === "tool_use") toolUses.push(block);
   }
 
   if (draft) {
@@ -1363,7 +1366,7 @@ export async function processSavedCustomerMessage(params: {
     return text || null;
   }
 
-  if (!replyText && !toolUse) {
+  if (!replyText && toolUses.length === 0) {
     console.error(
       "[webhook] no text and no tool_use, stop_reason:",
       claudeResponse.stop_reason,
@@ -1381,7 +1384,7 @@ export async function processSavedCustomerMessage(params: {
 
   // Run the tool before asking for the accompanying text, so the follow-up call
   // below can report the real result back to the model.
-  if (toolUse) {
+  for (const toolUse of toolUses) {
     await handleToolUse(toolUse, customerId, phone, customerName);
   }
 
@@ -1391,7 +1394,7 @@ export async function processSavedCustomerMessage(params: {
   // customer with total silence whenever the tool was a no-op (Julie W got
   // send_menu_image on an already-sent menu). Feed the tool result back and ask
   // for the reply that should have come with it.
-  if (toolUse && !replyText) {
+  if (toolUses.length > 0 && !replyText) {
     try {
       const client = getAnthropicClient();
       const followUp = await client.messages.create({
@@ -1405,13 +1408,11 @@ export async function processSavedCustomerMessage(params: {
           { role: "assistant", content: claudeResponse.content },
           {
             role: "user",
-            content: [
-              {
-                type: "tool_result" as const,
-                tool_use_id: toolUse.id,
-                content: "done",
-              },
-            ],
+            content: toolUses.map((t) => ({
+              type: "tool_result" as const,
+              tool_use_id: t.id,
+              content: "done",
+            })),
           },
         ],
         tools,
@@ -1757,11 +1758,29 @@ async function handleToolUse(
     );
   } else if (tool.name === "record_daily_order") {
     const input = tool.input as {
-      delivery_date: string;
+      delivery_dates?: string[];
+      delivery_date?: string;
       meal_type: "lunch" | "dinner" | "both";
       portions: number;
       notes?: string;
     };
+
+    // One call books the whole run. delivery_date is still read because older
+    // conversation histories carry it, and the model copies what it sees.
+    const dates = Array.from(
+      new Set(
+        (input.delivery_dates ?? (input.delivery_date ? [input.delivery_date] : []))
+          .filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)),
+      ),
+    ).sort();
+
+    if (dates.length === 0) {
+      console.error(
+        "[webhook] record_daily_order: no valid delivery date",
+        JSON.stringify(tool.input),
+      );
+      return;
+    }
 
     // Prefer the order whose meal_time_preference matches the requested meal type.
     // Falls back to newest active order for customers with a single combined order.
@@ -1827,24 +1846,64 @@ async function handleToolUse(
       return;
     }
 
-    await db.from("daily_deliveries").insert({
-      order_id: order.id,
-      customer_id: customerId,
-      delivery_date: input.delivery_date,
-      meal_type: input.meal_type,
-      portions: input.portions,
-      subcontractor_id: order.subcontractor_id,
-      status: "scheduled",
-      notes: input.notes ?? null,
-    });
+    // The model re-states a schedule while confirming it, so the same dates can
+    // arrive twice. Skip whatever is already on the sheet rather than double-book.
+    const { data: existingRows } = await db
+      .from("daily_deliveries")
+      .select("delivery_date")
+      .eq("customer_id", customerId)
+      .in("delivery_date", dates);
+    const alreadyBooked = new Set(
+      (existingRows ?? []).map((r) => r.delivery_date),
+    );
+    const fresh = dates.filter((d) => !alreadyBooked.has(d));
+
+    // portions is per date. Book only as many dates as the quota covers — a
+    // multi-day request must not be the thing that pushes an order negative.
+    const perDate = Math.max(1, input.portions);
+    const affordable = Math.floor(order.portions_remaining / perDate);
+    const booking = fresh.slice(0, affordable);
+
+    if (booking.length === 0) {
+      console.warn(
+        "[webhook] record_daily_order: nothing to book",
+        JSON.stringify({ dates, alreadyBooked: [...alreadyBooked], affordable }),
+      );
+      return;
+    }
+
+    const { error: insertError } = await db.from("daily_deliveries").insert(
+      booking.map((delivery_date) => ({
+        order_id: order.id,
+        customer_id: customerId,
+        delivery_date,
+        meal_type: input.meal_type,
+        portions: perDate,
+        subcontractor_id: order.subcontractor_id,
+        status: "scheduled",
+        notes: input.notes ?? null,
+      })),
+    );
+    if (insertError) {
+      console.error(
+        "[webhook] record_daily_order: insert failed:",
+        insertError.message,
+      );
+      await sendPushToAllAdmins(
+        `Order harian GAGAL — ${customerName ?? phone}`,
+        `${booking.length} hari tidak tersimpan: ${insertError.message}`,
+        "/deliveries",
+        "high",
+      );
+      return;
+    }
+
+    const deducted = booking.length * perDate;
 
     await db
       .from("orders")
       .update({
-        portions_remaining: Math.max(
-          0,
-          order.portions_remaining - input.portions,
-        ),
+        portions_remaining: Math.max(0, order.portions_remaining - deducted),
       })
       .eq("id", order.id);
 
@@ -1857,20 +1916,32 @@ async function handleToolUse(
       await db
         .from("customers")
         .update({
-          portions_remaining: Math.max(
-            0,
-            custQuota.portions_remaining - input.portions,
-          ),
+          portions_remaining: Math.max(0, custQuota.portions_remaining - deducted),
         })
         .eq("id", customerId);
     }
 
+    const span =
+      booking.length === 1
+        ? booking[0]
+        : `${booking[0]} – ${booking[booking.length - 1]} (${booking.length} hari)`;
     await sendPushToAllAdmins(
       `Order harian — ${customerName ?? phone}`,
-      `${input.delivery_date} ${input.meal_type} × ${input.portions} porsi`,
+      `${span} ${input.meal_type} × ${perDate} porsi/hari`,
       "/deliveries",
       "low",
     );
+
+    // The customer was told a schedule the quota could not cover. A human has to
+    // tell them, so this is not a low-priority note.
+    if (booking.length < fresh.length) {
+      await sendPushToAllAdmins(
+        `Kuota kurang — ${customerName ?? phone}`,
+        `Diminta ${fresh.length} hari, hanya ${booking.length} tercatat (sisa kuota ${order.portions_remaining} porsi)`,
+        "/deliveries",
+        "high",
+      );
+    }
   } else if (tool.name === "ask_admin_for_help") {
     const input = tool.input as { question: string };
     await db

@@ -138,16 +138,16 @@ export async function POST(req: NextRequest): Promise<Response> {
     {
       name: "record_daily_order",
       description:
-        "Called when a customer with an active quota-based order requests a delivery for the next day.",
+        "Called when a customer with an active quota-based order requests one or more deliveries. Pass EVERY agreed date in one call — a Senin–Jumat run is one call with five dates.",
       input_schema: {
         type: "object",
         properties: {
-          delivery_date: { type: "string" },
+          delivery_dates: { type: "array", items: { type: "string" } },
           meal_type: { type: "string", enum: ["lunch", "dinner", "both"] },
           portions: { type: "number" },
           notes: { type: "string" },
         },
-        required: ["delivery_date", "meal_type", "portions"],
+        required: ["delivery_dates", "meal_type", "portions"],
       },
     },
     {
