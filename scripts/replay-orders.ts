@@ -19,6 +19,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildCorpus, type CorpusCase } from "./replay-corpus";
 import { processWebhookAsync } from "../src/app/api/webhook/whatsapp/route";
+import { NASI_MERAH_SURCHARGE } from "../src/lib/claude/extract-order";
 import { createAdminClient } from "../src/lib/supabase/admin";
 import { DEMO_PHONE_PREFIX } from "../src/lib/whatsapp/demo";
 import type { WhatsAppWebhookPayload } from "../src/lib/whatsapp/types";
@@ -161,8 +162,23 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   } else {
     if (got.packageSize !== c.expected.packageSize)
       notes.push(`package ${got.packageSize} != ${c.expected.packageSize}`);
-    if (got.pricePerPortion !== c.expected.pricePerPortion)
-      notes.push(`price/porsi ${got.pricePerPortion} != ${c.expected.pricePerPortion}`);
+    // Price is checked against what today's rules produce for that package, not
+    // against the historical figure. Two of the twenty were sold under rules
+    // that no longer exist — PT Bintang's Rp 35.000/porsi is corporate pricing
+    // no tier yields, and Fidela's 8 porsi is not a sellable total any more —
+    // so demanding the old number would score the bot for refusing to break a
+    // current rule. A case whose history and current rules disagree is reported
+    // as DRIFT with both numbers, never silently passed.
+    const rulePrice = await currentRulePrice(c.expected.packageSize, c.expected.pricePerPortion);
+    if (rulePrice === null) {
+      notes.push(
+        `DRIFT: package ${c.expected.packageSize} is not sellable under current rules (sold at ${c.expected.pricePerPortion}); bot wrote ${got.pricePerPortion}`,
+      );
+    } else if (got.pricePerPortion !== rulePrice) {
+      notes.push(
+        `price/porsi ${got.pricePerPortion} != ${rulePrice}${rulePrice === c.expected.pricePerPortion ? "" : ` (current rules; sold at ${c.expected.pricePerPortion})`}`,
+      );
+    }
     if (c.expected.deliveryDates.length > 0 && got.deliveries.length === 0)
       notes.push(`no deliveries (real order had ${c.expected.deliveryDates.length})`);
   }
@@ -177,6 +193,30 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     expected: c.expected,
     transcript: (convo ?? []).map((m) => ({ role: m.role, content: m.content ?? "" })),
   };
+}
+
+// Today's price for a package size: the largest listed tier at or below the
+// total, times the total, plus the nasi merah surcharge when the historical
+// order carried one (the add-on is a customer request, not a pricing rule).
+// Returns null when the size is not sellable at all — not on the tier list and
+// divisible by neither 5 nor 6.
+async function currentRulePrice(
+  packageSize: number,
+  historicalPrice: number,
+): Promise<number | null> {
+  const db = createAdminClient();
+  const { data: tiers } = await db
+    .from("pricing_tiers")
+    .select("portions, price_per_portion")
+    .order("portions", { ascending: false });
+  const rows = tiers ?? [];
+  const exact = rows.find((t) => t.portions === packageSize);
+  const below = rows.find((t) => t.portions <= packageSize);
+  if (!exact && packageSize % 5 !== 0 && packageSize % 6 !== 0) return null;
+  const base = (exact ?? below)?.price_per_portion;
+  if (base === undefined) return null;
+  const addon = historicalPrice - base;
+  return addon === NASI_MERAH_SURCHARGE ? base + addon : base;
 }
 
 // ---------------------------------------------------------------------------
