@@ -796,17 +796,12 @@ export async function processWebhookAsync(
           .replace("{{order_deadline}}", deadlineText)
           .trim() || dapurListText;
 
-      // Save the incoming message first so it sorts before the welcome replies.
-      await saveMessage({
-        customerId,
-        role: "user",
-        content: text,
-        messageId: message.messageId,
-        intent,
-        messageType: message.type === "image" ? "image" : "text",
-        mediaId: message.type === "image" ? message.imageId : undefined,
-        mediaUrl: await inboundMediaUrl(),
-      });
+      // The incoming message is already saved above, before any branch runs, so
+      // it sorts ahead of the welcome replies without a second write. This used
+      // to save it again here and the insert failed on `message_id`'s unique
+      // constraint for every new customer's first message — harmless, but it put
+      // a "saveMessage failed" line in the log on the happiest path there is,
+      // which is how a real dropped write goes unnoticed.
       await tryLearnCustomerContext(customerId, db);
 
       // Send welcome sequence and log each outbound message to the inbox so the
