@@ -86,7 +86,18 @@ export async function saveMessage(params: {
     .single();
 
   if (error || !data) {
-    console.error("[conversations] saveMessage failed:", error?.message);
+    // Identify the row: a bare message means a lost inbox line with no way to
+    // tell which write dropped it.
+    console.error(
+      "[conversations] saveMessage failed:",
+      error?.message,
+      JSON.stringify({
+        role: params.role,
+        messageId: params.messageId ?? null,
+        messageType: params.messageType ?? "text",
+        preview: params.content.slice(0, 60),
+      }),
+    );
     return null;
   }
 
