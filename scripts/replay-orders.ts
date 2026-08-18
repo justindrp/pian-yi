@@ -1,0 +1,252 @@
+/**
+ * Replays real ordering conversations against the live chatbot pipeline and
+ * checks whether the bot still produces the order — and the deliveries — that
+ * the real conversation produced.
+ *
+ *   tsx scripts/replay-orders.ts [--count=20] [--only=<order-id-prefix>] [--keep]
+ *
+ * How it stays safe to run against production data:
+ *  - every replay talks to a demo customer whose phone_number starts DEMO_,
+ *    and `src/lib/whatsapp/client.ts` refuses to hand any DEMO_ recipient to
+ *    Meta, so no message can reach a real phone from any code path;
+ *  - the demo customer and everything it created are deleted at the end
+ *    (`--keep` to inspect a failure);
+ *  - `Date` is pinned to each message's original timestamp for the duration of
+ *    the turn, so "besok" and "senin depan" mean what they meant at the time and
+ *    the expected delivery dates stay comparable.
+ */
+import { buildCorpus, type CorpusCase } from "./replay-corpus";
+import { processWebhookAsync } from "../src/app/api/webhook/whatsapp/route";
+import { createAdminClient } from "../src/lib/supabase/admin";
+import { DEMO_PHONE_PREFIX } from "../src/lib/whatsapp/demo";
+import type { WhatsAppWebhookPayload } from "../src/lib/whatsapp/types";
+
+// ---------------------------------------------------------------------------
+// Pinned clock
+// ---------------------------------------------------------------------------
+
+const RealDate = Date;
+
+/** Runs fn with `new Date()` / `Date.now()` frozen at `iso`. */
+async function atTime<T>(iso: string, fn: () => Promise<T>): Promise<T> {
+  const fixed = new RealDate(iso).getTime();
+  class PinnedDate extends RealDate {
+    // biome-ignore lint/suspicious/noExplicitAny: Date's constructor overloads cannot be spread type-safely
+    constructor(...args: any[]) {
+      if (args.length === 0) super(fixed);
+      // biome-ignore lint/suspicious/noExplicitAny: same
+      else super(...(args as [any]));
+    }
+    static now() {
+      return fixed;
+    }
+  }
+  (globalThis as { Date: DateConstructor }).Date = PinnedDate as unknown as DateConstructor;
+  try {
+    return await fn();
+  } finally {
+    (globalThis as { Date: DateConstructor }).Date = RealDate;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Replay
+// ---------------------------------------------------------------------------
+
+// Every replay needs message ids nobody has used before: `processed_messages` is
+// append-only by design (nothing may delete from it), so a deterministic id makes
+// the second run of a case a no-op — every turn is skipped as already-processed
+// and the run reports "NO ORDER CREATED" with no bug behind it.
+const RUN_NONCE = Math.random().toString(36).slice(2, 10).toUpperCase();
+
+function payloadFor(phone: string, text: string, at: string, n: number): WhatsAppWebhookPayload {
+  return {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "REPLAY",
+        changes: [
+          {
+            value: {
+              messaging_product: "whatsapp",
+              metadata: { display_phone_number: "REPLAY", phone_number_id: "REPLAY" },
+              messages: [
+                {
+                  id: `wamid.REPLAY_${RUN_NONCE}_${phone}_${n}`,
+                  from: phone,
+                  type: "text",
+                  timestamp: String(Math.floor(new RealDate(at).getTime() / 1000)),
+                  text: { body: text },
+                },
+              ],
+            },
+            field: "messages",
+          },
+        ],
+      },
+    ],
+  } as WhatsAppWebhookPayload;
+}
+
+interface Result {
+  orderId: string;
+  name: string | null;
+  turns: number;
+  ok: boolean;
+  notes: string[];
+  got: { packageSize: number; pricePerPortion: number; totalPrice: number; deliveries: string[] } | null;
+  expected: CorpusCase["expected"];
+  /** What the bot actually said, so a failure can be read instead of guessed at. */
+  transcript: { role: string; content: string }[];
+}
+
+async function replayCase(c: CorpusCase): Promise<Result> {
+  const db = createAdminClient();
+  const phone = `${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`;
+
+  await cleanupDemo(phone);
+  const { data: demo, error } = await db
+    .from("customers")
+    .insert({ phone_number: phone, name: null })
+    .select("id")
+    .single();
+  if (error || !demo) throw new Error(`demo customer insert failed: ${error?.message}`);
+
+  for (const [i, turn] of c.turns.entries()) {
+    try {
+      await atTime(turn.at, () =>
+        processWebhookAsync(payloadFor(phone, turn.text, turn.at, i)),
+      );
+    } catch (err) {
+      console.error(`  turn ${i} threw:`, (err as Error).message);
+    }
+  }
+
+  const { data: orders } = await db
+    .from("orders")
+    .select("id, package_size, price_per_portion, total_price")
+    .eq("customer_id", demo.id)
+    .order("created_at", { ascending: false });
+  const order = orders?.[0] ?? null;
+  const { data: dels } = await db
+    .from("daily_deliveries")
+    .select("delivery_date")
+    .eq("customer_id", demo.id)
+    .order("delivery_date");
+
+  const { data: convo } = await db
+    .from("conversations")
+    .select("role, content")
+    .eq("customer_id", demo.id)
+    .order("created_at");
+
+  const notes: string[] = [];
+  const got = order
+    ? {
+        packageSize: order.package_size,
+        pricePerPortion: order.price_per_portion,
+        totalPrice: order.total_price,
+        deliveries: (dels ?? []).map((d) => d.delivery_date),
+      }
+    : null;
+
+  if (!got) {
+    notes.push("NO ORDER CREATED");
+  } else {
+    if (got.packageSize !== c.expected.packageSize)
+      notes.push(`package ${got.packageSize} != ${c.expected.packageSize}`);
+    if (got.pricePerPortion !== c.expected.pricePerPortion)
+      notes.push(`price/porsi ${got.pricePerPortion} != ${c.expected.pricePerPortion}`);
+    if (c.expected.deliveryDates.length > 0 && got.deliveries.length === 0)
+      notes.push(`no deliveries (real order had ${c.expected.deliveryDates.length})`);
+  }
+
+  return {
+    orderId: c.orderId,
+    name: c.customerName,
+    turns: c.turns.length,
+    ok: notes.length === 0,
+    notes,
+    got,
+    expected: c.expected,
+    transcript: (convo ?? []).map((m) => ({ role: m.role, content: m.content ?? "" })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup — demo rows must never outlive the run
+// ---------------------------------------------------------------------------
+
+async function cleanupDemo(phone: string): Promise<void> {
+  const db = createAdminClient();
+  const { data: existing } = await db
+    .from("customers")
+    .select("id")
+    .eq("phone_number", phone)
+    .maybeSingle();
+  if (!existing) return;
+  const id = existing.id;
+  await db.from("daily_deliveries").delete().eq("customer_id", id);
+  await db.from("orders").delete().eq("customer_id", id);
+  await db.from("conversations").delete().eq("customer_id", id);
+  await db.from("customer_flags").delete().eq("customer_id", id);
+  await db.from("customer_state").delete().eq("customer_id", id);
+  await db.from("customer_rate_limits").delete().eq("customer_id", id);
+  await db.from("customers").delete().eq("id", id);
+}
+
+async function cleanupAllDemos(): Promise<number> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("customers")
+    .select("phone_number")
+    .like("phone_number", `${DEMO_PHONE_PREFIX}%`);
+  for (const c of data ?? []) await cleanupDemo(c.phone_number);
+  return (data ?? []).length;
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const count = Number(args.find((a) => a.startsWith("--count="))?.split("=")[1] ?? 20);
+  const only = args.find((a) => a.startsWith("--only="))?.split("=")[1];
+  const keep = args.includes("--keep");
+
+  if (args.includes("--cleanup-only")) {
+    console.log(`cleaned ${await cleanupAllDemos()} demo customers`);
+    return;
+  }
+
+  let cases = await buildCorpus(count);
+  if (only) cases = cases.filter((c) => c.orderId.startsWith(only));
+  console.log(`replaying ${cases.length} conversations\n`);
+
+  const results: Result[] = [];
+  for (const [i, c] of cases.entries()) {
+    process.stdout.write(`[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} (${c.turns.length} turns) ... `);
+    try {
+      const r = await replayCase(c);
+      results.push(r);
+      console.log(r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`);
+    } catch (err) {
+      console.log(`ERROR — ${(err as Error).message}`);
+      results.push({ orderId: c.orderId, name: c.customerName, turns: c.turns.length, ok: false, notes: [`threw: ${(err as Error).message}`], got: null, expected: c.expected, transcript: [] });
+    }
+    if (!keep) await cleanupDemo(`${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
+  }
+
+  const passed = results.filter((r) => r.ok).length;
+  console.log(`\n=== ${passed}/${results.length} passed ===`);
+  for (const r of results.filter((x) => !x.ok)) {
+    console.log(`\n${r.name ?? "?"} ${r.orderId.slice(0, 8)} (${r.turns} turns)`);
+    console.log(`  expected pkg=${r.expected.packageSize} @${r.expected.pricePerPortion} deliveries=${r.expected.deliveryDates.length}`);
+    console.log(`  got      ${r.got ? `pkg=${r.got.packageSize} @${r.got.pricePerPortion} deliveries=${r.got.deliveries.length}` : "nothing"}`);
+    for (const n of r.notes) console.log(`  - ${n}`);
+    for (const m of r.transcript) {
+      const body = m.content.replace(/\s+/g, " ").slice(0, 220);
+      console.log(`    ${m.role === "user" ? ">>" : "<<"} ${body}`);
+    }
+  }
+  if (!keep) console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
+}
+
+main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });

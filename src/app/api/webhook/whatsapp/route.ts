@@ -56,6 +56,7 @@ import {
   sendTextMessage,
   sendTypingIndicator,
 } from "@/lib/whatsapp/client";
+import { isDemoPhone } from "@/lib/whatsapp/demo";
 import { storeInboundMedia } from "@/lib/whatsapp/media-store";
 import {
   parseMessage,
@@ -1009,7 +1010,10 @@ export async function processSavedCustomerMessage(params: {
   // further down (after this wait) that surviving call sees the whole burst and
   // writes one reply covering all of it. Costs every reply this much latency,
   // which reads as human on WhatsApp, and cuts a burst's model spend to one call.
-  if (coalesceBurst && messageId) {
+  // Demo (replay) customers skip the wait: their bursts are pre-merged by the
+  // replay harness, so the 15s would only multiply a 20-conversation run by an
+  // hour without changing what the model sees.
+  if (coalesceBurst && messageId && !isDemoPhone(phone)) {
     await sleep(BURST_WINDOW_MS);
     const { data: newest } = await db
       .from("conversations")

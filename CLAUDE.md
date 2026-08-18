@@ -233,6 +233,22 @@ Both early-return branches in the webhook — `escalated_to_human` and `pending_
 
 Capturing the proof is bookkeeping, not the bot talking, so both branches now call `handlePaymentProofImage(..., { sendConfirmation: false })` when the latest order is `pending_payment`. That advances the order and stores the image but sends the customer nothing — a thread a human is holding must not get an automated reply — and pushes to admins at **high** priority instead of medium, because on those threads no one else is watching. `scripts/rescue-payment-proof.ts` repairs a proof that was already swallowed.
 
+### Replaying real conversations against the bot
+
+`scripts/replay-orders.ts` plays the customer turns of the last N real ordering conversations back through the **live** pipeline — same prompt, same tools, same validator, same handlers — and checks whether the bot still produces the order and the deliveries the real conversation produced. The real `orders` / `daily_deliveries` rows are the ground truth, so the corpus needs no hand-written expectations. Built after 2026-08-18, when three separate defects (last-tool-only parsing, a validator blind to the conversation, a payment proof dropped on a parked thread) each reached a customer before anyone noticed.
+
+Three things make it safe to run against production data:
+
+- **A demo recipient can never reach Meta.** Demo customers' `phone_number` starts `DEMO_` — deliberately not a number, so no real customer's phone can ever match however it is formatted — and every send function in `src/lib/whatsapp/client.ts` returns a fake wamid for them. The guard is on the recipient's identity, never an env var: a flag that silences sends would silence real ones the day it is set wrong, and the check has to hold for the crons and the assistant too, not just the harness.
+- **Demo rows never outlive the run.** Each case deletes its customer and everything it created, before and after, and the run ends with a sweep. `--keep` retains them for inspection.
+- **`Date` is pinned per turn** to the original message's timestamp, so "besok" and "senin depan" resolve to what they meant at the time and the expected delivery dates stay comparable. The pin is a script-local override of the global `Date`, not a parameter threaded through production code.
+
+Bursts are pre-merged into one turn by the corpus builder (messages under 90s apart), and `processSavedCustomerMessage` skips its 15s burst wait for demo phones — otherwise a 20-conversation run would spend an extra hour sleeping without changing what the model sees.
+
+**A green scorecard from prompt-patching is worth nothing.** The failure mode of this harness is tuning `system.ts` until 20 specific transcripts pass, which teaches the bot those conversations rather than ordering. Fix code freely; treat a prompt change as a business-rule decision that needs a reason beyond "the replay went green".
+
+**Historical orders can disagree with current rules** — Fidela's 8-porsi order from 27 Juli is not sellable under the current ladder, and PT Bintang's Rp 35.000/porsi is corporate pricing no tier produces. A mismatch there is the rules having changed, not the bot failing. Read the diff before treating a red case as a bug.
+
 ### Idempotency strategy
 
 - Every incoming WhatsApp `message_id` is checked against `processed_messages` table before processing

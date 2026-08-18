@@ -1,6 +1,7 @@
 import axios from "axios";
 import FormData from "form-data";
 import sharp from "sharp";
+import { demoMessageId, isDemoPhone } from "@/lib/whatsapp/demo";
 
 const BASE_URL = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}`;
 type MetaSendResponse = {
@@ -63,6 +64,8 @@ export async function sendTextMessage(
   to: string,
   text: string,
 ): Promise<string> {
+  if (isDemoPhone(to)) return demoMessageId();
+
   const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
@@ -82,6 +85,8 @@ export async function sendImageMessage(
   imageUrl: string,
   caption: string,
 ): Promise<string> {
+  if (isDemoPhone(to)) return demoMessageId();
+
   const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
@@ -122,6 +127,8 @@ export async function sendImageMessageById(
   mediaId: string,
   caption: string,
 ): Promise<string> {
+  if (isDemoPhone(to)) return demoMessageId();
+
   const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
@@ -142,6 +149,8 @@ export async function sendDocumentMessageById(
   filename: string,
   caption: string,
 ): Promise<string> {
+  if (isDemoPhone(to)) return demoMessageId();
+
   const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
@@ -175,6 +184,8 @@ export async function sendTypingIndicator(
   _to: string,
   messageId: string,
 ): Promise<void> {
+  if (isDemoPhone(_to)) return;
+
   // Mark as read and show typing indicator in one request (per Meta API docs)
   await axios
     .post(
@@ -195,6 +206,8 @@ export async function sendImageByUrl(
   imageUrl: string,
   caption: string,
 ): Promise<string> {
+  if (isDemoPhone(to)) return demoMessageId();
+
   const res = await fetch(imageUrl);
   if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
   const raw = Buffer.from(await res.arrayBuffer());
@@ -226,6 +239,8 @@ export async function sendTextTemplate(
   bodyParams: string[],
   languageCode = "id",
 ): Promise<string> {
+  if (isDemoPhone(to)) return demoMessageId();
+
   const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
@@ -253,6 +268,8 @@ export async function sendImageTemplate(
   bodyParams: string[],
   languageCode = "id",
 ): Promise<string> {
+  if (isDemoPhone(to)) return demoMessageId();
+
   const res = await axios.post<MetaSendResponse>(
     `${BASE_URL}/messages`,
     {
