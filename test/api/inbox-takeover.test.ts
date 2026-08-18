@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/inbox/takeover/route";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
 
-jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
+jest.mock("@/lib/supabase/get-role", () => ({
+  getSessionWithRole: jest.fn(),
+  isOwner: (role: string) => role === "owner",
+}));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 
 function makeChain(
@@ -63,15 +66,16 @@ function postRequest(body: unknown) {
   });
 }
 
+function signedInAs(role: "owner" | "admin") {
+  (getSessionWithRole as jest.Mock).mockResolvedValue({
+    email: `${role}@example.com`,
+    role,
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
-  (createClient as jest.Mock).mockResolvedValue({
-    auth: {
-      getUser: jest.fn().mockResolvedValue({
-        data: { user: { id: "u1", email: "admin@example.com" } },
-      }),
-    },
-  });
+  signedInAs("owner");
 });
 
 describe("POST /api/inbox/takeover", () => {
@@ -94,6 +98,41 @@ describe("POST /api/inbox/takeover", () => {
         last_human_activity_at: expect.any(String),
         pending_bot_response: false,
         pending_bot_question: null,
+      }),
+    );
+  });
+
+  test("rejects takeover by a non-owner", async () => {
+    signedInAs("admin");
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await POST(
+      postRequest({ customer_id: "cust-1", escalated: true }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(db.from).not.toHaveBeenCalled();
+  });
+
+  // Handing a thread back to the bot is the safe direction and stays open to
+  // every admin — the inbox draft flow calls it to clear a stale takeover.
+  test("allows a non-owner to resume the bot", async () => {
+    signedInAs("admin");
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await POST(
+      postRequest({ customer_id: "cust-1", escalated: false }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(db.chains.customer_flags.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer_id: "cust-1",
+        escalated_to_human: false,
+        escalation_reason: null,
+        last_human_activity_at: null,
       }),
     );
   });

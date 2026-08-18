@@ -200,7 +200,9 @@ When subcontractor is unavailable, use template: "Halo kak, mohon maaf dapur par
 Two roles, stored in `admin_users.role`:
 
 - `owner` — full access to all dashboard pages and APIs (Justin: drpramadyo@gmail.com, Annie: angelaoctaviani196@gmail.com)
-- `admin` — full access except Accounting page/API (Agnes: agnesiaagatha2006@gmail.com)
+- `admin` — full access except Accounting page/API and **inbox takeover** (Agnes: agnesiaagatha2006@gmail.com)
+
+**Takeover is owner-only** (`POST /api/inbox/takeover` with `escalated: true` returns 403 otherwise, and the "Take over" button is not rendered). Taking a thread over silences the bot for that customer, and every downstream thing the bot does unprompted — writing the package's `daily_deliveries` rows above all — silently becomes something a human has to remember. Jordy's 5-porsi package was run that way and only two of its five days were ever written; he learned it by getting no lunch on 18 Agustus and asked for a refund. Handing a thread *back* (`escalated: false`) stays open to every role: it returns control to the bot, which is the safe direction, and the inbox draft flow calls it to clear a stale takeover. Note the manual compose box only renders on a thread in takeover, so a non-owner cannot type to a customer at all — deliberate, but it is the part to revisit first if it blocks ops.
 
 New admins default to `admin` role. Role is enforced at two layers: nav item hidden in layout, and server-side redirect / HTTP 403 on the page and API route. Role helper: `src/lib/supabase/get-role.ts` exports `getSessionWithRole()` and `isOwner(role)`.
 

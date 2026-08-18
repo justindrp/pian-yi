@@ -194,7 +194,10 @@ function getReceiptClass(status: string | null) {
   }
 }
 
-export default function InboxClient() {
+// `canTakeOver` is owner-only (see POST /api/inbox/takeover for why). Non-owners
+// keep "Resume bot" on a thread a human already holds — handing work back to the
+// bot is the safe direction and must never need an owner present.
+export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -1202,18 +1205,20 @@ export default function InboxClient() {
                   {applyingStage ? "Applying..." : "Save stage"}
                 </Button>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={toggleEscalation}
-                className={
-                  flags?.escalated_to_human
-                    ? "bg-green-600 text-white hover:bg-green-700"
-                    : "bg-orange-500 text-white hover:bg-orange-600"
-                }
-              >
-                {flags?.escalated_to_human ? "Resume bot" : "Take over"}
-              </Button>
+              {(flags?.escalated_to_human || canTakeOver) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={toggleEscalation}
+                  className={
+                    flags?.escalated_to_human
+                      ? "bg-green-600 text-white hover:bg-green-700"
+                      : "bg-orange-500 text-white hover:bg-orange-600"
+                  }
+                >
+                  {flags?.escalated_to_human ? "Resume bot" : "Take over"}
+                </Button>
+              )}
               <div className="relative">
                 <Button
                   type="button"
