@@ -122,11 +122,13 @@ export function parseStatusUpdates(
           return [{
             code: Number(e.code),
             title: String(e.title),
+            // details is the specific one ("your payment method was declined");
+            // message is usually just the title again.
             message:
-              typeof e.message === "string"
-                ? e.message
-                : typeof details === "string"
-                  ? details
+              typeof details === "string"
+                ? details
+                : typeof e.message === "string"
+                  ? e.message
                   : undefined,
           }];
         })
