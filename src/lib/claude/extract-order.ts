@@ -263,6 +263,69 @@ function withRecordedAddress(
   };
 }
 
+/**
+ * The customer's last word on how many portions they want beats the size the
+ * model passed to extract_order. DeepSeek carries a number agreed earlier in the
+ * chat straight through a correction: on 2026-08-19 Tiwi was quoted 5 porsi, then
+ * 8, then wrote "Boleh 6 porsi dulu kak" with her address, and the tool fired with
+ * 5 — she was sent a bill for Rp 145.000 and told "6 porsi = Rp 174.000" in the
+ * next message. Only the final customer message is read, and only a bare total:
+ * "1 porsi per pengiriman" and "2 porsi/hari" describe a delivery, not an order.
+ *
+ * Webhook paths only. The admin inbox runs the same extraction, but there a human
+ * has already read the size in the review modal, and their number must win.
+ */
+export async function applyLatestCustomerSize(
+  customerId: string,
+  input: ExtractedOrderInput,
+): Promise<ExtractedOrderInput> {
+  // A size the model dropped entirely used to be floored to the smallest tier we
+  // sell, which creates a real order for the wrong package — and that order then
+  // blocks the promise recovery that would have built the right one. Nadya agreed
+  // to 20 porsi at Rp 540.000 on 2026-08-18, the tool fired with no size, and she
+  // was billed Rp 145.000 for 5. Re-read the chat with the forced-tool extraction
+  // instead; the floor stays as the last resort inside createOrderFromExtraction.
+  if (!input.package_size || input.package_size <= 0) {
+    const reread = await extractOrderFromConversation(customerId);
+    if (reread?.package_size && reread.package_size > 0) {
+      console.log(
+        `[extract-order] package_size recovered as ${reread.package_size} by re-reading the conversation`,
+      );
+      input = { ...input, package_size: reread.package_size };
+    }
+  }
+
+  const db = createAdminClient();
+  const { data: last } = await db
+    .from("conversations")
+    .select("content")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const text = last?.content;
+  if (!text) return input;
+
+  const sizes = new Set<number>();
+  for (const match of text.matchAll(
+    /(\d+)\s*porsi(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
+  )) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > 0) sizes.add(n);
+  }
+  if (sizes.size !== 1) return input;
+
+  const stated = [...sizes][0] as number;
+  if (stated === input.package_size) return input;
+  if (stated < (await minPackageSize())) return input;
+
+  console.log(
+    `[extract-order] package_size ${input.package_size} -> ${stated} from the customer's last message`,
+  );
+  return { ...input, package_size: stated };
+}
+
 // Nasi merah is the one add-on we sell, and we charge it through at cost: the
 // customer pays the tier price plus this, and the kitchen bills us the same
 // amount on top of the route rate (`orders.addon_cost_per_portion`).

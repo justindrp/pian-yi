@@ -22,6 +22,7 @@ import {
   createOrderFromExtraction,
   EXTRACT_ORDER_PROPERTIES,
   type ExtractedOrderInput,
+  applyLatestCustomerSize,
   extractOrderFromConversation,
 } from "@/lib/claude/extract-order";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
@@ -550,9 +551,12 @@ export async function processWebhookAsync(
       try {
         const extracted = await extractOrderFromConversation(customerId);
         if (extracted && extracted.package_size > 0 && extracted.address) {
-          await createOrderFromExtraction(customerId, message.from, extracted, {
-            sendPaymentInfo: false,
-          });
+          await createOrderFromExtraction(
+            customerId,
+            message.from,
+            await applyLatestCustomerSize(customerId, extracted),
+            { sendPaymentInfo: false },
+          );
           latestOrderStatus = "pending_payment";
           await sendPushToAllAdmins(
             `Order dibuat dari bukti bayar — ${customer.name ?? message.from}`,
@@ -1412,7 +1416,11 @@ export async function processSavedCustomerMessage(params: {
       try {
         const extracted = await extractOrderFromConversation(customerId);
         if (extracted && extracted.package_size > 0 && extracted.address) {
-          await createOrderFromExtraction(customerId, phone, extracted);
+          await createOrderFromExtraction(
+            customerId,
+            phone,
+            await applyLatestCustomerSize(customerId, extracted),
+          );
           console.log(
             `[webhook] order created from an unkept promise for ${customerId}`,
           );
@@ -1818,7 +1826,7 @@ async function handleToolUse(
     await createOrderFromExtraction(
       customerId,
       phone,
-      tool.input as ExtractedOrderInput,
+      await applyLatestCustomerSize(customerId, tool.input as ExtractedOrderInput),
     );
   } else if (tool.name === "record_daily_order") {
     const input = tool.input as {
