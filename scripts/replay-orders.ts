@@ -102,7 +102,11 @@ interface Result {
 
 async function replayCase(c: CorpusCase): Promise<Result> {
   const db = createAdminClient();
-  const phone = `${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`;
+  // `parseMessage` prefixes a "+" onto every inbound `from`, so the customer the
+  // pipeline creates is "+DEMO_x". Seeding the bare form left an orphan row the
+  // webhook ignored — assertions then read an empty customer and reported a
+  // phantom "NO ORDER CREATED", while the real demo rows survived the sweep.
+  const phone = `+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`;
 
   await cleanupDemo(phone);
   const { data: demo, error } = await db
@@ -200,7 +204,7 @@ async function cleanupAllDemos(): Promise<number> {
   const { data } = await db
     .from("customers")
     .select("phone_number")
-    .like("phone_number", `${DEMO_PHONE_PREFIX}%`);
+    .like("phone_number", `%${DEMO_PHONE_PREFIX}%`);
   for (const c of data ?? []) await cleanupDemo(c.phone_number);
   return (data ?? []).length;
 }
@@ -231,7 +235,7 @@ async function main() {
       console.log(`ERROR — ${(err as Error).message}`);
       results.push({ orderId: c.orderId, name: c.customerName, turns: c.turns.length, ok: false, notes: [`threw: ${(err as Error).message}`], got: null, expected: c.expected, transcript: [] });
     }
-    if (!keep) await cleanupDemo(`${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
+    if (!keep) await cleanupDemo(`+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
   }
 
   const passed = results.filter((r) => r.ok).length;
