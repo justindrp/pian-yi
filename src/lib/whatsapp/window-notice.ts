@@ -24,5 +24,12 @@ export const WINDOW_NOTICE_WELCOME = [
   "*Kalau sudah lewat 24 jam dari chat terakhir, kakak chat kami duluan ya kak* — mau pesan, ganti jadwal, ganti alamat, atau ada yang kurang pas. Kirim satu pesan apa aja, jalurnya langsung kebuka dan kami bisa balas lagi 😊",
 ].join("\n");
 
+// One clause, for messages that already ask the customer to reply — the daily
+// delivery-proof "balas ok" above all. Those go out every delivery, so the full
+// notice would turn into wallpaper; what they were missing is only the *reason*
+// the reply matters.
+export const WINDOW_NOTICE_CLAUSE =
+  "biar jalur chat kita tetap kebuka ya kak — WhatsApp mengunci chat kalau lewat 24 jam tanpa balasan dari kakak";
+
 export const WINDOW_NOTICE_SHORT =
   "Oh iya kak, WhatsApp cuma mengizinkan kami mengirim pesan dalam 24 jam sejak pesan terakhir kakak — lewat dari itu jalurnya terkunci dan kami nggak bisa chat duluan. Jadi kalau sudah lewat 24 jam dan ada apa-apa, kakak chat kami duluan ya kak, langsung kami balas 😊";

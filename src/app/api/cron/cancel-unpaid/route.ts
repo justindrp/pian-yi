@@ -3,6 +3,7 @@ import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const authHeader = req.headers.get("Authorization");
@@ -46,7 +47,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         })
         .eq("id", order.id);
 
-      if (phone) await sendTextMessage(phone, template);
+      if (phone)
+        await sendTextMessage(phone, `${template}\n\n${WINDOW_NOTICE_SHORT}`);
       cancelled++;
     } catch (err) {
       console.error("[cron/cancel-unpaid] error for order", order.id, err);

@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const authHeader = req.headers.get("Authorization");
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (!phone) continue;
 
     try {
-      await sendTextMessage(phone, template);
+      await sendTextMessage(phone, `${template}\n\n${WINDOW_NOTICE_SHORT}`);
       await db
         .from("orders")
         .update({ reminder_sent_at: new Date().toISOString() })

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
 export async function GET(req: NextRequest): Promise<Response> {
   if (req.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
@@ -39,9 +40,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       name: string | null;
     } | null;
     if (!customer) continue;
-    const msg = firstTemplate
+    const msg = `${firstTemplate
       .replace("{name}", customer.name ?? "kak")
-      .replace("{remaining}", String(firstThreshold));
+      .replace("{remaining}", String(firstThreshold))}\n\n${WINDOW_NOTICE_SHORT}`;
     await sendTextMessage(customer.phone_number, msg);
     await db
       .from("orders")
@@ -64,9 +65,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       name: string | null;
     } | null;
     if (!customer) continue;
-    const msg = finalTemplate
+    const msg = `${finalTemplate
       .replace("{name}", customer.name ?? "kak")
-      .replace("{remaining}", String(finalThreshold));
+      .replace("{remaining}", String(finalThreshold))}\n\n${WINDOW_NOTICE_SHORT}`;
     await sendTextMessage(customer.phone_number, msg);
     await db
       .from("orders")

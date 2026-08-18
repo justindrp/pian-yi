@@ -191,7 +191,10 @@ Meta blocks a business from writing first once 24 hours have passed since the cu
 Both wordings live in `src/lib/whatsapp/window-notice.ts` and both end on the same explicit ask — *if it has been over 24 hours, message us first*:
 
 - `WINDOW_NOTICE_WELCOME` — its own bubble, sent last in the welcome sequence, after the T&C.
-- `WINDOW_NOTICE_SHORT` — appended to the payment-request message (`createOrderFromExtraction`) and to both `mark_paid` confirmations (`PATCH /api/orders`, assistant `mark_order_paid`). Those are the moments a customer has just paid and has no reason to write again for days, which is exactly how a window closes unnoticed.
+- `WINDOW_NOTICE_SHORT` — appended to the payment-request message (`createOrderFromExtraction`), both `mark_paid` confirmations (`PATCH /api/orders`, assistant `mark_order_paid`), both renewal reminders (`renewal-reminders` cron), the gentle payment reminder (`send-reminders`) and the overdue notice (`cancel-unpaid`). Every one of those is a moment the customer has no reason to write again for days — which is exactly how a window closes unnoticed — and each fires at most once per order, so it never becomes wallpaper.
+- `WINDOW_NOTICE_CLAUSE` — one clause on the daily delivery-proof "balas *ok*" (`photo-matcher.ts`). That message already asked for the reply; it never said why, so a customer who skipped it had no idea it was what kept us reachable. It goes out every delivery, so it gets a clause and not the paragraph.
+
+Deliberately **not** added to: the re-engagement crons (`lapsed-customers`, `abandoned-recovery`, `refresh-wa-window` — their entire job is already to elicit a reply, and `refresh-wa-window` explains the rule in its own words), the post-delivery feedback ping (a casual one-liner that fires on ~20% of deliveries), broadcasts (admin writes the copy), and anything a human typed through the inbox or Assistant.
 
 The welcome sequence only ever fires once per phone number, so it does nothing for existing customers — the order-confirmation copies are what reach them, at their next purchase. Both strings are hardcoded, matching the T&C block they sit beside; if either moves to `settings`, move both.
 

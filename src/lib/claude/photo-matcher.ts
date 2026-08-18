@@ -8,6 +8,7 @@ import {
   sendImageTemplate,
   sendTextMessage,
 } from "@/lib/whatsapp/client";
+import { WINDOW_NOTICE_CLAUSE } from "@/lib/whatsapp/window-notice";
 
 interface DeliveryRow {
   id: string;
@@ -224,9 +225,11 @@ export async function sendDeliveryPhotoToCustomer(
     status: "sent",
   });
 
-  // Prompt customer to reply so the 24h service window stays open for tomorrow's proof.
+  // Prompt customer to reply so the 24h service window stays open for tomorrow's
+  // proof. The ask was always here; the reason was not, so customers read the
+  // silence that followed a missed reply as us ignoring them.
   await sendTextMessage(
     phone,
-    "Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima.",
+    `Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima, ${WINDOW_NOTICE_CLAUSE}.`,
   );
 }
