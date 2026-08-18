@@ -15,6 +15,7 @@
  *    the turn, so "besok" and "senin depan" mean what they meant at the time and
  *    the expected delivery dates stay comparable.
  */
+import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildCorpus, type CorpusCase } from "./replay-corpus";
@@ -270,6 +271,7 @@ async function main() {
   // case, a failure is diagnosable while the rest of the round continues.
   const concurrency = Number(args.find((a) => a.startsWith("--concurrency="))?.split("=")[1] ?? 5);
   const outDir = args.find((a) => a.startsWith("--out="))?.split("=")[1];
+  const slice = args.find((a) => a.startsWith("--slice="))?.split("=")[1];
   if (outDir) mkdirSync(outDir, { recursive: true });
 
   if (args.includes("--cleanup-only")) {
@@ -279,13 +281,47 @@ async function main() {
 
   let cases = await buildCorpus(count);
   if (only) cases = cases.filter((c) => c.orderId.startsWith(only));
+
+  // Parent mode: fan the corpus out over `concurrency` child processes and just
+  // relay their output. Each child owns its own global Date, which is the whole
+  // reason this is processes and not promises.
+  if (!slice && concurrency > 1 && cases.length > 1) {
+    const workers = Math.min(concurrency, cases.length);
+    console.log(`replaying ${cases.length} conversations over ${workers} processes\n`);
+    const childArgs = args.filter(
+      (a) => !a.startsWith("--concurrency=") && !a.startsWith("--slice="),
+    );
+    const codes = await Promise.all(
+      Array.from({ length: workers }, (_, k) =>
+        new Promise<number>((resolve) => {
+          const child = spawn(
+            "npx",
+            ["tsx", "scripts/replay-orders.ts", ...childArgs, `--slice=${k}/${workers}`],
+            { stdio: ["ignore", "inherit", "inherit"] },
+          );
+          child.on("close", (code) => resolve(code ?? 0));
+        }),
+      ),
+    );
+    if (!keep) console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
+    process.exit(codes.some((c) => c !== 0) ? 1 : 0);
+  }
+
+  if (slice) {
+    const [k, n] = slice.split("/").map(Number);
+    cases = cases.filter((_, i) => i % n === k);
+  }
   console.log(`replaying ${cases.length} conversations\n`);
 
   const results: Result[] = [];
   let next = 0;
-  // Cases share nothing — a different demo customer, its own rows — so they run
-  // in parallel. Serially a 20-conversation round is over an hour of model
-  // calls, which is too slow to fix against.
+  // Cases run one at a time inside a process. They used to run as a pool of
+  // in-process workers, and that was silently wrong: `atTime` pins the clock by
+  // replacing the global Date, so seven concurrent cases overwrote each other's
+  // pin and a turn could be processed under another case's date. "besok" then
+  // resolved to the wrong day. The tell was the per-turn timer printing 476345s
+  // for a turn that took seconds. Parallelism now comes from child processes
+  // (--slice), which have their own globals.
   async function worker() {
     while (true) {
       const i = next++;
@@ -308,7 +344,7 @@ async function main() {
       if (!keep) await cleanupDemo(`+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, cases.length) }, worker));
+  await worker();
 
   const passed = results.filter((r) => r.ok).length;
   console.log(`\n=== ${passed}/${results.length} passed ===`);
@@ -322,7 +358,9 @@ async function main() {
       console.log(`    ${m.role === "user" ? ">>" : "<<"} ${body}`);
     }
   }
-  if (!keep) console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
+  // Only the parent sweeps: a shard calling cleanupAllDemos() would delete the
+  // customers its siblings are still replaying against.
+  if (!keep && !slice) console.log(`\ndemo rows cleaned: ${await cleanupAllDemos()} leftover`);
 }
 
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
