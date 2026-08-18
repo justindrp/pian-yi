@@ -473,7 +473,10 @@ export async function createOrderFromExtraction(
       price_per_portion: pricePerPortion,
       total_price: totalPrice,
       addon_cost_per_portion: nasiMerah ? NASI_MERAH_SURCHARGE : 0,
-      portions_per_delivery: input.portions_per_delivery,
+      // NOT NULL, and the model omits it whenever the conversation never
+      // discussed portions per day — Nadya's 20-porsi order was rejected on
+      // it and she got nothing. One per delivery is the prompt's own default.
+      portions_per_delivery: input.portions_per_delivery ?? 1,
       portions_lunch: input.portions_lunch ?? 0,
       portions_dinner: input.portions_dinner ?? 0,
       portions_remaining: packageSize,
@@ -528,7 +531,7 @@ export async function createOrderFromExtraction(
               end_date: endDate,
               package_size: packageSize,
               meal_time_preference: input.meal_time_preference ?? null,
-              portions_per_delivery: input.portions_per_delivery,
+              portions_per_delivery: input.portions_per_delivery ?? 1,
               portions_lunch: input.portions_lunch ?? null,
               portions_dinner: input.portions_dinner ?? null,
               lunch_address_slot: 1,
