@@ -1788,32 +1788,9 @@ export default function CustomersClient() {
 
               {/* Draw ledger — every package credit (+N) and daily draw (−N) */}
               <div className="pt-2 border-t border-gray-100">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                    Riwayat pemakaian
-                  </p>
-                  {ledger && (
-                    <span className="text-xs text-gray-500">
-                      sisa hari ini{" "}
-                      <span
-                        className={`font-semibold ${ledger.balanceToday < 0 ? "text-red-600" : "text-gray-900"}`}
-                      >
-                        {ledger.balanceToday}
-                      </span>
-                      {ledger.balance !== ledger.balanceToday && (
-                        <>
-                          {" · setelah terjadwal "}
-                          <span
-                            className={`font-semibold ${ledger.balance < 0 ? "text-red-600" : "text-gray-900"}`}
-                          >
-                            {ledger.balance}
-                          </span>
-                        </>
-                      )}{" "}
-                      porsi
-                    </span>
-                  )}
-                </div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                  Riwayat pemakaian
+                </p>
                 {ledgerLoading ? (
                   <p className="text-xs text-gray-400">Memuat…</p>
                 ) : !ledger || ledger.rows.length === 0 ? (
@@ -1890,6 +1867,31 @@ export default function CustomersClient() {
                           </td>
                           <td />
                         </tr>
+                        <tr className="border-t-2 border-gray-200">
+                          <td colSpan={3} className="px-2 py-1.5 text-gray-500">
+                            Sisa hari ini
+                          </td>
+                          <td
+                            className={`px-2 py-1.5 text-right font-semibold tabular-nums ${ledger.balanceToday < 0 ? "text-red-600" : "text-gray-900"}`}
+                          >
+                            {ledger.balanceToday}
+                          </td>
+                        </tr>
+                        {ledger.balance !== ledger.balanceToday && (
+                          <tr className="border-t border-gray-100">
+                            <td
+                              colSpan={3}
+                              className="px-2 py-1.5 text-gray-500"
+                            >
+                              Setelah terjadwal
+                            </td>
+                            <td
+                              className={`px-2 py-1.5 text-right font-semibold tabular-nums ${ledger.balance < 0 ? "text-red-600" : "text-gray-900"}`}
+                            >
+                              {ledger.balance}
+                            </td>
+                          </tr>
+                        )}
                       </tfoot>
                     </table>
                   </div>
