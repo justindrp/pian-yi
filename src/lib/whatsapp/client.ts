@@ -216,6 +216,36 @@ export async function fetchAndUploadImage(imageUrl: string): Promise<string> {
   return uploadMediaToMeta(compressed, "image/jpeg");
 }
 
+/**
+ * Sends a plain-text (no header media) approved template. Templates are the only
+ * way to reach a customer whose 24h service window has closed.
+ */
+export async function sendTextTemplate(
+  to: string,
+  templateName: string,
+  bodyParams: string[],
+  languageCode = "id",
+): Promise<string> {
+  const res = await axios.post<MetaSendResponse>(
+    `${BASE_URL}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        components:
+          bodyParams.length > 0
+            ? [{ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) }]
+            : [],
+      },
+    },
+    { headers: headers() },
+  ).catch(sanitizeAxiosError);
+  return getSentMessageId(res.data);
+}
+
 export async function sendImageTemplate(
   to: string,
   templateName: string,

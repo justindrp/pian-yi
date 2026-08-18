@@ -143,6 +143,6 @@ Triggered by the in-app scheduler (`src/lib/cron/scheduler.ts`, started from `sr
 - `GET /api/cron/generate-deliveries` — Pre-create `daily_deliveries` rows for tomorrow (manual only — on no schedule). Same per-customer `pickDrawOrder` grouping as the daily sheet's Generate.
 - `GET /api/cron/lapsed-customers` — Detect customers who haven't ordered recently; send re-engagement message (10:00 WIB)
 - `GET /api/cron/post-delivery-followup` — Send satisfaction follow-up WhatsApp message after delivery (15:00 WIB)
-- `GET /api/cron/refresh-wa-window` — Keep the 24-hour WhatsApp service window open on active threads (08:00 and 20:00 WIB)
+- `GET /api/cron/refresh-wa-window` — Keep the 24-hour WhatsApp service window open on active threads (08:00 and 20:00 WIB). If the window lapses before the send lands (Meta 131047), falls back to the approved `jendela_24_jam` template
 - `GET /api/cron/renewal-reminders` — Warn quota customers whose balance is running low (hourly)
 - `POST /api/cron/send-reminders` — Send payment reminder to customers with unpaid orders (every 2 hours)

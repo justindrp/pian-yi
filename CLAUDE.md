@@ -196,6 +196,8 @@ Both wordings live in `src/lib/whatsapp/window-notice.ts` and both end on the sa
 
 Deliberately **not** added to: the re-engagement crons (`lapsed-customers`, `abandoned-recovery`, `refresh-wa-window` — their entire job is already to elicit a reply, and `refresh-wa-window` explains the rule in its own words), the post-delivery feedback ping (a casual one-liner that fires on ~20% of deliveries), broadcasts (admin writes the copy), and anything a human typed through the inbox or Assistant.
 
+- `WINDOW_NOTICE_TEMPLATE` (`jendela_24_jam`) — the same notice as an **approved Meta template**, which is the only thing that reaches a customer whose window is already shut. Body takes one param (the customer's name), footer "Pian Yi Catering", one quick-reply button ("Halo, mau tanya") — tapping it is an inbound message, so the button itself reopens the window. Submitted 2026-08-18 to WABA `1603294840784079`, template id `1776416490076084`, category UTILITY, language `id`. Sent via `sendTextTemplate()` (`src/lib/whatsapp/client.ts`); its only caller is the `refresh-wa-window` cron, as a fallback when the free-form send comes back 131047 because the window lapsed between the query and the send. The WABA id is not in the env — it is `entry[0].id` on any `webhook_events` payload.
+
 The welcome sequence only ever fires once per phone number, so it does nothing for existing customers — the order-confirmation copies are what reach them, at their next purchase. Both strings are hardcoded, matching the T&C block they sit beside; if either moves to `settings`, move both.
 
 ### Confidentiality flow for subcontractor issues

@@ -33,3 +33,11 @@ export const WINDOW_NOTICE_CLAUSE =
 
 export const WINDOW_NOTICE_SHORT =
   "Oh iya kak, WhatsApp cuma mengizinkan kami mengirim pesan dalam 24 jam sejak pesan terakhir kakak — lewat dari itu jalurnya terkunci dan kami nggak bisa chat duluan. Jadi kalau sudah lewat 24 jam dan ada apa-apa, kakak chat kami duluan ya kak, langsung kami balas 😊";
+
+/**
+ * Approved Meta template carrying the same notice (WABA 1603294840784079,
+ * language `id`, one body param: the customer's name). A template is the only
+ * way to reach a customer whose 24h window has already closed — free-form text
+ * is rejected with error 131047.
+ */
+export const WINDOW_NOTICE_TEMPLATE = "jendela_24_jam";

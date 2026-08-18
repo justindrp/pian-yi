@@ -1,7 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendTextMessage } from "@/lib/whatsapp/client";
+import {
+  isOutsideWindowError,
+  sendTextMessage,
+  sendTextTemplate,
+} from "@/lib/whatsapp/client";
+import { WINDOW_NOTICE_TEMPLATE } from "@/lib/whatsapp/window-notice";
 
 export async function GET(req: NextRequest): Promise<Response> {
   if (req.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
@@ -41,10 +46,25 @@ export async function GET(req: NextRequest): Promise<Response> {
     } | null;
     if (!customer?.phone_number) continue;
 
-    await sendTextMessage(
-      customer.phone_number,
-      "Halo kak, maaf ganggu ya 🙏 Karena keterbatasan WhatsApp Business, kami tidak bisa menghubungi kakak kalau tidak ada balasan dalam 24 jam. Mohon balas \"ok\" supaya kami tetap bisa menghubungi kakak kalau ada info penting ya!",
-    );
+    // The window can lapse between the query and the send, so a rejected
+    // free-form message falls back to the approved template — the only thing
+    // Meta still delivers once the 24h window is shut.
+    try {
+      await sendTextMessage(
+        customer.phone_number,
+        "Halo kak, maaf ganggu ya 🙏 Karena keterbatasan WhatsApp Business, kami tidak bisa menghubungi kakak kalau tidak ada balasan dalam 24 jam. Mohon balas \"ok\" supaya kami tetap bisa menghubungi kakak kalau ada info penting ya!",
+      );
+    } catch (err) {
+      if (!isOutsideWindowError(err)) {
+        console.error("[refresh-wa-window] send failed:", err);
+        continue;
+      }
+      await sendTextTemplate(customer.phone_number, WINDOW_NOTICE_TEMPLATE, [
+        customer.name ?? "kak",
+      ]).catch((e) =>
+        console.error("[refresh-wa-window] template fallback failed:", e),
+      );
+    }
     sent++;
   }
 
