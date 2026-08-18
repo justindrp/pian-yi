@@ -301,7 +301,9 @@ ${Object.entries(params.neighborhoods)
   .map(([area, names]) => `- **${area}** neighborhoods: ${names.join(", ")}.`)
   .join("\n")}
 - BSD Lama also includes any place with "Sektor" in the name.
-- If the neighborhood name isn't in any list above, ask: "Maaf kak, [nama tempat] itu masuk area mana ya? Kami melayani: ${params.servedAreas.join(", ")}."
+- **Match on any part of the address, not the whole line.** An address is usually a cluster plus a kecamatan plus a postcode, and only the cluster is on the lists above. If any fragment matches, that is the area — the rest of the line being unfamiliar changes nothing. "Cluster Allogio Timur 3 No.32, Pagedangan kab Tangerang" is Gading Serpong, because Allogio is: on 2026-08-10 the bot saw "Pagedangan", asked which area it was **four times in a row**, and Janice's order was never created.
+- **Area never blocks the order.** If nothing matches, ask once: "Maaf kak, [nama tempat] itu masuk area mana ya? Kami melayani: ${params.servedAreas.join(", ")}." If the customer answers something else, or answers nothing, or you have everything else you need — pick the served area nearest to their address or maps pin yourself, call extract_order with it, and say which area you used in one clause. A wrong area is one field an admin fixes in seconds; a question asked a second time is a customer who never gets an order.
+- **Never ask the same question twice.** If your previous message already asked it, do not ask again in any wording — act on what you have.
 - If the customer is having their days scheduled and "Makan siang / makan malam / keduanya" is "keduanya", treat "Jumlah porsi per pengiriman" as portions per meal (e.g. "1" = 1 siang + 1 malam). Do NOT ask again — only ask if the field is blank.
 - If the customer is ordering bebas, meal choice and portions per delivery are not collected at sign-up — they specify these each time they request a delivery. Their form has no scheduling fields, and their absence is not a missing field.
 - If any required field (except Catatan and the optional scheduling fields) is blank, ask only for the missing field(s).
@@ -312,6 +314,7 @@ Once the form is complete, show a one-line summary and ask the customer to confi
 - **Any affirmative confirms it** — "ya", "YA", "iya", "oke", "ok", "sip", "boleh", "betul", "lanjut", "gas", "saya join", "deal", a thumbs-up. There is no magic word. Do not wait for the literal "YA".
 - **Never ask for confirmation twice.** If you have already shown a summary and the customer answered with anything that is not a correction or a question, call extract_order now.
 - **A customer who sends a payment proof has confirmed** — if no order exists yet, call extract_order first, then acknowledge the payment. Never leave a paying customer without an order.
+- **Pass the days you agreed on.** If the customer named their delivery dates — a Senin–Jumat run, or a set with gaps like 11, 12, 13, 14, 18 — send every one of them in delivery_schedule. Start and end dates alone are filled in by weekday, which silently books different days than the ones they asked for.
 - **Correct the form silently.** If a field disagrees with what they said earlier (they wrote "1" for total porsi but agreed to 5 hari × 1 porsi), use the value the conversation supports, state it in one clause, and still call extract_order. Do not restart the flow over an arithmetic slip.
 - If something genuinely required is missing, ask **only** for that field — never re-ask a field they already gave.
 
@@ -349,6 +352,9 @@ We do not accommodate custom requests, with exactly three exceptions:
 1. **Tidak pedas** — accepted. Note it in the order.
 2. **Tidak ada daging sapi** — accepted. On days when the menu contains beef, we will replace it with chicken. Tell the customer: "Oke kak, kalau menu hari itu ada daging sapi, kami ganti dengan ayam ya."
 3. **Tidak ada nasi** — accepted. Protein portion will be increased by 25%. Tell the customer: "Oke kak, porsi protein akan kami tambah 25% sebagai gantinya ya."
+4. **Nasi merah** — accepted, **+Rp 5.000 per porsi**. Say so and quote the higher total: "Bisa kak, nasi merah tambah Rp 5.000 per porsi ya." Then pass nasi_merah: true to extract_order — that is what makes the price and our cost line up. We do sell this: on 2026-08-10 the bot told Cindy Angelia twice that nasi merah "belum bisa kami sediakan" and never created her order, while her real order was written at Rp 34.000 (29.000 + 5.000).
+
+A note is never a reason to re-confirm an order. "Porsi 1/2", "tanpa lemak", a nickname or a room number added after the summary — record it and call extract_order. Do not print the summary again.
 
 For any other custom request (e.g. no gluten, extra spicy, ingredient substitutions, allergy accommodations beyond the above), politely decline: "Mohon maaf kak, untuk saat ini kami belum bisa akomodasi permintaan khusus selain tidak pedas, tidak ada daging sapi, atau tidak ada nasi ya."
 

@@ -40,6 +40,7 @@ export interface ExtractedOrderInput {
   end_date?: string;
   subcontractor_id?: string;
   size?: string;
+  nasi_merah?: boolean;
 }
 
 export interface ExtractedOrderPricing {
@@ -51,96 +52,108 @@ export type ExtractedOrderReview = ExtractedOrderInput & ExtractedOrderPricing;
 const LEARNED_CONTEXT_START = "[AI learned context]";
 const LEARNED_CONTEXT_END = "[/AI learned context]";
 
+// One shared property schema. The webhook used to carry its own copy and it had
+// drifted: `delivery_schedule` was missing there entirely, so the live bot could
+// never book a customer's named dates at order creation — only a start/end range
+// it then filled in by weekday. Cindy Angelia's 11, 12, 13, 14, 18 Agustus is
+// exactly the shape that loses (11–18 by weekday is a different set of days).
+export const EXTRACT_ORDER_PROPERTIES = {
+  customer_name: { type: "string" },
+  package_size: {
+    type: "number",
+    description:
+      "Total portions in the package/order, not the number of delivery days. Example: 2 portions per delivery for 5 delivery days means package_size = 10.",
+  },
+  portions_per_delivery: {
+    type: "number",
+    description: "How many portions are sent on each delivery day.",
+  },
+  portions_lunch: { type: "number" },
+  portions_dinner: { type: "number" },
+  address: { type: "string" },
+  maps_link: {
+    type: "string",
+    description: "Google Maps link provided by the customer",
+  },
+  area: {
+    type: "string",
+    enum: [
+      "BSD Baru",
+      "BSD Lama",
+      "Gading Serpong",
+      "Alam Sutera",
+      "Karawaci",
+    ],
+  },
+  sub_area: {
+    type: "string",
+    description:
+      "Sub-location within the area: district name for houses, apartment name for apartments, building name for offices",
+  },
+  meal_time_preference: {
+    type: "string",
+    enum: [
+      "lunch_only",
+      "dinner_only",
+      "both_fixed",
+      "per_day_decision",
+      "default_lunch",
+      "default_dinner",
+      "custom_schedule",
+    ],
+  },
+  custom_schedule: { type: "object" },
+  start_date: {
+    type: "string",
+    description: "ISO date string YYYY-MM-DD",
+  },
+  end_date: {
+    type: "string",
+    description:
+      "ISO date string YYYY-MM-DD — the customer's requested last delivery date",
+  },
+  delivery_schedule: {
+    type: "array",
+    description:
+      "Every delivery day the customer named, one entry per day per meal. Use this whenever the days are known — including a plain Senin–Jumat run and especially a set with gaps (11, 12, 13, 14, 18). Omitting it leaves the days to be guessed from start_date/end_date by weekday, which is a different set of days whenever the customer skipped one. package_size must equal the sum of all slot portions.",
+    items: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "ISO date YYYY-MM-DD",
+        },
+        meal_type: {
+          type: "string",
+          enum: ["lunch", "dinner"],
+        },
+        portions: { type: "number" },
+      },
+      required: ["date", "meal_type", "portions"],
+    },
+  },
+  subcontractor_id: {
+    type: "string",
+    description: "UUID of the chosen dapur, from the dapur list given",
+  },
+  size: {
+    type: "string",
+    enum: ["s"],
+  },
+  nasi_merah: {
+    type: "boolean",
+    description:
+      "True when the customer asked for nasi merah. Adds Rp 5.000 per portion to the price and records the same amount as what the kitchen charges us.",
+  },
+} as const;
+
 export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
   name: "extract_order",
   description:
     "Extracts all order details the customer has already provided earlier in this conversation.",
   input_schema: {
     type: "object",
-    properties: {
-      customer_name: { type: "string" },
-      package_size: {
-        type: "number",
-        description:
-          "Total portions in the package/order, not the number of delivery days. Example: 2 portions per delivery for 5 delivery days means package_size = 10.",
-      },
-      portions_per_delivery: {
-        type: "number",
-        description: "How many portions are sent on each delivery day.",
-      },
-      portions_lunch: { type: "number" },
-      portions_dinner: { type: "number" },
-      address: { type: "string" },
-      maps_link: {
-        type: "string",
-        description: "Google Maps link provided by the customer",
-      },
-      area: {
-        type: "string",
-        enum: [
-          "BSD Baru",
-          "BSD Lama",
-          "Gading Serpong",
-          "Alam Sutera",
-          "Karawaci",
-        ],
-      },
-      sub_area: {
-        type: "string",
-        description:
-          "Sub-location within the area: district name for houses, apartment name for apartments, building name for offices",
-      },
-      meal_time_preference: {
-        type: "string",
-        enum: [
-          "lunch_only",
-          "dinner_only",
-          "both_fixed",
-          "per_day_decision",
-          "default_lunch",
-          "default_dinner",
-          "custom_schedule",
-        ],
-      },
-      custom_schedule: { type: "object" },
-      start_date: {
-        type: "string",
-        description: "ISO date string YYYY-MM-DD",
-      },
-      end_date: {
-        type: "string",
-        description:
-          "ISO date string YYYY-MM-DD — the customer's requested last delivery date",
-      },
-      delivery_schedule: {
-        type: "array",
-        description:
-          "Use ONLY when portions vary by delivery day (e.g. 3 on Tue, 2 on Wed). Omit when all deliveries have the same portion count — use portions_per_delivery instead. When used, package_size must equal the sum of all slot portions.",
-        items: {
-          type: "object",
-          properties: {
-            date: {
-              type: "string",
-              description: "ISO date YYYY-MM-DD",
-            },
-            meal_type: {
-              type: "string",
-              enum: ["lunch", "dinner"],
-            },
-            portions: { type: "number" },
-          },
-          required: ["date", "meal_type", "portions"],
-        },
-      },
-      subcontractor_id: {
-        type: "string",
-        description: "UUID of the chosen dapur, from the dapur list given",
-      },
-      size: {
-        type: "string",
-        enum: ["s"],
-      },
-    },
+    properties: EXTRACT_ORDER_PROPERTIES,
     required: [
       "customer_name",
       "package_size",
@@ -227,8 +240,14 @@ ${dapurList || "none"}`;
   );
 }
 
+// Nasi merah is the one add-on we sell, and we charge it through at cost: the
+// customer pays the tier price plus this, and the kitchen bills us the same
+// amount on top of the route rate (`orders.addon_cost_per_portion`).
+export const NASI_MERAH_SURCHARGE = 5000;
+
 export async function getExtractedOrderPricing(
   packageSize: number,
+  nasiMerah = false,
 ): Promise<ExtractedOrderPricing> {
   const db = createAdminClient();
   const { data: tier } = await db
@@ -239,7 +258,8 @@ export async function getExtractedOrderPricing(
     .limit(1)
     .single();
 
-  const pricePerPortion = tier?.price_per_portion ?? 0;
+  const pricePerPortion =
+    (tier?.price_per_portion ?? 0) + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
   return {
     price_per_portion: pricePerPortion,
     total_price: pricePerPortion * packageSize,
@@ -373,8 +393,9 @@ export async function createOrderFromExtraction(
   const packageSize = schedule
     ? schedule.reduce((sum, s) => sum + s.portions, 0)
     : input.package_size;
+  const nasiMerah = input.nasi_merah === true;
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(packageSize);
+    await getExtractedOrderPricing(packageSize, nasiMerah);
 
   const sortedSchedule = schedule
     ? [...schedule].sort((a, b) => a.date.localeCompare(b.date))
@@ -393,6 +414,7 @@ export async function createOrderFromExtraction(
       package_size: packageSize,
       price_per_portion: pricePerPortion,
       total_price: totalPrice,
+      addon_cost_per_portion: nasiMerah ? NASI_MERAH_SURCHARGE : 0,
       portions_per_delivery: input.portions_per_delivery,
       portions_lunch: input.portions_lunch ?? 0,
       portions_dinner: input.portions_dinner ?? 0,

@@ -20,6 +20,7 @@ import {
 } from "@/lib/claude/conversation";
 import {
   createOrderFromExtraction,
+  EXTRACT_ORDER_PROPERTIES,
   type ExtractedOrderInput,
 } from "@/lib/claude/extract-order";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
@@ -1191,66 +1192,7 @@ export async function processSavedCustomerMessage(params: {
         "Creates the customer's order. Call this as soon as the customer has agreed to a package — any affirmative counts (\"ya\", \"iya\", \"oke\", \"sip\", \"boleh\", \"saya join\", a thumbs-up), not only the literal word \"YA\" — and you have their name, address and total portions. Call it also when a customer sends a payment proof and no order exists yet. Never ask for confirmation a second time instead of calling this.",
       input_schema: {
         type: "object",
-        properties: {
-          customer_name: { type: "string" },
-          package_size: { type: "number" },
-          portions_per_delivery: { type: "number" },
-          portions_lunch: { type: "number" },
-          portions_dinner: { type: "number" },
-          address: { type: "string" },
-          maps_link: {
-            type: "string",
-            description: "Google Maps link provided by the customer",
-          },
-          area: {
-            type: "string",
-            enum: [
-              "BSD Baru",
-              "BSD Lama",
-              "Gading Serpong",
-              "Alam Sutera",
-              "Karawaci",
-            ],
-          },
-          sub_area: {
-            type: "string",
-            description:
-              "Sub-location within the area: district name for houses, apartment name for apartments, building name for offices",
-          },
-          meal_time_preference: {
-            type: "string",
-            enum: [
-              "lunch_only",
-              "dinner_only",
-              "both_fixed",
-              "per_day_decision",
-              "default_lunch",
-              "default_dinner",
-              "custom_schedule",
-            ],
-          },
-          custom_schedule: { type: "object" },
-          start_date: {
-            type: "string",
-            description: "ISO date string YYYY-MM-DD",
-          },
-          end_date: {
-            type: "string",
-            description:
-              "ISO date string YYYY-MM-DD — the customer's requested last delivery date",
-          },
-          subcontractor_id: {
-            type: "string",
-            description:
-              "UUID of the chosen dapur (from the dapur ID mapping in the system prompt)",
-          },
-          size: {
-            type: "string",
-            enum: ["s"],
-            description:
-              "Package size. Current customer-facing chatbot orders must use s; do not ask the customer about M.",
-          },
-        },
+        properties: EXTRACT_ORDER_PROPERTIES,
         required: [
           "customer_name",
           "package_size",
