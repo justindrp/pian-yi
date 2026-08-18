@@ -200,17 +200,22 @@ Deliberately **not** added to: the re-engagement crons (`lapsed-customers`, `aba
 
 The welcome sequence only ever fires once per phone number, so it does nothing for existing customers — the order-confirmation copies are what reach them, at their next purchase. Both strings are hardcoded, matching the T&C block they sit beside; if either moves to `settings`, move both.
 
-### Templates do not help while the account is `LIMITED`
+### No payment method on the WABA — every template send fails
 
-An approved template is what Meta lets you send outside the 24h window — but only if the *account* is allowed to send business-initiated messages at all. `GET /{waba-id}?fields=health_status` reports this one, and on 2026-08-18 it read `can_send_message: LIMITED` with error `141010` on the BUSINESS entity: **Pian Yi Catering has never submitted business verification** (`verification_status: pending_submission`, business `1304799927697056`). The phone number is also stuck at `TIER_250` because the display name is unapproved.
+An approved template is what Meta lets you send outside the 24h window, and ours is fine. The account is not: **no payment method is attached to the WABA**, and template messages have been paid per send since Nov 2025. Meta accepts the API call, returns a wamid — so our row optimistically reads "sent" — and fails the delivery afterwards with:
 
-The effect is total and was invisible for two months. Every delivery-proof send since 20 Juni splits perfectly on the window: **219 sent inside it were delivered or read, and all 296 sent outside it failed** — no overlap in either direction. The API accepts each one and returns a wamid (so our row optimistically says "sent"), and delivery fails afterwards. Meta's Template Insights page only counts what got delivered — 192 sent / 192 delivered / 0 failed, `Amount spent: —` — so the failures appear nowhere on Meta's side. The inbox is the only place they show.
+> `131042` Business eligibility payment issue — *"Message failed to send because no payment method is set up for your WhatsApp Business account."*
+> Fix at `business.facebook.com/billing_hub` → business `1304799927697056`, asset `1603294840784079`.
 
-Billing is the other gate that produces the identical symptom (template messages are paid per send, and a WABA with no working payment method fails the same way; a debit card failed on this account in Juli). `extendedcredits` is empty and the funding fields are BSP-only, so which gate is active cannot be read from the API — **the error code on the failed status webhook is the only thing that names it** (`131042` payment/eligibility, `131049`/`130472` policy limits).
+Confirmed 2026-08-18 by `scripts/probe-template-window.ts`, which sends a template to a customer silent for weeks and reads the receipt back off `conversations.whatsapp_error`. Run it any time this is in doubt.
 
-That code is now stored: `conversations.whatsapp_error` (jsonb, migration 069) holds Meta's `errors[]` from the status webhook, written by `updateMessageReceipt`, and the inbox prints it next to "Failed". It used to be a `console.error` only, which is why nothing from Juni survived to diagnose.
+The effect was total and invisible for two months. Every delivery-proof send since 20 Juni splits perfectly on the window: **219 sent inside it were delivered or read, and all 296 sent outside it failed** — no overlap in either direction. Meta's Template Insights only counts what got delivered (192 sent / 192 delivered / 0 failed, `Amount spent: —`), so nothing on Meta's side shows a problem. The inbox was the only place the failures appeared, as a red "Failed" with no reason attached.
 
-Until verification (and billing) clear, treat **every** business-initiated send as delivered only if the window is open — that includes `jendela_24_jam` and the `refresh-wa-window` template fallback, which are dead letters in exactly the case they exist for.
+Two further account limits are real but were **not** the cause here: business verification has never been submitted (`141010`, `verification_status: pending_submission`, so `health_status.can_send_message: LIMITED`), and the display name is unapproved, holding the number at `TIER_250`. Both need doing; neither is what 131042 is complaining about.
+
+`conversations.whatsapp_error` (jsonb, migration 069) now stores Meta's `errors[]` from the status webhook, written by `updateMessageReceipt`, and the inbox prints it next to "Failed". `parseStatusUpdates` prefers `error_data.details` over `message` — the latter usually just repeats the title, while details carries the actionable sentence and the billing link. Before this the code only reached `console.error`, which is why nothing from Juni survived to diagnose.
+
+Until a card is on file, **every business-initiated send is a dead letter** — delivery proofs, `jendela_24_jam`, and the `refresh-wa-window` template fallback all fail in exactly the case they exist for. `jendela_24_jam` was also auto-recategorized by Meta from UTILITY to MARKETING, which makes it billable at the higher rate and subject to marketing limits once billing works.
 
 ### Confidentiality flow for subcontractor issues
 
