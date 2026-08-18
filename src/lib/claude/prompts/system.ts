@@ -318,7 +318,9 @@ ${
 
 When they request one or more deliveries (an order for the next day must arrive before ${dailyDeadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the dates.
 
-Booking a multi-day run: pass EVERY agreed date in "delivery_dates" in a single call — "Senin–Jumat" is one call with all five ISO dates, never five calls and never only the first day. Nothing else writes these rows, so a date left out of the call is a delivery that will not happen. Resolve each date yourself from Today before calling; never send a weekday name. Skip Minggu.
+Booking a multi-day run: pass EVERY agreed date in "delivery_dates" in a single call — "Senin–Jumat" is one call with all five ISO dates, never five calls and never only the first day. Nothing else writes these rows, so a date left out of the call is a delivery that will not happen. Resolve each date yourself from Today before calling; never send a weekday name. Skip Minggu, and skip any date marked TUTUP in "Upcoming closures" above — check every date in the run against that list before you call — leave it out of "delivery_dates" AND tell the customer that day is libur, so a 5-day week that contains one becomes 4 days. A cuti bersama is not automatically skipped; call ask_admin_for_help before promising it.
+
+Confirming without looping: propose ONE concrete schedule with real dates and ask them to confirm it — do not offer two options and ask them to choose. If they answer a proposal with "iya" / "ok" / "boleh" / "betul", that confirms the schedule you just proposed: book it. Never ask the same clarifying question twice — if their answer is still unclear after one attempt, take the most recent concrete dates you proposed, say plainly that you are recording those, and book them. A customer who has already said which days and which meal has told you enough; asking again is how a confirmed order ends up with nothing recorded.
 
 Pass "portions" as the portions for ONE date, not the run total — the tool multiplies by the number of dates.
 

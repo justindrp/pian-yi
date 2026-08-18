@@ -104,6 +104,20 @@ export const HOLIDAYS: Holiday[] = [
 /** Last date the list actually covers. Past it, we know nothing — not "nothing". */
 export const HOLIDAYS_KNOWN_THROUGH = "2026-12-31";
 
+/**
+ * The holiday falling on a date, if any. Delivery scheduling needs the type,
+ * not just a yes/no: a libur nasional is closed, a cuti bersama is a question
+ * for the partner kitchen.
+ */
+export function holidayOn(ymd: string): Holiday | null {
+  return HOLIDAYS.find((h) => h.date === ymd) ?? null;
+}
+
+/** True only for the days we are definitely closed. */
+export function isClosedHoliday(ymd: string): boolean {
+  return holidayOn(ymd)?.type === "libur_nasional";
+}
+
 /** Holidays from `today` (inclusive) through the next `days` days. */
 export function upcomingHolidays(
   today: string = jakartaDateString(),

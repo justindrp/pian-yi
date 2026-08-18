@@ -46,6 +46,7 @@ import {
 import { shouldAutoResume } from "@/lib/customers/takeover";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { sendPushToAllAdmins } from "@/lib/push/send";
+import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -1846,17 +1847,38 @@ async function handleToolUse(
       return;
     }
 
+    // A libur nasional is a day we are definitely shut, and the model schedules
+    // straight through one — it put 25 Agustus (Maulid Nabi) in an eight-day run
+    // in the simulator even with the holiday list in its prompt. Dropping the
+    // date here is the guarantee; the prompt rule is the first layer.
+    const closedDates = dates.filter((d) => isClosedHoliday(d));
+    const openDates = dates.filter((d) => !isClosedHoliday(d));
+
+    if (openDates.length === 0) {
+      console.warn(
+        "[webhook] record_daily_order: every requested date is a holiday",
+        JSON.stringify(closedDates),
+      );
+      await sendPushToAllAdmins(
+        `Order harian jatuh di tanggal merah — ${customerName ?? phone}`,
+        `${closedDates.map((d) => holidayOn(d)?.name ?? d).join(", ")} — tidak ada yang tercatat`,
+        "/deliveries",
+        "high",
+      );
+      return;
+    }
+
     // The model re-states a schedule while confirming it, so the same dates can
     // arrive twice. Skip whatever is already on the sheet rather than double-book.
     const { data: existingRows } = await db
       .from("daily_deliveries")
       .select("delivery_date")
       .eq("customer_id", customerId)
-      .in("delivery_date", dates);
+      .in("delivery_date", openDates);
     const alreadyBooked = new Set(
       (existingRows ?? []).map((r) => r.delivery_date),
     );
-    const fresh = dates.filter((d) => !alreadyBooked.has(d));
+    const fresh = openDates.filter((d) => !alreadyBooked.has(d));
 
     // portions is per date. Book only as many dates as the quota covers — a
     // multi-day request must not be the thing that pushes an order negative.
@@ -1931,6 +1953,19 @@ async function handleToolUse(
       "/deliveries",
       "low",
     );
+
+    // The customer was told a schedule that runs through a day we are shut. The
+    // bot may or may not have said so, so a human has to check.
+    if (closedDates.length > 0) {
+      await sendPushToAllAdmins(
+        `Tanggal merah dilewati — ${customerName ?? phone}`,
+        closedDates
+          .map((d) => `${d} ${holidayOn(d)?.name ?? "libur"}`)
+          .join(", "),
+        "/deliveries",
+        "high",
+      );
+    }
 
     // The customer was told a schedule the quota could not cover. A human has to
     // tell them, so this is not a low-priority note.
