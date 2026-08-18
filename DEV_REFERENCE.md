@@ -117,7 +117,7 @@ pian-yi/
 │   │       ├── orders/, customers/, deliveries/, subcontractors/, settings/, reports/ (CRUD for each dashboard page above)
 │   │       ├── inbox/ (bot-reply, learn-context, pipeline-stage, replay-latest, delivery-proofs proxy)
 │   │       ├── broadcasts/ (preview + send)
-│   │       ├── assistant/ (agentic chat + stream + execute + conversation threads)
+│   │       ├── assistant/ (agentic chat + stream + execute + daily-brief claim + conversation threads)
 │   │       ├── accounting/ (journals, accounts, reports, ledger — owner-only)
 │   │       ├── context/ (customer/preview context lookups used by admin tooling)
 │   │       ├── chatbot-instructions/ (CRUD for saved chatbot instruction rules)

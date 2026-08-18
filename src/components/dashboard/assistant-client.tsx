@@ -364,20 +364,33 @@ export function AssistantClient({ fullPage = false }: AssistantClientProps) {
     handleSendText(trimmed);
   }
 
+  // The once-a-day guard is server-side (POST /api/assistant/daily-brief), not
+  // localStorage. localStorage is per-browser, so opening the assistant on a
+  // phone and then on a laptop ran two independent "once per day" checks and
+  // produced the briefing twice. The ref still guards against this effect
+  // re-running within one page session.
   // biome-ignore lint/correctness/useExhaustiveDependencies: fires once on mount/new-chat; runStream and setMessages are stable
   useEffect(() => {
     if (!fullPage || activeId !== null || briefSentRef.current) return;
-    const today = new Date().toISOString().split("T")[0];
-    if (localStorage.getItem("jarvis_last_brief") === today) {
-      briefSentRef.current = true;
-      return;
-    }
     briefSentRef.current = true;
-    localStorage.setItem("jarvis_last_brief", today);
-    const text = "Berikan briefing situasi bisnis hari ini";
-    const newMessages: Message[] = [makeMessage("user", text)];
-    setMessages(newMessages);
-    void runStream(newMessages);
+    void (async () => {
+      let claimed = false;
+      try {
+        const res = await fetch("/api/assistant/daily-brief", {
+          method: "POST",
+        });
+        claimed = res.ok && (await res.json()).claimed === true;
+      } catch {
+        // Offline or the API is down. Stay quiet: a missing briefing is a
+        // smaller annoyance than a duplicate one.
+        return;
+      }
+      if (!claimed) return;
+      const text = "Berikan briefing situasi bisnis hari ini";
+      const newMessages: Message[] = [makeMessage("user", text)];
+      setMessages(newMessages);
+      void runStream(newMessages);
+    })();
   }, [fullPage, activeId]);
 
   function handleConfirm() {

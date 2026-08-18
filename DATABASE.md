@@ -70,6 +70,21 @@ One row per message in an Admin Assistant thread (user or assistant). Confirmed 
 | content | text | Message text |
 | created_at | timestamptz | Ordering within a thread |
 
+## assistant_daily_briefs
+
+One row per day on which the Admin Assistant's automatic morning briefing has already been sent. The date primary key *is* the whole mechanism: the first device to open the assistant inserts the row and wins, every later device gets `23505` and stays quiet.
+
+The guard used to be `localStorage`, which is per-browser — opening the assistant on a phone and then on a laptop ran two independent "once per day" checks and produced the briefing twice. Global, not per-admin, matching `assistant_conversations` (which is itself shared across admins).
+
+`brief_date` must be computed in **Jakarta** time, never UTC: a UTC date rolls over at 07:00 WIB and would hand out a second briefing mid-morning.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| brief_date | date | Primary key — the Jakarta date the briefing was claimed for |
+| claimed_at | timestamptz | Default `now()`; when the claim landed |
+
+---
+
 ---
 
 ## broadcast_recipients

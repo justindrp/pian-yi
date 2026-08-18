@@ -138,6 +138,21 @@ export type Database = {
         }
         Relationships: []
       }
+      assistant_daily_briefs: {
+        Row: {
+          brief_date: string
+          claimed_at: string
+        }
+        Insert: {
+          brief_date: string
+          claimed_at?: string
+        }
+        Update: {
+          brief_date?: string
+          claimed_at?: string
+        }
+        Relationships: []
+      }
       assistant_messages: {
         Row: {
           content: string
