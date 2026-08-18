@@ -1,7 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { getSetting } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
-import { NO_THINKING, SONNET_MODEL, getAnthropicClient } from "@/lib/claude/client";
+import {
+  NO_THINKING,
+  SONNET_MODEL,
+  getAnthropicClient,
+} from "@/lib/claude/client";
 import {
   loadHistory,
   saveMessage,
@@ -78,13 +82,7 @@ export const EXTRACT_ORDER_PROPERTIES = {
   },
   area: {
     type: "string",
-    enum: [
-      "BSD Baru",
-      "BSD Lama",
-      "Gading Serpong",
-      "Alam Sutera",
-      "Karawaci",
-    ],
+    enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Karawaci"],
   },
   sub_area: {
     type: "string",
@@ -250,7 +248,11 @@ ${dapurList || "none"}`;
 // what we already have on file rather than treat a known customer as addressless.
 function withRecordedAddress(
   input: ExtractedOrderInput,
-  customer: { address?: string | null; area?: string | null; sub_area?: string | null } | null,
+  customer: {
+    address?: string | null;
+    area?: string | null;
+    sub_area?: string | null;
+  } | null,
 ): ExtractedOrderInput {
   if (input.address?.trim()) return input;
   const recorded = customer?.address?.trim();
@@ -374,7 +376,8 @@ export async function getExtractedOrderPricing(
         .limit(1)
         .maybeSingle();
 
-  const basePrice = tier?.price_per_portion ?? smallestTier?.price_per_portion ?? 0;
+  const basePrice =
+    tier?.price_per_portion ?? smallestTier?.price_per_portion ?? 0;
   const pricePerPortion = basePrice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
   return {
     price_per_portion: pricePerPortion,
@@ -448,16 +451,16 @@ function inferPackageSizeFromContext(
   const explicitTotalPattern =
     /(\d+)\s*porsi\s*x\s*(\d+)\s*hari\s*=\s*(\d+)\s*porsi/gi;
   for (const match of text.matchAll(explicitTotalPattern)) {
-      const perDelivery = Number(match[1]);
-      const total = Number(match[3]);
-      if (Number.isFinite(total) && total > 0) {
-        if (
-          !input.portions_per_delivery ||
-          input.portions_per_delivery === perDelivery
-        ) {
-          return total;
-        }
+    const perDelivery = Number(match[1]);
+    const total = Number(match[3]);
+    if (Number.isFinite(total) && total > 0) {
+      if (
+        !input.portions_per_delivery ||
+        input.portions_per_delivery === perDelivery
+      ) {
+        return total;
       }
+    }
   }
 
   const totalOnlyPattern = /total(?: tetap)?\s*(\d+)\s*porsi/gi;
@@ -511,6 +514,32 @@ function nextDeliveryDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * The meal schedule the customer's last package ran on, when it was a standing
+ * pattern. Only used to fill a renewal the model left blank.
+ */
+async function previousMealTimePreference(
+  customerId: string,
+): Promise<string | null> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("orders")
+    .select("meal_time_preference")
+    .eq("customer_id", customerId)
+    .not("meal_time_preference", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  for (const row of data ?? []) {
+    if (
+      row.meal_time_preference &&
+      FIXED_SCHEDULE_PREFS.includes(row.meal_time_preference)
+    ) {
+      return row.meal_time_preference;
+    }
+  }
+  return null;
+}
+
 export async function createOrderFromExtraction(
   customerId: string,
   phone: string,
@@ -520,7 +549,9 @@ export async function createOrderFromExtraction(
   const db = createAdminClient();
   const sendPaymentInfo = options?.sendPaymentInfo ?? true;
 
-  const schedule = input.delivery_schedule?.length ? input.delivery_schedule : null;
+  const schedule = input.delivery_schedule?.length
+    ? input.delivery_schedule
+    : null;
   const rawPackageSize = schedule
     ? schedule.reduce((sum, s) => sum + s.portions, 0)
     : input.package_size;
@@ -528,7 +559,9 @@ export async function createOrderFromExtraction(
   // replays on 2026-08-19 threw on the insert and left the customer with no
   // order at all. Floor it at the smallest package we sell rather than fail.
   const packageSize = Math.max(
-    typeof rawPackageSize === "number" && rawPackageSize > 0 ? rawPackageSize : 0,
+    typeof rawPackageSize === "number" && rawPackageSize > 0
+      ? rawPackageSize
+      : 0,
     await minPackageSize(),
   );
   const nasiMerah = input.nasi_merah === true;
@@ -549,6 +582,19 @@ export async function createOrderFromExtraction(
   const endDate = sortedSchedule
     ? sortedSchedule[sortedSchedule.length - 1].date
     : (input.end_date ?? null);
+
+  // A renewal extracted from chat rarely names a meal preference — the customer
+  // has one and neither of them restates it. Left null the order booked as
+  // per_day_decision, which delivery generation deliberately skips, so Julian S's
+  // second 5-porsi package on 2026-08-18 was created correctly and then produced
+  // no deliveries at all. Inherit the schedule his previous package ran on. A
+  // genuinely new customer with nothing on file still falls through to
+  // per_day_decision: defaulting them into a week of generated days would book
+  // deliveries for every bebas customer who never asked for a fixed schedule.
+  const mealTimePreference =
+    input.meal_time_preference ??
+    (await previousMealTimePreference(customerId)) ??
+    "per_day_decision";
 
   const { data: insertedOrder, error: insertError } = await db
     .from("orders")
@@ -606,8 +652,7 @@ export async function createOrderFromExtraction(
     // helper the generate-deliveries cron uses instead of depending on the
     // model to emit an array of dates.
     const derived =
-      !sortedSchedule &&
-      FIXED_SCHEDULE_PREFS.includes(input.meal_time_preference ?? "")
+      !sortedSchedule && FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
         ? buildRecurringDeliveryRows(
             {
               customer_id: customerId,
@@ -615,7 +660,7 @@ export async function createOrderFromExtraction(
               start_date: startDate,
               end_date: endDate,
               package_size: packageSize,
-              meal_time_preference: input.meal_time_preference ?? null,
+              meal_time_preference: mealTimePreference,
               portions_per_delivery: input.portions_per_delivery ?? 1,
               portions_lunch: input.portions_lunch ?? null,
               portions_dinner: input.portions_dinner ?? null,
@@ -676,7 +721,9 @@ export async function createOrderFromExtraction(
 
   const nameFromModel = (input.customer_name ?? "").trim();
   const rawNameForRecord =
-    nameFromModel && nameFromModel.toLowerCase() !== "unknown" ? nameFromModel : null;
+    nameFromModel && nameFromModel.toLowerCase() !== "unknown"
+      ? nameFromModel
+      : null;
 
   const addressType = input.address?.trim()
     ? await classifyAddress(input.address)

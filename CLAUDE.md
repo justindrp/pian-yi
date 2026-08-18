@@ -264,6 +264,12 @@ The webhook now runs the same forced-tool `extractOrderFromConversation()` the a
 
 "Saya catat pesanannya sekarang" with no `extract_order` in the same response is the most common way an order dies: the model treats creating it as an intention it can defer, and the next turn repeats the promise. Febby was quoted 30 porsi twice and no order ever existed. The webhook now matches the promise in the reply text (`ORDER_PROMISE`), and if no tool ran and the customer has no order in `pending_payment` / `payment_proof_received` / `active` / `paused`, it runs `extractOrderFromConversation()` and creates the order — gated on `package_size > 0 && address`, so a stray "saya proses" in a browsing chat creates nothing. The prompt rule against claiming an order is recorded is the first layer; this is the enforcement.
 
+### A renewal inherits the schedule the previous package ran on
+
+A renewal extracted from chat rarely names a meal preference: the customer has one and neither side restates it. Left null the order booked as `per_day_decision`, which delivery generation deliberately skips, so Julian S's second 5-porsi package on 2026-08-18 was created with the right size and price and then produced no deliveries at all. `createOrderFromExtraction` now fills a missing preference from the customer's most recent order that carried a standing pattern (`FIXED_SCHEDULE_PREFS`).
+
+A customer with nothing on file still falls through to `per_day_decision`. Defaulting them into a generated week would book deliveries for every bebas customer who never asked for a fixed schedule.
+
 ### Three questions in a row is a loop, and the webhook breaks it
 
 A promise the bot never keeps is one way an order dies; the opposite is the other. The bot claims nothing, it just asks one more question every turn. Lina Marlianty gave "2 minggu, 1 porsi" and her address on 2026-08-18 and was asked "siang, malam, atau keduanya?" three times running — the prompt has forbidden exactly that since the meal default was written, and the model does it anyway.
