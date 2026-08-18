@@ -74,6 +74,71 @@ import { WINDOW_NOTICE_WELCOME } from "@/lib/whatsapp/window-notice";
 const ORDER_PROMISE =
   /\b(saya|aku|kami)\s+(catat|proses|buatkan|siapkan|input)\b|\b(catat|proses|buatkan|siapkan)\s+(pesanan|ordernya|order)\b|sudah\s+((saya|aku|kami)\s+)?(catat|tercatat|dibuat|diproses)|pesanan(nya)?\s+(saya|aku|kami)\s+(catat|proses|buat)/i;
 
+/**
+ * Builds the order the conversation already contains, when the bot itself failed
+ * to. Shared by the two ways that happens: a promise it never kept, and a
+ * clarification loop it never broke out of. Returns whether an order was made.
+ */
+async function recoverOrderFromConversation(
+  customerId: string,
+  phone: string,
+  reason: string,
+): Promise<boolean> {
+  const db = createAdminClient();
+  const { data: existingOrder } = await db
+    .from("orders")
+    .select("id")
+    .eq("customer_id", customerId)
+    .in("status", [
+      "pending_payment",
+      "payment_proof_received",
+      "active",
+      "paused",
+    ])
+    .limit(1)
+    .maybeSingle();
+  if (existingOrder) return false;
+
+  try {
+    const extracted = await extractOrderFromConversation(customerId);
+    if (!extracted || extracted.package_size <= 0 || !extracted.address)
+      return false;
+    await createOrderFromExtraction(
+      customerId,
+      phone,
+      await applyLatestCustomerSize(customerId, extracted),
+    );
+    console.log(`[webhook] order created from ${reason} for ${customerId}`);
+    return true;
+  } catch (err) {
+    console.error(
+      `[webhook] order recovery (${reason}) failed:`,
+      (err as Error).message,
+    );
+    return false;
+  }
+}
+
+/** How many of the most recent assistant replies in a row ended up asking something. */
+async function consecutiveUnansweredQuestions(
+  customerId: string,
+): Promise<number> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("conversations")
+    .select("role, content")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false })
+    .limit(12);
+  let streak = 0;
+  for (const row of data ?? []) {
+    if (row.role !== "assistant") continue;
+    if (!row.content?.includes("?")) break;
+    streak += 1;
+  }
+  return streak;
+}
+
 // How long an inbound message waits to see whether the customer is still
 // typing. See the burst-coalescing block in processSavedCustomerMessage.
 const BURST_WINDOW_MS = 15_000;
@@ -194,7 +259,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .then(() => markWebhookEvent(eventId, null))
     .catch((err: unknown) => {
       console.error("[webhook] processing failed:", err);
-      markWebhookEvent(eventId, err instanceof Error ? err.message : String(err));
+      markWebhookEvent(
+        eventId,
+        err instanceof Error ? err.message : String(err),
+      );
     });
   return response;
 }
@@ -1209,7 +1277,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "extract_order",
       description:
-        "Creates the customer's order. Call this as soon as the customer has agreed to a package — any affirmative counts (\"ya\", \"iya\", \"oke\", \"sip\", \"boleh\", \"saya join\", a thumbs-up), not only the literal word \"YA\" — and you have their name, address and total portions. Call it also when a customer sends a payment proof and no order exists yet. Never ask for confirmation a second time instead of calling this.",
+        'Creates the customer\'s order. Call this as soon as the customer has agreed to a package — any affirmative counts ("ya", "iya", "oke", "sip", "boleh", "saya join", a thumbs-up), not only the literal word "YA" — and you have their name, address and total portions. Call it also when a customer sends a payment proof and no order exists yet. Never ask for confirmation a second time instead of calling this.',
       input_schema: {
         type: "object",
         properties: EXTRACT_ORDER_PROPERTIES,
@@ -1399,39 +1467,27 @@ export async function processSavedCustomerMessage(params: {
     !toolUses.some((t) => t.name === "extract_order") &&
     ORDER_PROMISE.test(replyText)
   ) {
-    const dbPromise = createAdminClient();
-    const { data: existingOrder } = await dbPromise
-      .from("orders")
-      .select("id")
-      .eq("customer_id", customerId)
-      .in("status", [
-        "pending_payment",
-        "payment_proof_received",
-        "active",
-        "paused",
-      ])
-      .limit(1)
-      .maybeSingle();
-    if (!existingOrder) {
-      try {
-        const extracted = await extractOrderFromConversation(customerId);
-        if (extracted && extracted.package_size > 0 && extracted.address) {
-          await createOrderFromExtraction(
-            customerId,
-            phone,
-            await applyLatestCustomerSize(customerId, extracted),
-          );
-          console.log(
-            `[webhook] order created from an unkept promise for ${customerId}`,
-          );
-        }
-      } catch (err) {
-        console.error(
-          "[webhook] promised-order recovery failed:",
-          (err as Error).message,
-        );
-      }
-    }
+    await recoverOrderFromConversation(customerId, phone, "an unkept promise");
+  }
+
+  // The other way an order dies is the opposite of a promise: the bot never
+  // claims anything, it just asks one more question, every turn, forever. Lina
+  // Marlianty gave "2 minggu, 1 porsi" and her address on 2026-08-18 and was
+  // asked "siang, malam, atau keduanya?" three times running; the prompt has
+  // forbidden that since the meal default was written, and the model does it
+  // anyway. Three consecutive questions with no tool call is a loop, not a
+  // conversation, so break it with the same recovery — gated on a size and an
+  // address, which a browsing customer asking three questions does not have.
+  if (
+    replyText?.includes("?") &&
+    !toolUses.some((t) => t.name === "extract_order") &&
+    (await consecutiveUnansweredQuestions(customerId)) >= 2
+  ) {
+    await recoverOrderFromConversation(
+      customerId,
+      phone,
+      "a clarification loop",
+    );
   }
 
   // A tool call with no text alongside it. Anthropic models answer and call a
@@ -1826,7 +1882,10 @@ async function handleToolUse(
     await createOrderFromExtraction(
       customerId,
       phone,
-      await applyLatestCustomerSize(customerId, tool.input as ExtractedOrderInput),
+      await applyLatestCustomerSize(
+        customerId,
+        tool.input as ExtractedOrderInput,
+      ),
     );
   } else if (tool.name === "record_daily_order") {
     const input = tool.input as {
@@ -1841,8 +1900,10 @@ async function handleToolUse(
     // conversation histories carry it, and the model copies what it sees.
     const dates = Array.from(
       new Set(
-        (input.delivery_dates ?? (input.delivery_date ? [input.delivery_date] : []))
-          .filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)),
+        (
+          input.delivery_dates ??
+          (input.delivery_date ? [input.delivery_date] : [])
+        ).filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)),
       ),
     ).sort();
 
@@ -1960,7 +2021,11 @@ async function handleToolUse(
     if (booking.length === 0) {
       console.warn(
         "[webhook] record_daily_order: nothing to book",
-        JSON.stringify({ dates, alreadyBooked: [...alreadyBooked], affordable }),
+        JSON.stringify({
+          dates,
+          alreadyBooked: [...alreadyBooked],
+          affordable,
+        }),
       );
       return;
     }
@@ -2009,7 +2074,10 @@ async function handleToolUse(
       await db
         .from("customers")
         .update({
-          portions_remaining: Math.max(0, custQuota.portions_remaining - deducted),
+          portions_remaining: Math.max(
+            0,
+            custQuota.portions_remaining - deducted,
+          ),
         })
         .eq("id", customerId);
     }

@@ -264,6 +264,12 @@ The webhook now runs the same forced-tool `extractOrderFromConversation()` the a
 
 "Saya catat pesanannya sekarang" with no `extract_order` in the same response is the most common way an order dies: the model treats creating it as an intention it can defer, and the next turn repeats the promise. Febby was quoted 30 porsi twice and no order ever existed. The webhook now matches the promise in the reply text (`ORDER_PROMISE`), and if no tool ran and the customer has no order in `pending_payment` / `payment_proof_received` / `active` / `paused`, it runs `extractOrderFromConversation()` and creates the order — gated on `package_size > 0 && address`, so a stray "saya proses" in a browsing chat creates nothing. The prompt rule against claiming an order is recorded is the first layer; this is the enforcement.
 
+### Three questions in a row is a loop, and the webhook breaks it
+
+A promise the bot never keeps is one way an order dies; the opposite is the other. The bot claims nothing, it just asks one more question every turn. Lina Marlianty gave "2 minggu, 1 porsi" and her address on 2026-08-18 and was asked "siang, malam, atau keduanya?" three times running — the prompt has forbidden exactly that since the meal default was written, and the model does it anyway.
+
+`consecutiveUnansweredQuestions()` counts the assistant replies ending in a question with no `extract_order` between them, and at three the webhook runs `recoverOrderFromConversation()` — the same forced-tool extraction the promise path uses, gated the same way on a size and an address, so a browsing customer who asks three questions still creates nothing. Both recovery paths now share that one helper.
+
 ### `package_size` is floored, never trusted blindly
 
 `orders.package_size` is NOT NULL and is the field DeepSeek drops most: two replays on 2026-08-19 (Kurniadi Tan, Fidela) threw `null value in column "package_size"` on the insert, so the customer got nothing. A third (Dewi) returned `3` for a customer who had agreed to 5, and 3 matched no `pricing_tiers` row — `.lte("portions", 3)` returned nothing and `?? 0` made it a **Rp 0 order**. Both are now floored: the size is `max(model value, smallest tier)` and the price falls back to the cheapest tier when no row is at or below the size. An approximate price an admin adjusts beats an order that does not exist or one the kitchen cooks for free.
