@@ -22,12 +22,39 @@ function getSentMessageId(data: MetaSendResponse): string {
   return messageId;
 }
 
+// Meta's error for "the customer's 24-hour service window has closed". Nothing
+// we send can reopen it — only an inbound message from the customer does — so
+// callers need to tell this apart from a transient API failure and say so,
+// rather than retrying or showing a raw Meta dump. 470 is the legacy code for
+// the same condition, still returned by older API versions.
+const WINDOW_CLOSED_CODES = new Set([131047, 470]);
+
+// Carries Meta's numeric error code alongside the message. The code lives in
+// the response body, so without this every caller would have to regex the
+// stringified payload back out of the message.
+export class WhatsAppApiError extends Error {
+  readonly code: number | null;
+  constructor(message: string, code: number | null) {
+    super(message);
+    this.name = "WhatsAppApiError";
+    this.code = code;
+  }
+}
+
+export function isOutsideWindowError(err: unknown): boolean {
+  return err instanceof WhatsAppApiError && err.code !== null && WINDOW_CLOSED_CODES.has(err.code);
+}
+
 // Strips the axios config (which contains the Authorization header) before
 // re-throwing, so Next.js error logging can't leak the token.
 function sanitizeAxiosError(err: unknown): never {
   if (axios.isAxiosError(err)) {
-    console.error("[whatsapp/client] Meta API error:", JSON.stringify(err.response?.data));
-    throw new Error(`WhatsApp API error ${err.response?.status}: ${JSON.stringify(err.response?.data)}`);
+    const data = err.response?.data as { error?: { code?: number } } | undefined;
+    console.error("[whatsapp/client] Meta API error:", JSON.stringify(data));
+    throw new WhatsAppApiError(
+      `WhatsApp API error ${err.response?.status}: ${JSON.stringify(data)}`,
+      data?.error?.code ?? null,
+    );
   }
   throw err;
 }

@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { getDeliveryRoute } from "@/lib/utils/format";
 import {
+  isOutsideWindowError,
   sendImageMessageById,
   sendTextMessage,
   uploadMediaToMeta,
@@ -104,6 +105,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, text, conversationId });
   }
 
+  // Meta refuses any business-initiated message once 24 hours have passed since
+  // the customer's last inbound one, and nothing we send reopens it — only they
+  // can. Without this the throw surfaced as a 500 carrying a raw Meta payload,
+  // which reads as "the app is broken" rather than "the customer has to write
+  // first". Admins now have no other way to reach a customer (hand-typed sends
+  // are owner-only), so this is the message they will actually hit.
+  async function trySend(
+    phone: string,
+    run: () => Promise<void>,
+  ): Promise<NextResponse | null> {
+    try {
+      await run();
+      return null;
+    } catch (err) {
+      if (!isOutsideWindowError(err)) throw err;
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "window_closed",
+          error: `WhatsApp menutup jalur ke ${phone} — sudah lewat 24 jam sejak pesan terakhir dari customer. Pesan ini tidak terkirim. Customer harus mengirim pesan dulu supaya jalurnya terbuka lagi.`,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   async function sendAssistantText(phone: string, message: string) {
     const messageId = await sendTextMessage(phone, message);
     const { data: cust } = await db
@@ -172,19 +199,26 @@ export async function POST(request: Request) {
           );
         }
         switch (action.tool) {
-          case "send_whatsapp_message":
-            await sendAssistantText(
-              action.input.phone_number as string,
-              action.input.message as string,
+          case "send_whatsapp_message": {
+            const phone = action.input.phone_number as string;
+            const failed = await trySend(phone, () =>
+              sendAssistantText(phone, action.input.message as string),
             );
+            if (failed) return failed;
             break;
-          case "send_whatsapp_image":
-            await sendAssistantImage(
-              action.input.phone_number as string,
-              action.input.image_url as string,
-              action.input.caption as string,
+          }
+          case "send_whatsapp_image": {
+            const phone = action.input.phone_number as string;
+            const failed = await trySend(phone, () =>
+              sendAssistantImage(
+                phone,
+                action.input.image_url as string,
+                action.input.caption as string,
+              ),
             );
+            if (failed) return failed;
             break;
+          }
           default:
             return NextResponse.json(
               {
@@ -402,7 +436,8 @@ export async function POST(request: Request) {
     case "send_whatsapp_message": {
       const phone = input.phone_number as string;
       const message = input.message as string;
-      await sendAssistantText(phone, message);
+      const failed = await trySend(phone, () => sendAssistantText(phone, message));
+      if (failed) return failed;
       return reply(`Pesan WhatsApp sudah dikirim ke ${phone}.`);
     }
 
@@ -410,7 +445,10 @@ export async function POST(request: Request) {
       const phone = input.phone_number as string;
       const imageUrl = input.image_url as string;
       const caption = input.caption as string;
-      await sendAssistantImage(phone, imageUrl, caption);
+      const failed = await trySend(phone, () =>
+        sendAssistantImage(phone, imageUrl, caption),
+      );
+      if (failed) return failed;
       return reply(`Gambar WhatsApp sudah dikirim ke ${phone}.`);
     }
 

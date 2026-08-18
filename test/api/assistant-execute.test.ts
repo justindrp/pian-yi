@@ -7,6 +7,7 @@ import {
   sendImageMessageById,
   sendTextMessage,
   uploadMediaToMeta,
+  isOutsideWindowError,
 } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
@@ -15,6 +16,7 @@ jest.mock("@/lib/whatsapp/client", () => ({
   sendImageMessageById: jest.fn().mockResolvedValue(undefined),
   sendTextMessage: jest.fn().mockResolvedValue(undefined),
   uploadMediaToMeta: jest.fn().mockResolvedValue("meta-media-id-123"),
+  isOutsideWindowError: jest.fn(() => false),
 }));
 jest.mock("@/lib/claude/conversation", () => ({
   saveMessage: jest.fn().mockResolvedValue(undefined),
@@ -368,5 +370,28 @@ describe("POST /api/assistant/execute", () => {
     const body = await res.json();
     expect(body.ok).toBe(false);
     expect(db.chains.customers?.update).toBeUndefined();
+  });
+
+  // Meta refuses a business-initiated message 24h after the customer's last
+  // one. Admins can only reach customers through this route now, so the failure
+  // has to say what happened instead of surfacing as a 500.
+  test("returns 409 window_closed when the 24h window has expired", async () => {
+    (createAdminClient as jest.Mock).mockReturnValue(makeDbMock());
+    (sendTextMessage as jest.Mock).mockRejectedValueOnce(
+      new Error("WhatsApp API error 400: re-engagement message"),
+    );
+    (isOutsideWindowError as unknown as jest.Mock).mockReturnValueOnce(true);
+
+    const res = await POST(
+      postRequest({
+        tool: "send_whatsapp_message",
+        input: { phone_number: "+628123", message: "halo kak" },
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("window_closed");
+    expect(json.error).toMatch(/24 jam/);
   });
 });
