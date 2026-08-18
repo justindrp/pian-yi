@@ -68,6 +68,11 @@ import {
 import { verifySignature } from "@/lib/whatsapp/webhook";
 import { WINDOW_NOTICE_WELCOME } from "@/lib/whatsapp/window-notice";
 
+// Phrases the model uses to say it is creating the order right now. Matched only
+// to catch a turn where it said this and called no tool.
+const ORDER_PROMISE =
+  /\b(saya|aku|kami)\s+(catat|proses|buatkan|siapkan|input)\b|\b(catat|proses|buatkan|siapkan)\s+(pesanan|ordernya|order)\b|sudah\s+((saya|aku|kami)\s+)?(catat|tercatat|dibuat|diproses)|pesanan(nya)?\s+(saya|aku|kami)\s+(catat|proses|buat)/i;
+
 // How long an inbound message waits to see whether the customer is still
 // typing. See the burst-coalescing block in processSavedCustomerMessage.
 const BURST_WINDOW_MS = 15_000;
@@ -1375,6 +1380,50 @@ export async function processSavedCustomerMessage(params: {
   // below can report the real result back to the model.
   for (const toolUse of toolUses) {
     await handleToolUse(toolUse, customerId, phone, customerName);
+  }
+
+  // "Saya catat pesanannya sekarang" with no extract_order call. The model
+  // treats creating the order as an intention it can defer to a later turn, and
+  // the later turn says the same thing again — Febby was quoted 30 porsi, told
+  // twice it was being processed, and no order ever existed. The promise is
+  // what the customer heard, so honour it: run the same forced-tool extraction
+  // the admin inbox uses. It returns null when the conversation genuinely has
+  // no order in it, and the create is gated on a size and an address, so a
+  // stray "saya proses" in a browsing chat still creates nothing.
+  if (
+    replyText &&
+    !toolUses.some((t) => t.name === "extract_order") &&
+    ORDER_PROMISE.test(replyText)
+  ) {
+    const dbPromise = createAdminClient();
+    const { data: existingOrder } = await dbPromise
+      .from("orders")
+      .select("id")
+      .eq("customer_id", customerId)
+      .in("status", [
+        "pending_payment",
+        "payment_proof_received",
+        "active",
+        "paused",
+      ])
+      .limit(1)
+      .maybeSingle();
+    if (!existingOrder) {
+      try {
+        const extracted = await extractOrderFromConversation(customerId);
+        if (extracted && extracted.package_size > 0 && extracted.address) {
+          await createOrderFromExtraction(customerId, phone, extracted);
+          console.log(
+            `[webhook] order created from an unkept promise for ${customerId}`,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[webhook] promised-order recovery failed:",
+          (err as Error).message,
+        );
+      }
+    }
   }
 
   // A tool call with no text alongside it. Anthropic models answer and call a

@@ -255,6 +255,10 @@ A customer who transfers before the bot ever called `extract_order` used to leav
 
 The webhook now runs the same forced-tool `extractOrderFromConversation()` the admin inbox uses when an image arrives and the customer has **no order in any status**, creates the order with `sendPaymentInfo: false` (they have already paid), then falls into the normal proof handling so the order advances to `payment_proof_received`. Extraction returns null when the chat never contained an order, and the create is gated on `package_size > 0 && address`, so a photo from a browsing customer still creates nothing. Admins get a **high**-priority push either way.
 
+### An order the bot promised is created even when it never called the tool
+
+"Saya catat pesanannya sekarang" with no `extract_order` in the same response is the most common way an order dies: the model treats creating it as an intention it can defer, and the next turn repeats the promise. Febby was quoted 30 porsi twice and no order ever existed. The webhook now matches the promise in the reply text (`ORDER_PROMISE`), and if no tool ran and the customer has no order in `pending_payment` / `payment_proof_received` / `active` / `paused`, it runs `extractOrderFromConversation()` and creates the order — gated on `package_size > 0 && address`, so a stray "saya proses" in a browsing chat creates nothing. The prompt rule against claiming an order is recorded is the first layer; this is the enforcement.
+
 ### `package_size` is floored, never trusted blindly
 
 `orders.package_size` is NOT NULL and is the field DeepSeek drops most: two replays on 2026-08-19 (Kurniadi Tan, Fidela) threw `null value in column "package_size"` on the insert, so the customer got nothing. A third (Dewi) returned `3` for a customer who had agreed to 5, and 3 matched no `pricing_tiers` row — `.lte("portions", 3)` returned nothing and `?? 0` made it a **Rp 0 order**. Both are now floored: the size is `max(model value, smallest tier)` and the price falls back to the cheapest tier when no row is at or below the size. An approximate price an admin adjusts beats an order that does not exist or one the kitchen cooks for free.
