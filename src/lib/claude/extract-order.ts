@@ -181,7 +181,7 @@ export async function extractOrderFromConversation(
   const db = createAdminClient();
   const { data: customer } = await db
     .from("customers")
-    .select("notes")
+    .select("notes, address, area, sub_area")
     .eq("id", customerId)
     .single();
   const { data: activeSubs } = await db
@@ -235,10 +235,32 @@ ${dapurList || "none"}`;
   if (!toolUse) return null;
 
   return normalizeExtractedOrder(
-    toolUse.input as ExtractedOrderInput,
+    withRecordedAddress(toolUse.input as ExtractedOrderInput, customer),
     history,
     learnedContext,
   );
+}
+
+// A returning customer never retypes their address — it is on their record, and
+// the bot is told not to ask for it again. Extraction reads the chat alone, so it
+// comes back with no address for exactly those customers, and both webhook
+// recovery paths gate on having one: Febby was quoted 30 porsi at Rp 810.000 on
+// 2026-08-18, the bot said "saya catat nambah 30 porsi", and the recovery that
+// should have created it declined because the chat held no address. Fall back to
+// what we already have on file rather than treat a known customer as addressless.
+function withRecordedAddress(
+  input: ExtractedOrderInput,
+  customer: { address?: string | null; area?: string | null; sub_area?: string | null } | null,
+): ExtractedOrderInput {
+  if (input.address?.trim()) return input;
+  const recorded = customer?.address?.trim();
+  if (!recorded) return input;
+  return {
+    ...input,
+    address: recorded,
+    area: input.area?.trim() || (customer?.area ?? ""),
+    sub_area: input.sub_area ?? customer?.sub_area ?? undefined,
+  };
 }
 
 // Nasi merah is the one add-on we sell, and we charge it through at cost: the
@@ -593,16 +615,29 @@ export async function createOrderFromExtraction(
   const rawNameForRecord =
     nameFromModel && nameFromModel.toLowerCase() !== "unknown" ? nameFromModel : null;
 
-  const addressType = await classifyAddress(input.address);
+  const addressType = input.address?.trim()
+    ? await classifyAddress(input.address)
+    : null;
   await db
     .from("customers")
     .update({
       ...(rawNameForRecord ? { name: rawNameForRecord } : {}),
-      address: input.address,
-      area: input.area,
-      sub_area: input.sub_area ?? null,
-      delivery_route: getDeliveryRoute(input.area),
-      address_type: addressType,
+      // Only overwrite the address when this order actually carried one. A
+      // renewal extracted from chat alone has none, and writing it through blanked
+      // the address of a customer we have been delivering to for months.
+      ...(input.address?.trim()
+        ? {
+            address: input.address,
+            address_type: addressType,
+          }
+        : {}),
+      ...(input.area?.trim()
+        ? {
+            area: input.area,
+            sub_area: input.sub_area ?? null,
+            delivery_route: getDeliveryRoute(input.area),
+          }
+        : {}),
       portions_remaining: newRemaining,
       avg_price_per_portion: newAvg,
       ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
