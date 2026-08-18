@@ -142,7 +142,10 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   // long as the process lived. On 2026-08-19 three shards sat idle for nine minutes
   // with five cases unreported. A turn that blows the deadline is recorded as a
   // failed turn and the case carries on, which is what the verdict should reflect.
-  const TURN_TIMEOUT_MS = 180_000;
+// The bound is generous because a turn's cost grows with the history behind it —
+// Jordy ran 21s on turn 1 and 47s on turn 7 — so the deadline has to separate a
+// slow turn from a wedged one, not from an average one.
+  const TURN_TIMEOUT_MS = 300_000;
 
   function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
     return Promise.race([
