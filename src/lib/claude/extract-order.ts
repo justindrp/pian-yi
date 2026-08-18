@@ -7,6 +7,11 @@ import {
   saveMessage,
   updateMessageReceipt,
 } from "@/lib/claude/conversation";
+import { isClosedHoliday } from "@/lib/holidays/id";
+import {
+  FIXED_SCHEDULE_PREFS,
+  buildRecurringDeliveryRows,
+} from "@/lib/orders/build-recurring-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDeliveryRoute } from "@/lib/utils/format";
 import { sendTextMessage } from "@/lib/whatsapp/client";
@@ -406,21 +411,69 @@ export async function createOrderFromExtraction(
     .select("id")
     .single();
 
-  if (sortedSchedule && insertedOrder) {
+  if (insertedOrder) {
     const today = new Date().toISOString().slice(0, 10);
-    await db.from("daily_deliveries").upsert(
-      sortedSchedule.map((s) => ({
-        delivery_date: s.date,
-        customer_id: customerId,
-        order_id: insertedOrder.id,
-        meal_type: s.meal_type,
-        portions: s.portions,
-        subcontractor_id: input.subcontractor_id ?? null,
-        address_slot: 1,
-        status: s.date < today ? "delivered" : "scheduled",
-      })),
-      { onConflict: "delivery_date,customer_id,meal_type", ignoreDuplicates: true },
-    );
+    // The model supplies delivery_schedule when it has spelled the days out.
+    // When it has not, a fixed-schedule order used to get an order row and no
+    // deliveries at all — nothing else fills them in, so the customer had paid
+    // for a package that would never be cooked. Derive the days from the same
+    // helper the generate-deliveries cron uses instead of depending on the
+    // model to emit an array of dates.
+    const derived =
+      !sortedSchedule &&
+      FIXED_SCHEDULE_PREFS.includes(input.meal_time_preference ?? "")
+        ? buildRecurringDeliveryRows(
+            {
+              customer_id: customerId,
+              order_id: insertedOrder.id,
+              start_date: startDate,
+              end_date: endDate,
+              package_size: packageSize,
+              meal_time_preference: input.meal_time_preference ?? null,
+              portions_per_delivery: input.portions_per_delivery,
+              portions_lunch: input.portions_lunch ?? null,
+              portions_dinner: input.portions_dinner ?? null,
+              lunch_address_slot: 1,
+              dinner_address_slot: 1,
+              subcontractor_id: input.subcontractor_id ?? null,
+            },
+            today,
+          )
+        : [];
+
+    const rows = sortedSchedule
+      ? sortedSchedule.map((s) => ({
+          delivery_date: s.date,
+          customer_id: customerId,
+          order_id: insertedOrder.id,
+          meal_type: s.meal_type,
+          portions: s.portions,
+          subcontractor_id: input.subcontractor_id ?? null,
+          address_slot: 1,
+          status: s.date < today ? "delivered" : "scheduled",
+        }))
+      : derived.map((r) => ({
+          delivery_date: r.delivery_date,
+          customer_id: r.customer_id,
+          order_id: r.order_id,
+          meal_type: r.meal_type as string,
+          portions: r.portions,
+          subcontractor_id: r.subcontractor_id,
+          address_slot: r.address_slot,
+          status: r.status as string,
+        }));
+
+    // The kitchens are shut on libur nasional, so a row on one is a delivery
+    // nobody cooks. record_daily_order already drops them; a package booked in
+    // one go had no such filter.
+    const deliverable = rows.filter((r) => !isClosedHoliday(r.delivery_date));
+
+    if (deliverable.length > 0) {
+      await db.from("daily_deliveries").upsert(deliverable, {
+        onConflict: "delivery_date,customer_id,meal_type",
+        ignoreDuplicates: true,
+      });
+    }
   }
 
   const { data: existingCustomer } = await db
