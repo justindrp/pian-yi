@@ -1,20 +1,26 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 import { sendImageMessageById, uploadMediaToMeta } from "@/lib/whatsapp/client";
 
 type UploadedImage = Awaited<ReturnType<typeof compressUploadedImage>>;
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  const session = await getSessionWithRole();
+  if (!session) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 },
+    );
+  }
+  // Hand-typed customer messages are owner-only. Admins reach customers through
+  // the Assistant instead, which records what was sent and keeps the bot in the
+  // loop. See POST /api/inbox/takeover for the incident behind the rule.
+  if (!isOwner(session.role)) {
+    return NextResponse.json(
+      { ok: false, error: "Only owners can message a customer directly" },
+      { status: 403 },
     );
   }
 

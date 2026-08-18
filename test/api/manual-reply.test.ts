@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/inbox/manual-reply/route";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
-jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
+jest.mock("@/lib/supabase/get-role", () => ({
+  getSessionWithRole: jest.fn(),
+  isOwner: (role: string) => role === "owner",
+}));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/whatsapp/client", () => ({
   sendTextMessage: jest.fn().mockResolvedValue(undefined),
@@ -73,12 +76,9 @@ function postRequest(body: unknown) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (createClient as jest.Mock).mockResolvedValue({
-    auth: {
-      getUser: jest.fn().mockResolvedValue({
-        data: { user: { id: "u1", email: "admin@example.com" } },
-      }),
-    },
+  (getSessionWithRole as jest.Mock).mockResolvedValue({
+    email: "owner@example.com",
+    role: "owner",
   });
 });
 
@@ -117,5 +117,21 @@ describe("POST /api/inbox/manual-reply", () => {
       "customer_id",
       "cust-1",
     );
+  });
+
+  // Hand-typed customer messages are owner-only; admins go through the Assistant.
+  test("non-owner returns 403 and sends nothing", async () => {
+    (getSessionWithRole as jest.Mock).mockResolvedValue({
+      email: "agnes@example.com",
+      role: "admin",
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(makeDbMock());
+
+    const res = await POST(
+      postRequest({ customer_id: "cust-1", text: "halo kak" }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(sendTextMessage).not.toHaveBeenCalled();
   });
 });

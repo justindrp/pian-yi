@@ -878,7 +878,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
   }
 
   useEffect(() => {
-    if (!flags?.escalated_to_human) return;
+    if (!flags?.escalated_to_human || !canTakeOver) return;
     function onPaste(e: ClipboardEvent) {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -900,7 +900,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [flags?.escalated_to_human]);
+  }, [flags?.escalated_to_human, canTakeOver]);
 
   async function sendImage() {
     if (!selectedCustomerId || !imageFile) return;
@@ -1454,8 +1454,11 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
             <div ref={bottomRef} />
           </div>
 
-          {/* Manual reply */}
-          {flags?.escalated_to_human && (
+          {/* Manual reply — owner-only. Admins reach customers through the
+              Assistant, which records the send and keeps the bot in the loop;
+              a thread an owner took over must not become a typing surface for
+              everyone else. */}
+          {flags?.escalated_to_human && canTakeOver && (
             <div className="border-t border-gray-100">
               {imagePreviewUrl && (
                 <div className="px-4 pt-3 pb-2 flex items-start gap-3 bg-gray-50">

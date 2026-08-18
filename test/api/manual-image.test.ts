@@ -2,10 +2,13 @@ import { NextRequest } from "next/server";
 import { POST } from "@/app/api/inbox/manual-image/route";
 import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { sendImageMessageById, uploadMediaToMeta } from "@/lib/whatsapp/client";
 
-jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
+jest.mock("@/lib/supabase/get-role", () => ({
+  getSessionWithRole: jest.fn(),
+  isOwner: (role: string) => role === "owner",
+}));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/images/compress", () => ({
   compressUploadedImage: jest.fn().mockResolvedValue({
@@ -78,12 +81,9 @@ function makeRequest(fields: Record<string, string | File | null>) {
 beforeEach(() => {
   jest.clearAllMocks();
 
-  (createClient as jest.Mock).mockResolvedValue({
-    auth: {
-      getUser: jest.fn().mockResolvedValue({
-        data: { user: { id: "u1", email: "admin@example.com" } },
-      }),
-    },
+  (getSessionWithRole as jest.Mock).mockResolvedValue({
+    email: "owner@example.com",
+    role: "owner",
   });
 });
 
@@ -186,16 +186,25 @@ describe("POST /api/inbox/manual-image", () => {
   });
 
   test("T7 — unauthenticated returns 401", async () => {
-    (createClient as jest.Mock).mockResolvedValue({
-      auth: {
-        getUser: jest.fn().mockResolvedValue({ data: { user: null } }),
-      },
-    });
+    (getSessionWithRole as jest.Mock).mockResolvedValue(null);
 
     const res = await POST(makeRequest({ customer_id: "cust-1", file: makeFile() }));
     const json = await res.json();
 
     expect(res.status).toBe(401);
     expect(json.ok).toBe(false);
+  });
+
+  // Hand-sending to a customer is owner-only; admins go through the Assistant.
+  test("T8 — non-owner returns 403 and sends nothing", async () => {
+    (getSessionWithRole as jest.Mock).mockResolvedValue({
+      email: "agnes@example.com",
+      role: "admin",
+    });
+
+    const res = await POST(makeRequest({ customer_id: "cust-1", file: makeFile() }));
+
+    expect(res.status).toBe(403);
+    expect(sendImageMessageById).not.toHaveBeenCalled();
   });
 });
