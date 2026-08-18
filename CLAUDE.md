@@ -248,6 +248,12 @@ The `orders` insert discarded its error. A model that omits one required field (
 
 Two inputs are also defaulted rather than trusted. `orders.start_date` is NOT NULL and a renewal usually carries no date — Julian S said "mau lanjut 5 porsi lagi", got the transfer details, paid Rp 145.000, and the order never existed; it now falls back to the next day we deliver (Senin–Sabtu, skipping libur nasional). And `customer_name` comes back as the literal string `"unknown"` when the customer never typed a name, which was written to `customers.name` and greeted the customer as "kak unknown" — that value is now discarded on both the record and the message.
 
+### A payment proof with no order behind it now creates the order
+
+A customer who transfers before the bot ever called `extract_order` used to leave the money nowhere: `shouldHandlePaymentProof` needs a `pending_payment` order, so with no order at all the slip was saved as an ordinary inbox photo and the bot asked for the summary to be confirmed again. Theresia agreed to 5 porsi on 2026-08-03, sent the slip, and nothing recorded a purchase.
+
+The webhook now runs the same forced-tool `extractOrderFromConversation()` the admin inbox uses when an image arrives and the customer has **no order in any status**, creates the order with `sendPaymentInfo: false` (they have already paid), then falls into the normal proof handling so the order advances to `payment_proof_received`. Extraction returns null when the chat never contained an order, and the create is gated on `package_size > 0 && address`, so a photo from a browsing customer still creates nothing. Admins get a **high**-priority push either way.
+
 ### `package_size` is floored, never trusted blindly
 
 `orders.package_size` is NOT NULL and is the field DeepSeek drops most: two replays on 2026-08-19 (Kurniadi Tan, Fidela) threw `null value in column "package_size"` on the insert, so the customer got nothing. A third (Dewi) returned `3` for a customer who had agreed to 5, and 3 matched no `pricing_tiers` row — `.lte("portions", 3)` returned nothing and `?? 0` made it a **Rp 0 order**. Both are now floored: the size is `max(model value, smallest tier)` and the price falls back to the cheapest tier when no row is at or below the size. An approximate price an admin adjusts beats an order that does not exist or one the kitchen cooks for free.

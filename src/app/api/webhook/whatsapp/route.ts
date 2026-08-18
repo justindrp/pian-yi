@@ -22,6 +22,7 @@ import {
   createOrderFromExtraction,
   EXTRACT_ORDER_PROPERTIES,
   type ExtractedOrderInput,
+  extractOrderFromConversation,
 } from "@/lib/claude/extract-order";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
@@ -337,7 +338,7 @@ export async function processWebhookAsync(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const latestOrderStatus = latestOrder?.status ?? null;
+  let latestOrderStatus = latestOrder?.status ?? null;
 
   // NOTE: customer.name is never populated from the WhatsApp profile name here.
   // It is set only from the order form (extract_order) once the customer actually orders,
@@ -532,6 +533,37 @@ export async function processWebhookAsync(
 
   // Payment proof: capture image when the latest order is still pending payment
   if (message.type === "image" && message.imageId) {
+    // A customer who transfers before the bot ever called extract_order has no
+    // order for the proof to attach to, and the image is then just another
+    // photo in the inbox: Theresia agreed to 5 porsi on 2026-08-03, sent the
+    // transfer slip, and was asked to confirm the summary again. Money had
+    // arrived and nothing recorded a purchase. Build the order from the
+    // conversation with the same forced-tool extraction the admin inbox uses —
+    // it returns null when the chat genuinely never contained an order, so a
+    // random photo from a browsing customer creates nothing.
+    if (latestOrderStatus === null) {
+      try {
+        const extracted = await extractOrderFromConversation(customerId);
+        if (extracted && extracted.package_size > 0 && extracted.address) {
+          await createOrderFromExtraction(customerId, message.from, extracted, {
+            sendPaymentInfo: false,
+          });
+          latestOrderStatus = "pending_payment";
+          await sendPushToAllAdmins(
+            `Order dibuat dari bukti bayar — ${customer.name ?? message.from}`,
+            `${extracted.package_size} porsi. Belum ada order saat bukti masuk — cek halaman Payments`,
+            "/payments",
+            "high",
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[webhook] payment-proof order recovery failed:",
+          (err as Error).message,
+        );
+      }
+    }
+
     if (shouldHandlePaymentProof(latestOrderStatus)) {
       await handlePaymentProofImage(
         message,
