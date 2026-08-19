@@ -132,9 +132,42 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   const phone = `+${DEMO_PHONE_PREFIX}${c.orderId.slice(0, 8)}`;
 
   await cleanupDemo(phone);
+  // A returning customer never retypes their address — the prompt tells the bot
+  // not to ask — so extraction falls back to the address on their record, and
+  // both recovery gates require one. A demo row created blank has none, so
+  // exactly the customers we know best replay as "NO ORDER CREATED": Febby was
+  // quoted 30 porsi at Rp 810.000 and the bot then waited for a form she had no
+  // reason to fill in. Copy the record the real customer actually had. The name
+  // is deliberately not copied — demoDisplayName keeps a second "Febby" out of
+  // the inbox thread list.
+  // Only for a customer who was already ours when this conversation started.
+  // A first-time customer states their address in the very turns being replayed,
+  // so seeding it would hand the bot the answer it is being scored on.
+  const windowStart = c.turns[0]?.at ?? c.createdAt;
+  const { count: priorOrders } = await db
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("customer_id", c.customerId)
+    .lt("created_at", windowStart);
+  const { data: real } = (priorOrders ?? 0) > 0
+    ? await db
+        .from("customers")
+        .select("address, address_2, area, sub_area, subcontractor_id, delivery_route")
+        .eq("id", c.customerId)
+        .maybeSingle()
+    : { data: null };
   const { data: demo, error } = await db
     .from("customers")
-    .insert({ phone_number: phone, name: demoDisplayName(phone) })
+    .insert({
+      phone_number: phone,
+      name: demoDisplayName(phone),
+      address: real?.address ?? null,
+      address_2: real?.address_2 ?? null,
+      area: real?.area ?? null,
+      sub_area: real?.sub_area ?? null,
+      subcontractor_id: real?.subcontractor_id ?? null,
+      delivery_route: real?.delivery_route ?? null,
+    })
     .select("id")
     .single();
   if (error || !demo)
