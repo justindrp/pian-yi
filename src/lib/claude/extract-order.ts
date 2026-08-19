@@ -458,7 +458,7 @@ export const NASI_MERAH_SURCHARGE = 5000;
  * 2026-08-19 replays (NOT NULL violation, no order at all) and returned 3 on a
  * third, for a customer who had agreed to 5.
  */
-async function minPackageSize(): Promise<number> {
+export async function minPackageSize(): Promise<number> {
   const db = createAdminClient();
   const { data } = await db
     .from("pricing_tiers")
@@ -1034,9 +1034,30 @@ export async function createOrderFromExtraction(
     );
   }
 
-  const { data: insertedOrder, error: insertError } = await db
+  // A customer already being asked to pay for an order has one order, not two.
+  // The model re-calls extract_order whenever it restates the summary, and each
+  // call used to insert: Sherine Fayola was billed Rp 145.000, then Rp 540.000,
+  // then Rp 1.040.000 within thirteen minutes on 2026-08-19, for one purchase.
+  // Amend the open one instead — nothing has been drawn against an unpaid order,
+  // so size, price and balance all move with it.
+  const { data: openOrder } = await db
     .from("orders")
-    .insert({
+    .select("id")
+    .eq("customer_id", customerId)
+    .eq("status", "pending_payment")
+    .gt(
+      "created_at",
+      new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    )
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (openOrder) {
+    // Its schedule was built from the superseded size and is rebuilt below.
+    await db.from("daily_deliveries").delete().eq("order_id", openOrder.id);
+  }
+
+  const orderFields = {
       customer_id: customerId,
       package_size: packageSize,
       price_per_portion: pricePerPortion,
@@ -1060,11 +1081,23 @@ export async function createOrderFromExtraction(
       end_date: endDate,
       size: "s",
       subcontractor_id: input.subcontractor_id ?? null,
-      status: "pending_payment",
+      status: "pending_payment" as const,
       confirmed_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
+  };
+
+  const { data: insertedOrder, error: insertError } = openOrder
+    ? await db
+        .from("orders")
+        .update(orderFields)
+        .eq("id", openOrder.id)
+        .select("id")
+        .single()
+    : await db.from("orders").insert(orderFields).select("id").single();
+  if (openOrder) {
+    console.log(
+      `[extract-order] amended open order ${openOrder.id} to ${packageSize} porsi instead of creating a second`,
+    );
+  }
 
   // The insert error used to be discarded. A model that omitted one required
   // field — package_size on Nadya's 2026-08-18 replay — produced a rejected
@@ -1150,7 +1183,7 @@ export async function createOrderFromExtraction(
 
   const { data: existingCustomer } = await db
     .from("customers")
-    .select("portions_remaining, avg_price_per_portion")
+    .select("name, portions_remaining, avg_price_per_portion")
     .eq("id", customerId)
     .single();
   const oldRemaining = existingCustomer?.portions_remaining ?? 0;
@@ -1161,8 +1194,15 @@ export async function createOrderFromExtraction(
   );
 
   const nameFromModel = (input.customer_name ?? "").trim();
+  // A name already on the record is the one an admin or an earlier order put
+  // there, and the model's is whatever signature it read off the chat: Julian S
+  // was renamed to "Julian" by an order he never placed. Only ever fill a name
+  // that is missing.
+  const existingName = (existingCustomer?.name ?? "").trim();
   const rawNameForRecord =
-    nameFromModel && nameFromModel.toLowerCase() !== "unknown"
+    !existingName &&
+    nameFromModel &&
+    nameFromModel.toLowerCase() !== "unknown"
       ? nameFromModel
       : null;
   // A replayed conversation carries the real customer's name, and writing it to

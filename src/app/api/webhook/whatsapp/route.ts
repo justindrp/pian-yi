@@ -25,6 +25,7 @@ import {
   applyLatestCustomerSize,
   contractPrice,
   extractOrderFromConversation,
+  minPackageSize,
   resizePendingOrderFromMessage,
 } from "@/lib/claude/extract-order";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
@@ -76,6 +77,66 @@ import { WINDOW_NOTICE_WELCOME } from "@/lib/whatsapp/window-notice";
 const ORDER_PROMISE =
   /\b(saya|aku|kami)\s+(catat|proses|buatkan|siapkan|input)\b|\b(catat|proses|buatkan|siapkan)\s+(pesanan|ordernya|order)\b|sudah\s+((saya|aku|kami)\s+)?(catat|tercatat|dibuat|diproses)|pesanan(nya)?\s+(saya|aku|kami)\s+(catat|proses|buat)/i;
 
+// Every number the customer typed, and the package sizes each one could mean.
+// A count of days is a count of portions when there is one meal a day and twice
+// that with two ("20 hari" → 20 or 40); a duration in weeks is five or six days
+// each. Bare numbers count too — "mau ambil yg 5 ka" is a renewal.
+const TYPED_NUMBER = /(?<![\d.,])(\d{1,3})(?![\d.,])/g;
+const TYPED_WEEKS = /(?<![\d.,])(\d{1,2})\s*minggu\b/gi;
+
+/** How far back a purchase can have been stated and still be this conversation. */
+const BUY_EVIDENCE_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Whether the customer themselves typed a number that could be this package
+ * size. Recovery hands a whole conversation to a model that will return an
+ * order shape for a chat containing none, so the extraction is not evidence of
+ * a purchase — a size the customer actually said is.
+ *
+ * On 2026-08-19 five phantom orders reached four real customers in three hours:
+ * Nicholas Satria asked "menu minggu ini apa yaa" and was billed Rp 280.000
+ * twenty-seven seconds later, rebuilt out of his July renewal chat; Julian S
+ * asked to skip two deliveries and got Rp 145.000; galvent asked whether the
+ * portions came with fruit; Sherine Fayola asked whether she could swap days.
+ * None of them had named a package.
+ *
+ * Two bounds on the window, both load-bearing: newer than their newest order,
+ * because the messages that produced that order are exactly what recovery would
+ * rebuild, and inside the last 48 hours, because a month-old thread is not this
+ * turn.
+ */
+async function customerStatedSize(
+  customerId: string,
+  sinceIso: string | undefined,
+  size: number,
+): Promise<boolean> {
+  const db = createAdminClient();
+  const cutoff = new Date(Date.now() - BUY_EVIDENCE_WINDOW_MS).toISOString();
+  const since = sinceIso && sinceIso > cutoff ? sinceIso : cutoff;
+  const { data } = await db
+    .from("conversations")
+    .select("content")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .gt("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(40);
+  for (const row of data ?? []) {
+    const text = String(row.content ?? "");
+    for (const m of text.matchAll(TYPED_WEEKS)) {
+      const weeks = Number(m[1]);
+      for (const days of [5, 6]) {
+        if (size === weeks * days || size === weeks * days * 2) return true;
+      }
+    }
+    for (const m of text.matchAll(TYPED_NUMBER)) {
+      const n = Number(m[1]);
+      if (n > 0 && (size === n || size === n * 2)) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Builds the order the conversation already contains, when the bot itself failed
  * to. Shared by the two ways that happens: a promise it never kept, and a
@@ -118,12 +179,37 @@ async function recoverOrderFromConversation(
   const newestOrder = (orders ?? [])[0];
 
   try {
+    const minSize = await minPackageSize();
     const raw = await extractOrderFromConversation(customerId, {
       since: newestOrder?.created_at ?? undefined,
     });
     if (!raw || raw.package_size <= 0) {
       console.log(
         `[webhook] order recovery (${reason}) skipped: extraction returned ${raw ? `package_size ${raw.package_size}` : "nothing"} for ${customerId}`,
+      );
+      return false;
+    }
+    // A size below the smallest package is never a package. createOrderFromExtraction
+    // floors it, which is right when an admin or the model has confirmed the
+    // purchase and wrong here: it turns "2 porsi besok" into a 5-porsi bill.
+    if (raw.package_size < minSize) {
+      console.log(
+        `[webhook] order recovery (${reason}) skipped: package_size ${raw.package_size} below smallest package ${minSize} for ${customerId}`,
+      );
+      return false;
+    }
+    // The customer has to have named this package. Recovery runs on every reply
+    // that called no tool, and without this it billed four real customers for
+    // packages they never mentioned.
+    if (
+      !(await customerStatedSize(
+        customerId,
+        newestOrder?.created_at ?? undefined,
+        raw.package_size,
+      ))
+    ) {
+      console.log(
+        `[webhook] order recovery (${reason}) skipped: customer never stated ${raw.package_size} porsi for ${customerId}`,
       );
       return false;
     }
@@ -150,7 +236,13 @@ async function recoverOrderFromConversation(
       (orders ?? []).some(
         (o) =>
           o.package_size === extracted.package_size &&
-          o.start_date === extracted.start_date,
+          // Same size and same start is the old conversation echoing. So is the
+          // same size on an order bought in this same window: Nicholas's phantom
+          // matched his active 10-porsi package on size and differed only on a
+          // start date the extraction had invented.
+          (o.start_date === extracted.start_date ||
+            (o.created_at ?? "") >
+              new Date(Date.now() - BUY_EVIDENCE_WINDOW_MS).toISOString()),
       )
     ) {
       console.log(
