@@ -296,7 +296,9 @@ Two layers, both in `recoverOrderFromConversation`:
 
 A renewal extracted from chat rarely names a meal preference: the customer has one and neither side restates it. Left null the order booked as `per_day_decision`, which delivery generation deliberately skips, so Julian S's second 5-porsi package on 2026-08-18 was created with the right size and price and then produced no deliveries at all. `createOrderFromExtraction` now fills a missing preference from the customer's most recent order that carried a standing pattern (`FIXED_SCHEDULE_PREFS`).
 
-A customer with nothing on file still falls through to `per_day_decision`. Defaulting them into a generated week would book deliveries for every bebas customer who never asked for a fixed schedule.
+A customer with nothing on file still falls through to `per_day_decision` — unless their own messages named a meal. Dewi wrote "Makan siang" and listed her days on 2026-07-28; the order was created at the right size and price and produced no delivery rows at all, because nothing carried the meal into the order. `createOrderFromExtraction` now reads the customer's own messages for siang / malam and sets `lunch_only`, `dinner_only` or `both_fixed` from them; a customer who named neither still falls through, since defaulting them into a generated week would book deliveries for every bebas customer who never asked for a fixed schedule.
+
+The corpus is filtered to match: a case whose customer messages never state a size in words — a package agreed from an order form sent as a photo — is dropped rather than scored, because the model never sees images and cannot reproduce it.
 
 ### Three questions in a row is a loop, and the webhook breaks it
 

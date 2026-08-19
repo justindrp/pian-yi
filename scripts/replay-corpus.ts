@@ -55,6 +55,10 @@ function replayableText(content: string, messageType: string | null): string | n
   return text;
 }
 
+/** A customer turn that could carry the package size: portions, days, weeks or money. */
+const SIZE_EVIDENCE =
+  /(?<![\d.,])\d+\s*(porsi|hari|minggu|bulan|pax|orang)|rp\.?\s*\d|\d{1,3}(\.\d{3})+/i;
+
 export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
   const db = createAdminClient();
 
@@ -116,6 +120,14 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
       }
     }
     if (turns.length < 2) continue;
+
+    // An order whose size the customer never stated in words is not something
+    // the bot can reproduce: the model never sees images, so a package agreed
+    // from a filled order form sent as a photo is unknowable to it. Nadya's
+    // 2026-07 order sat behind a window whose every customer message was about
+    // schedule changes ("tanpa nasi", "ganti siang") — scoring it asks the bot
+    // to invent 20 porsi. Keeping the corpus honest matters more than its size.
+    if (!turns.some((t) => SIZE_EVIDENCE.test(t.text))) continue;
 
     const { data: dels } = await db
       .from("daily_deliveries")

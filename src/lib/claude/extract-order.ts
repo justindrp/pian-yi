@@ -328,6 +328,9 @@ export function statedWeeks(text: string): number | null {
   return weeks.size === 1 ? ([...weeks][0] as number) : null;
 }
 
+/** A customer who wrote one of these asked for lunch. */
+const LUNCH_WORDS = /\b(makan siang|siang aja|siang saja|siang doang|lunch)\b/i;
+
 /** A customer who never wrote one of these never asked for dinner. */
 const DINNER_WORDS = /\b(malam|dinner|keduanya|2\s*(x|kali)\s*sehari|dua kali)\b/i;
 
@@ -777,10 +780,22 @@ export async function createOrderFromExtraction(
   // no message supports is downgraded rather than trusted.
   const inbound = await customerMessages(customerId);
   const askedForDinner = inbound.some((m) => DINNER_WORDS.test(m));
+  const askedForLunch = inbound.some((m) => LUNCH_WORDS.test(m));
+  // And the mirror of it: a customer who did say "makan siang" must not fall
+  // through to per_day_decision, which delivery generation skips. Dewi wrote
+  // "Makan siang" and named her days on 2026-07-28; the order was created at the
+  // right size and price and produced no delivery rows at all.
   const mealTimePreference =
     extractedPreference === "both_fixed" && !askedForDinner
       ? "lunch_only"
-      : extractedPreference;
+      : extractedPreference === "per_day_decision" &&
+          (askedForLunch || askedForDinner)
+        ? askedForLunch && askedForDinner
+          ? "both_fixed"
+          : askedForLunch
+            ? "lunch_only"
+            : "dinner_only"
+        : extractedPreference;
 
   // The schedule is the order. A customer who says "20 hari mulai 10 Agustus,
   // selesai 8 September" has described a range that yields exactly 20 delivery
