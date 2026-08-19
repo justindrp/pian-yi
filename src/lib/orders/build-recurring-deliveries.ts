@@ -63,7 +63,17 @@ function isDeliveryDay(date: Date): boolean {
   return day >= 1 && day <= 6;
 }
 
-function getFixedMeals(order: RecurringDeliveryOrder) {
+type MealShape = Pick<
+  RecurringDeliveryOrder,
+  | "meal_time_preference"
+  | "portions_per_delivery"
+  | "portions_lunch"
+  | "portions_dinner"
+  | "lunch_address_slot"
+  | "dinner_address_slot"
+>;
+
+function getFixedMeals(order: MealShape) {
   const pref = order.meal_time_preference;
   if (pref === "lunch_only" || pref === "default_lunch") {
     return [
@@ -98,6 +108,35 @@ function getFixedMeals(order: RecurringDeliveryOrder) {
     ];
   }
   return [];
+}
+
+/**
+ * The portions a fixed schedule actually yields between two dates. The model
+ * does this arithmetic in prose and gets it wrong: Nadya asked for "paket
+ * personal 20 hari" from 10 Agustus to 8 September — exactly 20 delivery days —
+ * and was sold 22 porsi while 20 rows were written. The schedule is the order,
+ * so count it rather than trusting the sentence.
+ */
+export function portionsInRange(
+  order: MealShape,
+  startIso: string,
+  endIso: string,
+): number | null {
+  const meals = getFixedMeals(order);
+  if (meals.length === 0) return null;
+  const portionsPerDay = meals.reduce((sum, meal) => sum + meal.portions, 0);
+  if (portionsPerDay <= 0) return null;
+
+  let days = 0;
+  const end = parseIsoDate(endIso);
+  for (
+    const date = parseIsoDate(startIso);
+    date <= end;
+    date.setUTCDate(date.getUTCDate() + 1)
+  ) {
+    if (isDeliveryDay(date)) days += 1;
+  }
+  return days > 0 ? days * portionsPerDay : null;
 }
 
 export function buildRecurringDeliveryRows(

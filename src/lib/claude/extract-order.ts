@@ -16,6 +16,7 @@ import { isClosedHoliday } from "@/lib/holidays/id";
 import {
   FIXED_SCHEDULE_PREFS,
   buildRecurringDeliveryRows,
+  portionsInRange,
 } from "@/lib/orders/build-recurring-deliveries";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -654,15 +655,12 @@ export async function createOrderFromExtraction(
   // package_size is NOT NULL and is the one field the model still drops — two
   // replays on 2026-08-19 threw on the insert and left the customer with no
   // order at all. Floor it at the smallest package we sell rather than fail.
-  const packageSize = Math.max(
+  const flooredPackageSize = Math.max(
     typeof rawPackageSize === "number" && rawPackageSize > 0
       ? rawPackageSize
       : 0,
     await minPackageSize(),
   );
-  const nasiMerah = input.nasi_merah === true;
-  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(packageSize, nasiMerah);
 
   const sortedSchedule = schedule
     ? [...schedule].sort((a, b) => a.date.localeCompare(b.date))
@@ -691,6 +689,37 @@ export async function createOrderFromExtraction(
     input.meal_time_preference ??
     (await previousMealTimePreference(customerId)) ??
     "per_day_decision";
+
+  // The schedule is the order. A customer who says "20 hari mulai 10 Agustus,
+  // selesai 8 September" has described a range that yields exactly 20 delivery
+  // days, and the model's prose arithmetic said 22 — so the order was sold at
+  // 22 porsi while writing 20 delivery rows, incoherent with its own schedule.
+  // When both dates and a standing meal pattern are present, count the days the
+  // range actually produces instead of trusting the number the model wrote.
+  const rangeSize =
+    !sortedSchedule && endDate && FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
+      ? portionsInRange(
+          {
+            portions_per_delivery: input.portions_per_delivery ?? 1,
+            portions_lunch: input.portions_lunch ?? null,
+            portions_dinner: input.portions_dinner ?? null,
+            meal_time_preference: mealTimePreference,
+            lunch_address_slot: 1,
+            dinner_address_slot: 1,
+          },
+          startDate,
+          endDate,
+        )
+      : null;
+  const packageSize = rangeSize ?? flooredPackageSize;
+  if (rangeSize && rangeSize !== flooredPackageSize) {
+    console.log(
+      `[extract-order] package_size ${flooredPackageSize} -> ${rangeSize} from ${startDate}..${endDate}`,
+    );
+  }
+  const nasiMerah = input.nasi_merah === true;
+  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
+    await getExtractedOrderPricing(packageSize, nasiMerah);
 
   const { data: insertedOrder, error: insertError } = await db
     .from("orders")

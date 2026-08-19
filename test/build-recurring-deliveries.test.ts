@@ -1,4 +1,7 @@
-import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
+import {
+  buildRecurringDeliveryRows,
+  portionsInRange,
+} from "@/lib/orders/build-recurring-deliveries";
 
 const base = {
   customer_id: "c1",
@@ -43,5 +46,59 @@ describe("buildRecurringDeliveryRows", () => {
       "2026-08-19",
     );
     expect(rows.reduce((sum, r) => sum + r.portions, 0)).toBe(10);
+  });
+});
+
+describe("portionsInRange", () => {
+  it("counts the delivery days a range actually yields", () => {
+    // 10..21 Agustus 2026, Senin–Sabtu: 6 days + 5 days = 11
+    expect(
+      portionsInRange(
+        {
+          meal_time_preference: "lunch_only",
+          portions_per_delivery: 1,
+          portions_lunch: null,
+          portions_dinner: null,
+          lunch_address_slot: 1,
+          dinner_address_slot: 1,
+        },
+        "2026-08-10",
+        "2026-08-21",
+      ),
+    ).toBe(11);
+  });
+
+  it("multiplies by portions per delivery", () => {
+    expect(
+      portionsInRange(
+        {
+          meal_time_preference: "lunch_only",
+          portions_per_delivery: 2,
+          portions_lunch: null,
+          portions_dinner: null,
+          lunch_address_slot: 1,
+          dinner_address_slot: 1,
+        },
+        "2026-08-10",
+        "2026-08-14",
+      ),
+    ).toBe(10);
+  });
+
+  it("returns null for a preference with no standing pattern", () => {
+    expect(
+      portionsInRange(
+        {
+          meal_time_preference: "per_day_decision",
+          portions_per_delivery: 1,
+          portions_lunch: null,
+          portions_dinner: null,
+          lunch_address_slot: 1,
+          dinner_address_slot: 1,
+        },
+        "2026-08-10",
+        "2026-08-21",
+      ),
+    ).toBeNull();
   });
 });
