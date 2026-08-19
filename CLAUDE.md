@@ -273,6 +273,14 @@ The webhook now runs the same forced-tool `extractOrderFromConversation()` the a
 
 `resizePendingOrderFromMessage` only ever read a size. Cindy Angelia's 5-porsi order was created at the moment she confirmed, *before* she sent the order form naming nasi merah, so it stayed at Rp 145.000 against a real Rp 170.000 and nothing anywhere reconciled it. The function now also matches `nasi\s*merah` on the inbound message and, on a `pending_payment` order whose `addon_cost_per_portion` is still 0, re-prices through `getExtractedOrderPricing(size, true)` and writes `NASI_MERAH_SURCHARGE`. Size and add-on are independent — either one alone is enough to amend, and neither touches an order once a proof is in, because by then the money has moved.
 
+### A schedule that arrives after the order row is backfilled onto it
+
+An order created the moment the customer confirms has no delivery rows if their days come in the *next* message, and nothing else ever writes them — auto-generation deliberately skips a `per_day_decision` order, and non-contiguous days cannot be derived from a range anyway. Cindy Angelia's 5-porsi order was created at turn 3; she named 11, 12, 13, 14 and 18 Agustus afterwards, and her order sat with an empty schedule.
+
+`fillMissingSchedule()` (`src/lib/claude/extract-order.ts`) re-runs the forced-tool extraction and writes the `delivery_schedule` it returns, capped at `portions_remaining` so a package can never be over-booked, then sets `start_date`, `end_date` and the meal preference the days imply. It only ever touches an order with **zero** delivery rows, so it cannot duplicate a schedule already written.
+
+It runs from `resizePendingOrderFromMessage`, on any amendment and on a message that merely lists dates — `DATE_LIST` is the cheap gate, since the extraction is a model call and must not fire on every inbound message. A dates-only message amends nothing about the money, so it never re-prices and never sends the customer a second nominal.
+
 ### A size the customer changes before paying amends the order
 
 "Boleh 6 porsi dulu kak" after the transfer details have gone out is an amendment, not a second order and not a question — and nothing acted on it. Tiwi asked for "Total 8 porsi" on 2026-08-03, was quoted and billed for 8, then reduced to 6 in the next message; the order stayed at 8 and she was left holding a bill for a package she had just cut.

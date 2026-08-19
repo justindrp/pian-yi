@@ -657,6 +657,98 @@ async function previousMealTimePreference(
 /** A customer asking for nasi merah, which carries a per-portion surcharge. */
 const NASI_MERAH_REQUEST = /nasi\s*merah/i;
 
+/**
+ * A message that looks like it names delivery days — two or more dates, or one
+ * date carrying a month name. The gate is cheap on purpose: filling a schedule
+ * costs a forced-tool extraction, so it must not run on every inbound message.
+ */
+const DATE_LIST =
+  /(?<![\d.,])\d{1,2}\s*(jan|feb|mar|apr|mei|jun|jul|agu|sep|okt|nov|des)|(?<![\d.,])\d{1,2}\s*[,/-]\s*\d{1,2}\s*[,/-]\s*\d{1,2}/i;
+
+/**
+ * An order created before the customer sent their days has no delivery rows,
+ * and nothing else ever writes them: Cindy Angelia confirmed 5 porsi at turn 3
+ * and sent the form naming 11, 12, 13, 14 and 18 Agustus afterwards, so her
+ * order sat with an empty schedule. Re-read the conversation and fill it while
+ * the order is still unpaid. Non-contiguous days are why this cannot be derived
+ * — only the customer's own list has them.
+ */
+async function fillMissingSchedule(
+  customerId: string,
+  orderId: string,
+): Promise<void> {
+  const db = createAdminClient();
+  const { count } = await db
+    .from("daily_deliveries")
+    .select("id", { count: "exact", head: true })
+    .eq("order_id", orderId);
+  if ((count ?? 0) > 0) return;
+
+  const extracted = await extractOrderFromConversation(customerId);
+  const schedule = extracted?.delivery_schedule?.length
+    ? [...extracted.delivery_schedule].sort((a, b) => a.date.localeCompare(b.date))
+    : null;
+  if (!schedule) return;
+
+  const { data: order } = await db
+    .from("orders")
+    .select("subcontractor_id, portions_remaining")
+    .eq("id", orderId)
+    .maybeSingle();
+  const budget = order?.portions_remaining ?? 0;
+
+  const rows: {
+    delivery_date: string;
+    customer_id: string;
+    order_id: string;
+    meal_type: string;
+    portions: number;
+    subcontractor_id: string | null;
+    address_slot: number;
+    status: string;
+  }[] = [];
+  let used = 0;
+  for (const slot of schedule) {
+    // Never write more days than the package covers.
+    if (used + slot.portions > budget) break;
+    used += slot.portions;
+    rows.push({
+      delivery_date: slot.date,
+      customer_id: customerId,
+      order_id: orderId,
+      meal_type: slot.meal_type,
+      portions: slot.portions,
+      subcontractor_id: order?.subcontractor_id ?? null,
+      address_slot: 1,
+      status: "scheduled",
+    });
+  }
+  if (!rows.length) return;
+
+  const { error } = await db.from("daily_deliveries").insert(rows);
+  if (error) {
+    console.error("[extract-order] schedule backfill failed:", error.message);
+    return;
+  }
+  // The rows are the draw; the order's own balance moves with them.
+  await db
+    .from("orders")
+    .update({
+      start_date: rows[0].delivery_date,
+      end_date: rows[rows.length - 1].delivery_date,
+      meal_time_preference:
+        schedule.every((s) => s.meal_type === "lunch")
+          ? "lunch_only"
+          : schedule.every((s) => s.meal_type === "dinner")
+            ? "dinner_only"
+            : "custom_schedule",
+    })
+    .eq("id", orderId);
+  console.log(
+    `[extract-order] backfilled ${rows.length} delivery rows onto order ${orderId}`,
+  );
+}
+
 export async function resizePendingOrderFromMessage(
   customerId: string,
   phone: string,
@@ -668,7 +760,8 @@ export async function resizePendingOrderFromMessage(
       ? rawStated
       : null;
   const wantsNasiMerah = NASI_MERAH_REQUEST.test(text);
-  if (stated === null && !wantsNasiMerah) return false;
+  const listsDates = DATE_LIST.test(text);
+  if (stated === null && !wantsNasiMerah && !listsDates) return false;
 
   const db = createAdminClient();
   const { data: order } = await db
@@ -680,6 +773,14 @@ export async function resizePendingOrderFromMessage(
     .limit(1)
     .maybeSingle();
   if (!order) return false;
+
+  // Dates alone amend nothing about the money, so they never reach the
+  // re-pricing below or send the customer a second nominal — they only fill a
+  // schedule the order does not have yet.
+  if (stated === null && !wantsNasiMerah) {
+    await fillMissingSchedule(customerId, order.id);
+    return false;
+  }
 
   const size = stated ?? order.package_size;
   // The add-on is charged through at cost and already sits inside
@@ -710,6 +811,8 @@ export async function resizePendingOrderFromMessage(
     console.error("[extract-order] pending order resize failed:", error.message);
     return false;
   }
+
+  await fillMissingSchedule(customerId, order.id);
 
   const [bankName, bankAccountNumber, bankAccountName] = await Promise.all([
     getSetting("bank_name"),
