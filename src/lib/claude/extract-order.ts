@@ -1,3 +1,4 @@
+import { demoDisplayName, isDemoPhone } from "@/lib/whatsapp/demo";
 import type Anthropic from "@anthropic-ai/sdk";
 import { getSetting } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
@@ -819,6 +820,12 @@ export async function createOrderFromExtraction(
     nameFromModel && nameFromModel.toLowerCase() !== "unknown"
       ? nameFromModel
       : null;
+  // A replayed conversation carries the real customer's name, and writing it to
+  // the demo row put a second "Nadya" in the inbox beside the real one — an
+  // admin one tap away from answering a replay instead of a customer.
+  const nameForRecord = isDemoPhone(phone)
+    ? demoDisplayName(phone)
+    : rawNameForRecord;
 
   const addressType = input.address?.trim()
     ? await classifyAddress(input.address)
@@ -826,7 +833,7 @@ export async function createOrderFromExtraction(
   await db
     .from("customers")
     .update({
-      ...(rawNameForRecord ? { name: rawNameForRecord } : {}),
+      ...(rawNameForRecord ? { name: nameForRecord } : {}),
       // Only overwrite the address when this order actually carried one. A
       // renewal extracted from chat alone has none, and writing it through blanked
       // the address of a customer we have been delivering to for months.

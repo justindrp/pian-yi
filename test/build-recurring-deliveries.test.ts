@@ -6,6 +6,10 @@ const base = {
   subcontractor_id: "s1",
   meal_time_preference: "both_fixed",
   portions_per_delivery: 1,
+  lunch_address_slot: 1,
+  dinner_address_slot: 1,
+  portions_lunch: 1,
+  portions_dinner: 1,
   start_date: "2026-07-27",
   end_date: "2026-07-31",
 };

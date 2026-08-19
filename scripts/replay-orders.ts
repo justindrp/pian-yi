@@ -22,7 +22,10 @@ import { buildCorpus, type CorpusCase } from "./replay-corpus";
 import { processWebhookAsync } from "../src/app/api/webhook/whatsapp/route";
 import { NASI_MERAH_SURCHARGE } from "../src/lib/claude/extract-order";
 import { createAdminClient } from "../src/lib/supabase/admin";
-import { DEMO_PHONE_PREFIX } from "../src/lib/whatsapp/demo";
+import {
+  DEMO_PHONE_PREFIX,
+  demoDisplayName,
+} from "../src/lib/whatsapp/demo";
 import type { WhatsAppWebhookPayload } from "../src/lib/whatsapp/types";
 
 // ---------------------------------------------------------------------------
@@ -131,7 +134,7 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   await cleanupDemo(phone);
   const { data: demo, error } = await db
     .from("customers")
-    .insert({ phone_number: phone, name: null })
+    .insert({ phone_number: phone, name: demoDisplayName(phone) })
     .select("id")
     .single();
   if (error || !demo)

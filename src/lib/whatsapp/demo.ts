@@ -25,3 +25,15 @@ export function isDemoPhone(phone: string | null | undefined): boolean {
 export function demoMessageId(): string {
   return `wamid.DEMO${Math.random().toString(36).slice(2, 12).toUpperCase()}`;
 }
+
+/**
+ * What a demo customer is called in the inbox. A replayed conversation carries
+ * the real customer's name, and writing it to the demo row put a second "Nadya"
+ * in the thread list next to the real one — an admin one tap away from
+ * answering a replay instead of a customer. The real name is never stored on a
+ * demo row; the phone suffix is enough to tell which case it came from.
+ */
+export function demoDisplayName(phone: string): string {
+  const bare = phone.startsWith("+") ? phone.slice(1) : phone;
+  return `[DEMO] ${bare.slice(DEMO_PHONE_PREFIX.length)}`;
+}
