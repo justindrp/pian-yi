@@ -290,7 +290,7 @@ Two layers, both in `recoverOrderFromConversation`:
 
 ### An order the bot promised is created even when it never called the tool
 
-"Saya catat pesanannya sekarang" with no `extract_order` in the same response is the most common way an order dies: the model treats creating it as an intention it can defer, and the next turn repeats the promise. Febby was quoted 30 porsi twice and no order ever existed. The webhook now matches the promise in the reply text (`ORDER_PROMISE`), and if no tool ran and the customer has no order in `pending_payment` / `payment_proof_received` / `active` / `paused`, it runs `extractOrderFromConversation()` and creates the order — gated on `package_size > 0 && address`, so a stray "saya proses" in a browsing chat creates nothing. The prompt rule against claiming an order is recorded is the first layer; this is the enforcement.
+"Saya catat pesanannya sekarang" with no `extract_order` in the same response is the most common way an order dies: the model treats creating it as an intention it can defer, and the next turn repeats the promise. Febby was quoted 30 porsi twice and no order ever existed. **Every reply that calls no tool now runs the recovery**, not only the ones that promised something. Naming the shapes kept missing new ones: Fahmi agreed to 20 porsi dinner, sent his address as a photo and was asked for his name; Febby asked to add 30 porsi and was told the admin was being consulted. Neither reply promised anything, neither was a loop, and both orders were lost. The guard was never the shape of the sentence — it is the extraction: `extractOrderFromConversation()` returns null when the chat holds no order, reads only messages newer than the customer's newest order, refuses an extraction duplicating one on file, and the create is gated on `package_size > 0 && address` and on the customer having no order in `pending_payment` / `payment_proof_received`. A browsing chat stops at one of those gates. `ORDER_PROMISE` and `consecutiveUnansweredQuestions()` survive only to label the reason in the log. The prompt rule against claiming an order is recorded is the first layer; this is the enforcement.
 
 ### A renewal inherits the schedule the previous package ran on
 
@@ -302,7 +302,7 @@ A customer with nothing on file still falls through to `per_day_decision`. Defau
 
 A promise the bot never keeps is one way an order dies; the opposite is the other. The bot claims nothing, it just asks one more question every turn. Lina Marlianty gave "2 minggu, 1 porsi" and her address on 2026-08-18 and was asked "siang, malam, atau keduanya?" three times running — the prompt has forbidden exactly that since the meal default was written, and the model does it anyway.
 
-`consecutiveUnansweredQuestions()` counts the assistant replies ending in a question with no `extract_order` between them, and at three the webhook runs `recoverOrderFromConversation()` — the same forced-tool extraction the promise path uses, gated the same way on a size and an address, so a browsing customer who asks three questions still creates nothing. Both recovery paths now share that one helper.
+`consecutiveUnansweredQuestions()` counts the assistant replies ending in a question with no `extract_order` between them. It no longer gates anything — recovery runs on every toolless reply (see the section above) — and is kept because "a clarification loop" is the most useful reason to read in the log when an order had to be recovered.
 
 ### `package_size` is floored, never trusted blindly
 

@@ -1523,39 +1523,34 @@ export async function processSavedCustomerMessage(params: {
     await handleToolUse(toolUse, customerId, phone, customerName);
   }
 
-  // "Saya catat pesanannya sekarang" with no extract_order call. The model
-  // treats creating the order as an intention it can defer to a later turn, and
-  // the later turn says the same thing again — Febby was quoted 30 porsi, told
-  // twice it was being processed, and no order ever existed. The promise is
-  // what the customer heard, so honour it: run the same forced-tool extraction
-  // the admin inbox uses. It returns null when the conversation genuinely has
-  // no order in it, and the create is gated on a size and an address, so a
-  // stray "saya proses" in a browsing chat still creates nothing.
-  if (
-    replyText &&
-    !toolUses.some((t) => t.name === "extract_order") &&
-    ORDER_PROMISE.test(replyText)
-  ) {
-    await recoverOrderFromConversation(customerId, phone, "an unkept promise");
-  }
-
-  // The other way an order dies is the opposite of a promise: the bot never
-  // claims anything, it just asks one more question, every turn, forever. Lina
-  // Marlianty gave "2 minggu, 1 porsi" and her address on 2026-08-18 and was
-  // asked "siang, malam, atau keduanya?" three times running; the prompt has
-  // forbidden that since the meal default was written, and the model does it
-  // anyway. Three consecutive questions with no tool call is a loop, not a
-  // conversation, so break it with the same recovery — gated on a size and an
-  // address, which a browsing customer asking three questions does not have.
-  if (
-    replyText?.includes("?") &&
-    !toolUses.some((t) => t.name === "extract_order") &&
-    (await consecutiveUnansweredQuestions(customerId)) >= 2
-  ) {
+  // An order the conversation already contains must never die in a turn that
+  // did not create it. Two named shapes used to trigger recovery — a promise
+  // the model never kept ("saya catat pesanannya sekarang"), and a
+  // clarification loop where it asks one more question every turn — and both
+  // kept missing new ones: Fahmi agreed to 20 porsi dinner, sent his address as
+  // a photo, and was asked for his name; Febby asked to add 30 porsi and was
+  // told the admin was being consulted. Neither reply promised anything and
+  // neither ended in a loop, and both orders were lost.
+  //
+  // So the trigger is now simply: the model replied and did not call
+  // extract_order. The real guard was never the shape of the sentence, it is
+  // the extraction itself — it returns null when the chat holds no order, it
+  // reads only messages newer than the customer's newest order, it refuses an
+  // extraction that duplicates one on file, and the create is gated on a size
+  // and an address. A browsing customer produces nothing at any of those gates.
+  if (replyText && !toolUses.some((t) => t.name === "extract_order")) {
+    const promised = ORDER_PROMISE.test(replyText);
+    const looping =
+      replyText.includes("?") &&
+      (await consecutiveUnansweredQuestions(customerId)) >= 2;
     await recoverOrderFromConversation(
       customerId,
       phone,
-      "a clarification loop",
+      promised
+        ? "an unkept promise"
+        : looping
+          ? "a clarification loop"
+          : "a turn that created no order",
     );
   }
 
