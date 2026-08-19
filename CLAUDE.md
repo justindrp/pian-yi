@@ -375,6 +375,8 @@ Bursts are pre-merged into one turn by the corpus builder (messages under 90s ap
 
 **A green scorecard from prompt-patching is worth nothing.** The failure mode of this harness is tuning `system.ts` until 20 specific transcripts pass, which teaches the bot those conversations rather than ordering. Fix code freely; treat a prompt change as a business-rule decision that needs a reason beyond "the replay went green".
 
+**A corporate customer replays with their contract rate.** `contract_price_per_portion` is copied onto the demo row regardless of whether the customer had ordered before — unlike the address, which is only seeded for a returning customer, because a rate is a property of who they are and never something stated in the turns being scored. `currentRulePrice()` reads it too: without that, PT Bintang's correct Rp 35.000 scored against the tier-below rule's Rp 26.000 and the bot was marked wrong for pricing them exactly right.
+
 **Historical orders can disagree with current rules, and those cases are unscoreable, not red.** Fidela's 8-porsi order from 27 Juli is not a sellable total under the current ladder, and PT Bintang's Rp 35.000/porsi is corporate pricing no tier produces. No price the bot can write is right for those, so the harness reports them as **DRIFT** with both numbers and keeps them out of the pass/fail tally — counting them as failures marks the bot down for obeying a current rule, and "fixing" them would mean breaking one. Everything else about a drifted case (package size, deliveries) is still printed; it is simply not scored.
 
 ### Idempotency strategy

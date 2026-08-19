@@ -20,7 +20,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildCorpus, type CorpusCase } from "./replay-corpus";
 import { processWebhookAsync } from "../src/app/api/webhook/whatsapp/route";
-import { NASI_MERAH_SURCHARGE } from "../src/lib/claude/extract-order";
+import {
+  contractPrice,
+  NASI_MERAH_SURCHARGE,
+} from "../src/lib/claude/extract-order";
 import { createAdminClient } from "../src/lib/supabase/admin";
 import {
   DEMO_PHONE_PREFIX,
@@ -163,6 +166,15 @@ async function replayCase(c: CorpusCase): Promise<Result> {
         .eq("id", c.customerId)
         .maybeSingle()
     : { data: null };
+  // The negotiated rate is copied regardless of whether they had ordered before:
+  // it is a property of who the customer is, not something stated in the turns
+  // being scored, and without it a corporate replay prices off the tier ladder
+  // and can never reproduce the order.
+  const { data: realRate } = await db
+    .from("customers")
+    .select("contract_price_per_portion")
+    .eq("id", c.customerId)
+    .maybeSingle();
   const { data: demo, error } = await db
     .from("customers")
     .insert({
@@ -174,6 +186,7 @@ async function replayCase(c: CorpusCase): Promise<Result> {
       sub_area: real?.sub_area ?? null,
       subcontractor_id: real?.subcontractor_id ?? null,
       delivery_route: real?.delivery_route ?? null,
+      contract_price_per_portion: realRate?.contract_price_per_portion ?? null,
     })
     .select("id")
     .single();
@@ -301,6 +314,7 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     const rulePrice = await currentRulePrice(
       c.expected.packageSize,
       c.expected.pricePerPortion,
+      c.customerId,
     );
     if (rulePrice === null) {
       // The package itself is not sellable any more, so no price the bot can
@@ -342,8 +356,17 @@ async function replayCase(c: CorpusCase): Promise<Result> {
 async function currentRulePrice(
   packageSize: number,
   historicalPrice: number,
+  customerId: string,
 ): Promise<number | null> {
   const db = createAdminClient();
+  // A corporate customer is priced off their contract, not the ladder. Without
+  // this PT Bintang's Rp 35.000 scored against the tier-below rule's Rp 26.000
+  // — marking the bot wrong for pricing them exactly right.
+  const contract = await contractPrice(customerId);
+  if (contract !== null) {
+    const addon = historicalPrice - contract;
+    return addon === NASI_MERAH_SURCHARGE ? contract + addon : contract;
+  }
   const { data: tiers } = await db
     .from("pricing_tiers")
     .select("portions, price_per_portion")
