@@ -903,6 +903,15 @@ export async function createOrderFromExtraction(
   // through to per_day_decision, which delivery generation skips. Dewi wrote
   // "Makan siang" and named her days on 2026-07-28; the order was created at the
   // right size and price and produced no delivery rows at all.
+  const weeks = inbound.map(statedWeeks).find((n) => n !== null) ?? null;
+  // A customer who bought a block of days described a standing pattern even if
+  // they never named a meal, and makan siang is the documented default — the
+  // prompt states it in the same breath as asking. Left at per_day_decision the
+  // order generates nothing: Lina Marlianty's "2 minggu dl aja.. 1 porsi" was
+  // priced exactly right and produced no delivery rows at all. A customer with
+  // no duration and no dates is genuinely ordering bebas and still falls
+  // through, so this never books a week for someone who never asked for one.
+  const standingBlock = !sortedSchedule && (weeks !== null || Boolean(endDate));
   const mealTimePreference =
     extractedPreference === "both_fixed" && !askedForDinner
       ? "lunch_only"
@@ -914,7 +923,9 @@ export async function createOrderFromExtraction(
           : askedForLunch
             ? "lunch_only"
             : "dinner_only"
-        : extractedPreference;
+        : !FIXED_SCHEDULE_PREFS.includes(extractedPreference) && standingBlock
+          ? "lunch_only"
+          : extractedPreference;
 
   // The schedule is the order. A customer who says "20 hari mulai 10 Agustus,
   // selesai 8 September" has described a range that yields exactly 20 delivery
@@ -940,7 +951,6 @@ export async function createOrderFromExtraction(
   // A duration in weeks is a portion count: our week is Senin-Jumat unless the
   // customer picks Sabtu, and the bot must never hold an order open asking which.
   const portionsPerDay = mealTimePreference === "both_fixed" ? 2 : 1;
-  const weeks = inbound.map(statedWeeks).find((n) => n !== null) ?? null;
   // `inbound` is newest first, so this is the last total the customer stated —
   // and a customer who changes their mind means the newer number. Tiwi asked for
   // 8 porsi, was told 8 was off the list, wrote "Boleh 6 porsi dulu kak", and
