@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
+import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
@@ -527,6 +528,10 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     ],
   }).catch((err) => console.error("[mark_paid] journal error:", err));
 
+  // A schedule already on the order is the one the customer asked for, and
+  // regenerating it can only pad it back out to the default pattern.
+  const alreadyScheduled = await orderHasDeliveries(body.id);
+
   const deliveryRows = buildRecurringDeliveryRows(
     {
       customer_id: order.customer_id,
@@ -550,7 +555,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     },
     today,
   );
-  if (deliveryRows.length > 0) {
+  if (deliveryRows.length > 0 && !alreadyScheduled) {
     const { error: deliveryErr } = await db
       .from("daily_deliveries")
       .upsert(deliveryRows, {

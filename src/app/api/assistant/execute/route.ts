@@ -4,6 +4,7 @@ import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
+import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { getDeliveryRoute } from "@/lib/utils/format";
@@ -306,6 +307,10 @@ export async function POST(request: Request) {
         console.error("[execute/mark_paid] journal error:", err),
       );
 
+      // A schedule already on the order is the one the customer asked for, and
+      // regenerating it can only pad it back out to the default pattern.
+      const alreadyScheduled = await orderHasDeliveries(orderId);
+
       const deliveryRows = buildRecurringDeliveryRows({
         customer_id: order.customer_id,
         dinner_address_slot: order.dinner_address_slot ?? null,
@@ -324,7 +329,7 @@ export async function POST(request: Request) {
         subcontractor_id:
           order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
       });
-      if (deliveryRows.length > 0) {
+      if (deliveryRows.length > 0 && !alreadyScheduled) {
         const { error: deliveryErr } = await db
           .from("daily_deliveries")
           .upsert(deliveryRows, {
