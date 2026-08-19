@@ -1,5 +1,6 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
+import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type PendingAction = {
@@ -144,7 +145,7 @@ export const assistantTools: Tool[] = [
   {
     name: "search_conversations",
     description:
-      "Retrieve recent conversation messages for a customer by phone number or name.",
+      "Retrieve recent conversation messages for a customer by phone number or name, or search message text across ALL customers with `contains`. The cross-customer search is how you find related enquiries — two different numbers asking about the same venue, event or company are usually the same buyer.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -155,6 +156,11 @@ export const assistantTools: Tool[] = [
         customer_name: {
           type: "string",
           description: "Customer name (partial match)",
+        },
+        contains: {
+          type: "string",
+          description:
+            "Search every customer's messages for this text (case-insensitive). Use a distinctive fragment — a venue, a company, a street. Returns one row per match with the customer attached.",
         },
         limit: {
           type: "number",
@@ -205,6 +211,42 @@ export const assistantTools: Tool[] = [
       properties: {
         limit: { type: "number", description: "Max rows (default 20)" },
       },
+    },
+  },
+  {
+    name: "query_leads",
+    description:
+      "Enquiries that never became an order: customers with zero orders in any status. Returns what they asked for, who spoke last, and whether WhatsApp still lets us write to them. Use this for 'any leads worth chasing?', before writing any follow-up, and unprompted in a briefing — a lead whose 24h window is closing is the most perishable thing in the business.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        days: {
+          type: "number",
+          description: "How far back to look for first contact (default 30)",
+        },
+        limit: { type: "number", description: "Max leads (default 20)" },
+        only_reachable: {
+          type: "boolean",
+          description:
+            "Only leads we can still send a free-form message to (24h window open). Default false — a closed-window lead is still worth knowing about.",
+        },
+      },
+    },
+  },
+  {
+    name: "check_delivery_dates",
+    description:
+      "Whether we can actually deliver on given dates, and whether the order deadline for each has passed. Checks Minggu, libur nasional and the H-1 cutoff from settings. ALWAYS call this before promising a customer any date — never work a calendar out yourself.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        dates: {
+          type: "array",
+          items: { type: "string" },
+          description: 'ISO dates, e.g. ["2026-08-20", "2026-08-23"]',
+        },
+      },
+      required: ["dates"],
     },
   },
   {
@@ -481,6 +523,31 @@ export const assistantTools: Tool[] = [
   },
 ];
 
+/**
+ * Supabase caps an unpaginated select at 1000 rows and gives no signal when it
+ * truncates, so anything that must be complete has to be walked with .range().
+ * `query_leads` learned this the hard way: its conversations fetch hit the cap,
+ * the newest leads came back with no messages at all, and every one of them
+ * read as a closed 24h window — the exact leads most worth chasing.
+ */
+async function fetchAllRows<T>(
+  page: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ rows: T[]; error?: string }> {
+  const SIZE = 1000;
+  const rows: T[] = [];
+  for (let from = 0; ; from += SIZE) {
+    const { data, error } = await page(from, from + SIZE - 1);
+    if (error) return { rows, error: error.message };
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < SIZE) break;
+  }
+  return { rows };
+}
+
 export async function runTool(
   name: string,
   input: Record<string, unknown>,
@@ -692,6 +759,38 @@ export async function runTool(
     }
 
     case "search_conversations": {
+      // Cross-customer keyword search. Two enquiries about the same venue rarely
+      // arrive from the same number, so a lead is only recognisable as a repeat
+      // buyer by what they wrote, not by who they are.
+      if (input.contains) {
+        const { data, error } = await db
+          .from("conversations")
+          .select(
+            "id, customer_id, role, content, created_at, customers(name, phone_number)",
+          )
+          .ilike("content", `%${input.contains as string}%`)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+        if (error) return { error: error.message };
+        return {
+          matches: (data ?? []).map((m) => {
+            const c = m.customers as {
+              name: string | null;
+              phone_number: string | null;
+            } | null;
+            return {
+              customer_id: m.customer_id,
+              name: c?.name ?? null,
+              phone_number: c?.phone_number ?? null,
+              role: m.role,
+              created_at: m.created_at,
+              content: String(m.content).slice(0, 300),
+            };
+          }),
+          count: data?.length ?? 0,
+        };
+      }
+
       let customerIds: string[] = [];
       if (input.customer_phone) {
         const { data } = await db
@@ -925,6 +1024,225 @@ export async function runTool(
 
       // Already sorted by delivery_date desc from the query
       return { customers, count: customers.length };
+    }
+
+    case "query_leads": {
+      // A lead is a customer with no order in any status. The interesting facts
+      // about one are not on the customers row: what they asked for, whether we
+      // or they spoke last, and whether Meta still lets us write to them.
+      const days = Math.min(Number(input.days ?? 30), 180);
+      const since = new Date(
+        Date.now() - days * 24 * 60 * 60 * 1000,
+      ).toISOString();
+
+      type LeadRow = {
+        id: string;
+        name: string | null;
+        phone_number: string | null;
+        area: string | null;
+        notes: string | null;
+        first_message: string | null;
+        created_at: string | null;
+      };
+      type MsgRow = {
+        customer_id: string | null;
+        role: string;
+        content: string;
+        created_at: string | null;
+      };
+
+      const [candidates, ordered] = await Promise.all([
+        fetchAllRows<LeadRow>((from, to) =>
+          db
+            .from("customers")
+            .select(
+              "id, name, phone_number, area, notes, first_message, created_at",
+            )
+            .gte("created_at", since)
+            .not("phone_number", "like", "DEMO_%")
+            .order("created_at", { ascending: false })
+            .range(from, to),
+        ),
+        fetchAllRows<{ customer_id: string | null }>((from, to) =>
+          db
+            .from("orders")
+            .select("customer_id")
+            .not("customer_id", "is", null)
+            .range(from, to),
+        ),
+      ]);
+      if (candidates.error) return { error: candidates.error };
+      if (ordered.error) return { error: ordered.error };
+
+      const hasOrder = new Set(
+        ordered.rows.map((o) => o.customer_id).filter(Boolean),
+      );
+      const leadRows = candidates.rows.filter((c) => !hasOrder.has(c.id));
+      if (leadRows.length === 0) return { leads: [], count: 0 };
+
+      // Chunked so a long lookback cannot build a URL too big for PostgREST.
+      const ids = leadRows.map((c) => c.id);
+      const msgs: MsgRow[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const got = await fetchAllRows<MsgRow>((from, to) =>
+          db
+            .from("conversations")
+            .select("customer_id, role, content, created_at")
+            .in("customer_id", chunk)
+            .order("created_at", { ascending: true })
+            .range(from, to),
+        );
+        if (got.error) return { error: got.error };
+        msgs.push(...got.rows);
+      }
+
+      const now = Date.now();
+      const WINDOW_MS = 24 * 60 * 60 * 1000;
+      const leads = leadRows.map((c) => {
+        const mine = msgs.filter((m) => m.customer_id === c.id);
+        const inbound = mine.filter((m) => m.role === "user");
+        const last = mine.at(-1);
+        const lastInbound = inbound.at(-1);
+        const lastInboundMs = lastInbound
+          ? new Date(lastInbound.created_at as string).getTime()
+          : null;
+        const windowClosesMs =
+          lastInboundMs === null ? null : lastInboundMs + WINDOW_MS;
+        const windowOpen = windowClosesMs !== null && windowClosesMs > now;
+
+        return {
+          customer_id: c.id,
+          name: c.name,
+          phone_number: c.phone_number,
+          area: c.area,
+          first_contact: c.created_at,
+          days_since_first_contact: Math.floor(
+            (now - new Date(c.created_at as string).getTime()) /
+              (1000 * 60 * 60 * 24),
+          ),
+          first_message: c.first_message,
+          learned_notes: c.notes,
+          // What they actually asked for lives in their own words, so hand the
+          // model every inbound message rather than a summary of them.
+          customer_messages: inbound.map((m) => ({
+            at: m.created_at,
+            text: String(m.content).slice(0, 400),
+          })),
+          last_message_from: last?.role === "user" ? "customer" : "us",
+          last_bot_message:
+            last?.role === "user"
+              ? null
+              : String(last?.content ?? "").slice(0, 400),
+          last_inbound_at: lastInbound?.created_at ?? null,
+          hours_since_inbound:
+            lastInboundMs === null
+              ? null
+              : Math.round(((now - lastInboundMs) / (1000 * 60 * 60)) * 10) /
+                10,
+          // Meta blocks a business writing first once 24h have passed since the
+          // customer's last inbound message, and nothing we send reopens it.
+          window_open: windowOpen,
+          window_closes_at:
+            windowClosesMs === null
+              ? null
+              : new Date(windowClosesMs).toISOString(),
+          window_hours_left: windowOpen
+            ? Math.round(((windowClosesMs - now) / (1000 * 60 * 60)) * 10) / 10
+            : 0,
+          reachable_by: windowOpen ? "free_form" : "template_only",
+        };
+      });
+
+      const filtered = (
+        input.only_reachable ? leads.filter((l) => l.window_open) : leads
+      )
+        .sort((a, b) => {
+          // Closing windows first: that is the perishable end of the list.
+          if (a.window_open !== b.window_open) return a.window_open ? -1 : 1;
+          if (a.window_open) return a.window_hours_left - b.window_hours_left;
+          return (b.last_inbound_at ?? "").localeCompare(
+            a.last_inbound_at ?? "",
+          );
+        })
+        .slice(0, limit);
+
+      return {
+        leads: filtered,
+        count: filtered.length,
+        total_leads: leads.length,
+        // Template sends are the only way to reach a closed window, and every
+        // one of ours currently fails 131042 for want of a payment method on
+        // the WABA. Say so rather than proposing a send that cannot land.
+        template_sends_working: false,
+        note: "reachable_by 'template_only' means we cannot currently reach them at all — template sends fail with error 131042 until a payment method is added to the WhatsApp Business account.",
+      };
+    }
+
+    case "check_delivery_dates": {
+      const dates = (input.dates as string[] | undefined) ?? [];
+      if (dates.length === 0) return { error: "dates is required" };
+
+      const { data: settings } = await db
+        .from("settings")
+        .select("key, value")
+        .eq("key", "order_deadline_hour");
+      const cutoffHour = Number(settings?.[0]?.value ?? 16);
+
+      const DAY_ID = [
+        "Minggu",
+        "Senin",
+        "Selasa",
+        "Rabu",
+        "Kamis",
+        "Jumat",
+        "Sabtu",
+      ];
+      const nowJakarta = new Date(Date.now() + 7 * 60 * 60 * 1000);
+
+      const results = dates.map((ymd) => {
+        const d = new Date(`${ymd}T00:00:00Z`);
+        if (Number.isNaN(d.getTime()))
+          return { date: ymd, error: "unparseable" };
+        const dow = d.getUTCDay();
+        const holiday = holidayOn(ymd);
+        const closedHoliday = isClosedHoliday(ymd);
+
+        let servable = true;
+        let reason: string | null = null;
+        if (dow === 0) {
+          servable = false;
+          reason = "Minggu — tutup";
+        } else if (closedHoliday) {
+          servable = false;
+          reason = `${holiday?.name} — libur nasional, tutup`;
+        }
+
+        // Deadline is cutoffHour WIB on the day before delivery.
+        const cutoff = new Date(d);
+        cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+        cutoff.setUTCHours(cutoffHour, 0, 0, 0);
+        const cutoffPassed = nowJakarta.getTime() > cutoff.getTime();
+
+        return {
+          date: ymd,
+          weekday: DAY_ID[dow],
+          servable,
+          reason,
+          // Cuti bersama is not a closure: whether the partner kitchens work
+          // those days is an admin decision, so it is surfaced, not enforced.
+          cuti_bersama:
+            holiday?.type === "cuti_bersama" ? (holiday?.name ?? null) : null,
+          order_cutoff: `${cutoff.toISOString().slice(0, 10)} ${String(cutoffHour).padStart(2, "0")}:00 WIB`,
+          cutoff_passed: cutoffPassed,
+          bookable: servable && !cutoffPassed,
+        };
+      });
+
+      return {
+        dates: results,
+        note: "A date past its cutoff can still be taken if Annie overrides the deadline — offer it as an override, not a refusal.",
+      };
     }
 
     default:

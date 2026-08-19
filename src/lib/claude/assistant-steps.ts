@@ -13,6 +13,8 @@ const TOOL_LABELS: Record<string, string> = {
   query_expiring_orders: "Mencari paket yang hampir habis",
   query_revenue_trend: "Melihat tren pendapatan",
   query_lapsed_customers: "Mencari pelanggan yang berhenti",
+  query_leads: "Menganalisa calon pelanggan",
+  check_delivery_dates: "Mengecek tanggal pengiriman",
 };
 
 /** What the assistant is about to do, e.g. `Mencari pelanggan "Julian"`. */
