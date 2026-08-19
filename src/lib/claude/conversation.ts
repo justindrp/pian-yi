@@ -31,13 +31,16 @@ export function historyContent(row: {
 export async function loadHistory(
   customerId: string,
   limit = 20,
+  sinceIso?: string,
 ): Promise<Anthropic.Messages.MessageParam[]> {
   const db = createAdminClient();
-  const { data } = await db
+  let query = db
     .from("conversations")
     .select("role, content, message_type")
     .eq("customer_id", customerId)
-    .in("role", ["user", "assistant"])
+    .in("role", ["user", "assistant"]);
+  if (sinceIso) query = query.gt("created_at", sinceIso);
+  const { data } = await query
     .order("created_at", { ascending: false })
     .limit(limit);
 

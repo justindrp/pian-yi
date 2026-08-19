@@ -170,9 +170,10 @@ export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
  */
 export async function extractOrderFromConversation(
   customerId: string,
+  options?: { since?: string },
 ): Promise<ExtractedOrderInput | null> {
   const history = trimTrailingAssistantMessages(
-    await loadHistory(customerId, 60),
+    await loadHistory(customerId, 60, options?.since),
   );
   if (history.length === 0) return null;
 

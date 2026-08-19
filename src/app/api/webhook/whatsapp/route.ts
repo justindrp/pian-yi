@@ -85,24 +85,47 @@ async function recoverOrderFromConversation(
   reason: string,
 ): Promise<boolean> {
   const db = createAdminClient();
-  const { data: existingOrder } = await db
+  const { data: orders } = await db
     .from("orders")
-    .select("id")
+    .select("id, status, package_size, start_date, created_at")
     .eq("customer_id", customerId)
-    .in("status", [
-      "pending_payment",
-      "payment_proof_received",
-      "active",
-      "paused",
-    ])
-    .limit(1)
-    .maybeSingle();
-  if (existingOrder) return false;
+    .order("created_at", { ascending: false });
+  const openOrder = (orders ?? []).find((o) =>
+    ["pending_payment", "payment_proof_received", "active", "paused"].includes(
+      o.status,
+    ),
+  );
+  if (openOrder) return false;
+
+  // Recovery re-reads the chat, so for a customer who has ordered before, the
+  // window must start after their newest order — otherwise the messages that
+  // produced that order are still in view and get built a second time. Nadya
+  // asked on 2026-08-19 to move one delivery to lunch, the reply said "sudah
+  // kami catat" (of the schedule, not an order), ORDER_PROMISE matched, and
+  // her finished 8 Agustus package was rebuilt as a Rp 540.000 bill she was
+  // then asked to pay.
+  const newestOrder = (orders ?? [])[0];
 
   try {
-    const extracted = await extractOrderFromConversation(customerId);
+    const extracted = await extractOrderFromConversation(customerId, {
+      since: newestOrder?.created_at ?? undefined,
+    });
     if (!extracted || extracted.package_size <= 0 || !extracted.address)
       return false;
+    // Second layer: an extraction that reproduces an order already on file is
+    // the old conversation echoing, never a new purchase.
+    if (
+      (orders ?? []).some(
+        (o) =>
+          o.package_size === extracted.package_size &&
+          o.start_date === extracted.start_date,
+      )
+    ) {
+      console.log(
+        `[webhook] order recovery (${reason}) skipped: duplicates an existing order for ${customerId}`,
+      );
+      return false;
+    }
     await createOrderFromExtraction(
       customerId,
       phone,

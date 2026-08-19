@@ -260,6 +260,19 @@ A customer who transfers before the bot ever called `extract_order` used to leav
 
 The webhook now runs the same forced-tool `extractOrderFromConversation()` the admin inbox uses when an image arrives and the customer has **no order in any status**, creates the order with `sendPaymentInfo: false` (they have already paid), then falls into the normal proof handling so the order advances to `payment_proof_received`. Extraction returns null when the chat never contained an order, and the create is gated on `package_size > 0 && address`, so a photo from a browsing customer still creates nothing. Admins get a **high**-priority push either way.
 
+### Order recovery never re-reads a conversation older than the customer's newest order
+
+Both recovery gates (`ORDER_PROMISE`, the clarification-loop breaker) call `extractOrderFromConversation()`, which reads the last 60 messages. For a customer who has ordered before, that window still contains the chat that produced the order they already have — so recovery rebuilds it. Nadya asked on 2026-08-19 to move one delivery to lunch; the reply "sudah kami catat ya" was about the *schedule*, `ORDER_PROMISE` matched it anyway, and her finished 8 Agustus package (20 porsi, start 10 Agustus) was recreated as a `pending_payment` order and sent to her as a Rp 540.000 transfer request. She had paid it three weeks earlier. Annie corrected it by hand in the thread.
+
+The open-order guard did not catch it because her only order was `completed` — a finished package reads as "never ordered" to a `status IN (pending_payment, …)` check, which is exactly the customer a top-up recovery must still work for.
+
+Two layers, both in `recoverOrderFromConversation`:
+
+- `extractOrderFromConversation(customerId, { since: newestOrder.created_at })` — the window starts after the newest order of **any** status, so a new purchase has to be stated in messages that postdate the last one. `loadHistory` takes the optional `sinceIso` and applies it as `.gt("created_at", …)`.
+- An extraction whose `package_size` **and** `start_date` both match an order already on file is refused as the old conversation echoing.
+
+`ORDER_PROMISE` is deliberately left broad. Narrowing it to exclude "sudah kami catat" would re-open the failure it exists for — the bot saying exactly that about a real order it never created.
+
 ### An order the bot promised is created even when it never called the tool
 
 "Saya catat pesanannya sekarang" with no `extract_order` in the same response is the most common way an order dies: the model treats creating it as an intention it can defer, and the next turn repeats the promise. Febby was quoted 30 porsi twice and no order ever existed. The webhook now matches the promise in the reply text (`ORDER_PROMISE`), and if no tool ran and the customer has no order in `pending_payment` / `payment_proof_received` / `active` / `paused`, it runs `extractOrderFromConversation()` and creates the order — gated on `package_size > 0 && address`, so a stray "saya proses" in a browsing chat creates nothing. The prompt rule against claiming an order is recorded is the first layer; this is the enforcement.
