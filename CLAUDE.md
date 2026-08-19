@@ -265,6 +265,14 @@ A customer who transfers before the bot ever called `extract_order` used to leav
 
 The webhook now runs the same forced-tool `extractOrderFromConversation()` the admin inbox uses when an image arrives and the customer has **no order in any status**, creates the order with `sendPaymentInfo: false` (they have already paid), then falls into the normal proof handling so the order advances to `payment_proof_received`. Extraction returns null when the chat never contained an order, and the create is gated on `package_size > 0 && address`, so a photo from a browsing customer still creates nothing. Admins get a **high**-priority push either way.
 
+### An order row must carry the meal preference the code computed, not the one the model returned
+
+`createOrderFromExtraction` infers the meal preference three ways — inherit the customer's previous standing pattern, downgrade an unsupported `both_fixed` to `lunch_only`, promote a `per_day_decision` the customer's own words contradict — and then wrote `input.meal_time_preference ?? "per_day_decision"` to the row anyway. Every inference fed delivery generation and none of it reached the order, so the stored preference disagreed with the schedule sitting underneath it: an order with a week of `lunch_only` rows reading `per_day_decision`, which every downstream filter (`FIXED_SCHEDULE_PREFS`, the `generate-deliveries` cron, the daily sheet) then skips. The insert now stores the computed value.
+
+### Nasi merah asked for after the order exists amends it too
+
+`resizePendingOrderFromMessage` only ever read a size. Cindy Angelia's 5-porsi order was created at the moment she confirmed, *before* she sent the order form naming nasi merah, so it stayed at Rp 145.000 against a real Rp 170.000 and nothing anywhere reconciled it. The function now also matches `nasi\s*merah` on the inbound message and, on a `pending_payment` order whose `addon_cost_per_portion` is still 0, re-prices through `getExtractedOrderPricing(size, true)` and writes `NASI_MERAH_SURCHARGE`. Size and add-on are independent — either one alone is enough to amend, and neither touches an order once a proof is in, because by then the money has moved.
+
 ### A size the customer changes before paying amends the order
 
 "Boleh 6 porsi dulu kak" after the transfer details have gone out is an amendment, not a second order and not a question — and nothing acted on it. Tiwi asked for "Total 8 porsi" on 2026-08-03, was quoted and billed for 8, then reduced to 6 in the next message; the order stayed at 8 and she was left holding a bill for a package she had just cut.
@@ -330,6 +338,8 @@ Three things make it safe to run against production data:
 Bursts are pre-merged into one turn by the corpus builder (messages under 90s apart), and `processSavedCustomerMessage` skips its 15s burst wait for demo phones — otherwise a 20-conversation run would spend an extra hour sleeping without changing what the model sees.
 
 **Ground truth is real orders, so it has to be kept real.** Three ways it stopped being: a corpus rebuilt mid-round picked up the harness's own demo orders (an order the bot just wrote can never be evidence of what the bot should write — demo customers are now skipped); a **cancelled** order counted as something to reproduce, which put the phantom Nadya order of 2026-08-19 in the corpus and asked the bot to rebuild a bug (cancelled and refunded statuses are excluded); and a conversation that produced **two** orders entered twice with different expectations, while one replay run creates one order — Tiwi's 2026-08-03 thread bought 5 porsi and then 6, so at most one of the two could ever pass. Sibling orders from the same window now fold into `alternatives` on a single case, and reproducing any of them passes.
+
+**A replay run must never outlive the session that launched it.** The shards are child processes and nothing supervises them, so if Claude Code hits its usage limit mid-round the run keeps calling DeepSeek — spending real balance — until the limit resets, with no one able to stop it. `scripts/replay-guard.sh <minutes> [args...]` launches the replay via `setsid` and kills the whole process group at a hard wall-clock deadline. Use it for every round; `pnpm tsx scripts/replay-orders.ts` directly has no such stop.
 
 **A green scorecard from prompt-patching is worth nothing.** The failure mode of this harness is tuning `system.ts` until 20 specific transcripts pass, which teaches the bot those conversations rather than ordering. Fix code freely; treat a prompt change as a business-rule decision that needs a reason beyond "the replay went green".
 

@@ -654,14 +654,21 @@ async function previousMealTimePreference(
  *
  * Returns whether an order was resized.
  */
+/** A customer asking for nasi merah, which carries a per-portion surcharge. */
+const NASI_MERAH_REQUEST = /nasi\s*merah/i;
+
 export async function resizePendingOrderFromMessage(
   customerId: string,
   phone: string,
   text: string,
 ): Promise<boolean> {
-  const stated = statedBareTotal(text);
-  if (stated === null) return false;
-  if (stated < (await minPackageSize())) return false;
+  const rawStated = statedBareTotal(text);
+  const stated =
+    rawStated !== null && rawStated >= (await minPackageSize())
+      ? rawStated
+      : null;
+  const wantsNasiMerah = NASI_MERAH_REQUEST.test(text);
+  if (stated === null && !wantsNasiMerah) return false;
 
   const db = createAdminClient();
   const { data: order } = await db
@@ -672,23 +679,31 @@ export async function resizePendingOrderFromMessage(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!order || order.package_size === stated) return false;
+  if (!order) return false;
 
+  const size = stated ?? order.package_size;
   // The add-on is charged through at cost and already sits inside
-  // price_per_portion, so re-price with it rather than dropping it.
-  const nasiMerah = (order.addon_cost_per_portion ?? 0) > 0;
+  // price_per_portion, so re-price with it rather than dropping it. A customer
+  // who asks for nasi merah after the order exists is amending it the same way
+  // a size change is: Cindy Angelia's 5-porsi order was created before she sent
+  // the form asking for it, and stayed at Rp 145.000 against a real Rp 170.000.
+  const nasiMerah = wantsNasiMerah || (order.addon_cost_per_portion ?? 0) > 0;
+  const addingAddon = nasiMerah && (order.addon_cost_per_portion ?? 0) === 0;
+  if (size === order.package_size && !addingAddon) return false;
+
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(stated, nasiMerah);
+    await getExtractedOrderPricing(size, nasiMerah);
 
   // Nothing has been drawn against an unpaid order, so the balance moves with
   // the size.
   const { error } = await db
     .from("orders")
     .update({
-      package_size: stated,
-      portions_remaining: stated,
+      package_size: size,
+      portions_remaining: size,
       price_per_portion: pricePerPortion,
       total_price: totalPrice,
+      ...(nasiMerah ? { addon_cost_per_portion: NASI_MERAH_SURCHARGE } : {}),
     })
     .eq("id", order.id);
   if (error) {
@@ -701,7 +716,7 @@ export async function resizePendingOrderFromMessage(
     getSetting("bank_account_number"),
     getSetting("bank_account_name"),
   ]);
-  const msg = `Baik kak, pesanannya kami ubah jadi ${stated} porsi ya 😊\n\n💰 Nominal baru: Rp ${totalPrice.toLocaleString("id-ID")}\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak 🙏`;
+  const msg = `Baik kak, pesanannya kami ubah jadi ${size} porsi${addingAddon ? " dengan nasi merah" : ""} ya 😊\n\n💰 Nominal baru: Rp ${totalPrice.toLocaleString("id-ID")}\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak 🙏`;
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
@@ -715,7 +730,7 @@ export async function resizePendingOrderFromMessage(
     status: "sent",
   });
   console.log(
-    `[extract-order] pending order ${order.id} resized ${order.package_size} -> ${stated}`,
+    `[extract-order] pending order ${order.id} amended ${order.package_size} -> ${size}${addingAddon ? " + nasi merah" : ""}`,
   );
   return true;
 }
@@ -788,7 +803,8 @@ export async function createOrderFromExtraction(
   const mealTimePreference =
     extractedPreference === "both_fixed" && !askedForDinner
       ? "lunch_only"
-      : extractedPreference === "per_day_decision" &&
+      : !FIXED_SCHEDULE_PREFS.includes(extractedPreference) &&
+          !sortedSchedule &&
           (askedForLunch || askedForDinner)
         ? askedForLunch && askedForDinner
           ? "both_fixed"
@@ -851,6 +867,12 @@ export async function createOrderFromExtraction(
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
     await getExtractedOrderPricing(packageSize, nasiMerah);
 
+  if (mealTimePreference !== extractedPreference) {
+    console.log(
+      `[extract-order] meal_time_preference ${extractedPreference} -> ${mealTimePreference} (customer said siang=${askedForLunch} malam=${askedForDinner})`,
+    );
+  }
+
   const { data: insertedOrder, error: insertError } = await db
     .from("orders")
     .insert({
@@ -866,7 +888,10 @@ export async function createOrderFromExtraction(
       portions_lunch: input.portions_lunch ?? 0,
       portions_dinner: input.portions_dinner ?? 0,
       portions_remaining: packageSize,
-      meal_time_preference: input.meal_time_preference ?? "per_day_decision",
+      // The computed preference, not the raw extraction: the inference below it
+      // decides which deliveries get written, and storing the model's value
+      // instead left the order row disagreeing with its own schedule.
+      meal_time_preference: mealTimePreference,
       custom_schedule: (input.custom_schedule ?? null) as
         | import("@/types/database").Json
         | null,
