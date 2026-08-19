@@ -33,7 +33,7 @@ export const assistantTools: Tool[] = [
   {
     name: "query_customers",
     description:
-      "Search and list customers. Returns name, phone, area, address, subcontractor.",
+      "Search and list customers. Returns name, phone, area, address, subcontractor and portions_remaining — the customer's remaining quota across every open order, which answers 'sisa kuota berapa' on its own.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -68,7 +68,12 @@ export const assistantTools: Tool[] = [
         },
         customer_phone: {
           type: "string",
-          description: "Exact customer phone number",
+          description: "Customer phone number; matched on the last 9 digits",
+        },
+        customer_name: {
+          type: "string",
+          description:
+            "Partial customer name, when the phone number is unknown",
         },
         start_date: {
           type: "string",
@@ -500,24 +505,65 @@ export async function runTool(
         .order("created_at", { ascending: false })
         .limit(limit);
       if (error) return { error: error.message };
-      return { customers: data ?? [], count: data?.length ?? 0 };
+      // "Sisa kuota berapa?" is the most common question asked of the assistant
+      // and used to need a second tool call the model rarely made — Nicholas
+      // Satria's balance could not be produced at all on 2026-08-19. It is
+      // derived from open orders, never from customers.portions_remaining,
+      // which is a dead column (see CLAUDE.md).
+      const ids = (data ?? []).map((c) => c.id);
+      const { data: openOrders } = ids.length
+        ? await db
+            .from("orders")
+            .select("customer_id, portions_remaining")
+            .in("customer_id", ids)
+            .in("status", ["active", "paused", "payment_proof_received"])
+            .gt("portions_remaining", 0)
+        : { data: [] };
+      const quota = new Map<string, number>();
+      for (const o of openOrders ?? []) {
+        if (!o.customer_id) continue;
+        quota.set(
+          o.customer_id,
+          (quota.get(o.customer_id) ?? 0) + (o.portions_remaining ?? 0),
+        );
+      }
+      return {
+        customers: (data ?? []).map((c) => ({
+          ...c,
+          portions_remaining: quota.get(c.id) ?? 0,
+        })),
+        count: data?.length ?? 0,
+      };
     }
 
     case "query_orders": {
       let q = db
         .from("orders")
         .select(
-          "id, status, package_size, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+          "id, status, package_size, portions_remaining, meal_time_preference, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
         );
       if (input.status) q = q.eq("status", input.status as string);
-      if (input.customer_phone) {
-        const { data: cust } = await db
+      // Phone or name. An exact phone match was the only way in, and an admin
+      // asking about a customer by name in the inbox has the name, not the
+      // number in the exact format the column stores it in.
+      if (input.customer_phone || input.customer_name) {
+        const search = String(input.customer_phone ?? input.customer_name);
+        const digits = search.replace(/\D/g, "");
+        const { data: custs } = await db
           .from("customers")
           .select("id")
-          .eq("phone_number", input.customer_phone as string)
-          .maybeSingle();
-        if (!cust) return { orders: [], count: 0, note: "Customer not found" };
-        q = q.eq("customer_id", cust.id);
+          .or(
+            digits.length >= 8
+              ? `phone_number.ilike.%${digits.slice(-9)}%`
+              : `name.ilike.%${search}%`,
+          )
+          .limit(10);
+        if (!custs?.length)
+          return { orders: [], count: 0, note: "Customer not found" };
+        q = q.in(
+          "customer_id",
+          custs.map((c) => c.id),
+        );
       }
       if (input.start_date) q = q.gte("created_at", input.start_date as string);
       if (input.end_date)

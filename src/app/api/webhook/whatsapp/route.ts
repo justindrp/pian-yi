@@ -77,6 +77,27 @@ import { WINDOW_NOTICE_WELCOME } from "@/lib/whatsapp/window-notice";
 const ORDER_PROMISE =
   /\b(saya|aku|kami)\s+(catat|proses|buatkan|siapkan|input)\b|\b(catat|proses|buatkan|siapkan)\s+(pesanan|ordernya|order)\b|sudah\s+((saya|aku|kami)\s+)?(catat|tercatat|dibuat|diproses)|pesanan(nya)?\s+(saya|aku|kami)\s+(catat|proses|buat)/i;
 
+// The model saying it sent the menu. It does this instead of calling the tool:
+// Nicholas Satria was told "menu minggu ini sudah saya kirim gambarnya ya" with
+// no image anywhere in the thread and answered "blmm ada kak", and Sherine
+// Fayola was told to check one above that had never been sent.
+const MENU_SENT_CLAIM =
+  /(menu|gambar)[\s\S]{0,80}?(sudah|udah|telah)\s+((saya|aku|kami)\s+)?(kirim|kirimkan|share)/i;
+
+/** Whether we actually sent this customer an image recently. */
+async function sentImageRecently(customerId: string): Promise<boolean> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("conversations")
+    .select("id")
+    .eq("customer_id", customerId)
+    .eq("role", "assistant")
+    .eq("message_type", "image")
+    .gt("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString())
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
 // Every number the customer typed, and the package sizes each one could mean.
 // A count of days is a count of portions when there is one meal a day and twice
 // that with two ("20 hari" → 20 or 40); a duration in weeks is five or six days
@@ -221,7 +242,10 @@ async function recoverOrderFromConversation(
     // field an admin can read off the thread.
     const extracted = raw.address?.trim()
       ? raw
-      : (await hasInboundImage(customerId, newestOrder?.created_at ?? undefined))
+      : (await hasInboundImage(
+            customerId,
+            newestOrder?.created_at ?? undefined,
+          ))
         ? { ...raw, address: "Alamat dikirim sebagai foto - lihat inbox" }
         : raw;
     if (!extracted.address) {
@@ -1661,6 +1685,32 @@ export async function processSavedCustomerMessage(params: {
         : looping
           ? "a clarification loop"
           : "a turn that created no order",
+    );
+  }
+
+  // The model claims to have sent the menu instead of calling the tool, and the
+  // customer is left looking for an image that does not exist. Sending it twice
+  // costs nothing; telling someone to check an image we never sent does.
+  if (
+    replyText &&
+    !toolUses.some((t) => t.name === "send_menu_image") &&
+    MENU_SENT_CLAIM.test(replyText) &&
+    !(await sentImageRecently(customerId))
+  ) {
+    console.log(
+      `[webhook] menu claimed but never sent — sending it for ${customerId}`,
+    );
+    await handleToolUse(
+      {
+        type: "tool_use",
+        id: "menu-claim",
+        name: "send_menu_image",
+        input: {},
+        caller: null,
+      } as unknown as Anthropic.Messages.ToolUseBlock,
+      customerId,
+      phone,
+      customerName,
     );
   }
 

@@ -98,10 +98,13 @@ export async function POST(request: Request) {
         console.error("[execute] persist reply:", err),
       );
       Promise.resolve(
-        db.from("assistant_conversations")
+        db
+          .from("assistant_conversations")
           .update({ pending_action: null })
           .eq("id", conversationId),
-      ).catch((err: unknown) => console.error("[execute] clear pending_action:", err));
+      ).catch((err: unknown) =>
+        console.error("[execute] clear pending_action:", err),
+      );
     }
     return NextResponse.json({ ok: true, text, conversationId });
   }
@@ -192,46 +195,44 @@ export async function POST(request: Request) {
         );
       }
 
-      for (const action of actions) {
+      // Every action runs, and each one reports for itself. The loop used to
+      // return on the first failure, which sent the actions before it, dropped
+      // the ones after it and left pending_action set so the thread was stuck:
+      // sending the menu, the price list and a note together failed as a unit
+      // on 2026-08-19 with nothing saying which part had gone out.
+      const outcomes: string[] = [];
+      for (const [i, action] of actions.entries()) {
         if (!isWriteAction(action)) {
-          return NextResponse.json(
-            { ok: false, error: "Invalid batch action" },
-            { status: 400 },
-          );
+          outcomes.push(`${i + 1}. gagal — aksi tidak dikenali`);
+          continue;
         }
-        switch (action.tool) {
-          case "send_whatsapp_message": {
-            const phone = action.input.phone_number as string;
-            const failed = await trySend(phone, () =>
-              sendAssistantText(phone, action.input.message as string),
+        const phone = action.input.phone_number as string;
+        try {
+          if (action.tool === "send_whatsapp_message") {
+            await sendAssistantText(phone, action.input.message as string);
+            outcomes.push(`${i + 1}. pesan terkirim ke ${phone}`);
+          } else if (action.tool === "send_whatsapp_image") {
+            await sendAssistantImage(
+              phone,
+              action.input.image_url as string,
+              action.input.caption as string,
             );
-            if (failed) return failed;
-            break;
+            outcomes.push(`${i + 1}. gambar terkirim ke ${phone}`);
+          } else {
+            outcomes.push(
+              `${i + 1}. gagal — '${action.tool}' belum bisa dijalankan sekaligus`,
+            );
           }
-          case "send_whatsapp_image": {
-            const phone = action.input.phone_number as string;
-            const failed = await trySend(phone, () =>
-              sendAssistantImage(
-                phone,
-                action.input.image_url as string,
-                action.input.caption as string,
-              ),
-            );
-            if (failed) return failed;
-            break;
-          }
-          default:
-            return NextResponse.json(
-              {
-                ok: false,
-                error: `Tool '${action.tool}' cannot be batched yet`,
-              },
-              { status: 400 },
-            );
+        } catch (err) {
+          outcomes.push(
+            isOutsideWindowError(err)
+              ? `${i + 1}. gagal — jalur WhatsApp ke ${phone} sudah tertutup (lewat 24 jam sejak pesan terakhir customer)`
+              : `${i + 1}. gagal — ${(err as Error).message}`,
+          );
         }
       }
 
-      return reply(`Selesai menjalankan ${actions.length} aksi.`);
+      return reply(outcomes.join("\n"));
     }
 
     case "mark_order_paid": {
@@ -437,7 +438,9 @@ export async function POST(request: Request) {
     case "send_whatsapp_message": {
       const phone = input.phone_number as string;
       const message = input.message as string;
-      const failed = await trySend(phone, () => sendAssistantText(phone, message));
+      const failed = await trySend(phone, () =>
+        sendAssistantText(phone, message),
+      );
       if (failed) return failed;
       return reply(`Pesan WhatsApp sudah dikirim ke ${phone}.`);
     }
@@ -492,7 +495,10 @@ export async function POST(request: Request) {
           .update({ status: "skipped" })
           .eq("id", deliveryId);
         if (error) {
-          return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+          return NextResponse.json(
+            { ok: false, error: error.message },
+            { status: 500 },
+          );
         }
         return reply("Pengiriman sudah ditandai skip.");
       }
@@ -510,12 +516,18 @@ export async function POST(request: Request) {
           .update({ delivery_date: newDate })
           .eq("id", deliveryId);
         if (error) {
-          return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+          return NextResponse.json(
+            { ok: false, error: error.message },
+            { status: 500 },
+          );
         }
         return reply(`Pengiriman dijadwalkan ulang ke ${newDate}.`);
       }
 
-      return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid action" },
+        { status: 400 },
+      );
     }
 
     case "pause_order": {
@@ -527,7 +539,10 @@ export async function POST(request: Request) {
         .eq("id", orderId)
         .eq("status", "active");
       if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: 500 },
+        );
       }
       return reply(
         pauseUntil
@@ -544,7 +559,10 @@ export async function POST(request: Request) {
         .eq("id", orderId)
         .eq("status", "paused");
       if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: 500 },
+        );
       }
       return reply("Pesanan sudah diaktifkan kembali.");
     }
@@ -559,7 +577,10 @@ export async function POST(request: Request) {
         .eq("id", orderId)
         .single();
       if (fetchErr || !order) {
-        return NextResponse.json({ ok: false, error: "Order not found" }, { status: 404 });
+        return NextResponse.json(
+          { ok: false, error: "Order not found" },
+          { status: 404 },
+        );
       }
       const rawCustomer = order.customers;
       const customer = (
@@ -573,8 +594,16 @@ export async function POST(request: Request) {
       }
       const [bankNameRes, bankAccountRes, bankHolderRes] = await Promise.all([
         db.from("settings").select("value").eq("key", "bank_name").single(),
-        db.from("settings").select("value").eq("key", "bank_account_number").single(),
-        db.from("settings").select("value").eq("key", "bank_account_name").single(),
+        db
+          .from("settings")
+          .select("value")
+          .eq("key", "bank_account_number")
+          .single(),
+        db
+          .from("settings")
+          .select("value")
+          .eq("key", "bank_account_name")
+          .single(),
       ]);
       const bankName = bankNameRes.data?.value ?? "";
       const bankAccount = bankAccountRes.data?.value ?? "";
@@ -595,7 +624,10 @@ export async function POST(request: Request) {
           status: "sent",
         });
       } catch (err) {
-        console.error("[execute/send_payment_details] WhatsApp send failed:", err);
+        console.error(
+          "[execute/send_payment_details] WhatsApp send failed:",
+          err,
+        );
         return NextResponse.json(
           { ok: false, error: "Failed to send WhatsApp message" },
           { status: 500 },
@@ -612,9 +644,14 @@ export async function POST(request: Request) {
         .eq("id", orderId)
         .eq("status", "pending_payment");
       if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: 500 },
+        );
       }
-      return reply("Status pesanan sudah diperbarui ke payment_proof_received.");
+      return reply(
+        "Status pesanan sudah diperbarui ke payment_proof_received.",
+      );
     }
 
     case "update_order": {
@@ -634,12 +671,12 @@ export async function POST(request: Request) {
       const patch = { [field]: coercedValue } as Partial<
         Pick<OrdersUpdate, OrderField>
       >;
-      const { error } = await db
-        .from("orders")
-        .update(patch)
-        .eq("id", orderId);
+      const { error } = await db.from("orders").update(patch).eq("id", orderId);
       if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: 500 },
+        );
       }
       return reply(`Field ${field} pesanan sudah diperbarui.`);
     }
@@ -658,9 +695,42 @@ export async function POST(request: Request) {
         .maybeSingle();
       if (existing) {
         return NextResponse.json(
-          { ok: false, error: `Customer with phone ${phoneNumber} already exists` },
+          {
+            ok: false,
+            error: `Customer with phone ${phoneNumber} already exists`,
+          },
           { status: 409 },
         );
+      }
+
+      // A customer who changes WhatsApp number arrives as a stranger: phone is
+      // the only unique key, so nothing matches and a second row is created
+      // holding none of their orders. galvent wrote "No wa lama gk pakai lg y"
+      // on 2026-08-19 and was duplicated. Refuse on a name collision and hand
+      // back the row that already exists, so the number can be moved onto it
+      // with update_customer_field instead.
+      if (name?.trim()) {
+        const { data: sameName } = await db
+          .from("customers")
+          .select("id, name, phone_number, area")
+          .ilike("name", name.trim())
+          .limit(5);
+        if (sameName?.length) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `Sudah ada customer bernama "${name.trim()}": ${sameName
+                .map(
+                  (c) =>
+                    `${c.name} (${c.phone_number}, ${c.area ?? "-"}, id ${c.id})`,
+                )
+                .join(
+                  "; ",
+                )}. Kalau ini orang yang sama dan cuma ganti nomor, pakai update_customer_field untuk mengubah phone_number-nya, jangan buat customer baru.`,
+            },
+            { status: 409 },
+          );
+        }
       }
 
       const deliveryRoute = getDeliveryRoute(area);
@@ -686,16 +756,27 @@ export async function POST(request: Request) {
       await Promise.all([
         db
           .from("customer_rate_limits")
-          .upsert({ customer_id: newCustomer.id }, { onConflict: "customer_id", ignoreDuplicates: true }),
+          .upsert(
+            { customer_id: newCustomer.id },
+            { onConflict: "customer_id", ignoreDuplicates: true },
+          ),
         db
           .from("customer_flags")
-          .upsert({ customer_id: newCustomer.id }, { onConflict: "customer_id", ignoreDuplicates: true }),
+          .upsert(
+            { customer_id: newCustomer.id },
+            { onConflict: "customer_id", ignoreDuplicates: true },
+          ),
         db
           .from("customer_state")
-          .upsert({ customer_id: newCustomer.id }, { onConflict: "customer_id", ignoreDuplicates: true }),
+          .upsert(
+            { customer_id: newCustomer.id },
+            { onConflict: "customer_id", ignoreDuplicates: true },
+          ),
       ]);
 
-      return reply(`Customer ${name ?? phoneNumber} sudah dibuat (ID: ${newCustomer.id}).`);
+      return reply(
+        `Customer ${name ?? phoneNumber} sudah dibuat (ID: ${newCustomer.id}).`,
+      );
     }
 
     case "create_order": {
@@ -733,7 +814,10 @@ export async function POST(request: Request) {
         .single();
       if (!existingCustomer) {
         return NextResponse.json(
-          { ok: false, error: `Customer ${customerId} not found — use query_customers to get the correct UUID` },
+          {
+            ok: false,
+            error: `Customer ${customerId} not found — use query_customers to get the correct UUID`,
+          },
           { status: 400 },
         );
       }
@@ -766,7 +850,9 @@ export async function POST(request: Request) {
         );
       }
       const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
-      return reply(`Pesanan baru sudah dibuat (ID: ${newOrder.id}, total: Rp ${formatted}).`);
+      return reply(
+        `Pesanan baru sudah dibuat (ID: ${newOrder.id}, total: Rp ${formatted}).`,
+      );
     }
 
     default:

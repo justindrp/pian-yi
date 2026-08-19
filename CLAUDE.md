@@ -340,6 +340,16 @@ The model re-calls `extract_order` every time it restates the summary, and each 
 
 `createOrderFromExtraction` wrote `customer_name` from the extraction on every order, and the model returns whatever signature it reads off the chat: Julian S was renamed to "Julian" by a phantom order he never placed. The name is now only ever filled when the record has none.
 
+### The bot must not claim it sent the menu without sending it
+
+The model writes "menu minggu ini sudah saya kirim gambarnya ya" and calls no tool. Nicholas Satria was told to check an image that was never sent and answered "blmm ada kak"; Sherine Fayola was told the same thing an hour later. The webhook now matches `MENU_SENT_CLAIM` on any toolless reply and, when we have sent this customer no image in the last 15 minutes, runs `send_menu_image` itself. Sending the menu twice costs nothing; telling someone to look at an image that does not exist costs a customer.
+
+### Assistant
+
+- **`query_customers` returns `portions_remaining`**, summed across the customer's open orders (`active` / `paused` / `payment_proof_received`, `portions_remaining > 0`) — never from the dead `customers.portions_remaining` column. "Sisa kuota berapa?" used to need a second tool call the model rarely made, and it could not answer for Nicholas Satria at all on 2026-08-19. `query_orders` also returns `portions_remaining` and `meal_time_preference`, and takes `customer_name` as well as `customer_phone` (matched on the last 9 digits, so the stored format no longer has to be guessed).
+- **A batch of sends runs every action and reports each one.** The loop returned on the first failure, which sent the actions before it, silently dropped the ones after it and left `pending_action` set so the thread was stuck — the menu, the price list and a note sent together failed as a unit on 2026-08-19 with nothing saying which part had gone out. Each action now succeeds or fails on its own and the reply is a numbered list of outcomes.
+- **`create_customer` refuses a name that already exists.** Phone number is the only unique key, so a customer who changes WhatsApp number arrives as a stranger and gets a second row holding none of their orders — galvent wrote "No wa lama gk pakai lg y" on 2026-08-19 and was duplicated. The 409 hands back the matching rows so the number can be moved onto the real one with `update_customer_field`.
+
 ### A block of days with no meal named defaults to makan siang
 
 A customer who bought a duration described a standing pattern even without saying siang or malam, and siang is the documented default — the prompt states it in the same breath as asking. Left at `per_day_decision` the order generates nothing: Lina Marlianty's "2 minggu dl aja.. 1 porsi" was priced exactly right (10 porsi, Rp 280.000) and produced no delivery rows at all. `createOrderFromExtraction` now reads a stated duration in weeks or an end date as a standing block and fills `lunch_only`. A customer with neither is genuinely ordering bebas and still falls through, so this never books a week for someone who never asked for one.
