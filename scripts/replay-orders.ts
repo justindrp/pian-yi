@@ -201,19 +201,40 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   const label = (c.customerName ?? "?").slice(0, 18);
   for (const [i, turn] of c.turns.entries()) {
     const startedAt = Date.now();
-    try {
-      await withDeadline(
-        atTime(turn.at, () =>
-          processWebhookAsync(payloadFor(phone, turn.text, turn.at, i)),
-        ),
-        TURN_TIMEOUT_MS,
+    // DeepSeek drops connections and wedges often enough that a lost turn has
+    // tainted a case in each of the last three rounds — Vania, Fidela and Henny
+    // all failed on infrastructure rather than on anything the bot did. A turn
+    // is the customer's message, so losing one loses the order; retry once
+    // before recording it as failed. The retry replays the same payload, and
+    // the idempotency guard is on message_id, so a turn that actually landed
+    // before wedging is skipped rather than processed twice.
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await withDeadline(
+          atTime(turn.at, () =>
+            processWebhookAsync(payloadFor(phone, turn.text, turn.at, i)),
+          ),
+          TURN_TIMEOUT_MS,
+        );
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err as Error;
+        if (attempt === 1) {
+          console.log(
+            `  · ${label} turn ${i + 1}/${c.turns.length} RETRY after ${lastError.message}`,
+          );
+        }
+      }
+    }
+    if (lastError) {
+      console.log(
+        `  · ${label} turn ${i + 1}/${c.turns.length} THREW ${lastError.message}`,
       );
+    } else {
       console.log(
         `  · ${label} turn ${i + 1}/${c.turns.length} (${Math.round((Date.now() - startedAt) / 1000)}s)`,
-      );
-    } catch (err) {
-      console.log(
-        `  · ${label} turn ${i + 1}/${c.turns.length} THREW ${(err as Error).message}`,
       );
     }
   }
