@@ -112,11 +112,22 @@ async function recoverOrderFromConversation(
   const newestOrder = (orders ?? [])[0];
 
   try {
-    const extracted = await extractOrderFromConversation(customerId, {
+    const raw = await extractOrderFromConversation(customerId, {
       since: newestOrder?.created_at ?? undefined,
     });
-    if (!extracted || extracted.package_size <= 0 || !extracted.address)
-      return false;
+    if (!raw || raw.package_size <= 0) return false;
+    // An address sent as a photo is an address: the model never sees the image,
+    // but the admin does, and it is sitting in the inbox. Fahmi was quoted 20
+    // porsi at Rp 540.000, sent his address as a picture, and recovery refused
+    // to build the order because extraction found no address text. Record the
+    // pointer the prompt already specifies rather than losing the order over a
+    // field an admin can read off the thread.
+    const extracted = raw.address?.trim()
+      ? raw
+      : (await hasInboundImage(customerId, newestOrder?.created_at ?? undefined))
+        ? { ...raw, address: "Alamat dikirim sebagai foto - lihat inbox" }
+        : raw;
+    if (!extracted.address) return false;
     // Second layer: an extraction that reproduces an order already on file is
     // the old conversation echoing, never a new purchase.
     if (
@@ -145,6 +156,23 @@ async function recoverOrderFromConversation(
     );
     return false;
   }
+}
+
+/** Whether the customer sent a photo or document we would have to read by eye. */
+async function hasInboundImage(
+  customerId: string,
+  sinceIso?: string,
+): Promise<boolean> {
+  const db = createAdminClient();
+  let query = db
+    .from("conversations")
+    .select("id")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .in("message_type", ["image", "document"]);
+  if (sinceIso) query = query.gt("created_at", sinceIso);
+  const { data } = await query.limit(1);
+  return (data ?? []).length > 0;
 }
 
 /** How many of the most recent assistant replies in a row ended up asking something. */
