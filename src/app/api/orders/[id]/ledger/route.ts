@@ -81,7 +81,10 @@ export async function GET(
     {
       id: `pkg-${order.id}`,
       kind: "package",
-      date: (order.start_date ?? order.created_at ?? "").slice(0, 10),
+      // The day the package was bought, not the day it starts running. Dating
+      // the credit by start_date put galvent's 19 August purchase on the 20th,
+      // below deliveries that draw from it.
+      date: (order.created_at ?? order.start_date ?? "").slice(0, 10),
       label:
         order.source === "free_quota"
           ? `Kuota gratis: ${order.grant_reason ?? "-"}`

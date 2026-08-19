@@ -1,3 +1,5 @@
+import { isClosedHoliday } from "@/lib/holidays/id";
+
 type MealType = "lunch" | "dinner";
 
 type RecurringDeliveryOrder = {
@@ -58,9 +60,16 @@ function formatIsoDate(date: Date): string {
 // its sixth day. Every 6-day package came up one delivery short with nothing
 // saying so, and Julian S's 18–22 Agustus package generated four days for five
 // portions. Minggu stays closed.
+//
+// Libur nasional is excluded too. record_daily_order has filtered closures since
+// the holiday file was written, but generated schedules did not: galvent's
+// package was booked straight through 25 Agustus (Maulid Nabi). Cuti bersama is
+// deliberately not filtered — whether the partner kitchens work those days is an
+// escalation, not a closure.
 function isDeliveryDay(date: Date): boolean {
   const day = date.getUTCDay();
-  return day >= 1 && day <= 6;
+  if (day < 1 || day > 6) return false;
+  return !isClosedHoliday(formatIsoDate(date));
 }
 
 type MealShape = Pick<

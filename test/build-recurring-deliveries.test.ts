@@ -65,7 +65,26 @@ describe("portionsInRange", () => {
         "2026-08-10",
         "2026-08-21",
       ),
-    ).toBe(11);
+    ).toBe(10);
+  });
+
+  it("skips libur nasional", () => {
+    // 17 Agustus is Hari Kemerdekaan: Senin–Sabtu across 10–21 Agustus is 11
+    // delivery days, and the closure takes it to 10.
+    expect(
+      portionsInRange(
+        {
+          meal_time_preference: "lunch_only",
+          portions_per_delivery: 1,
+          portions_lunch: null,
+          portions_dinner: null,
+          lunch_address_slot: 1,
+          dinner_address_slot: 1,
+        },
+        "2026-08-17",
+        "2026-08-17",
+      ),
+    ).toBeNull();
   });
 
   it("multiplies by portions per delivery", () => {

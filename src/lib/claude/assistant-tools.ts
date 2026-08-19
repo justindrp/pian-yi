@@ -1,4 +1,5 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type PendingAction = {
@@ -456,7 +457,11 @@ export const assistantTools: Tool[] = [
         meal_time_preference: {
           type: "string",
           description:
-            "e.g. lunch_only, dinner_only, both_fixed, per_day_decision, default_lunch, default_dinner",
+            // A standing pattern generates the package's whole run of days the
+            // moment the order is paid. galvent's 10-porsi order was created as
+            // dinner_only after he wrote "Jdwal tdk menetap" and asked only for
+            // tomorrow, and five days were booked for him.
+            "lunch_only, dinner_only, both_fixed, default_lunch and default_dinner are STANDING patterns: the whole package is scheduled automatically from start_date. Use per_day_decision whenever the customer decides day by day or says their schedule is not fixed — then no deliveries are generated at all.",
         },
         start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
         end_date: {
@@ -1275,6 +1280,11 @@ export async function buildPendingAction(
       const pricePerPortion = input.price_per_portion as number;
       const totalPrice = packageSize * pricePerPortion;
       const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
+      const perDelivery = Math.max(
+        1,
+        (input.portions_per_delivery as number) || 1,
+      );
+      const scheduledDays = Math.ceil(packageSize / perDelivery);
       return {
         tool,
         input,
@@ -1290,6 +1300,12 @@ export async function buildPendingAction(
           `Total: Rp ${formatted}`,
           `Start: ${input.start_date as string}${input.end_date ? ` → ${input.end_date as string}` : ""}`,
           `Meal: ${input.meal_time_preference as string}`,
+          // What the meal preference actually costs the customer in booked days.
+          // Nothing on this card said a standing pattern books the whole package
+          // up front, so a wrong preference was invisible until the ledger.
+          FIXED_SCHEDULE_PREFS.includes(input.meal_time_preference as string)
+            ? `Jadwal: ${scheduledDays} hari otomatis dijadwalkan dari ${input.start_date as string}`
+            : "Jadwal: tidak otomatis — pengiriman dicatat per hari",
         ],
         dangerous: false,
       };
