@@ -90,12 +90,16 @@ async function recoverOrderFromConversation(
     .select("id, status, package_size, start_date, created_at")
     .eq("customer_id", customerId)
     .order("created_at", { ascending: false });
-  const openOrder = (orders ?? []).find((o) =>
-    ["pending_payment", "payment_proof_received", "active", "paused"].includes(
-      o.status,
-    ),
+  // An order still being paid for means we are mid-flow on that order; a second
+  // one is never what the customer meant. A *running* package is different: a
+  // top-up is a new order and needs nothing from the one already going. Febby
+  // asked "mau tambah lagi yaa untuk 30 porsi" on top of an active package and
+  // recovery refused to build it, because the guard treated any open order as
+  // proof she already had what she was asking for.
+  const midFlowOrder = (orders ?? []).find((o) =>
+    ["pending_payment", "payment_proof_received"].includes(o.status),
   );
-  if (openOrder) return false;
+  if (midFlowOrder) return false;
 
   // Recovery re-reads the chat, so for a customer who has ordered before, the
   // window must start after their newest order — otherwise the messages that

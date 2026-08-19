@@ -266,6 +266,8 @@ Both recovery gates (`ORDER_PROMISE`, the clarification-loop breaker) call `extr
 
 The open-order guard did not catch it because her only order was `completed` — a finished package reads as "never ordered" to a `status IN (pending_payment, …)` check, which is exactly the customer a top-up recovery must still work for.
 
+That guard has since been narrowed to `pending_payment` / `payment_proof_received` only. An order still being paid for means we are mid-flow and a second one is never meant; a *running* package is different, because a top-up needs nothing from it. Febby asked "mau tambah lagi yaa untuk 30 porsi" on top of an active package and recovery refused to build it, since any open order read as proof she already had what she was asking for. The since-window below is what makes the narrower guard safe.
+
 Two layers, both in `recoverOrderFromConversation`:
 
 - `extractOrderFromConversation(customerId, { since: newestOrder.created_at })` — the window starts after the newest order of **any** status, so a new purchase has to be stated in messages that postdate the last one. `loadHistory` takes the optional `sinceIso` and applies it as `.gt("created_at", …)`.

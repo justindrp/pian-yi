@@ -278,6 +278,9 @@ function withRecordedAddress(
  * Webhook paths only. The admin inbox runs the same extraction, but there a human
  * has already read the size in the review modal, and their number must win.
  */
+/** Beyond this a "N porsi" match is a misread number, not an order. */
+const LARGEST_PLAUSIBLE_SIZE = 500;
+
 export async function applyLatestCustomerSize(
   customerId: string,
   input: ExtractedOrderInput,
@@ -310,12 +313,18 @@ export async function applyLatestCustomerSize(
   const text = last?.content;
   if (!text) return input;
 
+  // The number has to stand alone: a thousands separator or a preceding digit
+  // means we are reading the tail of a price, not a portion count. A replay on
+  // 2026-08-19 pulled "15330" out of a message this way and would have created
+  // a Rp 400 juta order. The upper bound is the same guard from the other end —
+  // the largest tier we sell is 144, so anything past LARGEST_PLAUSIBLE_SIZE is
+  // a misread rather than an order.
   const sizes = new Set<number>();
   for (const match of text.matchAll(
-    /(\d+)\s*porsi(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
+    /(?<![\d.,])(\d+)\s*porsi(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
   )) {
     const n = Number(match[1]);
-    if (Number.isFinite(n) && n > 0) sizes.add(n);
+    if (Number.isFinite(n) && n > 0 && n <= LARGEST_PLAUSIBLE_SIZE) sizes.add(n);
   }
   if (sizes.size !== 1) return input;
 
