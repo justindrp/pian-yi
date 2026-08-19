@@ -1,14 +1,32 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { Columns3 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ColumnFilter,
+  ColumnFilterMenu,
+  type ColumnKind,
+  EMPTY_LABEL,
+  type FilterOp,
+  isFilterActive,
+  passesCondition,
+} from "@/components/dashboard/column-filter";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { deriveCustomerDisplayState } from "@/lib/customers/lifecycle";
 import { matchCustomerByName, parseGrantPaste } from "@/lib/grants/parse-paste";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { formatDate, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
 
@@ -29,6 +47,7 @@ type CustomerListRow = Customer & {
   // Deriving here makes this page agree with Orders and the customer ledger.
   derived_remaining: number;
   derived_avg_price: number;
+  kitchen: string | null;
 };
 
 type LedgerRow = {
@@ -100,8 +119,18 @@ function newGrantRow(date: string, reason = ""): GrantRow {
 
 const PAGE_SIZE = 200;
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 const DELIVERY_AREAS = [
   "BSD Baru",
@@ -112,10 +141,269 @@ const DELIVERY_AREAS = [
   "Graha Raya",
 ];
 
+// Every column the table can show, in display order. One definition drives the
+// header, the filter popover, the sort comparator and the cell — so a column
+// can never be sortable but unfilterable, or shown with no way to filter it.
+// `value` is what filtering and sorting see; the cell may render it differently.
+type ColumnDef = {
+  key: string;
+  label: string;
+  kind: ColumnKind;
+  value: (r: CustomerListRow) => string | number | null;
+  defaultVisible: boolean;
+  align?: "right";
+  /** Hidden below the sm breakpoint, matching the old table's behaviour. */
+  smOnly?: boolean;
+};
+
+const COLUMNS: ColumnDef[] = [
+  {
+    key: "customer_number",
+    label: "#",
+    kind: "number",
+    value: (r) => r.customer_number,
+    defaultVisible: true,
+  },
+  {
+    key: "name",
+    label: "Name",
+    kind: "text",
+    value: (r) => r.name,
+    defaultVisible: true,
+  },
+  {
+    key: "phone_number",
+    label: "Phone",
+    kind: "text",
+    value: (r) => r.phone_number,
+    defaultVisible: true,
+  },
+  {
+    key: "area",
+    label: "Area",
+    kind: "text",
+    value: (r) => r.area,
+    defaultVisible: true,
+  },
+  {
+    key: "sub_area",
+    label: "Sub Area",
+    kind: "text",
+    value: (r) => r.sub_area,
+    defaultVisible: true,
+    smOnly: true,
+  },
+  {
+    key: "derived_remaining",
+    label: "Remaining",
+    kind: "number",
+    value: (r) => r.derived_remaining,
+    defaultVisible: true,
+    align: "right",
+    smOnly: true,
+  },
+  {
+    key: "derived_avg_price",
+    label: "Avg Price",
+    kind: "number",
+    value: (r) => r.derived_avg_price,
+    defaultVisible: true,
+    align: "right",
+    smOnly: true,
+  },
+  {
+    key: "display_state",
+    label: "State",
+    kind: "text",
+    value: (r) => r.display_state,
+    defaultVisible: true,
+  },
+  {
+    key: "created_at",
+    label: "Joined",
+    kind: "date",
+    value: (r) => r.created_at,
+    defaultVisible: true,
+    smOnly: true,
+  },
+  {
+    key: "kitchen",
+    label: "Kitchen",
+    kind: "text",
+    value: (r) => r.kitchen,
+    defaultVisible: false,
+  },
+  {
+    key: "contract_price_per_portion",
+    label: "Contract price",
+    kind: "number",
+    value: (r) => r.contract_price_per_portion,
+    defaultVisible: false,
+    align: "right",
+  },
+  {
+    key: "address_type",
+    label: "Address type",
+    kind: "text",
+    value: (r) => r.address_type,
+    defaultVisible: false,
+  },
+  {
+    key: "meal_time_preference",
+    label: "Meal pref",
+    kind: "text",
+    value: (r) => r.meal_time_preference,
+    defaultVisible: false,
+  },
+  {
+    key: "delivery_route",
+    label: "Route",
+    kind: "number",
+    value: (r) => r.delivery_route,
+    defaultVisible: false,
+  },
+  {
+    key: "ad_creative",
+    label: "Ad creative",
+    kind: "text",
+    value: (r) => r.ad_creative,
+    defaultVisible: false,
+  },
+  {
+    key: "promo_used",
+    label: "Promo",
+    kind: "text",
+    value: (r) => r.promo_used,
+    defaultVisible: false,
+  },
+  {
+    key: "converted_to_subscription",
+    label: "Subscribed",
+    kind: "text",
+    value: (r) => (r.converted_to_subscription ? "Ya" : "Tidak"),
+    defaultVisible: false,
+  },
+  {
+    key: "linked",
+    label: "Linked",
+    kind: "text",
+    value: (r) => (r.linked_order_id ? "Ya" : "Tidak"),
+    defaultVisible: false,
+  },
+  {
+    key: "notes",
+    label: "Notes",
+    kind: "text",
+    value: (r) => r.notes,
+    defaultVisible: false,
+  },
+];
+
+// Per-column text colour, matching what the hand-written cells used before the
+// table became column-driven. Anything unlisted falls back to text-gray-500.
+const CELL_TONE: Record<string, string> = {
+  customer_number: "text-gray-400 text-xs tabular-nums",
+  name: "text-gray-900",
+  derived_remaining: "text-gray-700",
+  derived_avg_price: "text-gray-500 text-xs",
+  created_at: "text-gray-400 text-xs",
+  notes: "text-gray-400 text-xs",
+};
+
+const DEFAULT_COLS = COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key);
+const COLUMN_BY_KEY = new Map(COLUMNS.map((c) => [c.key, c]));
+
+/** The value a filter checklist matches on. Empty cells get their own entry. */
+function cellLabel(col: ColumnDef, r: CustomerListRow): string {
+  const v = col.value(r);
+  if (v === null || v === "") return EMPTY_LABEL;
+  if (col.kind === "date") return formatDate(String(v));
+  if (col.kind === "number" && v === 0) return "0";
+  return String(v);
+}
+
+function passesFilter(
+  col: ColumnDef,
+  r: CustomerListRow,
+  f: ColumnFilter,
+): boolean {
+  if (f.selected && !f.selected.includes(cellLabel(col, r))) return false;
+  return passesCondition(col.value(r), col.kind, f);
+}
+
+// ?f=area:in:BSD Baru~Alam Sutera;derived_remaining:gt:0
+// Values are separated by ~ because an area name can contain a comma and a
+// state cannot contain a tilde; the whole parameter is URI-encoded anyway.
+function serializeFilters(filters: Record<string, ColumnFilter>): string {
+  const parts: string[] = [];
+  for (const [key, f] of Object.entries(filters)) {
+    if (!isFilterActive(f)) continue;
+    if (f.selected) parts.push(`${key}:in:${f.selected.join("~")}`);
+    if (f.op) {
+      parts.push(`${key}:${f.op}:${f.a ?? ""}${f.b ? `~${f.b}` : ""}`);
+    }
+  }
+  return parts.join(";");
+}
+
+function parseFilters(raw: string | null): Record<string, ColumnFilter> {
+  if (!raw) return {};
+  const out: Record<string, ColumnFilter> = {};
+  for (const part of raw.split(";")) {
+    const [key, op, rest] = part.split(":");
+    if (!key || !op || !COLUMN_BY_KEY.has(key)) continue;
+    const existing = out[key] ?? {};
+    if (op === "in") {
+      existing.selected = (rest ?? "").split("~").filter(Boolean);
+    } else {
+      const [a, b] = (rest ?? "").split("~");
+      existing.op = op as FilterOp;
+      existing.a = a || undefined;
+      existing.b = b || undefined;
+    }
+    out[key] = existing;
+  }
+  return out;
+}
+
 export default function CustomersClient() {
-  const [page, setPage] = useState(0);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  // Filters, sort, page and visible columns all live in the URL, so a filtered
+  // view is a link an admin can send to Annie rather than a list of clicks.
+  const router = useRouter();
+  const params = useSearchParams();
+  const sortKey = params.get("sort") ?? "customer_number";
+  const sortDir = (params.get("dir") === "desc" ? "desc" : "asc") as
+    | "asc"
+    | "desc";
+  const page = Math.max(0, Number(params.get("page") ?? 0) || 0);
+  const filters = useMemo(() => parseFilters(params.get("f")), [params]);
+  const visibleCols = useMemo(() => {
+    const raw = params.get("cols");
+    const keys = raw
+      ? raw.split(",").filter((k) => COLUMN_BY_KEY.has(k))
+      : DEFAULT_COLS;
+    // Keep declaration order however the parameter was written.
+    return COLUMNS.filter((c) => keys.includes(c.key));
+  }, [params]);
+
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(params.toString());
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "") next.delete(k);
+        else next.set(k, v);
+      }
+      // Filtering is not navigation — replace so the back button leaves the
+      // page rather than stepping back through every checkbox.
+      router.replace(`?${next.toString()}`, { scroll: false });
+    },
+    [params, router],
+  );
+
+  const [search, setSearch] = useState(() => params.get("q") ?? "");
+  const [debouncedSearch, setDebouncedSearch] = useState(
+    () => params.get("q") ?? "",
+  );
   const [selected, setSelected] = useState<Customer | null>(null);
   const [editingCell, setEditingCell] = useState<{
     id: string;
@@ -237,51 +525,57 @@ export default function CustomersClient() {
   useEffect(() => {
     const t = setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(0);
+      setParams({ q: search || null, page: null });
     }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, setParams]);
 
+  // The whole list, not a page of it. Remaining, Avg Price and State are
+  // computed here from the customer's orders — they are not columns Postgres
+  // holds, so sorting or filtering on them over a 200-row window would rank the
+  // first 200 and silently call it the answer. Architectural principle 9.
   const { data, isLoading } = useQuery({
-    queryKey: ["customers", page, debouncedSearch],
+    queryKey: ["customers-list"],
     queryFn: async () => {
-      let q = supabase
-        .from("customers")
-        .select("*, customer_state(*), customer_flags(*)", { count: "exact" })
-        .order("customer_number", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
-      if (debouncedSearch) {
-        q = q.or(
-          `name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%`,
-        );
-      }
-
-      const { data, count } = await q;
-      const customers = (data ?? []) as unknown as (Customer & {
-        customer_state: CustomerState | null;
-        customer_flags: CustomerFlags | null;
-      })[];
-      const customerIds = customers.map((customer) => customer.id);
-      const { data: orders } = customerIds.length
-        ? await supabase
+      const [customerPages, orderPages] = await Promise.all([
+        fetchAllRows<
+          Customer & {
+            customer_state: CustomerState | null;
+            customer_flags: CustomerFlags | null;
+          }
+        >(
+          (from, to) =>
+            supabase
+              .from("customers")
+              .select("*, customer_state(*), customer_flags(*)")
+              .order("customer_number", { ascending: true, nullsFirst: false })
+              .order("created_at", { ascending: false })
+              .range(from, to) as never,
+        ),
+        fetchAllRows<
+          Pick<
+            Order,
+            | "customer_id"
+            | "status"
+            | "created_at"
+            | "portions_remaining"
+            | "price_per_portion"
+          >
+        >((from, to) =>
+          supabase
             .from("orders")
             .select(
               "customer_id, status, created_at, portions_remaining, price_per_portion",
             )
-            .in("customer_id", customerIds)
             .order("created_at", { ascending: false })
-        : {
-            data: [] as Pick<
-              Order,
-              | "customer_id"
-              | "status"
-              | "created_at"
-              | "portions_remaining"
-              | "price_per_portion"
-            >[],
-          };
+            .range(from, to),
+        ),
+      ]);
+      if (customerPages.error) throw new Error(customerPages.error);
+      if (orderPages.error) throw new Error(orderPages.error);
+
+      const customers = customerPages.rows;
+      const orders = orderPages.rows;
 
       // Quota the customer can actually draw on today. Same statuses the
       // customer ledger counts as real credit, minus `completed` — a completed
@@ -289,7 +583,7 @@ export default function CustomersClient() {
       // average price is migration 035's own formula, computed on read.
       const OPEN_STATUSES = ["active", "paused", "payment_proof_received"];
       const quota = new Map<string, { portions: number; value: number }>();
-      for (const order of orders ?? []) {
+      for (const order of orders) {
         if (!order.customer_id) continue;
         if (!OPEN_STATUSES.includes(order.status)) continue;
         const remaining = order.portions_remaining ?? 0;
@@ -300,7 +594,7 @@ export default function CustomersClient() {
         quota.set(order.customer_id, entry);
       }
       const latestOrderByCustomer = new Map<string, Pick<Order, "status">>();
-      for (const order of orders ?? []) {
+      for (const order of orders) {
         if (
           !order.customer_id ||
           latestOrderByCustomer.has(order.customer_id)
@@ -310,24 +604,150 @@ export default function CustomersClient() {
         latestOrderByCustomer.set(order.customer_id, { status: order.status });
       }
 
-      return {
-        customers: customers.map((customer) => {
-          const q = quota.get(customer.id);
-          return {
-            ...customer,
-            display_state: deriveCustomerDisplayState(
-              customer.customer_state?.state,
-              latestOrderByCustomer.get(customer.id)?.status ?? null,
-            ),
-            derived_remaining: q?.portions ?? 0,
-            derived_avg_price:
-              q && q.portions > 0 ? Math.round(q.value / q.portions) : 0,
-          };
-        }) as CustomerListRow[],
-        total: count ?? 0,
-      };
+      return customers.map((customer) => {
+        const q = quota.get(customer.id);
+        return {
+          ...customer,
+          display_state: deriveCustomerDisplayState(
+            customer.customer_state?.state,
+            latestOrderByCustomer.get(customer.id)?.status ?? null,
+          ),
+          derived_remaining: q?.portions ?? 0,
+          derived_avg_price:
+            q && q.portions > 0 ? Math.round(q.value / q.portions) : 0,
+          kitchen: null,
+        };
+      }) as CustomerListRow[];
     },
   });
+
+  // Kitchen names are on a different table; attaching them here keeps the list
+  // query from needing a join it would otherwise only use for one column.
+  const { data: allSubcontractors } = useQuery({
+    queryKey: ["subcontractors-all"],
+    queryFn: async () => {
+      const { data } = await supabase.from("subcontractors").select("id, name");
+      return data ?? [];
+    },
+  });
+
+  const rows = useMemo(() => {
+    if (!data) return [];
+    if (!allSubcontractors?.length) return data;
+    const byId = new Map(allSubcontractors.map((s) => [s.id, s.name]));
+    return data.map((c) => ({
+      ...c,
+      kitchen: c.subcontractor_id
+        ? (byId.get(c.subcontractor_id) ?? null)
+        : null,
+    }));
+  }, [data, allSubcontractors]);
+
+  const searched = useMemo(() => {
+    const needle = debouncedSearch.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter(
+      (c) =>
+        (c.name ?? "").toLowerCase().includes(needle) ||
+        (c.phone_number ?? "").toLowerCase().includes(needle),
+    );
+  }, [rows, debouncedSearch]);
+
+  const filtered = useMemo(() => {
+    const active = Object.entries(filters).filter(([, f]) => isFilterActive(f));
+    if (active.length === 0) return searched;
+    return searched.filter((r) =>
+      active.every(([key, f]) => {
+        const col = COLUMN_BY_KEY.get(key);
+        return !col || passesFilter(col, r, f);
+      }),
+    );
+  }, [searched, filters]);
+
+  const sorted = useMemo(() => {
+    const col = COLUMN_BY_KEY.get(sortKey);
+    if (!col) return filtered;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((x, y) => {
+      const a = col.value(x);
+      const b = col.value(y);
+      // Empty cells sort last in both directions — a customer with no area is
+      // not "before A", it is missing, and burying it keeps the top of the
+      // list useful whichever way the column is sorted.
+      if (a === null || a === "") return b === null || b === "" ? 0 : 1;
+      if (b === null || b === "") return -1;
+      if (col.kind === "number") return (Number(a) - Number(b)) * dir;
+      return String(a).localeCompare(String(b), "id") * dir;
+    });
+  }, [filtered, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const pageRows = useMemo(
+    () => sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [sorted, page],
+  );
+
+  /**
+   * Checklist values for one column, counted over the rows that survive every
+   * OTHER column's filter. That is what makes two filters compose the way a
+   * spreadsheet's do: picking an area narrows the state list, but the area
+   * column still offers every area, so the choice stays undoable.
+   */
+  const optionsFor = useCallback(
+    (key: string) => {
+      const col = COLUMN_BY_KEY.get(key);
+      if (!col) return [];
+      const others = Object.entries(filters).filter(
+        ([k, f]) => k !== key && isFilterActive(f),
+      );
+      const pool = searched.filter((r) =>
+        others.every(([k, f]) => {
+          const other = COLUMN_BY_KEY.get(k);
+          return !other || passesFilter(other, r, f);
+        }),
+      );
+      const counts = new Map<string, number>();
+      for (const r of pool) {
+        const label = cellLabel(col, r);
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+      }
+      return [...counts.entries()]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => {
+          if (a.value === EMPTY_LABEL) return 1;
+          if (b.value === EMPTY_LABEL) return -1;
+          if (col.kind === "number") return Number(a.value) - Number(b.value);
+          return a.value.localeCompare(b.value, "id");
+        });
+    },
+    [searched, filters],
+  );
+
+  function applyFilter(key: string, next: ColumnFilter | undefined) {
+    const merged = { ...filters };
+    if (next) merged[key] = next;
+    else delete merged[key];
+    setParams({ f: serializeFilters(merged) || null, page: null });
+  }
+
+  function applySort(key: string, dir: "asc" | "desc") {
+    setParams({ sort: key, dir, page: null });
+  }
+
+  function toggleColumn(key: string) {
+    const keys = visibleCols.map((c) => c.key);
+    const next = keys.includes(key)
+      ? keys.filter((k) => k !== key)
+      : [...keys, key];
+    if (next.length === 0) return;
+    const isDefault =
+      next.length === DEFAULT_COLS.length &&
+      DEFAULT_COLS.every((k) => next.includes(k));
+    setParams({ cols: isDefault ? null : next.join(",") });
+  }
+
+  const activeFilterCount =
+    Object.values(filters).filter(isFilterActive).length;
 
   const saveMutation = useMutation({
     mutationFn: async (form: {
@@ -386,7 +806,7 @@ export default function CustomersClient() {
       if (error) throw error;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["customers"] });
+      void queryClient.invalidateQueries({ queryKey: ["customers-list"] });
       setSelected(null);
     },
   });
@@ -402,7 +822,7 @@ export default function CustomersClient() {
       if (!json.ok) throw new Error(json.error ?? "Gagal membuat pelanggan");
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["customers"] });
+      void queryClient.invalidateQueries({ queryKey: ["customers-list"] });
       setShowAdd(false);
       setAddForm({
         name: "",
@@ -437,7 +857,7 @@ export default function CustomersClient() {
         throw new Error(json.error ?? "Gagal menyimpan kuota gratis");
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["customers"] });
+      void queryClient.invalidateQueries({ queryKey: ["customers-list"] });
       void queryClient.invalidateQueries({ queryKey: ["customer-ledger"] });
       setShowGrant(false);
       setGrantRows([]);
@@ -448,9 +868,12 @@ export default function CustomersClient() {
     mutationFn: async () => {
       const deliveries = Object.entries(deliveryPortions).flatMap(
         ([date, { lunch, dinner }]) => {
-          const rows: { date: string; meal_type: string; portions: number }[] = [];
-          if (lunch > 0) rows.push({ date, meal_type: "lunch", portions: lunch });
-          if (dinner > 0) rows.push({ date, meal_type: "dinner", portions: dinner });
+          const rows: { date: string; meal_type: string; portions: number }[] =
+            [];
+          if (lunch > 0)
+            rows.push({ date, meal_type: "lunch", portions: lunch });
+          if (dinner > 0)
+            rows.push({ date, meal_type: "dinner", portions: dinner });
           return rows;
         },
       );
@@ -504,7 +927,10 @@ export default function CustomersClient() {
     setGrantRows((rows) => [
       ...rows,
       ...parsed.map((p) => {
-        const row = newGrantRow(p.date ?? grantBulkDate, p.reason || grantBulkReason);
+        const row = newGrantRow(
+          p.date ?? grantBulkDate,
+          p.reason || grantBulkReason,
+        );
         const match = matchCustomerByName(p.name, customers);
         return {
           ...row,
@@ -525,7 +951,7 @@ export default function CustomersClient() {
       if (!res.ok || !json.ok) throw new Error(json.error ?? "Gagal menghapus");
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["customers"] });
+      void queryClient.invalidateQueries({ queryKey: ["customers-list"] });
       setDeleteConfirmOpen(false);
       setSelected(null);
     },
@@ -605,10 +1031,107 @@ export default function CustomersClient() {
       .from("customers")
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq("id", id);
-    void queryClient.invalidateQueries({ queryKey: ["customers"] });
+    void queryClient.invalidateQueries({ queryKey: ["customers-list"] });
   }
 
-  const totalPages = Math.ceil((data?.total ?? 0) / PAGE_SIZE);
+  // Cells that are inline-editable or specially formatted keep their own
+  // rendering; everything else prints the column's own `value`, so adding a
+  // column to COLUMNS is enough to make it show up.
+  function renderCell(col: ColumnDef, c: CustomerListRow) {
+    if (col.key === "name" || col.key === "sub_area") {
+      const field = col.key as "name" | "sub_area";
+      const current = (field === "name" ? c.name : c.sub_area) ?? "";
+      if (editingCell?.id === c.id && editingCell.field === field) {
+        const cell = editingCell;
+        return (
+          <Input
+            autoFocus
+            value={cell.value}
+            onChange={(e) => setEditingCell({ ...cell, value: e.target.value })}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={() => saveInline(c.id, field, cell.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveInline(c.id, field, cell.value);
+              if (e.key === "Escape") setEditingCell(null);
+            }}
+            className="w-full h-auto py-0.5 px-1 text-sm border-orange-400"
+          />
+        );
+      }
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingCell({ id: c.id, field, value: current });
+          }}
+          className="cursor-text hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
+        >
+          {current || "\u2014"}
+        </button>
+      );
+    }
+
+    if (col.key === "area") {
+      if (editingCell?.id === c.id && editingCell.field === "area") {
+        return (
+          <select
+            // biome-ignore lint/a11y/noAutofocus: intentional inline edit activation
+            autoFocus
+            value={editingCell.value}
+            onChange={(e) => saveInline(c.id, "area", e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={() => setEditingCell(null)}
+            className="text-sm border border-orange-400 rounded focus:outline-none px-1 py-0.5"
+          >
+            <option value="">&mdash;</option>
+            {DELIVERY_AREAS.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        );
+      }
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingCell({ id: c.id, field: "area", value: c.area ?? "" });
+          }}
+          className="cursor-pointer hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
+        >
+          {c.area ?? "\u2014"}
+        </button>
+      );
+    }
+
+    if (col.key === "display_state")
+      return <StateBadge state={c.display_state} />;
+    if (col.key === "phone_number") return maskPhone(c.phone_number);
+    if (col.key === "created_at")
+      return c.created_at ? formatDate(c.created_at) : "\u2014";
+    if (col.key === "derived_remaining")
+      return c.derived_remaining > 0 ? c.derived_remaining : "\u2014";
+    if (
+      col.key === "derived_avg_price" ||
+      col.key === "contract_price_per_portion"
+    ) {
+      const n = Number(col.value(c) ?? 0);
+      return n > 0 ? `Rp ${n.toLocaleString("id-ID")}` : "\u2014";
+    }
+    if (col.key === "notes") {
+      return (
+        <span className="block max-w-[16rem] truncate">
+          {c.notes || "\u2014"}
+        </span>
+      );
+    }
+
+    const v = col.value(c);
+    return v === null || v === "" ? "\u2014" : String(v);
+  }
 
   return (
     <div>
@@ -616,7 +1139,9 @@ export default function CustomersClient() {
         <h1 className="text-xl font-semibold text-gray-900 mr-1">
           Customers
           <span className="ml-2 text-sm font-normal text-gray-400">
-            {data?.total ?? 0} total
+            {sorted.length === rows.length
+              ? `${rows.length} total`
+              : `${sorted.length} dari ${rows.length}`}
           </span>
         </h1>
         <div className="flex items-center gap-2 ml-auto flex-wrap">
@@ -645,256 +1170,170 @@ export default function CustomersClient() {
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or phone..."
           className="w-full sm:max-w-xs"
         />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-lg text-sm"
+            >
+              <Columns3 className="mr-1.5 h-4 w-4" />
+              Kolom
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-2">
+            <div className="max-h-72 space-y-0.5 overflow-y-auto">
+              {COLUMNS.map((col) => (
+                <label
+                  key={col.key}
+                  htmlFor={`col-${col.key}`}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-gray-50"
+                >
+                  <Checkbox
+                    id={`col-${col.key}`}
+                    checked={visibleCols.some((c) => c.key === col.key)}
+                    onCheckedChange={() => toggleColumn(col.key)}
+                  />
+                  <span className="flex-1 truncate">{col.label}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setParams({ cols: null })}
+              className="mt-1 w-full rounded px-1 py-1 text-left text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+            >
+              Kembalikan kolom default
+            </button>
+          </PopoverContent>
+        </Popover>
+        {activeFilterCount > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setParams({ f: null, page: null })}
+            className="h-9 rounded-lg text-sm"
+          >
+            Hapus {activeFilterCount} filter
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-10">
-                #
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
-                Name
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
-                Phone
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
-                Area
-              </th>
-              <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-medium text-gray-500">
-                Sub Area
-              </th>
-              <th className="hidden sm:table-cell text-right px-4 py-3 text-xs font-medium text-gray-500">
-                Remaining
-              </th>
-              <th className="hidden sm:table-cell text-right px-4 py-3 text-xs font-medium text-gray-500">
-                Avg Price
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">
-                State
-              </th>
-              <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-medium text-gray-500">
-                Joined
-              </th>
+              {visibleCols.map((col) => (
+                <th
+                  key={col.key}
+                  className={`px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap ${
+                    col.align === "right" ? "text-right" : "text-left"
+                  } ${col.smOnly ? "hidden sm:table-cell" : ""}`}
+                >
+                  <span className="inline-flex items-center">
+                    {col.label}
+                    {sortKey === col.key && (
+                      <span className="ml-1 text-gray-400">
+                        {sortDir === "asc" ? "\u2191" : "\u2193"}
+                      </span>
+                    )}
+                    <ColumnFilterMenu
+                      label={col.label}
+                      kind={col.kind}
+                      options={optionsFor(col.key)}
+                      filter={filters[col.key]}
+                      sortDir={sortKey === col.key ? sortDir : null}
+                      onSort={(dir) => applySort(col.key, dir)}
+                      onChange={(next) => applyFilter(col.key, next)}
+                    />
+                  </span>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {isLoading
               ? (["a", "b", "c", "d", "e"] as const).map((rowId) => (
                   <tr key={rowId} className="border-b border-gray-50">
-                    {(["a", "b", "c"] as const).map((colId) => (
-                      <td key={colId} className="px-4 py-3">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
-                      </td>
-                    ))}
-                    {(["d", "e"] as const).map((colId) => (
-                      <td key={colId} className="hidden sm:table-cell px-4 py-3">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
-                      </td>
-                    ))}
-                    <td className="px-4 py-3">
-                      <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
-                    </td>
-                    {(["f", "g", "h"] as const).map((colId) => (
-                      <td key={colId} className="hidden sm:table-cell px-4 py-3">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
+                    {visibleCols.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`px-4 py-3 ${col.smOnly ? "hidden sm:table-cell" : ""}`}
+                      >
+                        <div className="h-4 w-24 animate-pulse rounded bg-gray-100" />
                       </td>
                     ))}
                   </tr>
                 ))
-              : (data?.customers ?? []).map((c) => {
-                  const state = c.display_state;
-                  return (
-                    // biome-ignore lint/a11y/useSemanticElements: interactive table row
-                    <tr
-                      key={c.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openDetail(c)}
-                      onKeyDown={(e) =>
-                        (e.key === "Enter" || e.key === " ") && openDetail(c)
-                      }
-                      className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-3 text-gray-400 text-xs tabular-nums">
-                        {c.customer_number ?? "—"}
+              : pageRows.map((c) => (
+                  // biome-ignore lint/a11y/useSemanticElements: interactive table row
+                  <tr
+                    key={c.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openDetail(c)}
+                    onKeyDown={(e) =>
+                      (e.key === "Enter" || e.key === " ") && openDetail(c)
+                    }
+                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    {visibleCols.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`px-4 py-3 ${
+                          col.align === "right"
+                            ? "text-right tabular-nums"
+                            : "text-left"
+                        } ${col.smOnly ? "hidden sm:table-cell" : ""} ${
+                          CELL_TONE[col.key] ?? "text-gray-500"
+                        }`}
+                      >
+                        {renderCell(col, c)}
                       </td>
-                      <td className="px-4 py-3 text-gray-900">
-                        {editingCell?.id === c.id &&
-                        editingCell.field === "name" ? (
-                          <Input
-                            autoFocus
-                            value={editingCell.value}
-                            onChange={(e) =>
-                              setEditingCell({
-                                ...editingCell,
-                                value: e.target.value,
-                              })
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            onBlur={() =>
-                              saveInline(c.id, "name", editingCell.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                saveInline(c.id, "name", editingCell.value);
-                              if (e.key === "Escape") setEditingCell(null);
-                            }}
-                            className="w-full h-auto py-0.5 px-1 text-sm border-orange-400"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCell({
-                                id: c.id,
-                                field: "name",
-                                value: c.name ?? "",
-                              });
-                            }}
-                            className="cursor-text hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
-                          >
-                            {c.name ?? "—"}
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {maskPhone(c.phone_number)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {editingCell?.id === c.id &&
-                        editingCell.field === "area" ? (
-                          <select
-                            // biome-ignore lint/a11y/noAutofocus: intentional inline edit activation
-                            autoFocus
-                            value={editingCell.value}
-                            onChange={(e) =>
-                              saveInline(c.id, "area", e.target.value)
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            onBlur={() => setEditingCell(null)}
-                            className="text-sm border border-orange-400 rounded focus:outline-none px-1 py-0.5"
-                          >
-                            <option value="">—</option>
-                            {DELIVERY_AREAS.map((a) => (
-                              <option key={a} value={a}>
-                                {a}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCell({
-                                id: c.id,
-                                field: "area",
-                                value: c.area ?? "",
-                              });
-                            }}
-                            className="cursor-pointer hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
-                          >
-                            {c.area ?? "—"}
-                          </button>
-                        )}
-                      </td>
-                      <td className="hidden sm:table-cell px-4 py-3 text-gray-500">
-                        {editingCell?.id === c.id &&
-                        editingCell.field === "sub_area" ? (
-                          <Input
-                            autoFocus
-                            value={editingCell.value}
-                            onChange={(e) =>
-                              setEditingCell({
-                                ...editingCell,
-                                value: e.target.value,
-                              })
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            onBlur={() =>
-                              saveInline(c.id, "sub_area", editingCell.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                saveInline(c.id, "sub_area", editingCell.value);
-                              if (e.key === "Escape") setEditingCell(null);
-                            }}
-                            className="w-full h-auto py-0.5 px-1 text-sm border-orange-400"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCell({
-                                id: c.id,
-                                field: "sub_area",
-                                value: c.sub_area ?? "",
-                              });
-                            }}
-                            className="cursor-text hover:underline decoration-dashed underline-offset-2 decoration-gray-300"
-                          >
-                            {c.sub_area ?? "—"}
-                          </button>
-                        )}
-                      </td>
-                      <td className="hidden sm:table-cell px-4 py-3 text-right tabular-nums text-gray-700">
-                        {c.derived_remaining > 0 ? c.derived_remaining : "—"}
-                      </td>
-                      <td className="hidden sm:table-cell px-4 py-3 text-right tabular-nums text-gray-500 text-xs">
-                        {c.derived_avg_price > 0
-                          ? `Rp ${c.derived_avg_price.toLocaleString("id-ID")}`
-                          : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StateBadge state={state} />
-                      </td>
-                      <td className="hidden sm:table-cell px-4 py-3 text-gray-400 text-xs">
-                        {c.created_at ? formatDate(c.created_at) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
+                    ))}
+                  </tr>
+                ))}
           </tbody>
         </table>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-            >
-              Previous
-            </Button>
-            <span className="text-xs text-gray-400">
-              Page {page + 1} of {totalPages}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-            >
-              Next
-            </Button>
-          </div>
-        )}
+        {/* Pagination. The count line always names both numbers, so a
+            filtered view is never mistaken for the whole list. */}
+        <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-4 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setParams({ page: String(Math.max(0, page - 1)) })}
+            disabled={page === 0}
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-gray-400">
+            {sorted.length === 0
+              ? "Tidak ada pelanggan yang cocok"
+              : `${page * PAGE_SIZE + 1}\u2013${Math.min((page + 1) * PAGE_SIZE, sorted.length)} dari ${sorted.length}${
+                  sorted.length === rows.length ? "" : ` (${rows.length} total)`
+                }`}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setParams({ page: String(Math.min(totalPages - 1, page + 1)) })
+            }
+            disabled={page >= totalPages - 1}
+          >
+            Next
+          </Button>
+        </div>
       </div>
 
       {/* Add customer modal */}
@@ -1209,8 +1648,10 @@ export default function CustomersClient() {
               <div className="space-y-2 border border-gray-100 rounded-lg p-3">
                 <p className="text-xs text-gray-500">
                   One row per line, columns:{" "}
-                  <span className="font-mono">nama · porsi · tanggal · alasan</span>.
-                  Tanggal dan alasan opsional. Angka negatif dibaca sebagai
+                  <span className="font-mono">
+                    nama · porsi · tanggal · alasan
+                  </span>
+                  . Tanggal dan alasan opsional. Angka negatif dibaca sebagai
                   besarnya kekurangan (−3 = 3 porsi). Nama yang tidak cocok
                   persis akan ditandai untuk dipilih manual.
                 </p>
@@ -1218,7 +1659,9 @@ export default function CustomersClient() {
                   rows={6}
                   value={grantPaste}
                   onChange={(e) => setGrantPaste(e.target.value)}
-                  placeholder={"Defi Lugito\t6\t2026-08-14\tkompensasi\nValen\t4"}
+                  placeholder={
+                    "Defi Lugito\t6\t2026-08-14\tkompensasi\nValen\t4"
+                  }
                   className="font-mono text-xs"
                 />
                 <Button
@@ -1315,7 +1758,9 @@ export default function CustomersClient() {
                       onChange={(e) =>
                         patchGrantRow(r.key, {
                           portions:
-                            e.target.value === "" ? null : Number(e.target.value),
+                            e.target.value === ""
+                              ? null
+                              : Number(e.target.value),
                         })
                       }
                       className="h-8 text-sm"
@@ -1356,8 +1801,8 @@ export default function CustomersClient() {
 
             {grantRows.length > 0 && grantInvalidCount > 0 && (
               <p className="text-xs text-amber-700">
-                {grantInvalidCount} baris belum lengkap (pelanggan, porsi &gt; 0,
-                dan alasan wajib diisi).
+                {grantInvalidCount} baris belum lengkap (pelanggan, porsi &gt;
+                0, dan alasan wajib diisi).
               </p>
             )}
 
@@ -1993,213 +2438,268 @@ export default function CustomersClient() {
       )}
 
       {/* Create deliveries modal */}
-      {showDeliveryModal && selected && (() => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const firstDay = new Date(calYear, calMonth, 1).getDay();
-        const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+      {showDeliveryModal &&
+        selected &&
+        (() => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const firstDay = new Date(calYear, calMonth, 1).getDay();
+          const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
 
-        function dKey(y: number, m: number, d: number) {
-          return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        }
-        function getP(k: string) {
-          return deliveryPortions[k] ?? { lunch: 0, dinner: 0 };
-        }
-        function stepP(k: string, meal: "lunch" | "dinner", delta: number) {
-          const cur = getP(k);
-          setDeliveryPortions((prev) => ({
-            ...prev,
-            [k]: { ...cur, [meal]: Math.max(0, cur[meal] + delta) },
-          }));
-        }
-
-        const allEntries = Object.entries(deliveryPortions);
-        let totalLunch = 0;
-        let totalDinner = 0;
-        let activeDates = 0;
-        for (const [, { lunch, dinner }] of allEntries) {
-          if (lunch > 0 || dinner > 0) {
-            activeDates++;
-            totalLunch += lunch;
-            totalDinner += dinner;
+          function dKey(y: number, m: number, d: number) {
+            return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
           }
-        }
-        const total = totalLunch + totalDinner;
+          function getP(k: string) {
+            return deliveryPortions[k] ?? { lunch: 0, dinner: 0 };
+          }
+          function stepP(k: string, meal: "lunch" | "dinner", delta: number) {
+            const cur = getP(k);
+            setDeliveryPortions((prev) => ({
+              ...prev,
+              [k]: { ...cur, [meal]: Math.max(0, cur[meal] + delta) },
+            }));
+          }
 
-        return (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-            <button
-              type="button"
-              aria-label="Close"
-              className="absolute inset-0 bg-black/40 cursor-default"
-              onClick={() => setShowDeliveryModal(false)}
-            />
-            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold text-gray-900">
-                    Create deliveries — {selected.name}
-                  </span>
-                  <span className="flex items-center gap-2 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
-                      Lunch
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 rounded-full bg-blue-400" />
-                      Dinner
-                    </span>
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (calMonth === 0) { setCalMonth(11); setCalYear((y) => y - 1); }
-                      else setCalMonth((m) => m - 1);
-                    }}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm"
-                  >‹</button>
-                  <span className="text-sm font-medium w-32 text-center tabular-nums">
-                    {MONTHS[calMonth]} {calYear}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (calMonth === 11) { setCalMonth(0); setCalYear((y) => y + 1); }
-                      else setCalMonth((m) => m + 1);
-                    }}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm"
-                  >›</button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDeliveryModal(false)}
-                    className="ml-2 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-sm"
-                  >✕</button>
-                </div>
-              </div>
+          const allEntries = Object.entries(deliveryPortions);
+          let totalLunch = 0;
+          let totalDinner = 0;
+          let activeDates = 0;
+          for (const [, { lunch, dinner }] of allEntries) {
+            if (lunch > 0 || dinner > 0) {
+              activeDates++;
+              totalLunch += lunch;
+              totalDinner += dinner;
+            }
+          }
+          const total = totalLunch + totalDinner;
 
-              {/* Calendar */}
-              <div className="p-4">
-                {/* Day labels */}
-                <div className="grid grid-cols-7 gap-1 mb-1">
-                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                    <div key={d} className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wide py-1">
-                      {d}
-                    </div>
-                  ))}
+          return (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+              <button
+                type="button"
+                aria-label="Close"
+                className="absolute inset-0 bg-black/40 cursor-default"
+                onClick={() => setShowDeliveryModal(false)}
+              />
+              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-gray-900">
+                      Create deliveries — {selected.name}
+                    </span>
+                    <span className="flex items-center gap-2 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
+                        Lunch
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-blue-400" />
+                        Dinner
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (calMonth === 0) {
+                          setCalMonth(11);
+                          setCalYear((y) => y - 1);
+                        } else setCalMonth((m) => m - 1);
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm"
+                    >
+                      ‹
+                    </button>
+                    <span className="text-sm font-medium w-32 text-center tabular-nums">
+                      {MONTHS[calMonth]} {calYear}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (calMonth === 11) {
+                          setCalMonth(0);
+                          setCalYear((y) => y + 1);
+                        } else setCalMonth((m) => m + 1);
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm"
+                    >
+                      ›
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeliveryModal(false)}
+                      className="ml-2 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-sm"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
-                {/* Grid */}
-                <div className="grid grid-cols-7 gap-1">
-                  {/* No blank placeholder cells: the 1st is pushed to its
+
+                {/* Calendar */}
+                <div className="p-4">
+                  {/* Day labels */}
+                  <div className="grid grid-cols-7 gap-1 mb-1">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                      (d) => (
+                        <div
+                          key={d}
+                          className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wide py-1"
+                        >
+                          {d}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                  {/* Grid */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {/* No blank placeholder cells: the 1st is pushed to its
                       weekday column instead, so every child has a real key. */}
-                  {Array.from({ length: daysInMonth }, (_, i) => {
-                    const day = i + 1;
-                    const k = dKey(calYear, calMonth, day);
-                    const { lunch, dinner } = getP(k);
-                    const isActive = lunch > 0 || dinner > 0;
-                    const cellDate = new Date(calYear, calMonth, day);
-                    const isToday = cellDate.getTime() === today.getTime();
-                    return (
-                      <div
-                        key={k}
-                        style={day === 1 ? { gridColumnStart: firstDay + 1 } : undefined}
-                        className={`border rounded-lg p-1.5 flex flex-col gap-1 min-h-[72px] transition-colors ${
-                          isActive
-                            ? "bg-orange-50 border-orange-200"
-                            : "border-gray-100"
-                        }`}
-                      >
-                        <span className={`text-[11px] font-semibold leading-none ${isToday ? "text-blue-500" : "text-gray-400"}`}>
-                          {day}
-                        </span>
-                        <div className="flex gap-1 flex-1 items-end">
-                          {/* Lunch */}
-                          <div className="flex-1 flex flex-col items-center gap-0.5">
-                            <span className="text-[9px] font-bold text-orange-500 leading-none">L</span>
-                            <div className="w-full flex items-center bg-orange-100 rounded px-0.5 py-0.5 gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => stepP(k, "lunch", -1)}
-                                className="w-3.5 h-3.5 flex items-center justify-center text-orange-500 text-xs font-bold leading-none hover:bg-orange-200 rounded"
-                              >−</button>
-                              <span className={`flex-1 text-center text-[11px] font-bold leading-none tabular-nums ${lunch === 0 ? "text-orange-300" : "text-orange-600"}`}>
-                                {lunch}
+                    {Array.from({ length: daysInMonth }, (_, i) => {
+                      const day = i + 1;
+                      const k = dKey(calYear, calMonth, day);
+                      const { lunch, dinner } = getP(k);
+                      const isActive = lunch > 0 || dinner > 0;
+                      const cellDate = new Date(calYear, calMonth, day);
+                      const isToday = cellDate.getTime() === today.getTime();
+                      return (
+                        <div
+                          key={k}
+                          style={
+                            day === 1
+                              ? { gridColumnStart: firstDay + 1 }
+                              : undefined
+                          }
+                          className={`border rounded-lg p-1.5 flex flex-col gap-1 min-h-[72px] transition-colors ${
+                            isActive
+                              ? "bg-orange-50 border-orange-200"
+                              : "border-gray-100"
+                          }`}
+                        >
+                          <span
+                            className={`text-[11px] font-semibold leading-none ${isToday ? "text-blue-500" : "text-gray-400"}`}
+                          >
+                            {day}
+                          </span>
+                          <div className="flex gap-1 flex-1 items-end">
+                            {/* Lunch */}
+                            <div className="flex-1 flex flex-col items-center gap-0.5">
+                              <span className="text-[9px] font-bold text-orange-500 leading-none">
+                                L
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => stepP(k, "lunch", 1)}
-                                className="w-3.5 h-3.5 flex items-center justify-center text-orange-500 text-xs font-bold leading-none hover:bg-orange-200 rounded"
-                              >+</button>
+                              <div className="w-full flex items-center bg-orange-100 rounded px-0.5 py-0.5 gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => stepP(k, "lunch", -1)}
+                                  className="w-3.5 h-3.5 flex items-center justify-center text-orange-500 text-xs font-bold leading-none hover:bg-orange-200 rounded"
+                                >
+                                  −
+                                </button>
+                                <span
+                                  className={`flex-1 text-center text-[11px] font-bold leading-none tabular-nums ${lunch === 0 ? "text-orange-300" : "text-orange-600"}`}
+                                >
+                                  {lunch}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => stepP(k, "lunch", 1)}
+                                  className="w-3.5 h-3.5 flex items-center justify-center text-orange-500 text-xs font-bold leading-none hover:bg-orange-200 rounded"
+                                >
+                                  +
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                          {/* Dinner */}
-                          <div className="flex-1 flex flex-col items-center gap-0.5">
-                            <span className="text-[9px] font-bold text-blue-500 leading-none">D</span>
-                            <div className="w-full flex items-center bg-blue-100 rounded px-0.5 py-0.5 gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => stepP(k, "dinner", -1)}
-                                className="w-3.5 h-3.5 flex items-center justify-center text-blue-500 text-xs font-bold leading-none hover:bg-blue-200 rounded"
-                              >−</button>
-                              <span className={`flex-1 text-center text-[11px] font-bold leading-none tabular-nums ${dinner === 0 ? "text-blue-300" : "text-blue-600"}`}>
-                                {dinner}
+                            {/* Dinner */}
+                            <div className="flex-1 flex flex-col items-center gap-0.5">
+                              <span className="text-[9px] font-bold text-blue-500 leading-none">
+                                D
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => stepP(k, "dinner", 1)}
-                                className="w-3.5 h-3.5 flex items-center justify-center text-blue-500 text-xs font-bold leading-none hover:bg-blue-200 rounded"
-                              >+</button>
+                              <div className="w-full flex items-center bg-blue-100 rounded px-0.5 py-0.5 gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => stepP(k, "dinner", -1)}
+                                  className="w-3.5 h-3.5 flex items-center justify-center text-blue-500 text-xs font-bold leading-none hover:bg-blue-200 rounded"
+                                >
+                                  −
+                                </button>
+                                <span
+                                  className={`flex-1 text-center text-[11px] font-bold leading-none tabular-nums ${dinner === 0 ? "text-blue-300" : "text-blue-600"}`}
+                                >
+                                  {dinner}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => stepP(k, "dinner", 1)}
+                                  className="w-3.5 h-3.5 flex items-center justify-center text-blue-500 text-xs font-bold leading-none hover:bg-blue-200 rounded"
+                                >
+                                  +
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              {/* Footer */}
-              <div className="border-t border-gray-100 px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap">
-                <div className="text-xs text-gray-500 leading-relaxed">
-                  {total === 0 ? (
-                    <span className="italic text-gray-400">No deliveries selected</span>
-                  ) : (
-                    <>
-                      {totalLunch > 0 && <span className="text-orange-500 font-semibold">{totalLunch} lunch</span>}
-                      {totalLunch > 0 && totalDinner > 0 && <span className="text-gray-400"> + </span>}
-                      {totalDinner > 0 && <span className="text-blue-500 font-semibold">{totalDinner} dinner</span>}
-                      <span className="text-gray-400"> across </span>
-                      <span className="font-semibold text-gray-700">{activeDates} date{activeDates !== 1 ? "s" : ""}</span>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {createDeliveriesMutation.isError && (
-                    <span className="text-xs text-red-600">
-                      {(createDeliveriesMutation.error as Error).message}
-                    </span>
-                  )}
-                  {createDeliveriesMutation.isSuccess && (
-                    <span className="text-xs text-green-600">Created.</span>
-                  )}
-                  <Button
-                    type="button"
-                    onClick={() => createDeliveriesMutation.mutate()}
-                    disabled={total === 0 || createDeliveriesMutation.isPending}
-                    className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-sm"
-                  >
-                    {createDeliveriesMutation.isPending
-                      ? "Creating..."
-                      : `Create ${total || ""} deliver${total === 1 ? "y" : "ies"}`}
-                  </Button>
+                {/* Footer */}
+                <div className="border-t border-gray-100 px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-xs text-gray-500 leading-relaxed">
+                    {total === 0 ? (
+                      <span className="italic text-gray-400">
+                        No deliveries selected
+                      </span>
+                    ) : (
+                      <>
+                        {totalLunch > 0 && (
+                          <span className="text-orange-500 font-semibold">
+                            {totalLunch} lunch
+                          </span>
+                        )}
+                        {totalLunch > 0 && totalDinner > 0 && (
+                          <span className="text-gray-400"> + </span>
+                        )}
+                        {totalDinner > 0 && (
+                          <span className="text-blue-500 font-semibold">
+                            {totalDinner} dinner
+                          </span>
+                        )}
+                        <span className="text-gray-400"> across </span>
+                        <span className="font-semibold text-gray-700">
+                          {activeDates} date{activeDates !== 1 ? "s" : ""}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {createDeliveriesMutation.isError && (
+                      <span className="text-xs text-red-600">
+                        {(createDeliveriesMutation.error as Error).message}
+                      </span>
+                    )}
+                    {createDeliveriesMutation.isSuccess && (
+                      <span className="text-xs text-green-600">Created.</span>
+                    )}
+                    <Button
+                      type="button"
+                      onClick={() => createDeliveriesMutation.mutate()}
+                      disabled={
+                        total === 0 || createDeliveriesMutation.isPending
+                      }
+                      className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-sm"
+                    >
+                      {createDeliveriesMutation.isPending
+                        ? "Creating..."
+                        : `Create ${total || ""} deliver${total === 1 ? "y" : "ies"}`}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
       {/* Delete customer confirm */}
       {deleteConfirmOpen && selected && (

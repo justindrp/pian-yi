@@ -2,6 +2,7 @@ import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 export type PendingAction = {
   tool: string;
@@ -522,31 +523,6 @@ export const assistantTools: Tool[] = [
     },
   },
 ];
-
-/**
- * Supabase caps an unpaginated select at 1000 rows and gives no signal when it
- * truncates, so anything that must be complete has to be walked with .range().
- * `query_leads` learned this the hard way: its conversations fetch hit the cap,
- * the newest leads came back with no messages at all, and every one of them
- * read as a closed 24h window — the exact leads most worth chasing.
- */
-async function fetchAllRows<T>(
-  page: (
-    from: number,
-    to: number,
-  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-): Promise<{ rows: T[]; error?: string }> {
-  const SIZE = 1000;
-  const rows: T[] = [];
-  for (let from = 0; ; from += SIZE) {
-    const { data, error } = await page(from, from + SIZE - 1);
-    if (error) return { rows, error: error.message };
-    if (!data || data.length === 0) break;
-    rows.push(...data);
-    if (data.length < SIZE) break;
-  }
-  return { rows };
-}
 
 export async function runTool(
   name: string,
