@@ -300,6 +300,86 @@ export function statedBareTotal(text: string): number | null {
   return sizes.size === 1 ? ([...sizes][0] as number) : null;
 }
 
+/**
+ * The rupiah figure a transfer receipt states, or null. Gated on the message
+ * looking like a receipt at all — a price the bot quoted back is not money that
+ * moved. Kurniadi Tan pasted "m-Transfer: BERHASIL ... Rp 540.000,00" on
+ * 2026-08-04 and got an order for Rp 280.000.
+ */
+export function statedTransferAmount(text: string): number | null {
+  if (!/(m-?transfer|berhasil|sudah\s*(tf|transfer)|transfer)/i.test(text)) {
+    return null;
+  }
+  const amounts = new Set<number>();
+  for (const match of text.matchAll(/(?:rp\.?\s*)?(\d{1,3}(?:\.\d{3})+)/gi)) {
+    const n = Number(match[1].replace(/\./g, ""));
+    if (Number.isFinite(n) && n >= 50_000) amounts.add(n);
+  }
+  return amounts.size === 1 ? ([...amounts][0] as number) : null;
+}
+
+/** How many weeks the customer said the package should run, or null. */
+export function statedWeeks(text: string): number | null {
+  const weeks = new Set<number>();
+  for (const match of text.matchAll(/(?<![\d.,])(\d+)\s*minggu/gi)) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > 0 && n <= 52) weeks.add(n);
+  }
+  return weeks.size === 1 ? ([...weeks][0] as number) : null;
+}
+
+/** A customer who never wrote one of these never asked for dinner. */
+const DINNER_WORDS = /\b(malam|dinner|keduanya|2\s*(x|kali)\s*sehari|dua kali)\b/i;
+
+/** The customer's own messages, newest last, as one string per message. */
+async function customerMessages(
+  customerId: string,
+  limit = 30,
+): Promise<string[]> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("conversations")
+    .select("content")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []).map((row) => row.content ?? "").filter(Boolean);
+}
+
+/**
+ * The package size whose total equals what the customer actually transferred.
+ * Money that has moved outranks every number in the conversation, including the
+ * bot's own arithmetic: Kurniadi Tan paid Rp 540.000 and the order was written
+ * for 10 porsi at Rp 280.000, because the bot calls a 10-day lunch+dinner
+ * package "paket 10 porsi".
+ */
+async function packageSizeMatchingPayment(
+  customerId: string,
+  nasiMerah: boolean,
+): Promise<number | null> {
+  const messages = await customerMessages(customerId, 10);
+  const amounts = messages
+    .map(statedTransferAmount)
+    .filter((n): n is number => n !== null);
+  if (amounts.length === 0) return null;
+  const paid = amounts[0] as number;
+
+  const db = createAdminClient();
+  const { data: tiers } = await db
+    .from("pricing_tiers")
+    .select("portions")
+    .order("portions", { ascending: true });
+  for (const tier of tiers ?? []) {
+    const { total_price } = await getExtractedOrderPricing(
+      tier.portions,
+      nasiMerah,
+    );
+    if (total_price === paid) return tier.portions;
+  }
+  return null;
+}
+
 export async function applyLatestCustomerSize(
   customerId: string,
   input: ExtractedOrderInput,
@@ -685,10 +765,22 @@ export async function createOrderFromExtraction(
   // genuinely new customer with nothing on file still falls through to
   // per_day_decision: defaulting them into a week of generated days would book
   // deliveries for every bebas customer who never asked for a fixed schedule.
-  const mealTimePreference =
+  const extractedPreference =
     input.meal_time_preference ??
     (await previousMealTimePreference(customerId)) ??
     "per_day_decision";
+
+  // The customer's own words are the only evidence that they asked for dinner.
+  // Lina Marlianty wrote "2 minggu dl aja.. 1 porsi" and never mentioned malam;
+  // the recovery extraction booked her both_fixed and sold 18 porsi for an order
+  // that was 10 porsi of lunch. Siang is the documented default, so a both_fixed
+  // no message supports is downgraded rather than trusted.
+  const inbound = await customerMessages(customerId);
+  const askedForDinner = inbound.some((m) => DINNER_WORDS.test(m));
+  const mealTimePreference =
+    extractedPreference === "both_fixed" && !askedForDinner
+      ? "lunch_only"
+      : extractedPreference;
 
   // The schedule is the order. A customer who says "20 hari mulai 10 Agustus,
   // selesai 8 September" has described a range that yields exactly 20 delivery
@@ -711,13 +803,26 @@ export async function createOrderFromExtraction(
           endDate,
         )
       : null;
-  const packageSize = rangeSize ?? flooredPackageSize;
-  if (rangeSize && rangeSize !== flooredPackageSize) {
+  // A duration in weeks is a portion count: our week is Senin-Jumat unless the
+  // customer picks Sabtu, and the bot must never hold an order open asking which.
+  const portionsPerDay = mealTimePreference === "both_fixed" ? 2 : 1;
+  const weeks = inbound.map(statedWeeks).find((n) => n !== null) ?? null;
+  const statedTotal = inbound.map(statedBareTotal).find((n) => n !== null);
+  const weeksSize =
+    weeks !== null && !statedTotal && !sortedSchedule
+      ? weeks * 5 * portionsPerDay
+      : null;
+
+  const nasiMerah = input.nasi_merah === true;
+  // Money that has moved outranks every number in the conversation.
+  const paidSize = await packageSizeMatchingPayment(customerId, nasiMerah);
+
+  const packageSize = paidSize ?? weeksSize ?? rangeSize ?? flooredPackageSize;
+  if (packageSize !== flooredPackageSize) {
     console.log(
-      `[extract-order] package_size ${flooredPackageSize} -> ${rangeSize} from ${startDate}..${endDate}`,
+      `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} weeks=${weeksSize} range=${rangeSize})`,
     );
   }
-  const nasiMerah = input.nasi_merah === true;
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
     await getExtractedOrderPricing(packageSize, nasiMerah);
 
