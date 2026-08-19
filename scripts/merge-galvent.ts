@@ -12,18 +12,21 @@ const SURVIVOR = "caba2964-7a34-4047-95e0-9a4bb2f0aa87"; // +6281775043598, the 
 const LOSER = "4ff5f8ad-c59b-4542-845f-dcf9affa51e5"; // +6281168851005, the old number
 const APPLY = process.argv.includes("--apply");
 
-const MOVABLE = [
+const MOVABLE: { table: string; column: string }[] = [
   { table: "orders", column: "customer_id" },
   { table: "conversations", column: "customer_id" },
   { table: "daily_deliveries", column: "customer_id" },
   { table: "broadcast_recipients", column: "customer_id" },
   { table: "delivery_proofs", column: "matched_customer_id" },
-] as const;
+];
 
-const SINGLETON = ["customer_flags", "customer_state", "customer_rate_limits"] as const;
+const SINGLETON: string[] = ["customer_flags", "customer_state", "customer_rate_limits"];
 
 async function main() {
-  const db = createAdminClient();
+  // Heterogeneous tables in one loop, so the generated row types do not line up.
+  // Heterogeneous tables in one loop, so the generated row types do not line up.
+  // biome-ignore lint/suspicious/noExplicitAny: one-off repair script over many tables
+  const db = createAdminClient() as unknown as { from: (t: string) => any };
   for (const { table, column } of MOVABLE) {
     const { data: rows, error } = await db.from(table).select("id").eq(column, LOSER);
     if (error) throw new Error(`${table}: ${error.message}`);
