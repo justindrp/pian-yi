@@ -100,7 +100,12 @@ async function recoverOrderFromConversation(
   const midFlowOrder = (orders ?? []).find((o) =>
     ["pending_payment", "payment_proof_received"].includes(o.status),
   );
-  if (midFlowOrder) return false;
+  if (midFlowOrder) {
+    console.log(
+      `[webhook] order recovery (${reason}) skipped: order ${midFlowOrder.id} is mid-flow (${midFlowOrder.status})`,
+    );
+    return false;
+  }
 
   // Recovery re-reads the chat, so for a customer who has ordered before, the
   // window must start after their newest order — otherwise the messages that
@@ -115,7 +120,12 @@ async function recoverOrderFromConversation(
     const raw = await extractOrderFromConversation(customerId, {
       since: newestOrder?.created_at ?? undefined,
     });
-    if (!raw || raw.package_size <= 0) return false;
+    if (!raw || raw.package_size <= 0) {
+      console.log(
+        `[webhook] order recovery (${reason}) skipped: extraction returned ${raw ? `package_size ${raw.package_size}` : "nothing"} for ${customerId}`,
+      );
+      return false;
+    }
     // An address sent as a photo is an address: the model never sees the image,
     // but the admin does, and it is sitting in the inbox. Fahmi was quoted 20
     // porsi at Rp 540.000, sent his address as a picture, and recovery refused
@@ -127,7 +137,12 @@ async function recoverOrderFromConversation(
       : (await hasInboundImage(customerId, newestOrder?.created_at ?? undefined))
         ? { ...raw, address: "Alamat dikirim sebagai foto - lihat inbox" }
         : raw;
-    if (!extracted.address) return false;
+    if (!extracted.address) {
+      console.log(
+        `[webhook] order recovery (${reason}) skipped: no address in chat or on record for ${customerId}`,
+      );
+      return false;
+    }
     // Second layer: an extraction that reproduces an order already on file is
     // the old conversation echoing, never a new purchase.
     if (
