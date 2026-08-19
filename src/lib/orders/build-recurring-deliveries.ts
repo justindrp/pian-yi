@@ -117,13 +117,21 @@ export function buildRecurringDeliveryRows(
 
   if (order.end_date) {
     const end = parseIsoDate(order.end_date);
+    // The date range is what the customer asked for; the package is what they
+    // bought, and the range can be longer. This branch used to fill every
+    // delivery day between the two and ignore package_size, so a replay on
+    // 2026-08-19 wrote 10 rows against Fidela's 8-porsi order — over-drawn the
+    // moment it was created. A package_size of 0 is the import artifact 72
+    // customers still carry, so it caps nothing.
+    let budget = (order.package_size ?? 0) > 0 ? order.package_size : null;
     for (
       const date = new Date(start);
-      date <= end;
+      date <= end && (budget === null || budget >= portionsPerDay);
       date.setUTCDate(date.getUTCDate() + 1)
     ) {
       if (!isDeliveryDay(date)) continue;
       const deliveryDate = formatIsoDate(date);
+      if (budget !== null) budget -= portionsPerDay;
       for (const meal of meals) {
         rows.push({
           address_slot: meal.address_slot,
