@@ -822,9 +822,18 @@ export async function createOrderFromExtraction(
   // customer picks Sabtu, and the bot must never hold an order open asking which.
   const portionsPerDay = mealTimePreference === "both_fixed" ? 2 : 1;
   const weeks = inbound.map(statedWeeks).find((n) => n !== null) ?? null;
-  const statedTotal = inbound.map(statedBareTotal).find((n) => n !== null);
+  // `inbound` is newest first, so this is the last total the customer stated —
+  // and a customer who changes their mind means the newer number. Tiwi asked for
+  // 8 porsi, was told 8 was off the list, wrote "Boleh 6 porsi dulu kak", and
+  // the order was still written for 8. Anything below the smallest package we
+  // sell is describing a delivery ("1 porsi"), not the order.
+  const floor = await minPackageSize();
+  const statedTotal =
+    inbound
+      .map(statedBareTotal)
+      .find((n): n is number => n !== null && n >= floor) ?? null;
   const weeksSize =
-    weeks !== null && !statedTotal && !sortedSchedule
+    weeks !== null && statedTotal === null && !sortedSchedule
       ? weeks * 5 * portionsPerDay
       : null;
 
@@ -832,10 +841,11 @@ export async function createOrderFromExtraction(
   // Money that has moved outranks every number in the conversation.
   const paidSize = await packageSizeMatchingPayment(customerId, nasiMerah);
 
-  const packageSize = paidSize ?? weeksSize ?? rangeSize ?? flooredPackageSize;
+  const packageSize =
+    paidSize ?? statedTotal ?? weeksSize ?? rangeSize ?? flooredPackageSize;
   if (packageSize !== flooredPackageSize) {
     console.log(
-      `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} weeks=${weeksSize} range=${rangeSize})`,
+      `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} stated=${statedTotal} weeks=${weeksSize} range=${rangeSize})`,
     );
   }
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
