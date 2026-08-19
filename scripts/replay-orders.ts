@@ -119,6 +119,13 @@ interface Result {
     deliveries: string[];
   } | null;
   expected: CorpusCase["expected"];
+  /**
+   * Set when the historical order cannot be reproduced under today's rules —
+   * Fidela's 8 porsi is no longer a sellable total, PT Bintang's Rp 35.000 is
+   * corporate pricing no tier yields. The case is reported and kept out of the
+   * tally: scoring it would mark the bot down for obeying a current rule.
+   */
+  drift: string | null;
   /** What the bot actually said, so a failure can be read instead of guessed at. */
   transcript: { role: string; content: string }[];
 }
@@ -267,6 +274,7 @@ async function replayCase(c: CorpusCase): Promise<Result> {
       }
     : null;
 
+  let drift: string | null = null;
   if (!got) {
     notes.push("NO ORDER CREATED");
   } else if (
@@ -295,9 +303,10 @@ async function replayCase(c: CorpusCase): Promise<Result> {
       c.expected.pricePerPortion,
     );
     if (rulePrice === null) {
-      notes.push(
-        `DRIFT: package ${c.expected.packageSize} is not sellable under current rules (sold at ${c.expected.pricePerPortion}); bot wrote ${got.pricePerPortion}`,
-      );
+      // The package itself is not sellable any more, so no price the bot can
+      // write is right and the case cannot be scored on price. Recorded, and
+      // kept out of the pass/fail tally rather than counted against the bot.
+      drift = `package ${c.expected.packageSize} is not sellable under current rules (sold at ${c.expected.pricePerPortion}); bot wrote ${got.pricePerPortion}`;
     } else if (got.pricePerPortion !== rulePrice) {
       notes.push(
         `price/porsi ${got.pricePerPortion} != ${rulePrice}${rulePrice === c.expected.pricePerPortion ? "" : ` (current rules; sold at ${c.expected.pricePerPortion})`}`,
@@ -314,6 +323,7 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     name: c.customerName,
     turns: c.turns.length,
     ok: notes.length === 0,
+    drift,
     notes,
     got,
     expected: c.expected,
@@ -465,7 +475,7 @@ async function main() {
         const r = await replayCase(c);
         results.push(r);
         console.log(
-          `[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} (${c.turns.length} turns) ... ${r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`}`,
+          `[${i + 1}/${cases.length}] ${c.customerName ?? "?"} ${c.orderId.slice(0, 8)} (${c.turns.length} turns) ... ${r.drift ? `DRIFT — ${r.drift}${r.notes.length ? `; also ${r.notes.join("; ")}` : ""}` : r.ok ? "PASS" : `FAIL — ${r.notes.join("; ")}`}`,
         );
         if (outDir) {
           writeFileSync(
@@ -482,6 +492,7 @@ async function main() {
           name: c.customerName,
           turns: c.turns.length,
           ok: false,
+          drift: null,
           notes: [`threw: ${(err as Error).message}`],
           got: null,
           expected: c.expected,
@@ -494,9 +505,16 @@ async function main() {
   }
   await worker();
 
-  const passed = results.filter((r) => r.ok).length;
-  console.log(`\n=== ${passed}/${results.length} passed ===`);
-  for (const r of results.filter((x) => !x.ok)) {
+  const drifted = results.filter((r) => r.drift);
+  const scored = results.filter((r) => !r.drift);
+  const passed = scored.filter((r) => r.ok).length;
+  console.log(
+    `\n=== ${passed}/${scored.length} passed ===${drifted.length ? ` (${drifted.length} unscoreable: rules drifted)` : ""}`,
+  );
+  for (const r of drifted) {
+    console.log(`\nDRIFT ${r.name ?? "?"} ${r.orderId.slice(0, 8)}: ${r.drift}`);
+  }
+  for (const r of scored.filter((x) => !x.ok)) {
     console.log(
       `\n${r.name ?? "?"} ${r.orderId.slice(0, 8)} (${r.turns} turns)`,
     );
