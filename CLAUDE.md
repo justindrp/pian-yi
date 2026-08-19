@@ -260,6 +260,14 @@ A customer who transfers before the bot ever called `extract_order` used to leav
 
 The webhook now runs the same forced-tool `extractOrderFromConversation()` the admin inbox uses when an image arrives and the customer has **no order in any status**, creates the order with `sendPaymentInfo: false` (they have already paid), then falls into the normal proof handling so the order advances to `payment_proof_received`. Extraction returns null when the chat never contained an order, and the create is gated on `package_size > 0 && address`, so a photo from a browsing customer still creates nothing. Admins get a **high**-priority push either way.
 
+### A size the customer changes before paying amends the order
+
+"Boleh 6 porsi dulu kak" after the transfer details have gone out is an amendment, not a second order and not a question — and nothing acted on it. Tiwi asked for "Total 8 porsi" on 2026-08-03, was quoted and billed for 8, then reduced to 6 in the next message; the order stayed at 8 and she was left holding a bill for a package she had just cut.
+
+`resizePendingOrderFromMessage()` (`src/lib/claude/extract-order.ts`) runs on every inbound message before the model call, so the reply is generated against the amended order. It only touches an order in `pending_payment`: once a proof is in, the money has moved and a size change is an admin decision. It rewrites `package_size`, `portions_remaining`, `price_per_portion` and `total_price` — nothing has been drawn against an unpaid order, so the balance moves with the size — re-prices through `getExtractedOrderPricing` (keeping the nasi merah surcharge when `addon_cost_per_portion > 0`), and sends the corrected nominal with the bank details.
+
+The size is read by `statedBareTotal()`, the same parser `applyLatestCustomerSize` uses: exactly one bare total in the message, never a per-delivery figure ("1 porsi per pengiriman"), never a number carrying a thousands separator or preceded by a digit. That last guard exists because a replay pulled `15330` out of a message and would have priced a Rp 400 juta order; sizes past 500 are refused as a misread for the same reason.
+
 ### Order recovery never re-reads a conversation older than the customer's newest order
 
 Both recovery gates (`ORDER_PROMISE`, the clarification-loop breaker) call `extractOrderFromConversation()`, which reads the last 60 messages. For a customer who has ordered before, that window still contains the chat that produced the order they already have — so recovery rebuilds it. Nadya asked on 2026-08-19 to move one delivery to lunch; the reply "sudah kami catat ya" was about the *schedule*, `ORDER_PROMISE` matched it anyway, and her finished 8 Agustus package (20 porsi, start 10 Agustus) was recreated as a `pending_payment` order and sent to her as a Rp 540.000 transfer request. She had paid it three weeks earlier. Annie corrected it by hand in the thread.

@@ -281,6 +281,23 @@ function withRecordedAddress(
 /** Beyond this a "N porsi" match is a misread number, not an order. */
 const LARGEST_PLAUSIBLE_SIZE = 500;
 
+/**
+ * The one bare portion total a message states, or null when it states none or
+ * more than one. "1 porsi per pengiriman" describes a delivery, not an order,
+ * and a thousands separator or preceding digit means we are reading the tail of
+ * a price — a replay pulled "15330" out of a message that way.
+ */
+export function statedBareTotal(text: string): number | null {
+  const sizes = new Set<number>();
+  for (const match of text.matchAll(
+    /(?<![\d.,])(\d+)\s*porsi(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
+  )) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > 0 && n <= LARGEST_PLAUSIBLE_SIZE) sizes.add(n);
+  }
+  return sizes.size === 1 ? ([...sizes][0] as number) : null;
+}
+
 export async function applyLatestCustomerSize(
   customerId: string,
   input: ExtractedOrderInput,
@@ -319,16 +336,8 @@ export async function applyLatestCustomerSize(
   // a Rp 400 juta order. The upper bound is the same guard from the other end —
   // the largest tier we sell is 144, so anything past LARGEST_PLAUSIBLE_SIZE is
   // a misread rather than an order.
-  const sizes = new Set<number>();
-  for (const match of text.matchAll(
-    /(?<![\d.,])(\d+)\s*porsi(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
-  )) {
-    const n = Number(match[1]);
-    if (Number.isFinite(n) && n > 0 && n <= LARGEST_PLAUSIBLE_SIZE) sizes.add(n);
-  }
-  if (sizes.size !== 1) return input;
-
-  const stated = [...sizes][0] as number;
+  const stated = statedBareTotal(text);
+  if (stated === null) return input;
   if (stated === input.package_size) return input;
   if (stated < (await minPackageSize())) return input;
 
@@ -548,6 +557,82 @@ async function previousMealTimePreference(
     }
   }
   return null;
+}
+
+/**
+ * A customer who changes the size before paying is amending the order, not
+ * placing a second one. Tiwi asked for "Total 8 porsi" on 2026-08-03, got the
+ * transfer details, then wrote "Boleh 6 porsi dulu kak" — the order stayed at 8
+ * and she was left holding a bill for a package she had just reduced. Only a
+ * pending_payment order is amendable: once a proof is in, the money has moved
+ * and the change is an admin decision.
+ *
+ * Returns whether an order was resized.
+ */
+export async function resizePendingOrderFromMessage(
+  customerId: string,
+  phone: string,
+  text: string,
+): Promise<boolean> {
+  const stated = statedBareTotal(text);
+  if (stated === null) return false;
+  if (stated < (await minPackageSize())) return false;
+
+  const db = createAdminClient();
+  const { data: order } = await db
+    .from("orders")
+    .select("id, package_size, portions_remaining, addon_cost_per_portion")
+    .eq("customer_id", customerId)
+    .eq("status", "pending_payment")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!order || order.package_size === stated) return false;
+
+  // The add-on is charged through at cost and already sits inside
+  // price_per_portion, so re-price with it rather than dropping it.
+  const nasiMerah = (order.addon_cost_per_portion ?? 0) > 0;
+  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
+    await getExtractedOrderPricing(stated, nasiMerah);
+
+  // Nothing has been drawn against an unpaid order, so the balance moves with
+  // the size.
+  const { error } = await db
+    .from("orders")
+    .update({
+      package_size: stated,
+      portions_remaining: stated,
+      price_per_portion: pricePerPortion,
+      total_price: totalPrice,
+    })
+    .eq("id", order.id);
+  if (error) {
+    console.error("[extract-order] pending order resize failed:", error.message);
+    return false;
+  }
+
+  const [bankName, bankAccountNumber, bankAccountName] = await Promise.all([
+    getSetting("bank_name"),
+    getSetting("bank_account_number"),
+    getSetting("bank_account_name"),
+  ]);
+  const msg = `Baik kak, pesanannya kami ubah jadi ${stated} porsi ya 😊\n\n💰 Nominal baru: Rp ${totalPrice.toLocaleString("id-ID")}\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak 🙏`;
+  const conversationId = await saveMessage({
+    customerId,
+    role: "assistant",
+    content: msg,
+    modelUsed: "sonnet-5",
+  });
+  const whatsappMessageId = await sendTextMessage(phone, msg);
+  await updateMessageReceipt({
+    conversationId,
+    whatsappMessageId,
+    status: "sent",
+  });
+  console.log(
+    `[extract-order] pending order ${order.id} resized ${order.package_size} -> ${stated}`,
+  );
+  return true;
 }
 
 export async function createOrderFromExtraction(

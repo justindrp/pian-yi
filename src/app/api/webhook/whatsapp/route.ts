@@ -24,6 +24,7 @@ import {
   type ExtractedOrderInput,
   applyLatestCustomerSize,
   extractOrderFromConversation,
+  resizePendingOrderFromMessage,
 } from "@/lib/claude/extract-order";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
@@ -1181,6 +1182,19 @@ export async function processSavedCustomerMessage(params: {
       await sendTextMessage(phone, tmpl);
     }
     return null;
+  }
+
+  // A size the customer changes before paying amends the order they already
+  // have — it is not a second order and not a question. Tiwi asked for "Total 8
+  // porsi", got the transfer details, then wrote "Boleh 6 porsi dulu kak"; the
+  // order stayed at 8 and she was left holding a bill for a package she had
+  // just reduced. Run it before the model call so the reply is generated
+  // against the amended order. Draft mode changes nothing on the customer's
+  // side, so it is skipped there.
+  if (!draft) {
+    await resizePendingOrderFromMessage(customerId, phone, text).catch(
+      console.error,
+    );
   }
 
   // Load history
