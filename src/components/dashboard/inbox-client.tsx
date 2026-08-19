@@ -688,7 +688,10 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     const res = await fetch("/api/inbox/extract-order/pricing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ package_size: packageSize }),
+      body: JSON.stringify({
+        package_size: packageSize,
+        customer_id: selectedCustomerId,
+      }),
     });
     const body = (await res.json().catch(() => null)) as {
       ok?: boolean;

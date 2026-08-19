@@ -142,6 +142,7 @@ export default function CustomersClient() {
     sub_area_2: "",
     google_maps_link_2: "",
     linked_order_id: "",
+    contract_price_per_portion: "",
   });
   const [showAdd, setShowAdd] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -349,6 +350,7 @@ export default function CustomersClient() {
       sub_area_2: string;
       google_maps_link_2: string;
       linked_order_id: string;
+      contract_price_per_portion: string;
     }) => {
       if (!selected) return;
       const { error } = await supabase
@@ -373,6 +375,11 @@ export default function CustomersClient() {
           sub_area_2: form.sub_area_2 || null,
           google_maps_link_2: form.google_maps_link_2 || null,
           linked_order_id: form.linked_order_id || null,
+          // Blank means ordinary tier pricing, which is what NULL means in the
+          // column — an empty string would be a rate of zero.
+          contract_price_per_portion: form.contract_price_per_portion.trim()
+            ? Number(form.contract_price_per_portion)
+            : null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", selected.id);
@@ -575,6 +582,10 @@ export default function CustomersClient() {
       linked_order_id:
         (customer as unknown as { linked_order_id?: string | null })
           .linked_order_id ?? "",
+      contract_price_per_portion: String(
+        (customer as unknown as { contract_price_per_portion?: number | null })
+          .contract_price_per_portion ?? "",
+      ),
     });
   }
 
@@ -1556,6 +1567,33 @@ export default function CustomersClient() {
                       </option>
                     ))}
                 </select>
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="customer-contract-price"
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Harga Kontrak / Porsi
+                </Label>
+                <Input
+                  id="customer-contract-price"
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Kosong = harga paket biasa"
+                  value={editForm.contract_price_per_portion}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      contract_price_per_portion: e.target.value,
+                    })
+                  }
+                  className="w-full"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Pelanggan korporat: harga ini menggantikan daftar harga paket,
+                  dan jumlah porsi bebas (tidak harus kelipatan 5 atau 6).
+                </p>
               </div>
 
               <div>

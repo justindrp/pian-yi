@@ -311,8 +311,8 @@ export type Database = {
           model_used: string | null
           output_tokens: number | null
           role: string
-          whatsapp_status: string | null
           whatsapp_error: Json | null
+          whatsapp_status: string | null
           whatsapp_status_updated_at: string | null
         }
         Insert: {
@@ -329,8 +329,8 @@ export type Database = {
           model_used?: string | null
           output_tokens?: number | null
           role: string
-          whatsapp_status?: string | null
           whatsapp_error?: Json | null
+          whatsapp_status?: string | null
           whatsapp_status_updated_at?: string | null
         }
         Update: {
@@ -505,6 +505,7 @@ export type Database = {
           area: string | null
           area_2: string | null
           avg_price_per_portion: number
+          contract_price_per_portion: number | null
           converted_at: string | null
           converted_to_subscription: boolean
           created_at: string | null
@@ -540,6 +541,7 @@ export type Database = {
           area?: string | null
           area_2?: string | null
           avg_price_per_portion?: number
+          contract_price_per_portion?: number | null
           converted_at?: string | null
           converted_to_subscription?: boolean
           created_at?: string | null
@@ -575,6 +577,7 @@ export type Database = {
           area?: string | null
           area_2?: string | null
           avg_price_per_portion?: number
+          contract_price_per_portion?: number | null
           converted_at?: string | null
           converted_to_subscription?: boolean
           created_at?: string | null
@@ -920,6 +923,7 @@ export type Database = {
         Row: {
           abandoned_recovery_sent_at: string | null
           addon_cost_per_portion: number
+          amount_paid: number
           cancellation_reason: string | null
           cancelled_at: string | null
           completed_at: string | null
@@ -956,6 +960,7 @@ export type Database = {
         Insert: {
           abandoned_recovery_sent_at?: string | null
           addon_cost_per_portion?: number
+          amount_paid?: number
           cancellation_reason?: string | null
           cancelled_at?: string | null
           completed_at?: string | null
@@ -992,6 +997,7 @@ export type Database = {
         Update: {
           abandoned_recovery_sent_at?: string | null
           addon_cost_per_portion?: number
+          amount_paid?: number
           cancellation_reason?: string | null
           cancelled_at?: string | null
           completed_at?: string | null

@@ -288,11 +288,17 @@ const LARGEST_PLAUSIBLE_SIZE = 500;
  * more than one. "1 porsi per pengiriman" describes a delivery, not an order,
  * and a thousands separator or preceding digit means we are reading the tail of
  * a price — a replay pulled "15330" out of a message that way.
+ *
+ * The number and the word must sit on the same line, the number must not be
+ * glued to a word, and "Porsi:" as a form label never counts. PT Bintang's
+ * filled order form ends one line in a maps link (…WhZA3f6) and starts the next
+ * with "Porsi: 22 box"; the old `\s*` crossed the newline, read the URL's
+ * trailing 6 as a total, and amended their 110-porsi order down to 6.
  */
 export function statedBareTotal(text: string): number | null {
   const sizes = new Set<number>();
   for (const match of text.matchAll(
-    /(?<![\d.,])(\d+)\s*porsi(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
+    /(?<![\w.,])(\d+)[ \t]*porsi\b(?!\s*:)(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
   )) {
     const n = Number(match[1]);
     if (Number.isFinite(n) && n > 0 && n <= LARGEST_PLAUSIBLE_SIZE) sizes.add(n);
@@ -367,6 +373,15 @@ async function packageSizeMatchingPayment(
     .filter((n): n is number => n !== null);
   if (amounts.length === 0) return null;
   const paid = amounts[0] as number;
+
+  // A corporate customer's total is paid / rate, not a tier lookup — the ladder
+  // never produces their price, so walking it would always miss. A DP that does
+  // not divide evenly tells us nothing about the size, so say nothing.
+  const contract = await contractPrice(customerId);
+  if (contract !== null) {
+    const rate = contract + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
+    return rate > 0 && paid % rate === 0 ? paid / rate : null;
+  }
 
   const db = createAdminClient();
   const { data: tiers } = await db
@@ -454,10 +469,43 @@ async function minPackageSize(): Promise<number> {
   return data?.portions ?? 5;
 }
 
+/**
+ * A corporate customer's negotiated rate, or null for ordinary tier pricing.
+ * Kept separate from getExtractedOrderPricing so the size-validation paths can
+ * ask the same question without pricing anything.
+ */
+export async function contractPrice(
+  customerId: string | null | undefined,
+): Promise<number | null> {
+  if (!customerId) return null;
+  const db = createAdminClient();
+  const { data } = await db
+    .from("customers")
+    .select("contract_price_per_portion")
+    .eq("id", customerId)
+    .maybeSingle();
+  const price = data?.contract_price_per_portion ?? null;
+  return typeof price === "number" && price > 0 ? price : null;
+}
+
 export async function getExtractedOrderPricing(
   packageSize: number,
   nasiMerah = false,
+  customerId?: string | null,
 ): Promise<ExtractedOrderPricing> {
+  // A negotiated rate replaces the ladder outright. PT Bintang Lautan buys 110
+  // porsi at Rp 35.000 — above every tier — so tier lookup can only ever get
+  // their order wrong. Add-ons still stack: what the kitchen charges extra is
+  // charged through at cost regardless of who the customer is.
+  const contract = await contractPrice(customerId);
+  if (contract !== null) {
+    const pricePerPortion = contract + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
+    return {
+      price_per_portion: pricePerPortion,
+      total_price: pricePerPortion * packageSize,
+    };
+  }
+
   const db = createAdminClient();
   const { data: tier } = await db
     .from("pricing_tiers")
@@ -793,7 +841,7 @@ export async function resizePendingOrderFromMessage(
   if (size === order.package_size && !addingAddon) return false;
 
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(size, nasiMerah);
+    await getExtractedOrderPricing(size, nasiMerah, customerId);
 
   // Nothing has been drawn against an unpaid order, so the balance moves with
   // the size.
@@ -978,7 +1026,7 @@ export async function createOrderFromExtraction(
     );
   }
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(packageSize, nasiMerah);
+    await getExtractedOrderPricing(packageSize, nasiMerah, customerId);
 
   if (mealTimePreference !== extractedPreference) {
     console.log(

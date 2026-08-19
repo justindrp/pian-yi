@@ -14,7 +14,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  const body = (await req.json()) as { package_size?: number };
+  const body = (await req.json()) as {
+    package_size?: number;
+    customer_id?: string;
+  };
   const packageSize = Number(body.package_size);
   if (!Number.isFinite(packageSize) || packageSize <= 0) {
     return NextResponse.json(
@@ -23,7 +26,13 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  const pricing = await getExtractedOrderPricing(packageSize);
+  // customer_id is optional: the review modal reprices as the admin edits the
+  // size, and a corporate customer must reprice at their contract rate.
+  const pricing = await getExtractedOrderPricing(
+    packageSize,
+    false,
+    body.customer_id ?? null,
+  );
   return NextResponse.json({ ok: true, data: pricing });
 }
 

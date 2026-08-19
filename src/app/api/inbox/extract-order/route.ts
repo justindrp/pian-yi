@@ -37,7 +37,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  const pricing = await getExtractedOrderPricing(extracted.package_size);
+  const pricing = await getExtractedOrderPricing(
+    extracted.package_size,
+    false,
+    customer_id,
+  );
   return NextResponse.json({ ok: true, data: { ...extracted, ...pricing } });
 }
 

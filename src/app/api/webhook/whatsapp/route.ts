@@ -23,6 +23,7 @@ import {
   EXTRACT_ORDER_PROPERTIES,
   type ExtractedOrderInput,
   applyLatestCustomerSize,
+  contractPrice,
   extractOrderFromConversation,
   resizePendingOrderFromMessage,
 } from "@/lib/claude/extract-order";
@@ -1354,6 +1355,8 @@ export async function processSavedCustomerMessage(params: {
     neighborhoods,
     activeOrder,
     pendingAdminQuestion,
+    // A corporate customer's negotiated rate replaces the whole price list.
+    contractPricePerPortion: await contractPrice(customerId),
   });
 
   // Tool definitions

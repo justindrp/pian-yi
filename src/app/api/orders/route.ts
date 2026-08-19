@@ -420,6 +420,11 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     // idempotent on source_id and have to be corrected by hand.
     if ("addon_cost_per_portion" in f)
       update.addon_cost_per_portion = Number(f.addon_cost_per_portion) || 0;
+    // What has actually landed against the order. Corporate orders arrive with
+    // a DP and settle later; total_price stays the contracted amount and this
+    // records the part that has been received. Never derived — an admin types
+    // it after checking the transfer.
+    if ("amount_paid" in f) update.amount_paid = Number(f.amount_paid) || 0;
     if ("start_date" in f && f.start_date)
       update.start_date = String(f.start_date);
 

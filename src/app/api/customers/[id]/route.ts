@@ -149,12 +149,26 @@ export async function PATCH(
     notes?: string;
     linked_order_id?: string | null;
     delivery_route?: number | null;
+    contract_price_per_portion?: number | null;
   };
-  const update: { name?: string; notes?: string; linked_order_id?: string | null; delivery_route?: number | null } = {};
+  const update: {
+    name?: string;
+    notes?: string;
+    linked_order_id?: string | null;
+    delivery_route?: number | null;
+    contract_price_per_portion?: number | null;
+  } = {};
   if (body.name !== undefined) update.name = body.name.trim();
   if (body.notes !== undefined) update.notes = body.notes;
   if (body.linked_order_id !== undefined) update.linked_order_id = body.linked_order_id || null;
   if (body.delivery_route !== undefined) update.delivery_route = body.delivery_route;
+  // A corporate rate; null restores ordinary tier pricing.
+  if (body.contract_price_per_portion !== undefined)
+    update.contract_price_per_portion =
+      body.contract_price_per_portion === null ||
+      Number(body.contract_price_per_portion) <= 0
+        ? null
+        : Number(body.contract_price_per_portion);
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json(

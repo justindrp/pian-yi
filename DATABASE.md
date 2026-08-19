@@ -266,6 +266,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | converted_to_subscription | boolean | Whether customer converted to a recurring subscription (default false) |
 | notes | text | Internal notes about this customer |
 | linked_order_id | uuid | FK → orders, nullable. If set, this customer's daily draws come from someone else's order/quota instead of their own (e.g. a kid drawing from a parent's package) |
+| contract_price_per_portion | integer | Negotiated per-portion rate for a corporate customer, in IDR. When set it replaces the `pricing_tiers` lookup entirely and lifts the 5/6 divisibility rule — a company buys box counts, not packages. Read via `contractPrice()` by pricing, payment-size matching and the system prompt. NULL = ordinary tier pricing, which is every customer but PT Bintang Lautan |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 
@@ -414,6 +415,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | grant_reason | text | Nullable. Why a free_quota order was granted (e.g. "late delivery compensation") |
 | granted_by | text | Nullable. Admin email who granted a free_quota order |
 | addon_cost_per_portion | integer | What the kitchen charges us extra per portion for an add-on (e.g. nasi merah, Rp 5.000). Cost side only — the customer's share of it is already inside `price_per_portion`. Added to the subcontractor's route rate by the COGS journal and by the `/dapur/[id]` bill. Edited as "Tambahan / porsi" on the new-order modal and the Orders slide-over; per order, so it does not carry to the customer's next package |
+| amount_paid | integer | IDR received against this order so far, default 0. For DP / partial payment on corporate orders; `total_price` stays the contracted amount. Set by an admin in the Orders slide-over ("Sudah dibayar") — nothing derives it and nothing gates on it |
 | lunch_address_slot | smallint | Standing address slot for lunch deliveries: 1 = primary, 2 = secondary (customers.address_2) — default 1. Generated daily_deliveries rows inherit it; per-day sheet flip overrides |
 | dinner_address_slot | smallint | Standing address slot for dinner deliveries: 1 = primary, 2 = secondary — default 1 |
 | meal_time_preference | text | Nullable. "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" — null for scheduled orders |

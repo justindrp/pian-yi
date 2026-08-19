@@ -96,6 +96,7 @@ type EditForm = {
   portions_dinner: string;
   portions_per_delivery: string;
   addon_cost_per_portion: string;
+  amount_paid: string;
   start_date: string;
 };
 
@@ -165,6 +166,9 @@ export default function OrdersClient() {
       portions_per_delivery:
         o.portions_per_delivery == null ? "" : String(o.portions_per_delivery),
       addon_cost_per_portion: String(o.addon_cost_per_portion ?? 0),
+      amount_paid: String(
+        (o as unknown as { amount_paid?: number | null }).amount_paid ?? 0,
+      ),
       start_date: o.start_date ?? "",
     });
   }
@@ -643,6 +647,25 @@ export default function OrdersClient() {
                 <p className="text-[11px] text-gray-400 mt-1">
                   Biaya dapur, mis. nasi merah. Harga pelanggan sudah termasuk ini —
                   ini hanya menaikkan COGS pengiriman berikutnya.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="order-amount-paid" className="text-xs text-gray-500 block mb-1">
+                  Sudah dibayar (Rp)
+                </Label>
+                <Input
+                  id="order-amount-paid"
+                  type="number"
+                  value={editForm.amount_paid}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, amount_paid: e.target.value })
+                  }
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Untuk DP / pembayaran bertahap. Total pesanan tetap Rp{" "}
+                  {selected.total_price.toLocaleString("id-ID")} — isi di sini
+                  yang sudah masuk.
                 </p>
               </div>
 

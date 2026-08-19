@@ -43,6 +43,34 @@ describe("statedBareTotal", () => {
   it("still reads a bare total", () => {
     expect(statedBareTotal("Boleh 6 porsi dulu kak")).toBe(6);
   });
+
+  it("does not read across a line break", () => {
+    // PT Bintang's filled order form: the maps link ends in a digit and the
+    // next line starts with the "Porsi:" label. Read as one string this used
+    // to yield 6, and amended their 110-porsi order down to 6.
+    const form = [
+      "Link Google Maps (sesuai titik): https://maps.app.goo.gl/mBzv9vRiN9WhZA3f6",
+      "Porsi: 22 box",
+      "Lunch/Dinner/Keduanya : Lunch",
+    ].join("\n");
+    expect(statedBareTotal(form)).toBeNull();
+  });
+
+  it("ignores 'Porsi:' used as a form label", () => {
+    expect(statedBareTotal("10 Porsi: 22 box")).toBeNull();
+  });
+
+  it("ignores a number glued to a word", () => {
+    expect(statedBareTotal("goo.gl/abc6 porsi")).toBeNull();
+  });
+
+  it("still reads a total stated on its own line", () => {
+    expect(statedBareTotal("Halo kak\nTotal 20 porsi ya")).toBe(20);
+  });
+
+  it("still ignores a per-delivery figure", () => {
+    expect(statedBareTotal("1 porsi per pengiriman")).toBeNull();
+  });
 });
 
 describe("DATE_LIST gate", () => {
