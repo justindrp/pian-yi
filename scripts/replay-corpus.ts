@@ -6,6 +6,7 @@
  *
  *   tsx scripts/replay-corpus.ts [count]
  */
+import { isDemoPhone } from "../src/lib/whatsapp/demo";
 import { createAdminClient } from "../src/lib/supabase/admin";
 
 export interface CorpusTurn {
@@ -20,13 +21,23 @@ export interface CorpusCase {
   customerName: string | null;
   createdAt: string;
   turns: CorpusTurn[];
-  expected: {
-    packageSize: number;
-    pricePerPortion: number;
-    totalPrice: number;
-    mealTimePreference: string | null;
-    deliveryDates: string[];
-  };
+  expected: CorpusExpectation;
+  /**
+   * The other orders the same conversation produced. Tiwi's 2026-08-03 thread
+   * bought 5 porsi and then 6, so it entered the corpus twice with different
+   * ground truth while one replay run creates one order — at most one of the
+   * two could ever pass. A run that reproduces any order the conversation
+   * really produced has reproduced it.
+   */
+  alternatives: CorpusExpectation[];
+}
+
+export interface CorpusExpectation {
+  packageSize: number;
+  pricePerPortion: number;
+  totalPrice: number;
+  mealTimePreference: string | null;
+  deliveryDates: string[];
 }
 
 /** Messages this close together are one burst — the live webhook coalesces them. */
@@ -49,14 +60,33 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
 
   const { data: orders } = await db
     .from("orders")
-    .select("id, customer_id, package_size, price_per_portion, total_price, meal_time_preference, created_at, customers!orders_customer_id_fkey(name)")
+    .select("id, customer_id, package_size, price_per_portion, total_price, meal_time_preference, created_at, customers!orders_customer_id_fkey(name, phone_number)")
     .eq("source", "purchase")
+    // A cancelled order is not something the bot should reproduce. The phantom
+    // order recovery built for Nadya on 2026-08-19 landed in the corpus as
+    // ground truth, so the harness was asking the bot to rebuild a bug.
+    .not("status", "in", "(cancelled_unpaid,cancelled_by_customer,cancelled_by_admin,refunded)")
     .order("created_at", { ascending: false })
     .limit(count * 2);
 
   const cases: CorpusCase[] = [];
+  // An order already folded into an earlier case as an alternative must not
+  // become a case of its own.
+  const covered = new Set<string>();
   for (const order of orders ?? []) {
     if (cases.length >= count) break;
+    if (covered.has(order.id)) continue;
+    // Never build ground truth out of the harness's own output. Demo rows live
+    // only for the length of a case, but a corpus rebuilt while a round is in
+    // flight sees them — and an order the bot just wrote is the one thing that
+    // can never be evidence of what the bot should write.
+    if (
+      isDemoPhone(
+        (order.customers as unknown as { phone_number?: string } | null)
+          ?.phone_number,
+      )
+    )
+      continue;
     const createdAt = order.created_at ?? "";
     if (!createdAt) continue;
 
@@ -93,8 +123,43 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
       .eq("order_id", order.id)
       .order("delivery_date");
 
+    // Orders the same customer placed out of this same window of conversation.
+    // The window is the messages we just replayed, so anything bought inside it
+    // came from the turns the bot is being scored on.
+    const windowStart = turns[0]?.at ?? since;
+    const { data: siblings } = await db
+      .from("orders")
+      .select("id, package_size, price_per_portion, total_price, meal_time_preference, created_at")
+      .eq("customer_id", order.customer_id ?? "")
+      .eq("source", "purchase")
+      .not("status", "in", "(cancelled_unpaid,cancelled_by_customer,cancelled_by_admin,refunded)")
+      .gte("created_at", windowStart)
+      .neq("id", order.id);
+    const alternatives: CorpusExpectation[] = [];
+    for (const sib of siblings ?? []) {
+      if (sib.created_at && sib.created_at > createdAt) {
+        // Only fold in siblings from this window, not the customer's future.
+        if (new Date(sib.created_at).getTime() - new Date(createdAt).getTime() > 86_400_000)
+          continue;
+      }
+      covered.add(sib.id);
+      const { data: sibDels } = await db
+        .from("daily_deliveries")
+        .select("delivery_date")
+        .eq("order_id", sib.id)
+        .order("delivery_date");
+      alternatives.push({
+        packageSize: sib.package_size,
+        pricePerPortion: sib.price_per_portion,
+        totalPrice: sib.total_price,
+        mealTimePreference: sib.meal_time_preference,
+        deliveryDates: (sibDels ?? []).map((d) => d.delivery_date),
+      });
+    }
+
     const c = order.customers as unknown as { name: string | null } | null;
     cases.push({
+      alternatives,
       orderId: order.id,
       customerId: order.customer_id ?? "",
       customerName: c?.name ?? null,

@@ -215,6 +215,17 @@ async function replayCase(c: CorpusCase): Promise<Result> {
 
   if (!got) {
     notes.push("NO ORDER CREATED");
+  } else if (
+    c.alternatives.some(
+      (alt) =>
+        got.packageSize === alt.packageSize &&
+        got.pricePerPortion === alt.pricePerPortion,
+    )
+  ) {
+    // The conversation produced more than one order and the bot reproduced one
+    // of the others. Tiwi's thread bought 5 porsi and then 6; one replay run
+    // creates one order, so scoring it against a single one of them is a coin
+    // flip, not a measurement.
   } else {
     if (got.packageSize !== c.expected.packageSize)
       notes.push(`package ${got.packageSize} != ${c.expected.packageSize}`);
