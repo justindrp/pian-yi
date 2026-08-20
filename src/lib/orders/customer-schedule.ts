@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { jakartaDateString } from "@/lib/menu/week";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -101,4 +102,52 @@ export async function orderRemainingToday(
     .filter((r) => r.status !== "skipped")
     .reduce((s, r) => s + (r.portions ?? 0), 0);
   return packageSize - drawn;
+}
+
+/**
+ * Portions each order has bought but not yet put on the calendar, keyed by
+ * order id. The guard the sheet generators use before writing another row.
+ *
+ * Cancelled rows are excluded because the daily-sheet PUT hands their portions
+ * back to the order when it cancels them; skipped rows are excluded because
+ * they never deducted anything. What is left is exactly what has been booked.
+ *
+ * The generators had no balance check at all, which is why reactivating a
+ * wrongly-completed order was unsafe: `status = 'active'` plus a standing
+ * `meal_time_preference` was the whole test, so every future Generate wrote
+ * another row past the package. On 2026-08-20, 21 of the 28 rows the generator
+ * built for the next day were already over-draws.
+ */
+export async function unbookedByOrder(
+  db: Db,
+  orders: { id: string; package_size: number | null }[],
+): Promise<Map<string, number>> {
+  const unbooked = new Map<string, number>(
+    orders.map((o) => [o.id, o.package_size ?? 0]),
+  );
+  if (orders.length === 0) return unbooked;
+
+  const { rows } = await fetchAllRows<{
+    order_id: string | null;
+    portions: number | null;
+    status: string | null;
+  }>((from, to) =>
+    db
+      .from("daily_deliveries")
+      .select("order_id, portions, status")
+      .in(
+        "order_id",
+        orders.map((o) => o.id),
+      )
+      .not("status", "in", '("cancelled","skipped")')
+      .range(from, to),
+  );
+
+  for (const row of rows) {
+    if (!row.order_id) continue;
+    const left = unbooked.get(row.order_id);
+    if (left === undefined) continue;
+    unbooked.set(row.order_id, left - (row.portions ?? 0));
+  }
+  return unbooked;
 }

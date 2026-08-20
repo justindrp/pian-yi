@@ -97,6 +97,8 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 **Delivery.** Senin–Sabtu, Minggu closed, libur nasional closed (`src/lib/holidays/id.ts` — extend before it lapses on 2026-12-31). Cuti bersama is an escalation, not a closure. Order deadline 16:00 WIB the day before (`settings.order_deadline_hour`), for changes and skips as well as new orders. The bot is handed the WIB clock and a computed "cutoff passed / still open" verdict plus the soonest deliverable date (`src/lib/time/jakarta.ts`) — never the bare hour, which it read as permanently still ahead. Areas come from active subcontractors' `delivery_areas`, never `settings`.
 
+**Sheet generation never writes a row an order has no unbooked quota for** (`unbookedByOrder()`) — without that guard an `active` order with a standing `meal_time_preference` generates rows past its package forever; 21 of 28 rows built for 2026-08-21 were already over-draws. See `OPERATIONS.md`.
+
 **Which order a delivery draws from is `pickDrawOrder()`, never query order** (`src/lib/orders/pick-draw-order.ts`): oldest active order with `portions_remaining > 0`, else the newest active one. Never reintroduce a bare `.limit(1)` on active orders — 85 customers hold two or more at once. An order completes on what it has **delivered** (`orderRemainingToday()`), never on `portions_remaining` — which hits 0 when the calendar fills — and never on the customer counter.
 
 **`customers.portions_remaining` and `customers.avg_price_per_portion` are dead columns — never read them.** They are the unfinished half of migration 035 and disagree with reality for a third of customers. Every decision path reads `orders.portions_remaining`; keep it that way.

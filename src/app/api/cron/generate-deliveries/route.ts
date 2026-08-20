@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
+import { unbookedByOrder } from "@/lib/orders/customer-schedule";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const { data: allOrders } = await db
     .from("orders")
-    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, portions_remaining, start_date, created_at, customers!orders_customer_id_fkey(name, phone_number, area, subcontractor_id)")
+    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, lunch_address_slot, dinner_address_slot, pause_until, subcontractor_id, portions_remaining, package_size, start_date, created_at, customers!orders_customer_id_fkey(name, phone_number, area, subcontractor_id)")
     .eq("status", "active")
     .in("meal_time_preference", FIXED_SCHEDULE_PREFS)
     .lte("start_date", date);
@@ -38,6 +39,14 @@ export async function POST(req: NextRequest): Promise<Response> {
   const orders = [...byCustomer.values()]
     .map((list) => pickDrawOrder(list))
     .filter((o): o is NonNullable<typeof o> => o != null);
+
+  // Never write a row an order has no quota left to cover. Without this,
+  // status = 'active' plus a standing meal_time_preference was the whole test,
+  // so a fully-booked order kept generating rows past its package — 21 of the
+  // 28 rows built for 2026-08-21 were already over-draws. It is also what makes
+  // reactivating a wrongly-completed order safe: Nadya, Kurniadi Tan and Jordy
+  // each have every owed portion already dated, so they generate nothing new.
+  const unbooked = await unbookedByOrder(db, orders);
 
   const targetDate = new Date(date);
 
@@ -61,30 +70,38 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     if (order.pause_until && new Date(order.pause_until) >= targetDate) continue;
 
+    // Fully booked: every portion already has a date. Nothing left to write.
+    let left = unbooked.get(order.id) ?? 0;
+    if (left <= 0) continue;
+
     const pref = order.meal_time_preference;
     const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_lunch";
     const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_dinner";
 
-    if (isLunch) {
+    const lunchPortions = (order.portions_lunch ?? 0) > 0 ? (order.portions_lunch ?? 0) : order.portions_per_delivery;
+    if (isLunch && lunchPortions <= left) {
+      left -= lunchPortions;
       rows.push({
         delivery_date: date,
         customer_id: order.customer_id as string,
         order_id: order.id,
         meal_type: "lunch",
-        portions: (order.portions_lunch ?? 0) > 0 ? (order.portions_lunch ?? 0) : order.portions_per_delivery,
+        portions: lunchPortions,
         subcontractor_id: subcontractorId,
         address_slot: order.lunch_address_slot ?? 1,
         status: "scheduled",
       });
     }
 
-    if (isDinner) {
+    const dinnerPortions = (order.portions_dinner ?? 0) > 0 ? (order.portions_dinner ?? 0) : order.portions_per_delivery;
+    if (isDinner && dinnerPortions <= left) {
+      left -= dinnerPortions;
       rows.push({
         delivery_date: date,
         customer_id: order.customer_id as string,
         order_id: order.id,
         meal_type: "dinner",
-        portions: (order.portions_dinner ?? 0) > 0 ? (order.portions_dinner ?? 0) : order.portions_per_delivery,
+        portions: dinnerPortions,
         subcontractor_id: subcontractorId,
         address_slot: order.dinner_address_slot ?? 1,
         status: "scheduled",
