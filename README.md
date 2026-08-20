@@ -83,7 +83,7 @@ test/                 Jest suite
 
 WhatsApp webhook (after deploy): `https://<railway-app>.up.railway.app/api/webhook/whatsapp`
 
-See `CLAUDE.md` for full conventions and business rules. See `API_ROUTES.md` for the API route reference.
+See `CLAUDE.md` for full conventions and business rules, `API_ROUTES.md` for the API route reference, `DATABASE.md` for the schema, `DEV_REFERENCE.md` for cost controls / folder tree / tooling, and **`TASKS.md` for what is currently outstanding**.
 
 ## Testing
 

@@ -496,6 +496,8 @@ Full endpoint-level reference moved to `API_ROUTES.md` (read on demand when work
 
 ## Known issues / tech debt
 
+**The live queue is `TASKS.md`** — everything outstanding, ordered by when it bites, including the dated items (a running event, a trial ending) that this file has no place for. The entries below are the durable ones; read `TASKS.md` first when picking up work.
+
 - `/api/auth/check-admin` — no session verification, allows unauthenticated admin email enumeration. Fix: extract email from verified Supabase session instead.
 - `supabase/seed.sql` may still reference old `"BSD"` area string (not yet split into BSD Baru / BSD Lama).
 - **Delivery proof auto-send (TODO):** call `sendDeliveryPhotoToCustomer(proofId, customerId)` directly in the POST route instead of the current "Ready to send" UI step.
