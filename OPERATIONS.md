@@ -54,8 +54,8 @@ Set it on the Customers page ("Harga Kontrak / Porsi", blank = ordinary pricing)
 ## Delivery
 
 - Areas: derived dynamically from active subcontractors' `delivery_areas` column — not stored in `settings`. Current active areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, Karawaci. Bintaro and Graha Raya are served by no active subcontractor.
-- Order deadline: 8pm the day before delivery
-- After 8pm cutoff, orders schedule for day after tomorrow
+- Order deadline: 16:00 WIB the day before delivery — read from `settings.order_deadline_hour` (`order_deadline_daily_hour` for the daily-quota flow); both are `16`. Never hardcode the hour, and never state it from memory: the docs said 8pm until 2026-08-20 while the setting had been 16 since 2026-07-08, so a message written off the doc quoted customers a cutoff four hours later than the one the bot enforces.
+- After the 16:00 cutoff, orders schedule for day after tomorrow
 - Annie can manually override deadline with warning popup
 - Two subcontractors handle delivery (Santapin, Thenie) — assigned manually by Annie per customer, never automated
 - **`orders.order_type` is gone** (dropped in migration 063). It claimed to record a product choice — `recurring` vs `scheduled` — that never existed, and it did not even record that reliably: it defaulted to `'recurring'` on every insert, so 252 of 301 active orders said `recurring` while their `meal_time_preference` said `per_day_decision`. Every delivery-generating query filtered on `order_type = 'recurring'`, which left the daily sheet's Generate button one click from writing lunch *and* dinner rows for all 252. The only real question those filters asked — can this order's days be worked out without asking the customer? — is answered by `meal_time_preference`, via `FIXED_SCHEDULE_PREFS` in `src/lib/orders/build-recurring-deliveries.ts`. Use that; do not add a new flag.
