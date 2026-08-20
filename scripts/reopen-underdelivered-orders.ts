@@ -36,8 +36,16 @@ type Order = {
   package_size: number | null;
   completed_at: string | null;
   meal_time_preference: string | null;
-  customers: { name: string | null } | null;
+  // Supabase's generated types call an embed an array; the explicit FK hint
+  // returns a single object at runtime. Accept both and read it through
+  // custName() rather than guessing wrong in one direction.
+  customers: { name: string | null } | { name: string | null }[] | null;
 };
+
+function custName(o: Order): string {
+  const c = Array.isArray(o.customers) ? o.customers[0] : o.customers;
+  return c?.name ?? "?";
+}
 
 async function main() {
   const { rows: orders, error: e1 } = await fetchAllRows<Order>((from, to) =>
@@ -91,7 +99,7 @@ async function main() {
     const owed = (o.package_size ?? 0) - (drawn.get(o.id) ?? 0);
     const unbooked = (o.package_size ?? 0) - b;
     console.log(
-      `${(o.customers?.name ?? "?").padEnd(16)} ${o.id.slice(0, 8)} pkg=${o.package_size} owed=${owed} unbooked=${unbooked} pref=${o.meal_time_preference} closed=${o.completed_at?.slice(0, 10)}`,
+      `${custName(o).padEnd(16)} ${o.id.slice(0, 8)} pkg=${o.package_size} owed=${owed} unbooked=${unbooked} pref=${o.meal_time_preference} closed=${o.completed_at?.slice(0, 10)}`,
     );
     if (unbooked > 0)
       console.log(`      will generate up to ${unbooked} more row(s) — expected, that quota is unbooked`);
