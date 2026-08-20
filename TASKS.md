@@ -2,7 +2,7 @@
 
 Everything outstanding as of **2026-08-20**, so a fresh session can pick up without reading back through chat history. Ordered by when it bites, not by size.
 
-Rules that apply to all of it live in `CLAUDE.md`; this file is the queue, not the reference. When an item is finished, delete it here and fold anything durable into the section of `CLAUDE.md` it belongs to.
+Rules that apply to all of it live in `CLAUDE.md` and the topical docs it maps (`BOT_RULES.md`, `OPERATIONS.md`, `WHATSAPP.md`, `ADMIN.md`); this file is the queue, not the reference. When an item is finished, delete it here and fold anything durable into whichever doc owns that subject.
 
 ---
 
@@ -40,7 +40,7 @@ Still open:
 - **WABA payment restriction `131042`.** Every business-initiated send is a dead letter: delivery proofs outside the window, `jendela_24_jam`, the `refresh-wa-window` fallback. A debit card was attached 2026-08-18 and the error only changed wording ("no payment method is set up" → "payment has been restricted"), so there is a restriction on the account itself, most likely an unpaid balance from a declined card. Clear it by hand: `business.facebook.com/billing_hub` → business `1304799927697056`, asset `1603294840784079`. Re-probe with `scripts/probe-template-window.ts`, which reads the receipt back off `conversations.whatsapp_error`.
 - **Business verification never submitted** (`141010`, `verification_status: pending_submission`) → `health_status.can_send_message: LIMITED`.
 - **Display name unapproved** → the number is stuck at `TIER_250`.
-- **Free-quota orders for the overdrawn customers** (`OVERDRAW.md`, 32 customers / 178 portions). Pending Justin's per-customer verification of what was actually granted — do not create them speculatively.
+- **Free-quota orders for the overdrawn customers** (`OVERDRAW.md`, 32 customers / 178 portions). The customers overdrawn by only 1–2 portions are the missing balance guard, not deliberate free quota; the interpretation of each case is in `OVERDRAW.md`. Pending Justin's per-customer verification of what was actually granted — do not create them speculatively.
 
 ---
 
@@ -78,7 +78,7 @@ Still open:
 - **Delivery proof auto-send.** Call `sendDeliveryPhotoToCustomer(proofId, customerId)` directly in the POST route instead of the current "Ready to send" UI step.
 - **Accounting Phase 4** — "Balik jurnal" reverse-entry action: post a mirror entry (swap debit/credit), link via `reversed_journal_id` on `journals`. `source_type: "manual"` only; auto-posted entries stay locked.
 - **Accounting Phase 5** — CSV export for journals/ledger (`?export=true`) and a quick-expense form that builds a 2-line balanced journal from account + amount.
-- **Instagram daily post generator** (designed 2026-08-16). Full shape in `CLAUDE.md`. The long pole is Meta App Review for `instagram_content_publish` + `instagram_basic`, not code. Open questions: AI-generated food imagery vs AI backgrounds behind real photos, auto-publish vs approve-first, which image vendor.
+- **Instagram daily post generator** (designed 2026-08-16, never started). One auto-generated post per day. Shape: `instagram_posts` table keyed `scheduled_for date UNIQUE` (that index is the idempotency guard), two jobs in the existing in-app scheduler (generate ~07:00 for tomorrow, publish ~11:00 today, both `catchUp: true` same-day), a public `instagram-media` bucket because Meta fetches the image by URL, and an `/instagram` review page. Store `ig_creation_id` between the two Graph calls — a retry after a partial failure must resume at publish or it double-posts. **The long pole is not code:** the Content Publishing API needs `instagram_content_publish` + `instagram_basic` through Meta App Review, and a Business/Creator IG account linked to a Facebook Page. Reuse the existing WhatsApp Meta app (already business-verified) and a Business Manager **System User** token, which does not expire. Open questions when resumed: AI-generated food imagery vs AI backgrounds behind real photos (the food we sell should not be a picture of food that never existed, and Meta labels AI images), auto-publish vs approve-first, and which image vendor.
 - **Domain naming refactor** (big). `order` means the prepaid package everywhere and the daily portion-draw has no name. Preferred fix: add `drawdown` as the daily-draw layer, leave every existing `order` reference alone. The alternative (rename package → `package_order`, draw → `order`) has a blast radius across tables, routes, tools, chat and accounting descriptions.
 - **Drop `customers.portions_remaining` and `customers.avg_price_per_portion`.** Dead columns, still written by six paths, read by none. Gated on the reconciliation chain: 27 customers hold a cached balance with no order behind it (Michelle Nathania's 30 portions the largest) and deriving turns those to 0.
 

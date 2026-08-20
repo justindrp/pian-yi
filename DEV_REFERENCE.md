@@ -108,7 +108,7 @@ pian-yi/
 │   │   ├── (auth)/
 │   │   │   ├── login/ (magic-link email login)
 │   │   │   └── callback/ (Supabase Auth callback handler)
-│   │   ├── dapur/[id]/ — public, auth-free mobile page per subcontractor: tomorrow's delivery orders + that day's bill (see CLAUDE.md "Subcontractor daily bill")
+│   │   ├── dapur/[id]/ — public, auth-free mobile page per subcontractor: tomorrow's delivery orders + that day's bill (see `OPERATIONS.md` "Subcontractor daily bill")
 │   │   ├── privacy/ (public privacy-policy page)
 │   │   └── api/ — route handlers; see API_ROUTES.md for endpoint-level detail
 │   │       ├── webhook/whatsapp/ (Meta webhook: main chatbot entry point)
