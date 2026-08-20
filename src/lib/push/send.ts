@@ -14,7 +14,31 @@ export async function sendPushToAllAdmins(
     requiredEnv("VAPID_PRIVATE_KEY", process.env.VAPID_PRIVATE_KEY),
   );
   const db = createAdminClient();
-  const { data: subs } = await db.from("push_subscriptions").select("*");
+
+  // push_subscriptions.user_email has no FK to admin_users, so a device stays
+  // registered after the person is removed from admin_users and keeps receiving
+  // customer data. Agnes's two devices were still being pushed to on the day she
+  // was revoked. Filter every send against the current admin list, so deleting
+  // the admin_users row is on its own enough to cut a device off.
+  const { data: admins, error: adminsErr } = await db
+    .from("admin_users")
+    .select("email");
+  if (adminsErr || !admins) {
+    // Fail closed and loudly: without the allowlist we cannot tell a current
+    // admin from a revoked one, and broadcasting to everyone is the worse half
+    // of that trade. A dropped notification is recoverable; a leak is not.
+    console.error("[push] admin lookup failed, sending nothing:", adminsErr);
+    return;
+  }
+  const allowed = new Set(
+    admins.map((a) => a.email.trim().toLowerCase()).filter(Boolean),
+  );
+  if (!allowed.size) return;
+
+  const { data: allSubs } = await db.from("push_subscriptions").select("*");
+  const subs = allSubs?.filter((s) =>
+    allowed.has(s.user_email.trim().toLowerCase()),
+  );
   if (!subs?.length) return;
 
   const payload = JSON.stringify({ title, body, url, priority });

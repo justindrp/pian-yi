@@ -492,7 +492,7 @@ Browser push notification subscriptions (Web Push / VAPID) for admin devices.
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
-| user_email | text | Admin email who subscribed |
+| user_email | text | Admin email who subscribed. Plain text, **no FK** to `admin_users.email` — nothing keeps it in step when an admin is removed, so `sendPushToAllAdmins` filters every send against the current `admin_users` list (trimmed + lowercased) rather than trusting the row's existence. Orphan rows are left in place; they are inert once filtered |
 | endpoint | text | Browser push endpoint URL |
 | p256dh | text | Public key for push encryption |
 | auth | text | Auth secret for push encryption |
