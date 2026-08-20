@@ -176,6 +176,7 @@ export default function SubcontractorsClient() {
   const [showAdd, setShowAdd] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Subcontractor>>({});
   const [editDapurNum, setEditDapurNum] = useState<number | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
     admin_phone: "",
@@ -302,6 +303,7 @@ export default function SubcontractorsClient() {
                       setSelected(s);
                       setEditForm(s);
                       setEditDapurNum(parseDapurNumber(s.customer_nickname));
+                      setCopiedLink(false);
                     }}
                     className="cursor-pointer hover:bg-gray-50"
                   >
@@ -349,6 +351,40 @@ export default function SubcontractorsClient() {
             >
               &times;
             </button>
+          </div>
+
+          {/* The kitchen's own daily sheet. It is public and unauthenticated by
+              design — the kitchen is the audience — so this is the link that
+              gets sent to them over WhatsApp, and copying it was previously a
+              matter of knowing the URL shape and pasting the id by hand. */}
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-2">
+            <div className="text-xs text-gray-500">Halaman dapur (publik)</div>
+            <code className="block text-xs text-gray-700 break-all">
+              /dapur/{selected.id}
+            </code>
+            <div className="flex gap-2">
+              <a
+                href={`/dapur/${selected.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 text-center text-xs font-medium px-3 py-1.5 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+              >
+                Buka
+              </a>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(
+                    `${window.location.origin}/dapur/${selected.id}`,
+                  );
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }}
+                className="flex-1 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+              >
+                {copiedLink ? "Tersalin" : "Salin link"}
+              </button>
+            </div>
           </div>
 
           {/* Edit form */}
