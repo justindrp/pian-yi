@@ -72,3 +72,33 @@ export async function loadCustomerSchedule(
       })),
   };
 }
+
+/**
+ * Portions of one order bought but not yet delivered, as of `today`.
+ *
+ * This is the number an order is finished on. `orders.portions_remaining` is
+ * not: this cron deducts *tomorrow's* rows, and the daily-sheet PUT deducts on
+ * save, so the counter reaches 0 when the calendar fills rather than when the
+ * food has gone out. Four orders were closed that way while still owing 35
+ * portions between them — Nadya's on 2026-08-13 with twelve meals to come,
+ * which left her with no active order at all and the bot with no quota context
+ * for her.
+ */
+export async function orderRemainingToday(
+  db: Db,
+  orderId: string,
+  packageSize: number,
+  today: string = jakartaDateString(),
+): Promise<number> {
+  const { data: rows } = await db
+    .from("daily_deliveries")
+    .select("portions, status")
+    .eq("order_id", orderId)
+    .lte("delivery_date", today)
+    .neq("status", "cancelled");
+
+  const drawn = (rows ?? [])
+    .filter((r) => r.status !== "skipped")
+    .reduce((s, r) => s + (r.portions ?? 0), 0);
+  return packageSize - drawn;
+}

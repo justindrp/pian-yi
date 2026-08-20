@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { orderRemainingToday } from "@/lib/orders/customer-schedule";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -81,9 +82,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
   }
 
-  // Complete an order when that order's own quota is exhausted.
+  // Complete an order when that order's own food has actually been delivered.
   //
-  // This used to key on customers.portions_remaining instead, and complete
+  // Before that it keyed on customers.portions_remaining instead, and complete
   // every active order the customer had whenever that counter hit zero. The
   // counter is only ever credited by the free-quota route — POST /api/orders
   // never credited it — so a purchased order left it at 0, the Math.max clamp
@@ -93,11 +94,21 @@ export async function POST(req: NextRequest): Promise<Response> {
   for (const orderId of touchedOrders) {
     const { data: ord } = await db
       .from("orders")
-      .select("portions_remaining, status")
+      .select("status, package_size")
       .eq("id", orderId)
       .single();
 
-    if (ord?.status === "active" && (ord.portions_remaining ?? 0) <= 0) {
+    if (ord?.status !== "active") continue;
+
+    // Finish on what has actually been delivered, never on the stored counter.
+    // This loop deducts *tomorrow's* rows, and the daily-sheet PUT deducts on
+    // save, so portions_remaining hits 0 when the calendar fills — not when the
+    // food has gone out. Keying completion on it closed four orders still
+    // owing 35 portions between them, Nadya's on 2026-08-13 with twelve meals
+    // left to deliver. She then had no active order, so the bot lost her quota
+    // context entirely.
+    const left = await orderRemainingToday(db, orderId, ord.package_size ?? 0);
+    if (left <= 0) {
       await db
         .from("orders")
         .update({
