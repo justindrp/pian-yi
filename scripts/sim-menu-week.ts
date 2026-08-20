@@ -81,6 +81,7 @@ async function main() {
     ].sort(),
     neighborhoods: {},
     activeOrder: null,
+    schedule: null,
   });
 
   const guidance = systemPrompt

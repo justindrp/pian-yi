@@ -73,6 +73,7 @@ export async function GET(): Promise<Response> {
     servedAreas,
     neighborhoods,
     activeOrder: null,
+    schedule: null,
   });
 
   return NextResponse.json({ ok: true, prompt });

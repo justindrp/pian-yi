@@ -248,7 +248,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | meal_time_preference | text | Default meal preference (e.g. "lunch_only", "both_fixed") |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen serves this customer |
-| portions_remaining | integer | Total quota balance across all active orders — decremented with each delivery |
+| portions_remaining | integer | Dead column — never read it. See the `customers.portions_remaining` rule in `CLAUDE.md`. Was meant as the total quota balance across all active orders |
 | avg_price_per_portion | integer | Weighted average cost per portion across all active orders (WAC method) |
 | delivery_route | smallint | Route number (1 = Alam Sutera/BSD Lama, 2 = Gading Serpong/BSD Baru) |
 | delivery_position | integer | Zero-based sort order within the route for the daily delivery sheet |
@@ -407,7 +407,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | portions_per_delivery | integer | Portions per meal per delivery (e.g. 1 or 2) |
 | portions_lunch | integer | Portions at lunch (for fixed both_fixed orders) |
 | portions_dinner | integer | Portions at dinner (for fixed both_fixed orders) |
-| portions_remaining | integer | Quota balance — decremented with each delivery |
+| portions_remaining | integer | Quota balance **not yet booked onto the calendar** — not the number of meals the customer still has coming. Two write paths disagree: `book_delivery_dates` decrements when the dates are booked (`src/app/api/webhook/whatsapp/route.ts`), the `deduct-daily-quota` cron decrements when the food goes out. A customer whose whole package is already dated therefore reads 0 while still owed every meal — Nadya on 2026-08-20 read 0 with 12 portions undelivered. For "how much do I have left", use the ledger's `remainingToday` (`GET /api/orders/[id]/ledger`) or `loadCustomerSchedule()`, never this column |
 | size | text | Portion size: "s" (standard) or "m" (medium, +Rp 2,000/portion) — default "s" |
 | price_per_portion | integer | Locked-in price in IDR at order time (includes size surcharge if "m") |
 | total_price | integer | Total amount due in IDR |

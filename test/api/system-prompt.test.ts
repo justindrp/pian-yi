@@ -38,6 +38,7 @@ describe("customer chatbot system prompt", () => {
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
       activeOrder: null,
+      schedule: null,
     });
 
     expect(prompt).toContain("Only size S is available");
@@ -64,6 +65,7 @@ describe("customer chatbot system prompt", () => {
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
       activeOrder: null,
+      schedule: null,
     });
 
     expect(prompt).toContain("is a multiple of 5 or of 6");

@@ -2,7 +2,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest, NextResponse } from "next/server";
 import { NO_THINKING, SONNET_MODEL, getAnthropicClient } from "@/lib/claude/client";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
-import { describeMenuWeeks } from "@/lib/menu/week";
+import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
+import { addDays } from "@/lib/time/jakarta";
 import { getNeighborhoods } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -67,6 +68,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       }
     : null;
 
+  // A stand-in schedule so training mode exercises the jadwal block the real
+  // bot gets. The two numbers are deliberately different: 32 meals still to
+  // come, 30 of them without a date yet.
+  const schedule = body.hasActiveOrder
+    ? {
+        remainingToday: 32,
+        unbooked: 30,
+        upcoming: [
+          { date: addDays(jakartaDateString(), 1), mealType: "lunch", portions: 1 },
+          { date: addDays(jakartaDateString(), 2), mealType: "dinner", portions: 1 },
+        ],
+      }
+    : null;
+
   const systemPrompt = await buildSystemPrompt({
     casual: false,
     customerState: body.hasActiveOrder ? "active" : "new",
@@ -82,6 +97,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     servedAreas,
     neighborhoods,
     activeOrder,
+    schedule,
   });
 
   const tools: Anthropic.Messages.Tool[] = [

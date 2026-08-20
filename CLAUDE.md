@@ -95,11 +95,13 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 **Order lifecycle.** `pending_payment` → `payment_proof_received` → `active` → `paused` → `completed`, plus the cancellation statuses. `orders.status` is the source of truth for payment and subscription state; `customer_state` is customer-level only (`new`/`ordering`/`lapsed`/`churned`) and must not mirror payment stages.
 
-**Delivery.** Senin–Sabtu, Minggu closed, libur nasional closed (`src/lib/holidays/id.ts` — extend before it lapses on 2026-12-31). Cuti bersama is an escalation, not a closure. Order deadline 16:00 WIB the day before (`settings.order_deadline_hour`). Areas come from active subcontractors' `delivery_areas`, never `settings`.
+**Delivery.** Senin–Sabtu, Minggu closed, libur nasional closed (`src/lib/holidays/id.ts` — extend before it lapses on 2026-12-31). Cuti bersama is an escalation, not a closure. Order deadline 16:00 WIB the day before (`settings.order_deadline_hour`), for changes and skips as well as new orders. The bot is handed the WIB clock and a computed "cutoff passed / still open" verdict plus the soonest deliverable date (`src/lib/time/jakarta.ts`) — never the bare hour, which it read as permanently still ahead. Areas come from active subcontractors' `delivery_areas`, never `settings`.
 
 **Which order a delivery draws from is `pickDrawOrder()`, never query order** (`src/lib/orders/pick-draw-order.ts`): oldest active order with `portions_remaining > 0`, else the newest active one. Never reintroduce a bare `.limit(1)` on active orders — 85 customers hold two or more at once. An order completes on its **own** `portions_remaining`, never on the customer counter.
 
 **`customers.portions_remaining` and `customers.avg_price_per_portion` are dead columns — never read them.** They are the unfinished half of migration 035 and disagree with reality for a third of customers. Every decision path reads `orders.portions_remaining`; keep it that way.
+
+**`orders.portions_remaining` is portions not yet *booked*, not portions not yet *delivered*.** A customer whose whole package is already on the calendar reads 0 while still owed every meal. Never quote it to a customer as their remaining balance — use `remainingToday` from the order ledger or `loadCustomerSchedule()`. See "Sisa kuota" in `OPERATIONS.md`.
 
 **`orders.order_type` is gone** (migration 063). The question it pretended to answer is answered by `meal_time_preference` via `FIXED_SCHEDULE_PREFS`. Do not add a new flag.
 

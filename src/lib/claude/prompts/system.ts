@@ -1,6 +1,17 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
-import { describeUpcomingHolidays } from "@/lib/holidays/id";
-import { formatMenuWeekRange, weekAfter } from "@/lib/menu/week";
+import {
+  describeUpcomingHolidays,
+  formatHolidayDate,
+} from "@/lib/holidays/id";
+import {
+  formatMenuWeekRange,
+  jakartaDateString,
+  weekAfter,
+} from "@/lib/menu/week";
+import {
+  earliestDeliveryDate,
+  jakartaTimeString,
+} from "@/lib/time/jakarta";
 
 const PRICE_LIST_LINES = [
   "- 5 hari siang/malam saja: Rp 145.000 (Rp 29.000/meal)",
@@ -39,6 +50,29 @@ export async function buildSystemPrompt(params: {
     packageSize: number;
     portionsPerDelivery: number;
     mealTimePreference: string | null;
+  } | null;
+  /**
+   * What is actually on the customer's calendar, and the two different numbers
+   * people mean by "sisa kuota".
+   *
+   * The prompt used to carry neither, so the model rebuilt a customer's
+   * schedule out of the chat scrollback. On 2026-08-20 it told Nadya her next
+   * delivery was siang — it was reading a one-off change she had made the day
+   * before for a date that had already passed. Her row had been dinner since
+   * the 18th. She believed the bot, asked to move it to malam, and the bot
+   * "confirmed" a change nobody needed and nobody made.
+   *
+   * `remainingToday` is portions bought but not yet delivered — the number a
+   * customer means when they ask how much they have left. `unbooked` is what is
+   * left after the deliveries already on the calendar, i.e. how many more dates
+   * they can still ask for. They are far apart: Nadya's were 12 and 0 on the
+   * same day, and `orders.portions_remaining` is the second one. Quoting it as
+   * the first tells a customer with 12 meals coming that they have none.
+   */
+  schedule: {
+    upcoming: { date: string; mealType: string; portions: number }[];
+    remainingToday: number;
+    unbooked: number;
   } | null;
   /**
    * A question already sent to an admin and still unanswered, or null. The bot
@@ -81,7 +115,46 @@ export async function buildSystemPrompt(params: {
   const deadlineTime = `${deadlineHour}:00 WIB`;
   const dailyDeadlineTime = `${dailyDeadlineHour}:00 WIB`;
 
+  // The clock, and what it means for the next delivery. Both are computed here
+  // rather than left to the model: given only a date and a cutoff hour it read
+  // "deadline tonight" as always still ahead and promised same-week starts
+  // hours after the cutoff had gone. See src/lib/time/jakarta.ts.
+  const todayWib = jakartaDateString(now);
+  const timeWib = jakartaTimeString(now);
+  const { date: earliestDate, deadlinePassed } = earliestDeliveryDate({
+    deadlineHour: Number(deadlineHour) || 16,
+    now,
+  });
+  const earliestDisplay = formatHolidayDate(earliestDate);
+  const cutoffLine = deadlinePassed
+    ? `- Deadline ${deadlineTime} untuk besok SUDAH LEWAT (sekarang ${timeWib} WIB). Do NOT offer or agree to a delivery tomorrow, and do not accept a change or a skip for tomorrow — tomorrow is already locked with the kitchen. The soonest date you may promise is ${earliestDisplay}. Say so plainly and offer that date.`
+    : `- Deadline ${deadlineTime} untuk besok masih terbuka (sekarang ${timeWib} WIB). Soonest deliverable date: ${earliestDisplay}.`;
+
   const areasDisplay = params.servedAreas.join(", ");
+
+  // What is on the calendar, stated rather than inferred. Without this the
+  // model answers "besok dikirim kapan?" from the chat scrollback, where a
+  // one-off change made for a date that has since passed still reads as
+  // current. See the `schedule` param for the incident.
+  const scheduleBlock = params.schedule
+    ? `\n\n## Jadwal pengiriman customer ini
+Ini catatan resmi kami, bukan tebakan dari percakapan di atas. **Kalau customer bertanya kapan atau meal apa pengiriman berikutnya, jawab dari daftar ini dan tidak dari chat sebelumnya.** Perubahan satu kali yang pernah diminta untuk tanggal yang sudah lewat tidak berlaku lagi.
+
+- Sisa porsi sudah dibayar dan belum dikirim: **${params.schedule.remainingToday} porsi**. Ini angka yang customer maksud kalau bertanya "sisa kuota saya berapa".
+- Porsi yang belum punya tanggal: **${params.schedule.unbooked} porsi**. Hanya sebanyak ini yang tanggalnya masih bisa dipesan baru. Kalau 0, semua porsi sudah ada tanggalnya — jangan bilang kuotanya habis, karena makanannya masih akan dikirim.
+${
+        params.schedule.upcoming.length > 0
+          ? `\nSudah terjadwal:\n${params.schedule.upcoming
+              .map(
+                (d) =>
+                  `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam (16.00-18.00)" : "siang (10.00-12.00)"}, ${d.portions} porsi`,
+              )
+              .join("\n")}`
+          : "\nBelum ada pengiriman terjadwal ke depan."
+      }
+
+Kalau customer minta ubah atau skip salah satu tanggal di atas, konfirmasi hanya kalau deadline untuk tanggal itu belum lewat — dan sebutkan tanggal serta meal-nya persis seperti di daftar, supaya kalau catatan kami sudah sesuai permintaannya, kakaknya tahu tidak perlu diubah apa-apa.`
+    : "";
 
   // The menu image on file is not always the current week's. It is published
   // ahead — Batch 50 (17–22 Agustus) was already up on Saturday 2026-08-15 —
@@ -478,15 +551,15 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 - Customer state: ${params.customerState}
 - Customer name (if known): ${params.customerName ?? "unknown"}
 - Customer notes / learned context: ${params.customerNotes?.trim() || "none"}
-- Today: ${now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-- Order deadline tonight: ${deadlineTime}
+- Today: ${formatHolidayDate(todayWib)} — sekarang jam ${timeWib} WIB
+${cutoffLine}
 - Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${
     typeof params.pendingAdminQuestion === "string"
       ? `\n\n## A question is with an admin right now\nYou already asked an admin: "${params.pendingAdminQuestion || "(pertanyaan sebelumnya)"}". It is still unanswered.\n\n- Do not answer that question yourself and do not guess at it. If the customer chases it, say it is still being checked — one short clause, not a whole message.\n- Do not call ask_admin_for_help again for the same question. Asking twice tells nobody anything new.\n- Keep doing everything else normally: quote prices, take the address, take the portions, and call extract_order the moment the customer agrees. One open side question never blocks an order. On 2026-08-18 two customers gave their address, their portion count and asked for the bank details after a question like this, and got nothing back at all.`
       : ""
-  }${params.activeOrder ? `\n- Active order quota: ${params.activeOrder.portionsRemaining} / ${params.activeOrder.packageSize} portions remaining` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
+  }${params.activeOrder ? `\n- Active order: paket ${params.activeOrder.packageSize} porsi, ${params.activeOrder.portionsRemaining} porsi belum dijadwalkan tanggalnya (bukan sisa makanan — lihat Jadwal pengiriman di bawah)` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
-  }`;
+  }${scheduleBlock}`;
 }

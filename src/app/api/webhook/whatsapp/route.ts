@@ -51,6 +51,7 @@ import {
 } from "@/lib/customers/lifecycle";
 import { shouldAutoResume } from "@/lib/customers/takeover";
 import { describeMenuWeeks } from "@/lib/menu/week";
+import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -1522,6 +1523,9 @@ export async function processSavedCustomerMessage(params: {
     servedAreas,
     neighborhoods,
     activeOrder,
+    // What is actually booked, so the model stops reconstructing the schedule
+    // from the chat scrollback and quoting the wrong "sisa kuota".
+    schedule: await loadCustomerSchedule(db, customerId),
     pendingAdminQuestion,
     // A corporate customer's negotiated rate replaces the whole price list.
     contractPricePerPortion: await contractPrice(customerId),

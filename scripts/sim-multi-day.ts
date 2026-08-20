@@ -109,6 +109,7 @@ async function main() {
       portionsPerDelivery: 1,
       mealTimePreference: "per_day_decision",
     },
+    schedule: null,
   });
 
   console.log(`Today: ${today} — active order ${remaining}/40, 1 porsi/meal, per_day_decision\n`);
