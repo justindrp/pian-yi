@@ -354,6 +354,21 @@ export default async function DapurPage({
 
   const deliveries = (rows ?? []) as Delivery[];
 
+  // "breakfast" only appears on event bookings — the standing packages have no
+  // morning slot, so most kitchens will never have one. The summary line and the
+  // two sections below are therefore rendered only when the day actually has
+  // morning rows, rather than adding an empty "Makan Pagi — 0 porsi" to every
+  // kitchen's page. Before this the rows were fetched and then silently dropped
+  // by the lunch/dinner filters: ICE BSD's three morning runs were invisible to
+  // the kitchen cooking them, and its bill read Rp 0 against Rp 900.000 owed.
+  const breakfastR1 = deliveries.filter(
+    (d) =>
+      d.meal_type === "breakfast" && (d.customers?.delivery_route ?? 1) === 1,
+  );
+  const breakfastR2 = deliveries.filter(
+    (d) =>
+      d.meal_type === "breakfast" && (d.customers?.delivery_route ?? 1) === 2,
+  );
   const lunchR1 = deliveries.filter(
     (d) => d.meal_type === "lunch" && (d.customers?.delivery_route ?? 1) === 1,
   );
@@ -372,6 +387,8 @@ export default async function DapurPage({
   const rate2 = sub.cost_per_portion ?? 0;
   const rate1 = sub.cost_per_portion_route1 ?? rate2;
   const bills = {
+    breakfastR1: billFor(breakfastR1, rate1),
+    breakfastR2: billFor(breakfastR2, rate2),
     lunchR1: billFor(lunchR1, rate1),
     lunchR2: billFor(lunchR2, rate2),
     dinnerR1: billFor(dinnerR1, rate1),
@@ -405,6 +422,17 @@ export default async function DapurPage({
             </div>
           </div>
 
+          {breakfastR1.length + breakfastR2.length > 0 && (
+            <MealSummary
+              title="Makan Pagi"
+              subName={sub.name}
+              route1={bills.breakfastR1}
+              route2={bills.breakfastR2}
+              rate1={rate1}
+              rate2={rate2}
+            />
+          )}
+
           <MealSummary
             title="Makan Siang"
             subName={sub.name}
@@ -431,6 +459,14 @@ export default async function DapurPage({
           </p>
         ) : (
           <div className="space-y-8">
+            <Section
+              title="Makan Pagi — Rute 1 (Pian Yi)"
+              deliveries={breakfastR1}
+            />
+            <Section
+              title={`Makan Pagi — Rute 2 (${sub.name})`}
+              deliveries={breakfastR2}
+            />
             <Section
               title="Makan Siang — Rute 1 (Pian Yi)"
               deliveries={lunchR1}

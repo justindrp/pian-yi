@@ -283,7 +283,7 @@ One row per delivery event. Created when a customer requests a delivery for a sp
 | customer_id | uuid | FK → customers |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen fulfills this delivery |
 | delivery_date | date | Date of delivery (YYYY-MM-DD) |
-| meal_type | text | "lunch", "dinner", or "both" |
+| meal_type | text | "lunch", "dinner", "both", or "breakfast". No CHECK constraint — the value is free text, and `UNIQUE (delivery_date, customer_id, meal_type)` is what limits a customer to one row per slot per day. "breakfast" exists for event bookings with a morning run (ICE BSD, 21–23 Agustus 2026); no standing package produces one. Anything reading this column must handle it — `/dapur/[id]` filtered on lunch/dinner only and rendered the morning rows nowhere |
 | portions | integer | Number of portions for this delivery |
 | address_slot | smallint | Which customer address to deliver to: 1 = primary, 2 = secondary (default 1) |
 | status | text | "scheduled", "delivered", "cancelled" |
