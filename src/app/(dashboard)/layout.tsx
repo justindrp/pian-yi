@@ -20,7 +20,6 @@ const allNavItems = [
   { href: "/assistant", label: "Assistant", ownerOnly: false },
   { href: "/accounting", label: "Accounting", ownerOnly: true },
   { href: "/settings", label: "Settings", ownerOnly: false },
-  { href: "/dapur/52cd5e62-da09-49c9-939c-2f1246566c40", label: "Thenie", ownerOnly: false },
 ];
 
 type NavItem = { href: string; label: string; badge?: number };
