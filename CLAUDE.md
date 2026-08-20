@@ -15,7 +15,7 @@ A WhatsApp-based ordering system for Pian Yi Catering, a daily catering business
 Two end users:
 
 - **Customers** — interact only via WhatsApp with an AI chatbot powered by Claude Sonnet 5
-- **Admins** (Justin, Annie, Agnes) — interact via a PWA dashboard for operations; Justin and Annie are `owner` role, Agnes is `admin` role (see "User roles" section)
+- **Admins** (Justin, Annie, Daevin) — interact via a PWA dashboard for operations; Justin and Annie are `owner` role, Daevin is `admin` role (see "User roles" section)
 
 ## Tech stack
 
@@ -447,7 +447,7 @@ Bursts are pre-merged into one turn by the corpus builder (messages under 90s ap
 Two roles, stored in `admin_users.role`:
 
 - `owner` — full access to all dashboard pages and APIs (Justin: drpramadyo@gmail.com, Annie: angelaoctaviani196@gmail.com)
-- `admin` — full access except Accounting page/API and **inbox takeover** (Agnes: agnesiaagatha2006@gmail.com)
+- `admin` — full access except Accounting page/API and **inbox takeover** (Daevin: daevinthomas23@gmail.com, on a 7-day work trial 17–23 Agustus 2026 and not yet hired). Agnes (agnesiaagatha2006@gmail.com) held this role until she quit; her `admin_users` row still exists and still grants access
 
 **Takeover is owner-only** (`POST /api/inbox/takeover` with `escalated: true` returns 403 otherwise, and the "Take over" button is not rendered). Taking a thread over silences the bot for that customer, and every downstream thing the bot does unprompted — writing the package's `daily_deliveries` rows above all — silently becomes something a human has to remember. Jordy's 5-porsi package was run that way and only two of its five days were ever written; he learned it by getting no lunch on 18 Agustus and asked for a refund. Handing a thread *back* (`escalated: false`) stays open to every role: it returns control to the bot, which is the safe direction, and the inbox draft flow calls it to clear a stale takeover. **Non-owners cannot hand-type to a customer at all.** Deliberate, and enforced server-side, not just hidden: `manual-reply`, `manual-image` and `manual-document` all 403 a non-owner. The compose box is gated on the viewer being an owner as well as on the thread being in takeover, so a thread an owner took over does not become a typing surface for everyone else. Admins reach customers through the **Assistant** (`send_whatsapp_message` / `send_whatsapp_image` via `POST /api/assistant/execute`, which is auth-only and stays open to every role) — that path shows the admin a confirmation card, logs the send to `conversations`, and keeps the bot in the loop instead of silencing it.
 
