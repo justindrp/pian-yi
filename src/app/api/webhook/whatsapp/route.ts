@@ -84,6 +84,58 @@ const ORDER_PROMISE =
 const MENU_SENT_CLAIM =
   /(menu|gambar)[\s\S]{0,80}?(sudah|udah|telah)\s+((saya|aku|kami)\s+)?(kirim|kirimkan|share)/i;
 
+// The model saying it will check with the team. It writes this instead of
+// calling ask_admin_for_help, so nothing is flagged, no admin is pushed, and
+// the customer waits for an answer nobody was ever asked for. On 2026-08-20 an
+// ad lead asked what a no-rice portion contains and what it costs, was told
+// "perlu saya cek dulu ke tim" twice, and wrote "Batal..ribet" nine minutes
+// after his first message. An addressee is required — "perlu saya cek dulu
+// sesuai total porsi" is the model stalling on its own arithmetic, not a claim
+// that a human is involved.
+const ESCALATION_CLAIM =
+  /(cek|konfirmasi|tanya|tanyakan|koordinasi|pastikan)[\s\S]{0,40}?\b(ke|sama|dengan|dgn)\s+(tim|admin|dapur|partner|atasan|kantor|rekan)/i;
+
+/** Whether a question is already sitting with an admin for this customer. */
+async function hasPendingAdminQuestion(customerId: string): Promise<boolean> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("customer_flags")
+    .select("pending_bot_response")
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  return data?.pending_bot_response === true;
+}
+
+/**
+ * Park the question the model claimed to be escalating.
+ *
+ * Deliberately does not call handleToolUse: that path also sends the customer
+ * "Mohon tunggu sebentar kak, kami sedang cek dulu ya", and the reply we are
+ * about to send already says exactly that. The customer would get it twice.
+ */
+async function recordClaimedEscalation(
+  customerId: string,
+  phone: string,
+  customerName: string | null,
+  question: string,
+): Promise<void> {
+  const db = createAdminClient();
+  await db
+    .from("customer_flags")
+    .update({
+      pending_bot_response: true,
+      pending_bot_question: question,
+    })
+    .eq("customer_id", customerId);
+
+  await sendPushToAllAdmins(
+    `Butuh jawaban — ${customerName ?? phone}`,
+    question.slice(0, 120),
+    "/inbox",
+    "high",
+  );
+}
+
 /** Whether we actually sent this customer an image recently. */
 async function sentImageRecently(customerId: string): Promise<boolean> {
   const db = createAdminClient();
@@ -1712,6 +1764,25 @@ export async function processSavedCustomerMessage(params: {
       phone,
       customerName,
     );
+  }
+
+  // The model says it is checking with the team and calls no tool. Nothing is
+  // flagged and no admin is pushed, so the customer is waiting on a question
+  // that was never asked. Park it ourselves and push, using the customer's own
+  // message as the question — it is what an admin has to answer anyway.
+  if (
+    replyText &&
+    !toolUses.some(
+      (t) =>
+        t.name === "ask_admin_for_help" || t.name === "escalate_to_human",
+    ) &&
+    ESCALATION_CLAIM.test(replyText) &&
+    !(await hasPendingAdminQuestion(customerId))
+  ) {
+    console.log(
+      `[webhook] escalation claimed but never made — parking it for ${customerId}`,
+    );
+    await recordClaimedEscalation(customerId, phone, customerName, text);
   }
 
   // A tool call with no text alongside it. Anthropic models answer and call a

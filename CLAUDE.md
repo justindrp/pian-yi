@@ -285,6 +285,16 @@ The branch is gone. The flag now only shapes the prompt: `pendingAdminQuestion` 
 
 The prompt's Escalation section now states the rule directly: escalating never replaces creating the order, and total portions, prices, off-list sizes, package days, delivery area, Catatan notes and schedule/quota mismatches are never escalated at all.
 
+### An escalation the bot claims is one it never made
+
+"Perlu saya cek dulu ke tim" with no `ask_admin_for_help` in the same response is a dead end: nothing is written to `customer_flags`, no admin is pushed, and the customer sits waiting for an answer to a question nobody was ever asked. Same failure class as `ORDER_PROMISE` and `MENU_SENT_CLAIM` — a claim the model makes instead of calling the tool — and it was the only one with no enforcement. `system.ts` forbids it only when the message *also* contained order details, so a pure question fell straight through.
+
+A C4 ad lead (`+6287812476058`) is the case. He asked one answerable question on 2026-08-20 — what a no-rice portion contains and what it costs. Turn 1 answered the spec correctly from the prompt's own rule and then withheld the price, which does not depend on the no-rice option at all and was already on the price-list image sent four minutes earlier. Turn 2 retracted the correct answer, claimed to be checking with the team, and re-asked a question he had just answered. `escalated_to_human: false`, `pending_bot_response: false`, `pending_bot_question: null` — no admin ever saw it. He wrote "Batal..ribet 😏" nine minutes after his first message. Nobody had told him the minimum order is 5 porsi.
+
+`ESCALATION_CLAIM` (`src/app/api/webhook/whatsapp/route.ts`) matches a check verb near an **addressee** — tim / admin / dapur / partner / atasan / kantor / rekan. The addressee is what separates a claimed escalation from the model stalling on its own arithmetic: "perlu saya cek dulu sesuai total porsi" names nobody and does not match. On a toolless reply that matches, `recordClaimedEscalation()` writes `pending_bot_response` / `pending_bot_question` and pushes admins at **high** priority, using the customer's own message as the question — it is what an admin has to answer anyway. It deliberately does **not** route through `handleToolUse`: that path also sends "Mohon tunggu sebentar kak, kami sedang cek dulu ya", which is what the reply already says, and the customer would get it twice. Skipped when a question is already open, so a customer chasing an unanswered one does not re-push every turn.
+
+This parks the thread for an admin; it does not silence the bot (see the section above). Recovering the lead itself is still human work — the durable fix for that half is answering the question in the prompt, not escalating it.
+
 ### `createOrderFromExtraction` checks its insert, and fills the two fields the model drops
 
 The `orders` insert discarded its error. A model that omits one required field (Nadya's replay dropped `package_size`) produced a rejected insert, an undefined order row, no deliveries, and then a crash on `input.customer_name.split(" ")` — with the customer already told the order was placed and nothing anywhere recording the failure. The insert error is now logged, pushed to admins at **high** priority, and thrown.
