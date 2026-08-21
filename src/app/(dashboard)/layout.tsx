@@ -21,6 +21,7 @@ const allNavItems = [
   { href: "/accounting", label: "Accounting", ownerOnly: true },
   { href: "/activity", label: "Activity", ownerOnly: false },
   { href: "/handbook", label: "Handbook", ownerOnly: false },
+  { href: "/guide", label: "Panduan", ownerOnly: false },
   { href: "/settings", label: "Settings", ownerOnly: false },
 ];
 

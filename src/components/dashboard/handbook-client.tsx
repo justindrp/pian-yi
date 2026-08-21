@@ -106,7 +106,8 @@ function contentId(f: Facts): Section[] {
       blocks: [
         p("Kalau pelanggan bertanya 'sisa berapa?', jangan baca angka sisa porsi di pesanan mentah-mentah. Angka itu artinya porsi yang belum dijadwalkan, bukan porsi yang belum diantar."),
         p("Pelanggan yang seluruh paketnya sudah masuk kalender akan terbaca 0, padahal makanannya belum diantar sama sekali."),
-        rule("Untuk menjawab sisa kuota, pakai jadwal pelanggan (halaman Customers atau Assistant), bukan angka sisa di pesanan."),
+        p("Yang benar ada di ledger pelanggan: buka halaman Customers, klik pelanggannya, lihat bagian Riwayat pemakaian. Di situ setiap paket masuk sebagai +N dan setiap penarikan harian sebagai −N, lalu ada Sisa hari ini di baris paling bawah. Itulah angka yang sah."),
+        rule("Bot kadang menyebut sisa kuota yang salah ke pelanggan. Kalau ada pelanggan bertanya atau protes soal sisa porsinya, buka ledger dan cek sendiri sebelum menjawab — ledger yang benar, bukan bot."),
       ],
     },
     {
@@ -224,7 +225,8 @@ function contentEn(f: Facts): Section[] {
       blocks: [
         p("When a customer asks how much they have left, do not read the order's remaining-portions number straight out. It means portions not yet scheduled, not portions not yet delivered."),
         p("A customer whose whole package is already on the calendar reads 0 while still being owed every meal."),
-        rule("Answer quota questions from the customer's schedule (the Customers page, or the Assistant), never from the raw number on the order."),
+        p("The real number is in the customer's ledger: Customers page, click the customer, look at Riwayat pemakaian. Every package lands there as +N and every daily draw as −N, with Sisa hari ini on the last line. That is the number that counts."),
+        rule("The bot sometimes quotes a customer the wrong remaining quota. Whenever a customer asks about their balance or disputes it, open the ledger and check for yourself before replying — the ledger is right, the bot is not always."),
       ],
     },
     {

@@ -42,6 +42,7 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/accounting": BookOpen,
   "/activity": History,
   "/handbook": GraduationCap,
+  "/guide": HelpCircle,
   "/settings": Settings,
   "/dapur/52cd5e62-da09-49c9-939c-2f1246566c40": ChefHat,
 };
@@ -88,13 +89,6 @@ export default function DesktopNav({ navItems, userEmail, version }: DesktopNavP
         })}
       </nav>
       <div className="p-3 border-t border-gray-100">
-        <Link
-          href="/guide"
-          className="flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors border-l-2 border-transparent mb-0.5"
-        >
-          <HelpCircle size={14} className="text-gray-400" />
-          <span>Panduan</span>
-        </Link>
         <form action="/api/auth/signout" method="POST">
           <button
             type="submit"
