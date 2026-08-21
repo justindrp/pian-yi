@@ -32,7 +32,7 @@ Conversion tracking columns on `customers` (migration 042): `ad_creative` (e.g. 
 
 Second address columns on `customers` (migration 044): `address_2`, `area_2`, `sub_area_2`, `google_maps_link_2`. Linked to `daily_deliveries.address_slot` (1 = primary, 2 = secondary, default 1).
 
-Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`, `dinner_address_slot` (`smallint`, `IN (1, 2)`, default 1). Set in the new-order modal (toggles shown only when the customer has `address_2`). The `generate-deliveries` cron stamps each generated `daily_deliveries` row's `address_slot` from the matching meal's order slot, and scheduled orders stamp their rows at creation. A per-day flip on the daily sheet still overrides for a single day.
+Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`, `dinner_address_slot` (`smallint`, `IN (1, 2)`, default 1). Set in the new-order modal (toggles shown only when the customer has `address_2`). The `generate-deliveries` cron stamps each generated `daily_deliveries` row's `address_slot` from the matching meal's order slot, and scheduled orders stamp their rows at creation. The bot's own `extract_order` sets both slots too, from `address_2_meal` — until 2026-08-21 it hardcoded slot 1 and every split-address order the bot created sent both meals to the primary address. A per-day flip on the daily sheet still overrides for a single day.
 
 ### Deliveries
 - `GET /api/deliveries/daily-sheet` — Fetch delivery rows for a given date

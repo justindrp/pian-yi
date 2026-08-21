@@ -41,6 +41,11 @@ export interface ExtractedOrderInput {
   maps_link: string;
   area: string;
   sub_area?: string;
+  address_2?: string;
+  maps_link_2?: string;
+  area_2?: string;
+  sub_area_2?: string;
+  address_2_meal?: string;
   meal_time_preference?: string;
   custom_schedule?: Record<string, unknown>;
   delivery_schedule?: DeliveryScheduleSlot[];
@@ -87,6 +92,25 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
     type: "string",
     description:
       "Sub-location within the area: district name for houses, apartment name for apartments, building name for offices",
+  },
+  address_2: {
+    type: "string",
+    description:
+      "Second delivery address, when one of the two meals goes somewhere else every day — makan siang ke kampus/kantor, makan malam ke kost. Leave it out when both meals go to the same place, and never use it for a one-off change of address on a single day.",
+  },
+  maps_link_2: {
+    type: "string",
+    description: "Google Maps link for address_2",
+  },
+  sub_area_2: {
+    type: "string",
+    description: "Sub-location within area_2, same rule as sub_area",
+  },
+  address_2_meal: {
+    type: "string",
+    enum: ["lunch", "dinner"],
+    description:
+      "Which meal is delivered to address_2 every day. Required whenever address_2 is given — without it the second address is stored but never delivered to.",
   },
   meal_time_preference: {
     type: "string",
@@ -158,6 +182,7 @@ export function extractOrderProperties(areas: string[]) {
   return {
     ...EXTRACT_ORDER_PROPERTIES_BASE,
     area: { type: "string", enum: areas },
+    area_2: { type: "string", enum: areas },
   };
 }
 
@@ -756,7 +781,9 @@ async function fillMissingSchedule(
 
   const { data: order } = await db
     .from("orders")
-    .select("subcontractor_id, portions_remaining")
+    .select(
+      "subcontractor_id, portions_remaining, lunch_address_slot, dinner_address_slot",
+    )
     .eq("id", orderId)
     .maybeSingle();
   const budget = order?.portions_remaining ?? 0;
@@ -783,7 +810,10 @@ async function fillMissingSchedule(
       meal_type: slot.meal_type,
       portions: slot.portions,
       subcontractor_id: order?.subcontractor_id ?? null,
-      address_slot: 1,
+      address_slot:
+        slot.meal_type === "dinner"
+          ? (order?.dinner_address_slot ?? 1)
+          : (order?.lunch_address_slot ?? 1),
       status: "scheduled",
     });
   }
@@ -1073,6 +1103,24 @@ export async function createOrderFromExtraction(
     await db.from("daily_deliveries").delete().eq("order_id", openOrder.id);
   }
 
+  // Which meal goes to the customer's second address. The bot has been offering
+  // split deliveries for months — makan siang ke kampus, makan malam ke kost —
+  // while every row written here went to slot 1, so the kitchen sheet showed one
+  // address for both meals and nothing said the promise had been dropped.
+  // A slot 2 is only real when there is an address to put in it: this order's,
+  // or one already on the record from an earlier order.
+  const { data: addressRow } = await db
+    .from("customers")
+    .select("address_2")
+    .eq("id", customerId)
+    .maybeSingle();
+  const secondMeal =
+    input.address_2?.trim() || addressRow?.address_2?.trim()
+      ? input.address_2_meal
+      : undefined;
+  const lunchSlot = secondMeal === "lunch" ? 2 : 1;
+  const dinnerSlot = secondMeal === "dinner" ? 2 : 1;
+
   const orderFields = {
       customer_id: customerId,
       package_size: packageSize,
@@ -1090,6 +1138,8 @@ export async function createOrderFromExtraction(
       // decides which deliveries get written, and storing the model's value
       // instead left the order row disagreeing with its own schedule.
       meal_time_preference: mealTimePreference,
+      lunch_address_slot: lunchSlot,
+      dinner_address_slot: dinnerSlot,
       custom_schedule: (input.custom_schedule ?? null) as
         | import("@/types/database").Json
         | null,
@@ -1154,8 +1204,8 @@ export async function createOrderFromExtraction(
               portions_per_delivery: input.portions_per_delivery ?? 1,
               portions_lunch: input.portions_lunch ?? null,
               portions_dinner: input.portions_dinner ?? null,
-              lunch_address_slot: 1,
-              dinner_address_slot: 1,
+              lunch_address_slot: lunchSlot,
+              dinner_address_slot: dinnerSlot,
               subcontractor_id: input.subcontractor_id ?? null,
             },
             today,
@@ -1170,7 +1220,7 @@ export async function createOrderFromExtraction(
           meal_type: s.meal_type,
           portions: s.portions,
           subcontractor_id: input.subcontractor_id ?? null,
-          address_slot: 1,
+          address_slot: s.meal_type === "dinner" ? dinnerSlot : lunchSlot,
           status: s.date < today ? "delivered" : "scheduled",
         }))
       : derived.map((r) => ({
@@ -1254,6 +1304,15 @@ export async function createOrderFromExtraction(
       portions_remaining: newRemaining,
       avg_price_per_portion: newAvg,
       ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
+      // Same rule as the primary address: only written when this order carried
+      // one, so a renewal extracted from chat alone cannot blank it.
+      ...(input.address_2?.trim() ? { address_2: input.address_2 } : {}),
+      ...(input.area_2?.trim()
+        ? { area_2: input.area_2, sub_area_2: input.sub_area_2 ?? null }
+        : {}),
+      ...(input.maps_link_2
+        ? { google_maps_link_2: input.maps_link_2 }
+        : {}),
       ...(input.subcontractor_id
         ? { subcontractor_id: input.subcontractor_id }
         : {}),
