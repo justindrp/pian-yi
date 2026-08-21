@@ -1,6 +1,6 @@
 # Pian Yi Catering
 
-WhatsApp-based ordering system for **Pian Yi Catering**, a daily catering business in Tangerang Selatan, Indonesia (BSD City, Gading Serpong, Alam Sutera, Bintaro, Graha Raya).
+WhatsApp-based ordering system for **Pian Yi Catering**, a daily catering business in Tangerang Selatan, Indonesia. Delivery areas are not fixed — they are derived from whichever subcontractor kitchens are active. Each kitchen carries its own area list, and those lists overlap only in part.
 
 Two surfaces:
 

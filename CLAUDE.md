@@ -27,7 +27,7 @@ Each of those keeps the incident that produced each rule. That is deliberate: a 
 
 ## What this project is
 
-A WhatsApp-based ordering system for Pian Yi Catering, a daily catering business serving BSD City, Gading Serpong, Alam Sutera, Bintaro, and Graha Raya in Tangerang Selatan, Indonesia.
+A WhatsApp-based ordering system for Pian Yi Catering, a daily catering business in Tangerang Selatan, Indonesia. **Which areas we serve is not a fixed list** — it is the union of the `delivery_areas` of whichever subcontractors are currently active. Each kitchen carries its own list; those lists overlap in part and differ in part, so an area may be served by three kitchens or by one. Never write the areas into a doc, a prompt, or a string; read them. See "Delivery areas" in `OPERATIONS.md`.
 
 Two end users:
 
@@ -87,7 +87,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 
 Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS.md`. These are the ones where getting it wrong costs money or a customer.
 
-**Confidentiality.** Never disclose subcontractor names (Santapin, Thenie) to customers, in any form — frame as "dapur partner kami". What is confidential is *which* kitchens, never that partner kitchens exist: a customer who names a supplier gets neither denial nor confirmation, because "kami masak sendiri" is a lie they can find out. **Never put the bank account number in the bot's system prompt** — the payment message is composed by `createOrderFromExtraction`, and the model has never needed it. Never reveal COGS, margins, or internal operations; customer-facing errors are always generic.
+**Confidentiality.** Never disclose **any** subcontractor's real name to customers, in any form — not the two the docs used to name (Santapin, Thenie) and not the ones added since (Dapur Mama Echa, Molls Kitchen). Customers only ever see the `customer_nickname` ("Dapur 1", "Dapur C"). Treat the rule as covering every row in `subcontractors`, present and future, never an enumerated pair — frame as "dapur partner kami". What is confidential is *which* kitchens, never that partner kitchens exist: a customer who names a supplier gets neither denial nor confirmation, because "kami masak sendiri" is a lie they can find out. **Never put the bank account number in the bot's system prompt** — the payment message is composed by `createOrderFromExtraction`, and the model has never needed it. Never reveal COGS, margins, or internal operations; customer-facing errors are always generic.
 
 **Language.** Indonesian only, "kak" as honorific, under 200 words, emojis sparingly. Enforced, not asked for: every outbound webhook reply runs the hallucination validator → `looksEnglish()` → `sanitizeReply()`, and the sanitized text is what gets saved.
 
@@ -95,7 +95,7 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 **Order lifecycle.** `pending_payment` → `payment_proof_received` → `active` → `paused` → `completed`, plus the cancellation statuses. `orders.status` is the source of truth for payment and subscription state; `customer_state` is customer-level only (`new`/`ordering`/`lapsed`/`churned`) and must not mirror payment stages.
 
-**Delivery.** Senin–Sabtu, Minggu closed, libur nasional closed (`src/lib/holidays/id.ts` — extend before it lapses on 2026-12-31). Cuti bersama is an escalation, not a closure. Order deadline 16:00 WIB the day before (`settings.order_deadline_hour`), for changes and skips as well as new orders. The bot is handed the WIB clock and a computed "cutoff passed / still open" verdict plus the soonest deliverable date (`src/lib/time/jakarta.ts`) — never the bare hour, which it read as permanently still ahead. Areas come from active subcontractors' `delivery_areas`, never `settings`.
+**Delivery.** Senin–Sabtu, Minggu closed, libur nasional closed (`src/lib/holidays/id.ts` — extend before it lapses on 2026-12-31). Cuti bersama is an escalation, not a closure. Order deadline 16:00 WIB the day before (`settings.order_deadline_hour`), for changes and skips as well as new orders. The bot is handed the WIB clock and a computed "cutoff passed / still open" verdict plus the soonest deliverable date (`src/lib/time/jakarta.ts`) — never the bare hour, which it read as permanently still ahead. Areas come from active subcontractors' `delivery_areas`, never `settings` — and they are **per kitchen, not global**: deactivating one subcontractor can remove an area entirely. On 2026-08-21, Alam Sutera, Gading Serpong and Karawaci were each served by exactly one active kitchen.
 
 **Sheet generation never writes a row an order has no unbooked quota for** (`unbookedByOrder()`) — without that guard an `active` order with a standing `meal_time_preference` generates rows past its package forever; 21 of 28 rows built for 2026-08-21 were already over-draws. See `OPERATIONS.md`.
 

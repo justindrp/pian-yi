@@ -41,7 +41,7 @@ Named neighborhoods within each delivery area, used by `/api/settings/neighborho
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
-| area | text | One of the 5 delivery areas |
+| area | text | Delivery area. Must be one of the areas some *active* subcontractor serves — there is no fixed list, and the count changes when a kitchen is activated or deactivated. See "Delivery areas" in `OPERATIONS.md` |
 | name | text | Neighborhood name, unique per (area, name) |
 | created_at | timestamp | |
 
@@ -545,7 +545,7 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | customer_nickname | text | Customer-facing name shown in the chatbot (e.g. "Dapur A") |
 | admin_phone | text | Primary WhatsApp number for the kitchen admin |
 | admin_phone_2 | text | Secondary WhatsApp number |
-| delivery_areas | json | Array of area strings this kitchen serves (e.g. ["BSD Baru", "Gading Serpong"]) |
+| delivery_areas | json | Array of area strings **this kitchen** serves (e.g. `["BSD Baru", "Gading Serpong"]`). Each kitchen has its own list and the lists overlap only in part; the areas Pian Yi offers are the union of this column across rows with `is_active = true`, computed at read time and never stored anywhere else. Editing this column, or flipping `is_active`, changes what the chatbot tells customers. See "Delivery areas" in `OPERATIONS.md` |
 | cost_per_portion | integer | What we pay per portion in IDR — used for Route 2 (kitchen delivers) |
 | cost_per_portion_route1 | integer | Override cost for Route 1 (we use own courier, cheaper). NULL = same as cost_per_portion. Thenie: 19,500 (R1) / 21,000 (R2) |
 | menu_image_url | text | URL of the current weekly menu image (shown to new customers). Inactive kitchens keep their last image forever — nobody refreshes it once they stop cooking, so every read of this column must filter `is_active = true`. The `send_menu_image` tool did not, and sent customers a live menu plus a two-month-old one. |

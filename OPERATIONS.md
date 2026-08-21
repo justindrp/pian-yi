@@ -53,11 +53,35 @@ Set it on the Customers page ("Harga Kontrak / Porsi", blank = ordinary pricing)
 
 ## Delivery
 
-- Areas: derived dynamically from active subcontractors' `delivery_areas` column — not stored in `settings`. Current active areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, Karawaci. Bintaro and Graha Raya are served by no active subcontractor.
+### Delivery areas
+
+**There is no company-wide list of delivery areas. Coverage belongs to the kitchen, not to Pian Yi.** Each subcontractor row carries its own `delivery_areas` array. Those arrays **overlap in part and differ in part** — two kitchens may both serve BSD Baru while only one of them serves Karawaci — and what we can tell a customer is the union across the rows where `is_active = true`. Nothing about this lives in `settings`, and nothing about it may be hardcoded — the welcome message resolves `{{delivery_areas}}` at send time for exactly this reason.
+
+The union is *not* stable, and coverage is not evenly deep. As of 2026-08-21:
+
+| Kitchen (nickname) | Active | Areas served |
+| --- | --- | --- |
+| Thenie (Dapur 1) | yes | Alam Sutera, Gading Serpong, BSD Baru, BSD Lama, Karawaci |
+| Dapur Mama Echa (Dapur C) | yes | BSD Baru, BSD Lama |
+| Molls Kitchen (Dapur D) | yes | BSD Baru, BSD Lama |
+| Perut Bahagia (Dapur 2) | no | — |
+| Santapin (Dapur 4) | no | — |
+| Yuk Makan (Dapur 3) | no | — |
+
+Union today: Alam Sutera, BSD Baru, BSD Lama, Gading Serpong, Karawaci — five areas from three kitchens, because the three lists overlap heavily on BSD Baru and BSD Lama.
+
+That overlap is what matters when you pick a kitchen for a customer: **BSD Baru and BSD Lama have three kitchens behind them, so an off-day or a deactivation is absorbed. The other three areas have one.**
+
+Read that table before assuming an area is safe. **Alam Sutera, Gading Serpong and Karawaci rest on Thenie alone** — deactivating that one kitchen, or hitting one of its off-days, silently removes three areas from what the bot will offer. An area disappearing is therefore a normal consequence of a subcontractor edit, not a bug to go hunting for.
+
+Bintaro and Graha Raya appear in older docs and are served by no active kitchen. They were removed from `CLAUDE.md` and `README.md` on 2026-08-21 after a Bintaro lead (`+62811811442`) asked "Gak sampai bintaro jaya ya" and the bot never answered the question at all — the docs said we served it, the live area list said we did not, and nobody could tell which was true.
+
+### Deadlines, assignment and data rules
+
 - Order deadline: 16:00 WIB the day before delivery — read from `settings.order_deadline_hour` (`order_deadline_daily_hour` for the daily-quota flow); both are `16`. Never hardcode the hour, and never state it from memory: the docs said 8pm until 2026-08-20 while the setting had been 16 since 2026-07-08, so a message written off the doc quoted customers a cutoff four hours later than the one the bot enforces.
 - After the 16:00 cutoff, orders schedule for day after tomorrow
 - Annie can manually override deadline with warning popup
-- Two subcontractors handle delivery (Santapin, Thenie) — assigned manually by Annie per customer, never automated
+- Which kitchen serves a customer is **assigned manually by Annie, never automated** — and the candidate kitchens are only those whose `delivery_areas` include that customer's area *and* that are active. Do not state a count of kitchens from memory: this line said "two subcontractors (Santapin, Thenie)" until 2026-08-21, by which point Santapin was inactive and Dapur Mama Echa and Molls Kitchen had been added. Query `subcontractors` instead.
 - **`orders.order_type` is gone** (dropped in migration 063). It claimed to record a product choice — `recurring` vs `scheduled` — that never existed, and it did not even record that reliably: it defaulted to `'recurring'` on every insert, so 252 of 301 active orders said `recurring` while their `meal_time_preference` said `per_day_decision`. Every delivery-generating query filtered on `order_type = 'recurring'`, which left the daily sheet's Generate button one click from writing lunch *and* dinner rows for all 252. The only real question those filters asked — can this order's days be worked out without asking the customer? — is answered by `meal_time_preference`, via `FIXED_SCHEDULE_PREFS` in `src/lib/orders/build-recurring-deliveries.ts`. Use that; do not add a new flag.
 - **Which order a delivery draws from is decided by `pickDrawOrder()` (`src/lib/orders/pick-draw-order.ts`), never by query order.** The rule is: the oldest active order that still has `portions_remaining > 0`; if none does, the most recently created active order. Four call sites previously queried `orders` filtered on `status = 'active'` with no `ORDER BY` and took the first row — `addable-customers`, `bulk-create`, daily-sheet POST, and the `generate-deliveries` cron. Postgres returns heap order, which is roughly insertion order, so the oldest active order won every time, including after it was fully drawn down and including when the customer had since bought a fresh package. Julian S is the case that surfaced it: order `eb853b86` (pkg 5) took 9 deliveries while `0831e475` (pkg 5, created nine days later) took 1, and only stopped winning when it flipped to `completed` and left the filter. 85 customers hold two or more active orders at once, so this was never a one-off. Do not reintroduce a bare `.limit(1)` or first-row pick on active orders.
 - **Misattribution is only visible from the order side.** The customer ledger (`GET /api/customers/[id]`) sums every delivery a customer has without looking at `order_id`, so it balanced perfectly all through the Julian S bug. `GET /api/orders/[id]/ledger` shows one order's own credit and draws, so a delivery charged to an exhausted package reads as a running balance going negative. It is rendered in the Orders detail slide-over as "Draw history" and is the view to check after any bulk re-pointing of `daily_deliveries.order_id`.
