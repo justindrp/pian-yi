@@ -1111,7 +1111,7 @@ export async function createOrderFromExtraction(
   // or one already on the record from an earlier order.
   const { data: addressRow } = await db
     .from("customers")
-    .select("address_2")
+    .select("address_2, area, subcontractor_id")
     .eq("id", customerId)
     .maybeSingle();
   const secondMeal =
@@ -1120,6 +1120,37 @@ export async function createOrderFromExtraction(
       : undefined;
   const lunchSlot = secondMeal === "lunch" ? 2 : 1;
   const dinnerSlot = secondMeal === "dinner" ? 2 : 1;
+
+  // The model drops subcontractor_id far more often than the tool's `required`
+  // list suggests — Cindi's 2026-08-21 order came through with a null one, and
+  // 33 open orders carry one. A null kitchen makes the order invisible on
+  // /dapur/[id] and on the kitchen's own sheet, which both filter strictly on
+  // it, so the food is never cooked and nothing anywhere says why. Fall back
+  // the way an admin would: the kitchen this customer already buys from, then
+  // the only active kitchen covering their area. Two candidates is a real
+  // choice between kitchens and stays null for an admin to make.
+  let subcontractorId =
+    input.subcontractor_id ?? addressRow?.subcontractor_id ?? null;
+  if (!subcontractorId) {
+    const { data: activeSubs } = await db
+      .from("subcontractors")
+      .select("id, delivery_areas")
+      .eq("is_active", true);
+    const area = (input.area ?? addressRow?.area ?? "").trim().toLowerCase();
+    const covering = area
+      ? (activeSubs ?? []).filter((sub) =>
+          ((sub.delivery_areas as string[] | null) ?? []).some(
+            (a) => a.trim().toLowerCase() === area,
+          ),
+        )
+      : [];
+    if (covering.length === 1) {
+      subcontractorId = covering[0].id;
+      console.log(
+        `[extract-order] no dapur from the model — assigned ${subcontractorId}, the only active kitchen covering ${area}`,
+      );
+    }
+  }
 
   const orderFields = {
       customer_id: customerId,
@@ -1146,7 +1177,7 @@ export async function createOrderFromExtraction(
       start_date: startDate,
       end_date: endDate,
       size: "s",
-      subcontractor_id: input.subcontractor_id ?? null,
+      subcontractor_id: subcontractorId,
       status: "pending_payment" as const,
       confirmed_at: new Date().toISOString(),
   };
@@ -1206,7 +1237,7 @@ export async function createOrderFromExtraction(
               portions_dinner: input.portions_dinner ?? null,
               lunch_address_slot: lunchSlot,
               dinner_address_slot: dinnerSlot,
-              subcontractor_id: input.subcontractor_id ?? null,
+              subcontractor_id: subcontractorId,
             },
             today,
           )
@@ -1219,7 +1250,7 @@ export async function createOrderFromExtraction(
           order_id: insertedOrder.id,
           meal_type: s.meal_type,
           portions: s.portions,
-          subcontractor_id: input.subcontractor_id ?? null,
+          subcontractor_id: subcontractorId,
           address_slot: s.meal_type === "dinner" ? dinnerSlot : lunchSlot,
           status: s.date < today ? "delivered" : "scheduled",
         }))

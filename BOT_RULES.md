@@ -97,6 +97,18 @@ The webhook now runs the same forced-tool `extractOrderFromConversation()` the a
 
 `createOrderFromExtraction` infers the meal preference three ways — inherit the customer's previous standing pattern, downgrade an unsupported `both_fixed` to `lunch_only`, promote a `per_day_decision` the customer's own words contradict — and then wrote `input.meal_time_preference ?? "per_day_decision"` to the row anyway. Every inference fed delivery generation and none of it reached the order, so the stored preference disagreed with the schedule sitting underneath it: an order with a week of `lunch_only` rows reading `per_day_decision`, which every downstream filter (`FIXED_SCHEDULE_PREFS`, the `generate-deliveries` cron, the daily sheet) then skips. The insert now stores the computed value.
 
+## A payment-date question is answered, not escalated
+
+"Bayar tanggal 1 bisa nggak kak?" got "saya perlu konfirmasi ke tim admin dulu" on 2026-08-21, from a customer whose package starts 2 September. Nothing expires a `pending_payment` order and no rule requires paying on the day of ordering, so the answer was yes and the bot had everything it needed to say so. The cost is not the wrong answer, it is the park: `customer_flags.pending_bot_response` went true, the bot then refused to answer anything else on the thread, and it stayed that way until a human cleared the flag by hand. The existing escalation rules only covered a side question asked *alongside* order details — this one was the whole message, so nothing caught it.
+
+The prompt now answers payment timing from the order's own dates and escalates only a payment question about something we do not offer (cicilan, faktur, a channel other than transfer).
+
+## A dapur the model omits is resolved, not left null
+
+Cindi's order was written with `subcontractor_id` null, and 33 open orders carry one. A null kitchen is invisible on `/dapur/[id]` and on the kitchen's own sheet — both filter strictly on it — so the food is never cooked and nothing says why. The tool lists `subcontractor_id` as required whenever a dapur has a menu uploaded; the model omits it anyway, and `required` is not enforced.
+
+`createOrderFromExtraction` now falls back the way an admin would: the kitchen the customer already buys from, then the only active kitchen whose `delivery_areas` covers the order's area. Two candidates is a genuine choice between kitchens and stays null. The 33 existing null orders are untouched — they are a data cleanup, not a code path.
+
 ## A split-address order carries the slot, instead of promising an admin will set it
 
 The bot has been telling customers yes to "makan siang ke kampus, makan malam ke kost" since the prompt first mentioned it — and `createOrderFromExtraction` wrote `address_slot: 1` on every row it created, hardcoded in three places (the derived recurring rows, the rows built from a model-supplied `delivery_schedule`, and the `fillMissingSchedule` backfill), with `lunch_address_slot`/`dinner_address_slot` never set on the order at all. The kitchen sheet showed one address for both meals, and nothing anywhere said the promise had been dropped: the columns, the sheet's slot-2 rendering and the order modal's toggles had all existed since migrations 044/048, and only the bot's own path ignored them. Cindi asked for exactly this on 2026-08-21 — dinner to her kost in Karawaci, lunch to UPH — and the order created that evening books both meals to the kost.
