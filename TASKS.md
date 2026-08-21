@@ -1,6 +1,6 @@
 # Open tasks
 
-Everything outstanding as of **2026-08-20**, so a fresh session can pick up without reading back through chat history. Ordered by when it bites, not by size.
+Everything outstanding as of **2026-08-22**, so a fresh session can pick up without reading back through chat history. Ordered by when it bites, not by size.
 
 Rules that apply to all of it live in `CLAUDE.md` and the topical docs it maps (`BOT_RULES.md`, `OPERATIONS.md`, `WHATSAPP.md`, `ADMIN.md`); this file is the queue, not the reference. When an item is finished, delete it here and fold anything durable into whichever doc owns that subject.
 
@@ -8,11 +8,11 @@ Rules that apply to all of it live in `CLAUDE.md` and the topical docs it maps (
 
 ## 1. Live this week — dated, will go wrong on its own
 
-### ICE BSD / INDO5 event, 21–23 Agustus (Jumat–Minggu)
+### ICE BSD / INDO5 event, 21–23 Agustus — **running now, day 2 of 3**
 
 Paid in full, Rp 3.600.000, 180 porsi. Customer `fe29dd04-05a0-4c8d-8774-b69b4ace1fe5` ("Ade Dian (INDO5) - event ICE BSD", `+6281299263995`), order `96f90894-002b-41ab-9772-9332627002e6`, 9 `daily_deliveries` rows.
 
-| Slot | Jumat 21 | Sabtu 22 | Minggu 23 | Kitchen |
+| Slot | Jum'at 21 | Sabtu 22 | Minggu 23 | Kitchen |
 |---|---|---|---|---|
 | breakfast | 07.00 | 08.00 | 08.00 | Dapur Mama Echa `2ddacfe5-8224-4378-a587-c053a3622d1b` |
 | lunch | 11.00 | 11.00 | 11.00 | Molls Kitchen `ca6f3ac1-226c-4e3f-a610-fb54f84c4717` |
@@ -20,18 +20,30 @@ Paid in full, Rp 3.600.000, 180 porsi. Customer `fe29dd04-05a0-4c8d-8774-b69b4ac
 
 20 porsi per slot. Both kitchens quote Rp 15.000/porsi → COGS Rp 2.700.000, margin Rp 900.000.
 
-Drop point: **Lobby Hall 7, booth Mastercard** (booth hitam, signage "LIVE YOUR MOTION"). PIC **Rifqi 0895-2586-6150** / **Elle 0896-9678-4101**.
-
 Still open:
 
-- **Confirm the kitchens have the PIC number and the booth detail.** We told the customer "kurir kami akan menghubungi kak Rifqi sesaat sebelum tiba" — both kitchens deliver themselves, so that promise is theirs to keep. Justin said his admin is briefing them; nobody has verified the PIC number made it into the briefing.
-- **The WhatsApp thread is no longer watched.** A `Monitor` was tailing it this session and dies when the session ends. During the event, someone has to watch the inbox by hand.
-- **Out-of-window sends will fail all weekend.** His last inbound was 2026-08-20 07:49 UTC, so free-form works until 2026-08-21 14:49 WIB — that covers Jumat 07.00 and nothing after. If he goes quiet, the `jendela_24_jam` template fallback still fails on `131042` (see §2). The only reliable channel to his side on Sabtu/Minggu is calling the PIC phones directly, not WhatsApp from our number.
-- Journals post when the daily sheet is worked; rates were set before the first delivery, so no retroactive correction is due.
+- **All 9 rows still read `status: "scheduled"`, including Jum'at 21 — which was delivered.** Proofs for that day went out by hand (breakfast `7dd9f8c7`, the 18:00 dinner sent late with an apology at 19:0x), so the food shipped and the sheet does not know it. Nothing marks the day delivered by itself: **journals post when the daily sheet is worked**, so no revenue or COGS has been posted for this event at all. Work Jum'at's sheet before the numbers are read for anything.
+- **Confirm the kitchens have the PIC number and the booth detail.** Drop point: **Lobby Hall 7, booth Mastercard** (booth hitam, signage "LIVE YOUR MOTION"), PIC **Rifqi 0895-2586-6150** / **Elle 0896-9678-4101**. We told the customer "kurir kami akan menghubungi kak Rifqi sesaat sebelum tiba" — both kitchens deliver themselves, so that promise is theirs to keep. Justin said his admin is briefing them; nobody has verified the PIC number made it into the briefing.
+- **Nobody is watching the thread.** A `Monitor` tailed it and dies with the session that armed it. During the event someone has to open the inbox by hand.
+- **Out-of-window sends fail for the rest of the event.** Free-form to his number expired 2026-08-21 14:49 WIB unless he has written since; the `jendela_24_jam` template fallback still fails `131042` (§2). The only reliable channel on Sabtu/Minggu is calling the PIC phones directly, not WhatsApp from our number.
 
-### Daevin's trial ends 23 Agustus
+### Fahmi's pause was never applied — he is being cooked for
 
-7-day work trial 17–23 Agustus, `admin` role, not hired. On the 23rd it's either an offer or a revoke. A revoke is now **one delete** — `admin_users` — since push sends filter on that table (`src/lib/push/send.ts`). His `edit_log` rows stay; that table is append-only.
+Order `35093d5c-d2be-42e1-b59d-a0514781eaa9` (Fahmi, `+6281341801449`, 20 porsi, 15 remaining, `dinner_only`) is `active` with **`pause_until` null**. He asked to pause until **2026-08-26**. Both the `generate-deliveries` cron and the daily-sheet builder skip an order only when `pause_until >= targetDate`, so with it null he keeps generating dinners he does not want and drawing quota for them. Set it via the Assistant's pause action (`POST /api/assistant/execute`, which writes `status: "paused"` + `pause_until`) so the change lands with an actor on it.
+
+### Cindi — order awaiting payment, second address still missing
+
+Customer `2f1690c9-e52b-4874-884c-27e70ec05e2a` (`+6281263655316`). Order `1e331e01-c497-4392-84d8-746a344f6d04`: 12 porsi, `pending_payment`, Rp 336.000, first delivery ~1 September, kitchen now set (Dapur 1 `52cd5e62-da09-49c9-939c-2f1246566c40`, assigned by hand 2026-08-22 along with its 12 delivery rows — see `BOT_RULES.md`, "A dapur the model omits").
+
+She wants **dinner to her kost in Karawaci, lunch to UPH**, and has not sent the UPH address yet, so `lunch_address_slot` / `dinner_address_slot` are both `1` and every row books to the kost. The amend path now carries `address_2` / `address_2_meal` (shipped `72f2c7d`), so when she sends it the bot can take it — but nothing prompts her. Ask, or set it by hand on the order before 1 September.
+
+### Vania's week is unbooked
+
+Vania `2ca04f0d-d448-4b79-aa5e-7c5140ee6dd6` (`+6281292339008`) has never been asked which days she wants next week, and her stated lunch-only pattern disagrees with the dinner rows on her order. Two other customers are also named Vania (`Vania Stella` `+6282172469880`, `vania shabrina willi` `+6285339321799`) — match on the number, not the name.
+
+### Daevin's trial ends 23 Agustus — tomorrow
+
+7-day work trial 17–23 Agustus, `admin` role, not hired. On the 23rd it is either an offer or a revoke. A revoke is now **one delete** — `admin_users` — since push sends filter on that table (`src/lib/push/send.ts`). His `edit_log` rows stay; that table is append-only.
 
 ---
 
@@ -47,6 +59,10 @@ Still open:
 ## 3. Correctness bugs, unfixed
 
 - **A stated day pattern is thrown away.** "weekdays only", "tiap jumat libur" is read by the model, restated to the customer, then lost — nothing on `orders` records which weekdays a package runs on. Generation fills Senin–Sabtu minus closures. Durable fix is a per-order weekday mask; until then a stated pattern has to be corrected by hand after payment. Two customers already hit it (Sherine Fayola, Lina Marlianty), repaired by `scripts/fix-sheet-audit-0820.ts`.
+- **The bot reads the customer's *newest* active order, not the one that should be drawn from.** `src/app/api/webhook/whatsapp/route.ts:1453` — a bare `.order("created_at", { ascending: false }).limit(1).maybeSingle()` on `status = "active"`, exactly the pattern `pickDrawOrder()` exists to replace. The row it picks feeds `portions_remaining`, `package_size` and `meal_time_preference` into the bot's context, so a customer holding two packages is quoted the balance of the wrong one. 85 customers hold two or more; Fahmi (`c23d0e79` with 0 left, `35093d5c` with 15) and Sky (`442f4cb8` with 20, `ff2b359c` pending) both do today. Fix: call `pickDrawOrder()` (`src/lib/orders/pick-draw-order.ts`) — oldest active with balance, else newest active.
+- **32 open orders still carry a null `subcontractor_id`.** Down one from 33: Cindi's was assigned by hand on 2026-08-22. **No *future* `daily_deliveries` row carries a null kitchen any more** — all 12 that did were hers — so nothing is invisible on a kitchen sheet today, and this is a latent bug rather than a live one. Of the 32: 11 have a kitchen on the customer record to fall back to, 5 resolve to the single active kitchen covering their area, 4 are genuinely ambiguous (three kitchens cover BSD Baru/BSD Lama — those need a human to choose), and 12 have no `area` at all. New orders are protected going forward: `createOrderFromExtraction` now falls back to the customer's kitchen, then to the only active kitchen covering the area (`0cac69d`). These 32 pre-date it.
+- **The Assistant's system prompt still names Agnes to the model.** `src/lib/claude/assistant-prompt.ts:29` — "admins (Justin, Annie, Agnes)". She quit and her `admin_users` row was deleted on 2026-08-20; Daevin is the current `admin`. One-line fix, but the same line will go stale again on 23 Agustus when his trial resolves — read `admin_users` instead of typing names, the way `getAssistantSystemPrompt()` already reads areas and the cutoff. Two comments also name her as the actor (`src/lib/push/send.ts:20`, `src/app/api/deliveries/addable-customers/route.ts:6`); those are history and can stay.
+- **Sky holds a `pending_payment` order with `portions_remaining = 0`.** `ff2b359c-1889-4aa4-a4df-61df70142af7` (20 porsi, `both_fixed`) sits behind the active `442f4cb8` (20 porsi, 20 remaining, nothing booked). A pending order with a zeroed counter is the shape a duplicate leaves. Check whether it is a real second purchase before anyone marks it paid.
 - **`linked_order_id` is honoured in one draw path out of four.** Only `addable-customers` (`src/app/api/deliveries/addable-customers/route.ts:65`) consults it. The daily-sheet POST, `bulk-create` and the `generate-deliveries` cron call `pickDrawOrder()` on the customer's own orders, so a linked customer charges their own (usually `pkg=0`) order. Only Darren Dior is linked today and he has not ordered since March — any new linked customer needs the other three fixed first.
 - **A size reduced after a schedule exists leaves the surplus days.** `resizePendingOrderFromMessage` (`src/lib/claude/extract-order.ts:800`) shrinks the package but calls `fillMissingSchedule`, which only ever touches an order with zero delivery rows. Nothing has hit it yet.
 - **No draw path checks the balance before writing**, so a fully-used order still goes negative. A hard reject in the daily-sheet `PUT` is unblocked for the reconciled set, but 72 customers hold a `package_size = 0` import artifact and must be backfilled first or the guard rejects their legitimate deliveries.

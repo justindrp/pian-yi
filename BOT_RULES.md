@@ -107,7 +107,9 @@ The prompt now answers payment timing from the order's own dates and escalates o
 
 Cindi's order was written with `subcontractor_id` null, and 33 open orders carry one. A null kitchen is invisible on `/dapur/[id]` and on the kitchen's own sheet — both filter strictly on it — so the food is never cooked and nothing says why. The tool lists `subcontractor_id` as required whenever a dapur has a menu uploaded; the model omits it anyway, and `required` is not enforced.
 
-`createOrderFromExtraction` now falls back the way an admin would: the kitchen the customer already buys from, then the only active kitchen whose `delivery_areas` covers the order's area. Two candidates is a genuine choice between kitchens and stays null. The 33 existing null orders are untouched — they are a data cleanup, not a code path.
+`createOrderFromExtraction` now falls back the way an admin would: the kitchen the customer already buys from, then the only active kitchen whose `delivery_areas` covers the order's area. Two candidates is a genuine choice between kitchens and stays null.
+
+The backlog was cleaned up on 2026-08-22 only as far as it was actually breaking something. **Of every future `daily_deliveries` row with a null kitchen, all 12 were Cindi's**, so her order (`1e331e01`, Karawaci — one covering kitchen, no judgement call) and those 12 rows were written to Dapur 1 by hand, guarded on `.is("subcontractor_id", null)` and logged to `edit_log` as `system:assign-kitchen` with the reason. **32 open orders still read null and are deliberately untouched**: none of them has a future delivery row, so none is invisible on a kitchen sheet, and 4 of them are a real choice between the three kitchens covering BSD Baru/BSD Lama that no fallback should make silently. The count and the buckets are in `TASKS.md` §3. Assigning a kitchen to an order that has no rows yet buys nothing and guesses on the customer's behalf.
 
 ## A split-address order carries the slot, instead of promising an admin will set it
 
