@@ -33,7 +33,7 @@ export async function analyzeCustomerMessage({
       model: SONNET_MODEL,
       ...NO_THINKING,
       max_tokens: 2000,
-      system: getAssistantSystemPrompt(),
+      system: await getAssistantSystemPrompt(),
       tools: assistantTools,
       messages: currentMessages,
     });

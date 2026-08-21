@@ -13,6 +13,7 @@ import {
   updateMessageReceipt,
 } from "@/lib/claude/conversation";
 import { isClosedHoliday } from "@/lib/holidays/id";
+import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import {
   FIXED_SCHEDULE_PREFS,
   buildRecurringDeliveryRows,
@@ -64,7 +65,7 @@ const LEARNED_CONTEXT_END = "[/AI learned context]";
 // never book a customer's named dates at order creation — only a start/end range
 // it then filled in by weekday. Cindy Angelia's 11, 12, 13, 14, 18 Agustus is
 // exactly the shape that loses (11–18 by weekday is a different set of days).
-export const EXTRACT_ORDER_PROPERTIES = {
+const EXTRACT_ORDER_PROPERTIES_BASE = {
   customer_name: { type: "string" },
   package_size: {
     type: "number",
@@ -81,10 +82,6 @@ export const EXTRACT_ORDER_PROPERTIES = {
   maps_link: {
     type: "string",
     description: "Google Maps link provided by the customer",
-  },
-  area: {
-    type: "string",
-    enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Karawaci"],
   },
   sub_area: {
     type: "string",
@@ -148,22 +145,40 @@ export const EXTRACT_ORDER_PROPERTIES = {
   },
 } as const;
 
-export const EXTRACT_ORDER_TOOL: Anthropic.Messages.Tool = {
-  name: "extract_order",
-  description:
-    "Extracts all order details the customer has already provided earlier in this conversation.",
-  input_schema: {
-    type: "object",
-    properties: EXTRACT_ORDER_PROPERTIES,
-    required: [
-      "customer_name",
-      "package_size",
-      "portions_per_delivery",
-      "address",
-      "area",
-    ],
-  },
-};
+/**
+ * The extract_order properties, with `area` constrained to the areas the active
+ * kitchens actually cover. Pass `activeDeliveryAreas(db)`.
+ *
+ * The enum used to be a literal five-name array in this file and a second,
+ * separately-drifting copy in the simulator. An area added to a kitchen would
+ * have been unrepresentable in the tool call, so the model would have had to
+ * pick a wrong one or omit a required field.
+ */
+export function extractOrderProperties(areas: string[]) {
+  return {
+    ...EXTRACT_ORDER_PROPERTIES_BASE,
+    area: { type: "string", enum: areas },
+  };
+}
+
+export function extractOrderTool(areas: string[]): Anthropic.Messages.Tool {
+  return {
+    name: "extract_order",
+    description:
+      "Extracts all order details the customer has already provided earlier in this conversation.",
+    input_schema: {
+      type: "object",
+      properties: extractOrderProperties(areas),
+      required: [
+        "customer_name",
+        "package_size",
+        "portions_per_delivery",
+        "address",
+        "area",
+      ],
+    },
+  };
+}
 
 /**
  * Re-runs order extraction against a customer's existing conversation history —
@@ -190,6 +205,7 @@ export async function extractOrderFromConversation(
     .select("id, customer_nickname")
     .eq("is_active", true)
     .not("customer_nickname", "is", null);
+  const servedAreas = await activeDeliveryAreas(db);
   const dapurList = (activeSubs ?? [])
     .map((s) => `- ${s.customer_nickname}: ${s.id}`)
     .join("\n");
@@ -221,7 +237,7 @@ ${dapurList || "none"}`;
       max_tokens: 1024,
       system,
       messages: history,
-      tools: [EXTRACT_ORDER_TOOL],
+      tools: [extractOrderTool(servedAreas)],
       tool_choice: { type: "tool", name: "extract_order" },
     });
   } catch (err) {

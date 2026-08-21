@@ -1,15 +1,8 @@
+import { knownDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { invalidateCache } from "@/lib/cache/settings";
 import { NextResponse } from "next/server";
-
-const ALLOWED_AREAS = [
-  "Alam Sutera",
-  "Gading Serpong",
-  "Karawaci",
-  "BSD Baru",
-  "BSD Lama",
-];
 
 export async function GET(req: Request) {
   const session = await getSessionWithRole();
@@ -36,14 +29,21 @@ export async function POST(req: Request) {
   const area = body.area?.trim();
   const name = body.name?.trim();
 
-  if (!area || !ALLOWED_AREAS.includes(area)) {
-    return NextResponse.json({ ok: false, error: "Invalid area" }, { status: 400 });
+  if (!area) {
+    return NextResponse.json({ ok: false, error: "area required" }, { status: 400 });
   }
   if (!name) {
     return NextResponse.json({ ok: false, error: "name required" }, { status: 400 });
   }
 
   const db = createAdminClient();
+  // The allowlist is whatever areas the kitchens actually carry — it used to be
+  // a literal five-name array here, which would have rejected any area added to
+  // a subcontractor afterwards.
+  if (!(await knownDeliveryAreas(db)).includes(area)) {
+    return NextResponse.json({ ok: false, error: "Invalid area" }, { status: 400 });
+  }
+
   const { data, error } = await db
     .from("area_neighborhoods")
     .insert({ area, name })

@@ -11,8 +11,7 @@ export default function PrivacyPage() {
       <section className="mb-6">
         <h2 className="text-base font-semibold mb-2">1. Who we are</h2>
         <p className="text-sm leading-relaxed">
-          Pian Yi Catering is a daily meal catering service operating in the
-          BSD City, Gading Serpong, Alam Sutera, and Karawaci areas of
+          Pian Yi Catering is a daily meal catering service operating in
           Tangerang Selatan, Indonesia. We can be reached at{" "}
           <a href="mailto:drpramadyo@gmail.com" className="underline">
             drpramadyo@gmail.com

@@ -4,6 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import SubcontractorsClient from "@/components/dashboard/subcontractors-client";
+import { useDeliveryAreas } from "@/hooks/use-delivery-areas";
 
 interface SettingRow { key: string; value: string; description?: string | null }
 interface PricingRow { portions: number; price_per_portion: number }
@@ -18,7 +19,12 @@ interface SettingsData {
 }
 
 const BUSINESS_KEYS = ["business_name", "instagram_handle", "bank_name", "bank_account_number", "bank_account_name"];
-const DELIVERY_KEYS = ["delivery_areas", "order_deadline_hour"];
+// `delivery_areas` is deliberately absent. The key exists in `settings` and
+// this screen used to edit it, but nothing has ever read it: coverage is the
+// union of the active subcontractors' own `delivery_areas`. Editing it here
+// changed nothing while looking authoritative, so the control is now a
+// read-only view of the real answer.
+const DELIVERY_KEYS = ["order_deadline_hour"];
 const CHATBOT_KEYS = ["chatbot_enabled", "casual_mode_probability", "typing_delay_base_seconds", "typing_delay_per_char_seconds", "typing_delay_max_seconds", "photo_match_confidence_threshold"];
 const AUTOMATION_KEYS = ["unpaid_reminder_hours", "unpaid_cancel_hours", "low_quota_first_warning", "low_quota_final_warning"];
 
@@ -231,8 +237,7 @@ function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> 
   const [form, setForm] = useState(() => Object.fromEntries(DELIVERY_KEYS.map((k) => [k, settingsMap[k] ?? ""])));
   const [confirm, setConfirm] = useState(false);
   const save = useSettingsMutation();
-  const AREAS = ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Bintaro", "Graha Raya"];
-  const selectedAreas: string[] = (() => { try { return JSON.parse(form.delivery_areas); } catch { return []; } })();
+  const areas = useDeliveryAreas();
 
   return (
     <Section title="Delivery">
@@ -240,13 +245,15 @@ function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> 
         <div>
           <p className="block text-xs text-gray-500 mb-1">Delivery areas</p>
           <div className="flex flex-wrap gap-1">
-            {AREAS.map((a) => (
-              <button key={a} type="button"
-                onClick={() => setForm((f) => ({ ...f, delivery_areas: JSON.stringify(selectedAreas.includes(a) ? selectedAreas.filter((x) => x !== a) : [...selectedAreas, a]) }))}
-                className={`px-2 py-0.5 rounded text-xs border ${selectedAreas.includes(a) ? "bg-blue-100 border-blue-300 text-blue-700" : "border-gray-200 text-gray-500"}`}
-              >{a}</button>
-            ))}
+            {areas.length === 0 ? (
+              <span className="text-xs text-gray-400">No active kitchen has any area set.</span>
+            ) : (
+              areas.map((a) => (
+                <span key={a} className="px-2 py-0.5 rounded text-xs border bg-blue-100 border-blue-300 text-blue-700">{a}</span>
+              ))
+            )}
           </div>
+          <p className="mt-1 text-xs text-gray-400">Set per kitchen under Subcontractors. This is the union of the active ones.</p>
         </div>
         <div>
           <label htmlFor="delivery-order-deadline-hour" className="block text-xs text-gray-500 mb-1">Order deadline hour (WIB)</label>

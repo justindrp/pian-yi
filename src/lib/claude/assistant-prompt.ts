@@ -1,4 +1,18 @@
-export function getAssistantSystemPrompt(): string {
+import { getSetting } from "@/lib/cache/settings";
+import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/**
+ * Async because two of its facts are data, not text. The areas used to be a
+ * five-name literal here and the deadline said "8pm" — it has been 16:00 WIB
+ * since 2026-07-08, so the Assistant was telling admins the wrong cutoff.
+ */
+export async function getAssistantSystemPrompt(): Promise<string> {
+  const [servedAreas, deadlineHour] = await Promise.all([
+    activeDeliveryAreas(createAdminClient()),
+    getSetting("order_deadline_hour"),
+  ]);
+
   const now = new Date();
   const today = now.toISOString().split("T")[0];
   const dayName = now.toLocaleDateString("en-US", {
@@ -50,8 +64,8 @@ When a customer message is forwarded to you (format: "Pesan dari pelanggan X (cu
 
 BUSINESS CONTEXT:
 - Order statuses: pending_payment → payment_proof_received → active → paused → completed. Cancellations: cancelled_unpaid, cancelled_by_customer, cancelled_by_admin, refunded
-- Delivery areas: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, Karawaci
-- Order deadline: 8pm the day before delivery
+- Delivery areas (the union of the active kitchens' coverage right now — do not assume any other area is servable): ${servedAreas.join(", ") || "none configured"}
+- Order deadline: ${deadlineHour ?? 16}:00 WIB the day before delivery, for changes and skips as well as new orders
 - Subcontractors handle delivery — names are CONFIDENTIAL, never mention them to anyone outside this admin context
 - Currency is IDR integers (26000 = Rp 26.000)
 - Pricing tiers: 5=29k, 10=28k, 20=27k, 40=26k, 60=26k, 120=25k per portion

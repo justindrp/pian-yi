@@ -23,6 +23,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  useDeliveryAreas,
+  withCurrentAreas,
+} from "@/hooks/use-delivery-areas";
 import { deriveCustomerDisplayState } from "@/lib/customers/lifecycle";
 import { matchCustomerByName, parseGrantPaste } from "@/lib/grants/parse-paste";
 import { createClient } from "@/lib/supabase/client";
@@ -132,15 +136,6 @@ const MONTHS = [
   "November",
   "December",
 ];
-const DELIVERY_AREAS = [
-  "BSD Baru",
-  "BSD Lama",
-  "Gading Serpong",
-  "Alam Sutera",
-  "Bintaro",
-  "Graha Raya",
-];
-
 // Every column the table can show, in display order. One definition drives the
 // header, the filter popover, the sort comparator and the cell — so a column
 // can never be sortable but unfilterable, or shown with no way to filter it.
@@ -410,6 +405,8 @@ export default function CustomersClient() {
     field: "name" | "area" | "sub_area";
     value: string;
   } | null>(null);
+  // Areas come from the active subcontractors, never from a list in this file.
+  const deliveryAreas = useDeliveryAreas();
   const [editForm, setEditForm] = useState({
     phone_number: "",
     name: "",
@@ -1085,7 +1082,7 @@ export default function CustomersClient() {
             className="text-sm border border-orange-400 rounded focus:outline-none px-1 py-0.5"
           >
             <option value="">&mdash;</option>
-            {DELIVERY_AREAS.map((a) => (
+            {withCurrentAreas(deliveryAreas, editingCell.value).map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>
@@ -1433,7 +1430,7 @@ export default function CustomersClient() {
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
               >
                 <option value="">— Select area —</option>
-                {DELIVERY_AREAS.map((a) => (
+                {withCurrentAreas(deliveryAreas, addForm.area).map((a) => (
                   <option key={a} value={a}>
                     {a}
                   </option>
@@ -1933,7 +1930,7 @@ export default function CustomersClient() {
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="">— Select area —</option>
-                  {DELIVERY_AREAS.map((a) => (
+                  {withCurrentAreas(deliveryAreas, editForm.area).map((a) => (
                     <option key={a} value={a}>
                       {a}
                     </option>
@@ -2135,7 +2132,7 @@ export default function CustomersClient() {
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="">— Not set —</option>
-                  {DELIVERY_AREAS.map((a) => (
+                  {withCurrentAreas(deliveryAreas, editForm.area_2).map((a) => (
                     <option key={a} value={a}>
                       {a}
                     </option>

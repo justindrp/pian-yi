@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useDeliveryAreas, withCurrentAreas } from "@/hooks/use-delivery-areas";
 
 function parseDapurNumber(nickname: string | null | undefined): number | null {
   if (!nickname) return null;
@@ -149,15 +150,64 @@ function SubMenuImageUploader({
   );
 }
 
-const AREAS = [
-  "BSD Baru",
-  "BSD Lama",
-  "Gading Serpong",
-  "Alam Sutera",
-  "Karawaci",
-  "Bintaro",
-  "Graha Raya",
-];
+/**
+ * The delivery-area picker for one kitchen.
+ *
+ * This is the screen that *defines* coverage, so it cannot read the served-area
+ * list — it is the served-area list. Its options are instead every area name any
+ * kitchen has ever carried, plus whatever this row already holds, plus a text
+ * field, because otherwise a genuinely new area could never be introduced
+ * anywhere. It used to hold a literal seven-name array that included two areas
+ * (Bintaro, Graha Raya) no kitchen has ever served.
+ */
+function AreaChips({
+  selected,
+  onToggle,
+}: {
+  selected: string[];
+  onToggle: (area: string) => void;
+}) {
+  const known = useDeliveryAreas("known");
+  const [draft, setDraft] = useState("");
+  const options = withCurrentAreas(known, ...selected);
+
+  const add = () => {
+    const name = draft.trim();
+    if (!name || options.includes(name)) return setDraft("");
+    onToggle(name);
+    setDraft("");
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-1">
+        {options.map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => onToggle(a)}
+            className={`px-2 py-0.5 rounded text-xs border ${selected.includes(a) ? "bg-blue-100 border-blue-300 text-blue-700" : "border-gray-200 text-gray-500"}`}
+          >
+            {a}
+          </button>
+        ))}
+      </div>
+      <Input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            add();
+          }
+        }}
+        onBlur={add}
+        placeholder="Add an area…"
+        className="h-7 text-xs"
+      />
+    </div>
+  );
+}
 
 async function fetchSubcontractors(): Promise<Subcontractor[]> {
   const res = await fetch("/api/subcontractors");
@@ -431,28 +481,20 @@ export default function SubcontractorsClient() {
               <Label className="block text-xs text-gray-500 mb-1 font-normal">
                 Delivery areas
               </Label>
-              <div className="flex flex-wrap gap-1">
-                {AREAS.map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    onClick={() =>
-                      setEditForm((f) => {
-                        const areas = (f.delivery_areas ?? []) as string[];
-                        return {
-                          ...f,
-                          delivery_areas: areas.includes(a)
-                            ? areas.filter((x) => x !== a)
-                            : [...areas, a],
-                        };
-                      })
-                    }
-                    className={`px-2 py-0.5 rounded text-xs border ${((editForm.delivery_areas ?? []) as string[]).includes(a) ? "bg-blue-100 border-blue-300 text-blue-700" : "border-gray-200 text-gray-500"}`}
-                  >
-                    {a}
-                  </button>
-                ))}
-              </div>
+              <AreaChips
+                selected={(editForm.delivery_areas ?? []) as string[]}
+                onToggle={(a) =>
+                  setEditForm((f) => {
+                    const areas = (f.delivery_areas ?? []) as string[];
+                    return {
+                      ...f,
+                      delivery_areas: areas.includes(a)
+                        ? areas.filter((x) => x !== a)
+                        : [...areas, a],
+                    };
+                  })
+                }
+              />
             </div>
             <div>
               <Label className="block text-xs text-gray-500 mb-1 font-normal">
@@ -687,25 +729,17 @@ export default function SubcontractorsClient() {
               <Label className="block text-xs text-gray-500 mb-1 font-normal">
                 Delivery areas
               </Label>
-              <div className="flex flex-wrap gap-1">
-                {AREAS.map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    onClick={() =>
-                      setAddForm((f) => ({
-                        ...f,
-                        delivery_areas: f.delivery_areas.includes(a)
-                          ? f.delivery_areas.filter((x) => x !== a)
-                          : [...f.delivery_areas, a],
-                      }))
-                    }
-                    className={`px-2 py-0.5 rounded text-xs border ${addForm.delivery_areas.includes(a) ? "bg-blue-100 border-blue-300 text-blue-700" : "border-gray-200 text-gray-500"}`}
-                  >
-                    {a}
-                  </button>
-                ))}
-              </div>
+              <AreaChips
+                selected={addForm.delivery_areas}
+                onToggle={(a) =>
+                  setAddForm((f) => ({
+                    ...f,
+                    delivery_areas: f.delivery_areas.includes(a)
+                      ? f.delivery_areas.filter((x) => x !== a)
+                      : [...f.delivery_areas, a],
+                  }))
+                }
+              />
             </div>
             <div className="flex gap-2 pt-2">
               <Button

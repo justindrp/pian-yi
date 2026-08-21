@@ -47,7 +47,7 @@ export const assistantTools: Tool[] = [
         area: {
           type: "string",
           description:
-            "Filter by delivery area (e.g. BSD Baru, Gading Serpong)",
+            "Filter by delivery area. The servable areas are listed in the system prompt — they come from the active kitchens and change, so never assume a name that is not there.",
         },
         subcontractor_id: {
           type: "string",
@@ -462,7 +462,7 @@ export const assistantTools: Tool[] = [
         area: {
           type: "string",
           description:
-            "Delivery area: BSD Baru, BSD Lama, Gading Serpong, Alam Sutera, or Karawaci",
+            "Delivery area. Must be one of the areas listed in the system prompt; those come from the active kitchens' coverage and change when a kitchen is added, edited or deactivated.",
         },
         name: { type: "string", description: "Customer name (optional)" },
         google_maps_link: {

@@ -2,8 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-
-const AREAS = ["Alam Sutera", "Gading Serpong", "Karawaci", "BSD Baru", "BSD Lama"];
+import { useDeliveryAreas, withCurrentAreas } from "@/hooks/use-delivery-areas";
 
 type Neighborhood = { id: string; area: string; name: string };
 
@@ -19,6 +18,12 @@ export default function AreasClient() {
     queryKey: ["neighborhoods"],
     queryFn: fetchNeighborhoods,
   });
+
+  // Every area any kitchen has ever carried, not just the served ones: a
+  // neighborhood filed under an area whose last kitchen went inactive still has
+  // to be visible and deletable.
+  const known = useDeliveryAreas("known");
+  const areas = withCurrentAreas(known, ...(data ?? []).map((n) => n.area));
 
   const addMutation = useMutation({
     mutationFn: (vars: { area: string; name: string }) =>
@@ -41,7 +46,7 @@ export default function AreasClient() {
   });
 
   const byArea: Record<string, Neighborhood[]> = {};
-  for (const area of AREAS) byArea[area] = [];
+  for (const area of areas) byArea[area] = [];
   for (const n of data ?? []) {
     if (byArea[n.area]) byArea[n.area].push(n);
   }
@@ -56,7 +61,7 @@ export default function AreasClient() {
       {isLoading ? (
         <div className="text-sm text-gray-400">Loading...</div>
       ) : (
-        AREAS.map((area) => (
+        areas.map((area) => (
           <AreaPanel
             key={area}
             area={area}

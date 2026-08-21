@@ -168,11 +168,15 @@ pian-yi/
 │   │   │   └── compress.ts (image compression before upload, e.g. menu/proof photos)
 │   │   ├── push/
 │   │   │   └── send.ts (web-push wrapper)
+│   │   ├── subcontractors/
+│   │   │   └── areas.ts (**the only source of delivery-area strings.** `activeDeliveryAreas(db)` = union over `is_active` kitchens; `knownDeliveryAreas(db)` = union over all of them, for the two screens that define coverage; `unionAreas(rows)` for callers that already hold the rows. Never type an area list anywhere else)
 │   │   ├── utils/ — shared formatting/timing helpers
 │   │   │   ├── delay.ts (dynamic typing delay)
-│   │   │   └── format.ts (currency, dates, getDeliveryRoute())
+│   │   │   └── format.ts (currency, dates, getDeliveryRoute() — still a literal five-area→route map, see `TASKS.md`)
 │   │   ├── env.ts (typed required-env-var accessor)
 │   │   └── utils.ts (generic helpers, e.g. `cn()` classname merge for shadcn)
+│   ├── hooks/
+│   │   └── use-delivery-areas.ts (client side of the above: `useDeliveryAreas("active" | "known")` over `GET /api/areas`, plus `withCurrentAreas()` so a record filed under a no-longer-served area still renders its own value)
 │   ├── components/
 │   │   ├── ui/ (shadcn primitives)
 │   │   ├── dashboard/ — **where the actual page logic/UI lives.** Every `app/(dashboard)/*/page.tsx` is just a thin wrapper importing its matching `*-client.tsx` here

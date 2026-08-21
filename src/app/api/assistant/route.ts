@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       model: SONNET_MODEL,
       ...NO_THINKING,
       max_tokens: 2000,
-      system: getAssistantSystemPrompt(),
+      system: await getAssistantSystemPrompt(),
       tools: assistantTools,
       messages: currentMessages,
     });
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
       model: SONNET_MODEL,
       ...NO_THINKING,
       max_tokens: 2000,
-      system: getAssistantSystemPrompt(),
+      system: await getAssistantSystemPrompt(),
       messages: currentMessages,
     });
     const textBlock = wrapUp.content.find((b) => b.type === "text");

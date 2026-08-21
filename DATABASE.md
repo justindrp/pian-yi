@@ -240,7 +240,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | phone_number | text | WhatsApp number in international format (+628...). Unique — partial index `customers_phone_number_unique` (migration 065) excluding `IMPORT_%` slugs. Always write the canonical `+62` form; before migration 065 the same person could exist twice as `+628...` and `628...` |
 | name | text | Full name (filled in when they place an order) |
 | address | text | Delivery address |
-| area | text | Delivery zone (e.g. "BSD Baru", "Gading Serpong") |
+| area | text | Delivery zone. The permitted values are the union of the active subcontractors' `delivery_areas`, read at request time — every dropdown that offers this field now derives its options from `/api/areas` |
 | sub_area | text | Sub-location within the area: district name for houses, apartment name for apartments, building name for offices |
 | address_type | text | "house", "apartment", or "office" — classified by Sonnet at order time |
 | google_maps_link | text | Google Maps URL for the delivery address |
@@ -545,9 +545,9 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | customer_nickname | text | Customer-facing name shown in the chatbot (e.g. "Dapur A") |
 | admin_phone | text | Primary WhatsApp number for the kitchen admin |
 | admin_phone_2 | text | Secondary WhatsApp number |
-| delivery_areas | json | Array of area strings **this kitchen** serves (e.g. `["BSD Baru", "Gading Serpong"]`). Each kitchen has its own list and the lists overlap only in part; the areas Pian Yi offers are the union of this column across rows with `is_active = true`, computed at read time and never stored anywhere else. Editing this column, or flipping `is_active`, changes what the chatbot tells customers. See "Delivery areas" in `OPERATIONS.md` |
+| delivery_areas | json | Array of area strings **this kitchen** serves. Each kitchen has its own list and the lists overlap only in part; the areas Pian Yi offers are the union of this column across rows with `is_active = true`, computed at read time by `activeDeliveryAreas()` / `unionAreas()` (`src/lib/subcontractors/areas.ts`) and never stored anywhere else. **This column is the only source** — not `settings.delivery_areas` (which exists, is written by nothing that reads it, and is no longer editable in the UI), and not a literal in code. Editing this column, or flipping `is_active`, changes what the chatbot tells customers. See "Delivery areas" in `OPERATIONS.md` |
 | cost_per_portion | integer | What we pay per portion in IDR — used for Route 2 (kitchen delivers) |
-| cost_per_portion_route1 | integer | Override cost for Route 1 (we use own courier, cheaper). NULL = same as cost_per_portion. Thenie: 19,500 (R1) / 21,000 (R2) |
+| cost_per_portion_route1 | integer | Override cost for Route 1 (we use own courier, cheaper). NULL = same as cost_per_portion. Per kitchen — never quote a figure from memory, read the row |
 | menu_image_url | text | URL of the current weekly menu image (shown to new customers). Inactive kitchens keep their last image forever — nobody refreshes it once they stop cooking, so every read of this column must filter `is_active = true`. The `send_menu_image` tool did not, and sent customers a live menu plus a two-month-old one. |
 | menu_text | text | Plain-text menu description injected into the chatbot system prompt |
 | menu_week_start | date | Monday of the week `menu_image_url` covers. Added in migration 066 because nothing recorded the week, so the prompt hardcoded "always the current week" and the bot refused to send an already-uploaded next-week menu. Defaulted on upload by `defaultMenuWeekStart()` (Thursday onward → next week) and editable on the subcontractor form — the upload day is a guess, not the answer. Null means unknown, and the bot then makes no claim about which week it holds. |

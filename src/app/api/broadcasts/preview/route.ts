@@ -49,7 +49,7 @@ Message template rules:
 - Written in Indonesian, warm and friendly
 - Start with "Halo kak {name}," — always use {name} placeholder
 - Under 150 words
-- No subcontractor names (Santapin, Thenie) — say "kami" instead
+- Never name a partner kitchen — not any of them, and the list changes. Say "kami", or the customer-facing nickname if one is needed
 - No bank account details
 
 Respond ONLY with valid JSON in this exact shape:

@@ -503,7 +503,7 @@ For any other custom request (e.g. no gluten, extra spicy, ingredient substituti
 
 ## Confidentiality (critical)
 - Never mention subcontractors or external kitchens by their real name
-- Always use the customer-facing dapur nickname — never say "Santapin", "Thenie", or any subcontractor name
+- Always use the customer-facing dapur nickname. Never say a partner kitchen's real name — the rule covers every kitchen we work with, present and future, not a list you were given
 - Never reveal margins, COGS, or operations
 ${params.dapurOptions.length > 0 ? `\n## Dapur ID mapping (for extract_order tool only — never show these IDs to the customer)\n${params.dapurOptions.map((d) => `- ${d.nickname}: ${d.id}`).join("\n")}` : ""}
 

@@ -7,6 +7,8 @@ import { addDays } from "@/lib/time/jakarta";
 import { getNeighborhoods } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { extractOrderProperties } from "@/lib/claude/extract-order";
+import { unionAreas } from "@/lib/subcontractors/areas";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -52,9 +54,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     .filter((s) => !!s.menu_image_url && !!s.menu_text)
     .map((s) => ({ nickname: s.customer_nickname, menuText: s.menu_text as string }));
 
-  const servedAreas = [
-    ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
-  ].sort();
+  const servedAreas = unionAreas(rawSubs);
 
   const neighborhoods = await getNeighborhoods();
 
@@ -107,38 +107,10 @@ export async function POST(req: NextRequest): Promise<Response> {
         "Called when customer has confirmed their order summary with YA. Extracts all order details.",
       input_schema: {
         type: "object",
-        properties: {
-          customer_name: { type: "string" },
-          package_size: { type: "number" },
-          portions_per_delivery: { type: "number" },
-          address: { type: "string" },
-          maps_link: { type: "string" },
-          area: {
-            type: "string",
-            enum: ["BSD Baru", "BSD Lama", "Gading Serpong", "Alam Sutera", "Karawaci"],
-          },
-          sub_area: { type: "string" },
-          meal_time_preference: {
-            type: "string",
-            enum: [
-              "lunch_only",
-              "dinner_only",
-              "both_fixed",
-              "per_day_decision",
-              "default_lunch",
-              "default_dinner",
-              "custom_schedule",
-            ],
-          },
-          start_date: { type: "string" },
-          end_date: { type: "string" },
-          subcontractor_id: { type: "string" },
-          size: {
-            type: "string",
-            enum: ["s"],
-            description: "Package size. Current customer-facing chatbot orders must use s; do not ask the customer about M.",
-          },
-        },
+        // The shared schema, not a copy. This file used to hold its own — with
+        // its own five-name area enum and no `delivery_schedule` — so the
+        // simulator was testing a tool the live bot does not have.
+        properties: extractOrderProperties(servedAreas),
         required: [
           "customer_name",
           "package_size",

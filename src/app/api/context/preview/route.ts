@@ -4,6 +4,7 @@ import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { unionAreas } from "@/lib/subcontractors/areas";
 
 export const dynamic = "force-dynamic";
 
@@ -52,9 +53,7 @@ export async function GET(): Promise<Response> {
       menuText: s.menu_text as string,
     }));
 
-  const servedAreas = [
-    ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
-  ].sort();
+  const servedAreas = unionAreas(rawSubs);
 
   const neighborhoods = await getNeighborhoods();
 

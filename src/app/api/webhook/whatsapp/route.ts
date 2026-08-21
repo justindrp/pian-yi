@@ -20,7 +20,7 @@ import {
 } from "@/lib/claude/conversation";
 import {
   createOrderFromExtraction,
-  EXTRACT_ORDER_PROPERTIES,
+  extractOrderProperties,
   type ExtractedOrderInput,
   applyLatestCustomerSize,
   contractPrice,
@@ -72,6 +72,7 @@ import {
 } from "@/lib/whatsapp/types";
 import { verifySignature } from "@/lib/whatsapp/webhook";
 import { WINDOW_NOTICE_WELCOME } from "@/lib/whatsapp/window-notice";
+import { unionAreas } from "@/lib/subcontractors/areas";
 
 // Phrases the model uses to say it is creating the order right now. Matched only
 // to catch a turn where it said this and called no tool.
@@ -1088,14 +1089,7 @@ export async function processWebhookAsync(
             ? `Kami ada 1 dapur dengan 1 menu:\n• ${activeDapurs[0].customer_nickname}`
             : `Kami ada ${n} dapur dengan ${n} menu berbeda:\n${activeDapurs.map((s) => `• ${s.customer_nickname}`).join("\n")}`;
 
-      const uniqueAreas = [
-        ...new Set(
-          activeDapurs.flatMap(
-            (s) =>
-              (s as { delivery_areas?: string[] | null }).delivery_areas ?? [],
-          ),
-        ),
-      ].sort();
+      const uniqueAreas = unionAreas(activeDapurs);
       const areasText =
         uniqueAreas.length <= 1
           ? (uniqueAreas[0] ?? "")
@@ -1481,9 +1475,7 @@ export async function processSavedCustomerMessage(params: {
       nickname: s.customer_nickname,
       menuText: s.menu_text as string,
     }));
-  const servedAreas = [
-    ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
-  ].sort();
+  const servedAreas = unionAreas(rawSubs);
   const neighborhoods = await getNeighborhoods();
   const activeOrder = activeOrderRow
     ? {
@@ -1539,7 +1531,7 @@ export async function processSavedCustomerMessage(params: {
         'Creates the customer\'s order. Call this as soon as the customer has agreed to a package — any affirmative counts ("ya", "iya", "oke", "sip", "boleh", "saya join", a thumbs-up), not only the literal word "YA" — and you have their name, address and total portions. Call it also when a customer sends a payment proof and no order exists yet. Never ask for confirmation a second time instead of calling this.',
       input_schema: {
         type: "object",
-        properties: EXTRACT_ORDER_PROPERTIES,
+        properties: extractOrderProperties(servedAreas),
         required: [
           "customer_name",
           "package_size",
