@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import type { Database } from "@/types/database";
+import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -144,24 +146,47 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = (await req.json()) as {
-    name?: string;
-    notes?: string;
-    linked_order_id?: string | null;
-    delivery_route?: number | null;
-    contract_price_per_portion?: number | null;
-  };
-  const update: {
-    name?: string;
-    notes?: string;
-    linked_order_id?: string | null;
-    delivery_route?: number | null;
-    contract_price_per_portion?: number | null;
-  } = {};
-  if (body.name !== undefined) update.name = body.name.trim();
-  if (body.notes !== undefined) update.notes = body.notes;
-  if (body.linked_order_id !== undefined) update.linked_order_id = body.linked_order_id || null;
-  if (body.delivery_route !== undefined) update.delivery_route = body.delivery_route;
+  const body = (await req.json()) as Record<string, unknown>;
+
+  // Allowlist. The Customers screen used to write these columns straight from
+  // the browser with the user-scoped client, which meant an edit landed with no
+  // record of who made it — the same screen where an address, an area or a
+  // contract rate gets changed. Everything it edits now comes through here.
+  // Money and quota columns are deliberately absent: total_payment,
+  // total_portions and portions_remaining are server-derived.
+  const TEXT_FIELDS = [
+    "phone_number",
+    "name",
+    "address",
+    "area",
+    "sub_area",
+    "subcontractor_id",
+    "address_type",
+    "delivery_phone",
+    "google_maps_link",
+    "meal_time_preference",
+    "ad_creative",
+    "promo_used",
+    "notes",
+    "address_2",
+    "area_2",
+    "sub_area_2",
+    "google_maps_link_2",
+    "linked_order_id",
+  ] as const;
+
+  const update: Record<string, unknown> = {};
+  for (const field of TEXT_FIELDS) {
+    if (body[field] === undefined) continue;
+    const raw = body[field];
+    const trimmed = raw === null ? null : String(raw).trim();
+    update[field] = trimmed || null;
+  }
+  if (body.converted_to_subscription !== undefined)
+    update.converted_to_subscription = Boolean(body.converted_to_subscription);
+  if (body.delivery_route !== undefined)
+    update.delivery_route =
+      body.delivery_route === null ? null : Number(body.delivery_route);
   // A corporate rate; null restores ordinary tier pricing.
   if (body.contract_price_per_portion !== undefined)
     update.contract_price_per_portion =
@@ -182,15 +207,34 @@ export async function PATCH(
       { status: 400 },
     );
   }
+  if ("phone_number" in update && !update.phone_number) {
+    return NextResponse.json(
+      { ok: false, error: "Missing phone_number" },
+      { status: 400 },
+    );
+  }
+  update.updated_at = new Date().toISOString();
 
   const db = createAdminClient();
-  const { error } = await db.from("customers").update(update).eq("id", id);
+  const { error } = await db
+    .from("customers")
+    .update(update as Database["public"]["Tables"]["customers"]["Update"])
+    .eq("id", id);
   if (error) {
     return NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 },
     );
   }
+
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "customers",
+    entityId: id,
+    action: "update",
+    changes: update,
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -256,6 +300,17 @@ export async function DELETE(
       { status: 500 },
     );
   }
+
+  // Everything else about this customer is now gone — their orders, deliveries
+  // and conversations included. This line is the record that it was deliberate.
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "customers",
+    entityId: id,
+    action: "delete",
+    changes: { deleted_customer_id: id, cascaded: ["orders", "daily_deliveries", "conversations"] },
+  });
 
   return NextResponse.json({ ok: true });
 }

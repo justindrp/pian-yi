@@ -101,11 +101,17 @@ export default function PaymentsClient() {
       orderId: string;
       reason: string;
     }) => {
-      const { error } = await supabase
-        .from("orders")
-        .update({ status: "pending_payment", cancellation_reason: reason })
-        .eq("id", orderId);
-      if (error) throw error;
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: orderId,
+          action: "reject_payment_proof",
+          reason,
+        }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Failed");
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });

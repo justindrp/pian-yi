@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
+import { logEdit } from "@/lib/audit/log-edit";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
 import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
@@ -203,6 +204,23 @@ export async function POST(req: NextRequest): Promise<Response> {
     .update({ portions_remaining: (custQuota?.portions_remaining ?? 0) + packageSize })
     .eq("id", body.customer_id);
 
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "orders",
+    entityId: order.id,
+    action: "create",
+    changes: {
+      customer_id: body.customer_id,
+      package_size: packageSize,
+      price_per_portion: body.price_per_portion,
+      total_price: totalPrice,
+      status: body.status,
+      subcontractor_id: body.subcontractor_id,
+      scheduled_dates: hasSchedule ? schedule.length : 0,
+    },
+  });
+
   if (!hasSchedule) return NextResponse.json({ ok: true, data: order });
 
   // Fetch subcontractor cost for COGS journals
@@ -320,17 +338,20 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     action:
       | "mark_paid"
       | "mark_payment_proof_received"
+      | "reject_payment_proof"
       | "update_size"
       | "update_fields"
       | "update_status";
     size?: "s" | "m";
     status?: string;
+    reason?: string;
     fields?: Record<string, unknown>;
   };
   if (
     !body.id ||
     (body.action !== "mark_paid" &&
       body.action !== "mark_payment_proof_received" &&
+      body.action !== "reject_payment_proof" &&
       body.action !== "update_size" &&
       body.action !== "update_fields" &&
       body.action !== "update_status")
@@ -353,6 +374,44 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         { ok: false, error: error.message },
         { status: 500 },
       );
+    await logEdit({
+      db,
+      actor: user.email ?? "",
+      entityType: "orders",
+      entityId: body.id,
+      action: "mark_payment_proof_received",
+      changes: { status: "payment_proof_received" },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // Rejecting a payment proof sends the order back to pending_payment with the
+  // reason attached. The Payments screen used to do this straight from the
+  // browser, which left no record of who rejected a customer's transfer.
+  if (body.action === "reject_payment_proof") {
+    const { error } = await db
+      .from("orders")
+      .update({
+        status: "pending_payment",
+        cancellation_reason: body.reason ?? null,
+      })
+      .eq("id", body.id);
+    if (error)
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
+    await logEdit({
+      db,
+      actor: user.email ?? "",
+      entityType: "orders",
+      entityId: body.id,
+      action: "reject_payment_proof",
+      changes: {
+        status: "pending_payment",
+        cancellation_reason: body.reason ?? null,
+      },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -371,6 +430,14 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         { ok: false, error: error.message },
         { status: 500 },
       );
+    await logEdit({
+      db,
+      actor: user.email ?? "",
+      entityType: "orders",
+      entityId: body.id,
+      action: "update_size",
+      changes: { size: body.size },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -435,6 +502,14 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         { ok: false, error: error.message },
         { status: 500 },
       );
+    await logEdit({
+      db,
+      actor: user.email ?? "",
+      entityType: "orders",
+      entityId: body.id,
+      action: "update_fields",
+      changes: update,
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -458,6 +533,14 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         { ok: false, error: error.message },
         { status: 500 },
       );
+    await logEdit({
+      db,
+      actor: user.email ?? "",
+      entityType: "orders",
+      entityId: body.id,
+      action: "update_status",
+      changes: update,
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -485,6 +568,19 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       { ok: false, error: updateErr.message },
       { status: 500 },
     );
+
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "orders",
+    entityId: body.id,
+    action: "mark_paid",
+    changes: {
+      status: "active",
+      total_price: order.total_price,
+      customer_id: order.customer_id,
+    },
+  });
 
   // Record conversion on first payment (fire-and-forget)
   const convCustomerId = order.customer_id;
@@ -641,6 +737,17 @@ export async function DELETE(req: NextRequest): Promise<Response> {
       { ok: false, error: delOrder.error.message },
       { status: 500 },
     );
+
+  // The order row is gone, so this line is the only remaining record that it
+  // ever existed. Deleting an order also deletes its deliveries.
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "orders",
+    entityId: body.id,
+    action: "delete",
+    changes: { deleted_order_id: body.id, deleted_deliveries: true },
+  });
 
   return NextResponse.json({ ok: true });
 }

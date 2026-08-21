@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
 
 export default function KillSwitch({
   initialEnabled,
@@ -24,11 +23,15 @@ export default function KillSwitch({
   async function applyToggle(newValue: boolean) {
     setLoading(true);
     setShowConfirm(false);
-    const supabase = createClient();
-    await supabase
-      .from("settings")
-      .update({ value: String(newValue), updated_at: new Date().toISOString() })
-      .eq("key", "chatbot_enabled");
+    // Through the settings API rather than the browser client: it records who
+    // flipped the switch in edit_log, and it invalidates the settings cache —
+    // the direct write did neither, so the bot could stay on for a full cache
+    // TTL after someone had turned it off.
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ updates: { chatbot_enabled: String(newValue) } }),
+    });
     setEnabled(newValue);
     setLoading(false);
   }

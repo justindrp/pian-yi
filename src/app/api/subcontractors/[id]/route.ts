@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -55,6 +56,19 @@ export async function PATCH(
     .single();
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  // is_active and delivery_areas are the two that reach customers: deactivating
+  // a kitchen can remove a delivery area outright, since some areas rest on a
+  // single kitchen.
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "subcontractors",
+    entityId: id,
+    action: "update",
+    changes: allowed,
+  });
+
   return NextResponse.json({ ok: true, data });
 }
 

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { sendDeliveryPhotoToCustomer } from "@/lib/claude/photo-matcher";
+import { logEdit } from "@/lib/audit/log-edit";
 import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -54,7 +55,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
 
   if (body.action === "send" && body.customer_id) {
-    await sendDeliveryPhotoToCustomer(body.id, body.customer_id);
+    await sendDeliveryPhotoToCustomer(body.id, body.customer_id, undefined, user.email);
     await db.from("delivery_proofs").update({
       matched_customer_id: body.customer_id,
       match_method: "manual",
@@ -65,6 +66,15 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   } else if (body.action === "unmatch") {
     await db.from("delivery_proofs").update({ status: "unmatched" }).eq("id", body.id);
   }
+
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "delivery_proofs",
+    entityId: body.id,
+    action: body.action,
+    changes: { customer_id: body.customer_id ?? null },
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -143,6 +153,16 @@ export async function DELETE(req: NextRequest): Promise<Response> {
 
   const { error } = await db.from("delivery_proofs").delete().eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  // The proof row and its image are both gone; this is what is left of it.
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "delivery_proofs",
+    entityId: id,
+    action: "delete",
+    changes: { image_url: proof?.image_url ?? null },
+  });
 
   return NextResponse.json({ ok: true });
 }

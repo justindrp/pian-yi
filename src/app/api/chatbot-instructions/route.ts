@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logEdit } from "@/lib/audit/log-edit";
 import { invalidateCache } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -37,6 +38,16 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "chatbot_instructions",
+    entityId: data.id,
+    action: "create",
+    changes: { instruction: body.instruction, description: body.description ?? null },
+  });
+
   invalidateCache();
   return NextResponse.json({ ok: true, data });
 }
@@ -63,6 +74,18 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .single();
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  // These lines go into the bot's system prompt, so an edit here changes what
+  // every customer is told from the next message on.
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "chatbot_instructions",
+    entityId: id,
+    action: "update",
+    changes: fields,
+  });
+
   invalidateCache();
   return NextResponse.json({ ok: true, data });
 }
@@ -77,6 +100,16 @@ export async function DELETE(req: NextRequest): Promise<Response> {
   const { error } = await db.from("chatbot_instructions").delete().eq("id", id);
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "chatbot_instructions",
+    entityId: id,
+    action: "delete",
+    changes: { instruction_id: id },
+  });
+
   invalidateCache();
   return NextResponse.json({ ok: true });
 }

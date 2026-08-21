@@ -770,9 +770,12 @@ export default function CustomersClient() {
       contract_price_per_portion: string;
     }) => {
       if (!selected) return;
-      const { error } = await supabase
-        .from("customers")
-        .update({
+      // Through the API, not the browser client: the route is what writes the
+      // edit_log row naming whoever made the change.
+      const res = await fetch(`/api/customers/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           phone_number: form.phone_number,
           name: form.name,
           address: form.address,
@@ -797,10 +800,10 @@ export default function CustomersClient() {
           contract_price_per_portion: form.contract_price_per_portion.trim()
             ? Number(form.contract_price_per_portion)
             : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", selected.id);
-      if (error) throw error;
+        }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Gagal menyimpan pelanggan");
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["customers-list"] });
@@ -1024,10 +1027,11 @@ export default function CustomersClient() {
         : field === "area"
           ? { area: value || null }
           : { sub_area: value || null };
-    await supabase
-      .from("customers")
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq("id", id);
+    await fetch(`/api/customers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
     void queryClient.invalidateQueries({ queryKey: ["customers-list"] });
   }
 

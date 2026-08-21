@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logEdit } from "@/lib/audit/log-edit";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -74,6 +75,15 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   if (error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  await logEdit({
+    db,
+    actor: user.email ?? "",
+    entityType: "daily_deliveries",
+    entityId: customer_id,
+    action: "bulk_create",
+    changes: { order_id: order.id, deliveries },
+  });
 
   return NextResponse.json({ ok: true, data: { count: rows.length } });
 }

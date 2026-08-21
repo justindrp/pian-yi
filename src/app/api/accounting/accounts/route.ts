@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
@@ -86,6 +87,15 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (error || !data) {
     return NextResponse.json({ ok: false, error: error?.message ?? "Gagal menyimpan akun" }, { status: 500 });
   }
+
+  await logEdit({
+    db,
+    actor: session.email,
+    entityType: "accounts",
+    entityId: data.id,
+    action: "create",
+    changes: { code, name, type, category },
+  });
 
   return NextResponse.json({ ok: true, data });
 }

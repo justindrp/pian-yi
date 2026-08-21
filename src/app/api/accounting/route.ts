@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
@@ -80,6 +81,15 @@ export async function DELETE(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
   const { error } = await db.from("journals").delete().eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  await logEdit({
+    db,
+    actor: session.email,
+    entityType: "journals",
+    entityId: id,
+    action: "delete",
+    changes: { journal_id: id },
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -196,6 +206,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ ok: false, error: linesErr.message }, { status: 500 });
   }
 
+  await logEdit({
+    db,
+    actor: session.email,
+    entityType: "journals",
+    entityId: journal.id,
+    action: "create",
+    changes: { date, description, lines },
+  });
+
   return NextResponse.json({ ok: true, data: { id: journal.id, reference: journal.reference } });
 }
 
@@ -285,6 +304,17 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     })),
   );
   if (linesErr) return NextResponse.json({ ok: false, error: linesErr.message }, { status: 500 });
+
+  // A manual journal edit rewrites its lines wholesale, so the previous version
+  // is gone from journal_lines — this row is the only record it changed.
+  await logEdit({
+    db,
+    actor: session.email,
+    entityType: "journals",
+    entityId: id,
+    action: "update",
+    changes: { date, description, notes, lines },
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -1,3 +1,4 @@
+import { logEdit } from "@/lib/audit/log-edit";
 import { knownDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
@@ -57,6 +58,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
+  await logEdit({
+    db,
+    actor: session.email,
+    entityType: "area_neighborhoods",
+    entityId: data.id,
+    action: "create",
+    changes: { area, name },
+  });
+
   invalidateCache();
   return NextResponse.json({ ok: true, data });
 }
@@ -72,6 +82,15 @@ export async function DELETE(req: Request) {
   const db = createAdminClient();
   const { error } = await db.from("area_neighborhoods").delete().eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  await logEdit({
+    db,
+    actor: session.email,
+    entityType: "area_neighborhoods",
+    entityId: String(id),
+    action: "delete",
+    changes: { neighborhood_id: id },
+  });
 
   invalidateCache();
   return NextResponse.json({ ok: true });

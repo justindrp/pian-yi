@@ -54,6 +54,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       content: text.trim(),
       model_used: "human",
       message_type: "text",
+      sent_by: session.email,
     })
     .select()
     .single();

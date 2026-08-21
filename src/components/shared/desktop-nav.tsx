@@ -12,6 +12,7 @@ import {
   Sparkles,
   BookOpen,
   Settings,
+  History,
   HelpCircle,
   LogOut,
   ChefHat,
@@ -38,6 +39,7 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/broadcasts": Megaphone,
   "/assistant": Sparkles,
   "/accounting": BookOpen,
+  "/activity": History,
   "/settings": Settings,
   "/dapur/52cd5e62-da09-49c9-939c-2f1246566c40": ChefHat,
 };

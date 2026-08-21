@@ -109,6 +109,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       role: "assistant",
       content: polished_text.trim(),
       modelUsed: HAIKU_MODEL,
+      // The model wrote the words, an admin chose to send them. Both matter,
+      // so both are recorded.
+      sentBy: user.email,
     });
     const messageId = await sendTextMessage(
       customer.phone_number,
@@ -196,6 +199,7 @@ Rewrite ONLY the admin's note as the bot's reply:`,
     role: "assistant",
     content: result,
     modelUsed: HAIKU_MODEL,
+    sentBy: user.email,
   });
   const messageId = await sendTextMessage(customer.phone_number, result);
   await updateMessageReceipt({

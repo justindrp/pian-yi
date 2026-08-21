@@ -156,6 +156,9 @@ export async function sendDeliveryPhotoToCustomer(
   proofId: string,
   customerId: string,
   deliveries?: DeliveryRow[],
+  // Set when an admin pressed Send on the Proofs screen. Left undefined by the
+  // automatic matcher, which is the bot acting on its own.
+  sentBy?: string,
 ): Promise<void> {
   const db = createAdminClient();
 
@@ -212,6 +215,7 @@ export async function sendDeliveryPhotoToCustomer(
     content: proof.image_url,
     messageType: "image",
     modelUsed: "human",
+    sentBy: sentBy ?? null,
   });
   const messageId = await sendImageTemplate(
     phone,

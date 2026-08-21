@@ -15,6 +15,14 @@ Two roles, stored in `admin_users.role`:
 
 New admins default to `admin` role. Role is enforced at two layers: nav item hidden in layout, and server-side redirect / HTTP 403 on the page and API route. Role helper: `src/lib/supabase/get-role.ts` exports `getSessionWithRole()` and `isOwner(role)`.
 
+## Who did what
+
+`/activity` (nav: **Activity**, visible to both roles) reads the `edit_log` timeline through `GET /api/audit` — filter by type or by admin email, click a row to see the fields written. Every dashboard write goes through an API route that calls `logEdit()` (`src/lib/audit/log-edit.ts`); the coverage list and the deliberate omissions are in the `edit_log` section of `DATABASE.md`.
+
+The question that started this was "who sent that delivery proof?" — answerable then only because `delivery_proofs.sent_by` happened to exist. An order marked paid, a customer's address changed, a kitchen deactivated, the bot's kill switch flipped: none of those recorded anyone. Three screens were writing to Postgres straight from the browser, where no route runs and nothing can be recorded — **a new dashboard write means a new API route, never a `supabase.from(...).update()` in a client component.**
+
+Hand-typed customer messages now carry `conversations.sent_by`. `model_used = "human"` only ever said a human typed it, so both of the messages sent to the ICE BSD thread on 2026-08-21 were anonymous, and telling them apart meant reading `delivery_proofs.sent_by` for the one that happened to be a proof. Historical rows stay null; nothing backfills them, because there is nothing to backfill them from.
+
 ## Assistant
 
 - **`query_customers` returns `portions_remaining`**, summed across the customer's open orders (`active` / `paused` / `payment_proof_received`, `portions_remaining > 0`) — never from the dead `customers.portions_remaining` column. "Sisa kuota berapa?" used to need a second tool call the model rarely made, and it could not answer for Nicholas Satria at all on 2026-08-19. `query_orders` also returns `portions_remaining` and `meal_time_preference`, and takes `customer_name` as well as `customer_phone` (matched on the last 9 digits, so the stored format no longer has to be guessed).

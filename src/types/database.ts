@@ -311,6 +311,7 @@ export type Database = {
           model_used: string | null
           output_tokens: number | null
           role: string
+          sent_by: string | null
           whatsapp_error: Json | null
           whatsapp_status: string | null
           whatsapp_status_updated_at: string | null
@@ -329,6 +330,7 @@ export type Database = {
           model_used?: string | null
           output_tokens?: number | null
           role: string
+          sent_by?: string | null
           whatsapp_error?: Json | null
           whatsapp_status?: string | null
           whatsapp_status_updated_at?: string | null
@@ -347,6 +349,7 @@ export type Database = {
           model_used?: string | null
           output_tokens?: number | null
           role?: string
+          sent_by?: string | null
           whatsapp_error?: Json | null
           whatsapp_status?: string | null
           whatsapp_status_updated_at?: string | null

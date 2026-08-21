@@ -133,7 +133,12 @@ describe("PATCH /api/deliveries/proofs", () => {
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
-    expect(sendDeliveryPhotoToCustomer).toHaveBeenCalledWith("proof-1", "cust-9");
+    expect(sendDeliveryPhotoToCustomer).toHaveBeenCalledWith(
+      "proof-1",
+      "cust-9",
+      undefined,
+      "admin@example.com",
+    );
     expect(db.chains.delivery_proofs.update).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "manually_sent",

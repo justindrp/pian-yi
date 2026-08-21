@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
+import { logEdit } from "@/lib/audit/log-edit";
 import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
@@ -82,6 +83,10 @@ export async function POST(request: Request) {
     );
   }
 
+  // Captured once: the closures below outlive the null check above, and TS
+  // will not carry the narrowing into them.
+  const actor = session.email;
+
   const { tool, input, conversationId } = body;
   if (!tool || !input || (tool !== "batch" && !WRITE_TOOLS.has(tool))) {
     return NextResponse.json(
@@ -149,6 +154,7 @@ export async function POST(request: Request) {
         role: "assistant",
         content: message,
         modelUsed: "human",
+        sentBy: actor,
       });
       await updateMessageReceipt({
         conversationId,
@@ -177,6 +183,7 @@ export async function POST(request: Request) {
         content: imageUrl,
         messageType: "image",
         modelUsed: "human",
+        sentBy: actor,
       });
       await updateMessageReceipt({
         conversationId,
@@ -185,6 +192,26 @@ export async function POST(request: Request) {
       });
     }
   }
+
+  // One row per confirmed tool call, written before the switch runs because
+  // every case returns from inside it. So this records what the admin approved,
+  // not what succeeded — the tool's own effects (an order marked paid, a
+  // customer field changed) are logged again by the routes they go through
+  // where they have one. Without it the Assistant was the one path that could
+  // cancel an order or edit an address with nobody's name on it.
+  const target =
+    (input.order_id as string | undefined) ??
+    (input.customer_id as string | undefined) ??
+    (input.phone_number as string | undefined) ??
+    tool;
+  await logEdit({
+    db,
+    actor,
+    entityType: "assistant_tool",
+    entityId: target,
+    action: tool,
+    changes: input,
+  });
 
   switch (tool) {
     case "batch": {

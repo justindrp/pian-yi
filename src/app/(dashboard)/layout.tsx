@@ -19,6 +19,7 @@ const allNavItems = [
   { href: "/broadcasts", label: "Broadcasts", ownerOnly: false },
   { href: "/assistant", label: "Assistant", ownerOnly: false },
   { href: "/accounting", label: "Accounting", ownerOnly: true },
+  { href: "/activity", label: "Activity", ownerOnly: false },
   { href: "/settings", label: "Settings", ownerOnly: false },
 ];
 

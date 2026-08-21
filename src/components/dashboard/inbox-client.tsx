@@ -829,6 +829,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       role: "assistant",
       content: text,
       model_used: "human",
+      sent_by: null,
       created_at: new Date().toISOString(),
       intent: null,
       message_type: null,

@@ -129,6 +129,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       message_id: messageId,
       message_type: "document",
       model_used: "human",
+      sent_by: session.email,
       whatsapp_status: "sent",
       whatsapp_status_updated_at: new Date().toISOString(),
     })

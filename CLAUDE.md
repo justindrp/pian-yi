@@ -79,7 +79,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 5. **Server-controlled fields** — `id`, `created_at`, `updated_at`, `status`, `total_price` are always set by server, never accepted from client input
 6. **Allowlist field updates** — when updating records, explicitly list permitted fields; never use mass assignment
 7. **Sensitive fields in separate tables** — rate limits, flags, internal status live in tables users cannot edit
-8. **Audit log append-only** — `edit_log`, `processed_messages`, `conversation_logs` are insert-only, never updated or deleted
+8. **Audit log append-only** — `edit_log`, `processed_messages`, `conversation_logs` are insert-only, never updated or deleted. Every mutating route records its actor with `logEdit()` (`src/lib/audit/log-edit.ts`), which never throws — it runs after the business write has landed. **A dashboard write must go through an API route**: three screens wrote to Postgres straight from the browser and nothing could record who did it. Read the trail at `/activity`
 9. **Never fetch a fixed window and aggregate in the browser** — "newest N rows, then group/filter client-side" silently drops data once the table outgrows N, and the UI gives no signal that it happened. Aggregate in the database (a view, or a query that returns the answer) and paginate with `.range()` when a list must be complete. This has already caused three separate bugs: `GET /api/orders` capped at 100 of 432 orders (twice), and the inbox capped at 500 `conversations` rows, which hid every lapsed customer's thread.
 
 
@@ -111,7 +111,7 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 **The 24-hour window is told to the customer, not hidden** (`src/lib/whatsapp/window-notice.ts`). And right now **every business-initiated send fails on `131042`** — the WABA has a payment restriction. Delivery proofs, templates and the window-refresh fallback are all dead letters until it is cleared by hand.
 
-**Roles.** `owner` (Justin, Annie) has everything. `admin` (Daevin) has everything except Accounting and inbox takeover, and cannot hand-type to a customer at all — enforced server-side, not just hidden. Removing an admin is one delete (`admin_users`); push sends filter against that table.
+**Roles.** `owner` (Justin, Annie) has everything. `admin` (Daevin) has everything except Accounting and inbox takeover, and cannot hand-type to a customer at all — enforced server-side, not just hidden. Removing an admin is one delete (`admin_users`); push sends filter against that table. Who did what is in `edit_log` and, for hand-typed messages, `conversations.sent_by` — see "Who did what" in `ADMIN.md`.
 
 ## Coding conventions
 

@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
@@ -57,6 +58,15 @@ export async function PATCH(
   if (error || !data) {
     return NextResponse.json({ ok: false, error: error?.message ?? "Akun tidak ditemukan" }, { status: 404 });
   }
+
+  await logEdit({
+    db,
+    actor: session.email,
+    entityType: "accounts",
+    entityId: id,
+    action: "update",
+    changes: update,
+  });
 
   return NextResponse.json({ ok: true, data });
 }

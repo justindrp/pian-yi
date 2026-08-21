@@ -66,6 +66,14 @@ export async function saveMessage(params: {
   mediaUrl?: string;
   whatsappStatus?: WhatsAppMessageStatus;
   whatsappStatusUpdatedAt?: string;
+  /**
+   * Email of the admin who composed this message, when a person did. Null for
+   * everything the bot writes. `modelUsed: "human"` only says a human typed it;
+   * it never said which one, so every hand-typed reply to a customer was
+   * anonymous — including the ones sent by an admin who is not allowed to
+   * hand-type at all.
+   */
+  sentBy?: string | null;
 }): Promise<string | null> {
   const db = createAdminClient();
   const { data, error } = await db
@@ -84,6 +92,7 @@ export async function saveMessage(params: {
       media_url: params.mediaUrl ?? null,
       whatsapp_status: params.whatsappStatus ?? null,
       whatsapp_status_updated_at: params.whatsappStatusUpdatedAt ?? null,
+      sent_by: params.sentBy ?? null,
     })
     .select("id")
     .single();

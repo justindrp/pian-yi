@@ -173,6 +173,7 @@ That "latest row per customer" is served by the `inbox_threads` view (see below)
 | whatsapp_status | text | Latest outbound WhatsApp receipt state for assistant rows: "sent", "delivered", "read", or "failed" |
 | whatsapp_status_updated_at | timestamptz | When `whatsapp_status` last changed |
 | whatsapp_error | jsonb | Meta's `errors[]` from a failed status webhook (`[{code, title, message}]`), null otherwise. Migration 069 — before it the code only reached `console.error`, so two months of failed delivery proofs could not be diagnosed after log rotation |
+| sent_by | text | Email of the admin who composed this outbound message. Migration 071. NULL for bot replies, system rows, inbound messages, and everything written before 2026-08-21 — `model_used = "human"` said a human typed it but never which one, so every hand-typed reply was anonymous. Set by the inbox manual reply/image/document routes, the Assistant's send tools, and the admin-confirmed bot reply; `scripts/manual-send.ts` writes `script:manual-send` |
 | created_at | timestamp | |
 
 ---
@@ -324,15 +325,23 @@ Admins can also upload a proof directly from each row in the Deliveries sheet; t
 
 Append-only audit trail of all admin changes to key records. Never updated or deleted.
 
+Written through `logEdit()` (`src/lib/audit/log-edit.ts`), which never throws: it is called after the business write has already landed, so failing the request over a missing audit row would 500 an action that actually happened. Failures go to `console.error` instead.
+
+Read by the Activity page (`/activity`) via `GET /api/audit`. Fourteen routes still write their own inline insert rather than calling the helper; both shapes land in the same table.
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
-| entity_type | text | Table that was changed (e.g. "orders", "subcontractors") |
-| entity_id | text | ID of the record that was changed |
-| action | text | "create", "update", or "delete" |
-| changed_by | text | Admin email |
-| changes | json | Before/after values of changed fields |
+| entity_type | text | Table that was changed (e.g. "orders", "subcontractors"), or `assistant_tool` for a confirmed Assistant write |
+| entity_id | text | ID of the record that was changed. For `assistant_tool`, the order/customer/phone the tool targeted, falling back to the tool name |
+| action | text | "create", "update", "delete", or the specific operation — `mark_paid`, `reject_payment_proof`, `update_status`, `bulk_create`, an Assistant tool name |
+| changed_by | text | Admin email, or `system:<job>` for a machine write |
+| changes | json | The fields written, or enough of them to say what happened |
 | created_at | timestamp | |
+
+Coverage as of 2026-08-21: orders (create/update/status/size/mark_paid/reject/delete), customers (create/update/delete), delivery_proofs (send/unmatch/delete), daily_deliveries (bulk_create, daily-sheet save/delete), subcontractors and their off-days, chatbot_instructions, area_neighborhoods, accounting journals and accounts, settings, pricing, templates, admin_users, broadcasts, free-quota grants. Not logged: `PATCH /api/customers/reorder` (display ordering, and a drag would write one row per customer moved), the read-only and chat routes, and the crons other than `generate-deliveries`.
+
+**Three dashboard screens used to write straight to Postgres from the browser** with the user-scoped client, which meant no route ran and nothing recorded the actor: the Customers edit form and its inline cells, the bot kill switch, and the Payments "reject proof" button. All three now go through their API route. Adding a new dashboard write means adding a route, not a `supabase.from(...).update()` in a client component.
 
 ---
 

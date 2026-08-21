@@ -41,6 +41,9 @@ async function main() {
     role: "assistant",
     content: text,
     modelUsed: "human",
+    // Nobody pressed a button in the dashboard for this one, so it is marked as
+    // the script rather than left blank, which would read as a bot message.
+    sentBy: "script:manual-send",
   });
   await updateMessageReceipt({ conversationId, whatsappMessageId: messageId, status: "sent" });
   console.log(`sent — ${messageId}`);
