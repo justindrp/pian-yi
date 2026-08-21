@@ -104,7 +104,8 @@ pian-yi/
 │   │   │   ├── reports/ (route for revenue/orders/churn/conversion analytics)
 │   │   │   ├── settings/ (route for pricing tiers, templates, admins, kill switch)
 │   │   │   ├── assistant/ (route for agentic admin chat w/ confirm-before-write tools)
-│   │   │   └── guide/ (in-app usage docs for admins)
+│   │   │   ├── guide/ (in-app click-by-click for each screen, Bahasa only)
+│   │   │   └── handbook/ (business context for a new admin, ID/EN toggle; areas, cutoff, ladder and kitchen nicknames read live so it cannot teach a stale rule)
 │   │   ├── (auth)/
 │   │   │   ├── login/ (magic-link email login)
 │   │   │   └── callback/ (Supabase Auth callback handler)

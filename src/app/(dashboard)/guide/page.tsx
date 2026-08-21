@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Panduan Admin — Pian Yi Catering" };
 
@@ -33,6 +34,14 @@ export default function GuidePage() {
       <div>
         <h1 className="text-xl font-bold text-gray-900">Panduan Admin</h1>
         <p className="text-sm text-gray-400 mt-1">Pian Yi Catering — Admin Dashboard</p>
+        <p className="text-sm text-gray-500 mt-3">
+          Halaman ini soal cara mengklik. Untuk konteks bisnisnya — aturan harga,
+          batas waktu, kuota, kerahasiaan dapur — baca{" "}
+          <Link href="/handbook" className="text-amber-700 underline underline-offset-2">
+            Handbook
+          </Link>
+          .
+        </p>
       </div>
 
       {/* PAYMENTS */}
@@ -63,14 +72,14 @@ export default function GuidePage() {
       {/* DELIVERIES */}
       <Section title="Pengiriman Harian">
         <Steps items={[
-          'Setiap hari pukul 17.00, lembar pengiriman besok dibuat otomatis dari pesanan aktif.',
-          'Buka halaman Deliveries — daftar pengiriman sudah tersedia tanpa perlu klik tombol apapun.',
-          'Pilih tanggal jika ingin melihat hari lain.',
+          'Jadwal pengiriman satu paket ditulis saat pesanan lunas, jadi lembar besok biasanya sudah terisi.',
+          'Buka halaman Deliveries dan pilih tanggalnya.',
+          'Klik Refresh untuk menarik pesanan aktif yang belum punya baris di tanggal itu — misal pesanan yang baru masuk sore ini.',
           'Periksa porsi dan subkontraktor untuk setiap pelanggan, edit jika perlu.',
           'Jika ada pelanggan yang skip hari itu, hilangkan centangnya.',
           'Klik Save untuk menyimpan — ini juga mengurangi kuota pelanggan.',
-          'Jika ada pesanan baru masuk setelah pukul 17.00, klik Refresh untuk memperbarui daftar.',
         ]} />
+        <Note>Tidak ada proses otomatis yang membuat lembar besok setiap sore. Kalau tidak ada yang membuka dan memeriksa halaman ini sebelum batas waktu, yang hilang dari lembar itu tidak akan ketahuan.</Note>
         <Note>Lembar pengiriman bisa dibuka dari ponsel — pastikan selalu klik Save sebelum menutup halaman.</Note>
       </Section>
 
@@ -79,7 +88,7 @@ export default function GuidePage() {
         <p className="text-sm font-medium text-gray-600">Menu Mingguan</p>
         <Steps items={[
           'Buka halaman Settings, scroll ke bagian "Weekly Menu".',
-          'Upload foto menu baru untuk Dapur 1 dan/atau Dapur 2 dengan klik tombol "Upload" atau "Replace".',
+          'Upload foto menu baru untuk tiap dapur yang aktif dengan klik tombol "Upload" atau "Replace".',
           'Upload juga foto daftar harga jika ada perubahan.',
           'Di kolom teks di bawahnya, ketik menu teks yang akan dibagikan chatbot saat pelanggan tanya menu.',
           'Klik "Save" untuk menyimpan teks menu.',

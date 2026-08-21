@@ -23,6 +23,14 @@ The question that started this was "who sent that delivery proof?" — answerabl
 
 Hand-typed customer messages now carry `conversations.sent_by`. `model_used = "human"` only ever said a human typed it, so both of the messages sent to the ICE BSD thread on 2026-08-21 were anonymous, and telling them apart meant reading `delivery_proofs.sent_by` for the one that happened to be a proof. Historical rows stay null; nothing backfills them, because there is nothing to backfill them from.
 
+## Onboarding pages
+
+Two pages, and the split matters: `/guide` ("Panduan Admin") is how to click each screen, `/handbook` is why the business works the way it does — roles, order lifecycle, the price ladder, the H-1 cutoff, the quota trap, kitchen confidentiality, the 24h window. They link to each other. Both are open to every role.
+
+`/handbook` toggles Bahasa Indonesia / English and is static prose in `src/components/dashboard/handbook-client.tsx` — edited by a commit, not from the dashboard. What is **not** static is anything that has already gone stale somewhere else in this repo: the served areas come from `activeDeliveryAreas()`, the cutoff from `settings.order_deadline_hour`, the ladder from `pricing_tiers`, the kitchen nicknames from the active `subcontractors` rows. A handbook that teaches a rule the system stopped enforcing is worse than no handbook, and `/guide` had already done exactly that — it told admins that "setiap hari pukul 17.00, lembar pengiriman besok dibuat otomatis", which has never been true: `generate-deliveries` is not in the scheduler (see "Sheet generation is manual" in `OPERATIONS.md`). A trial admin who believed it would never open the Deliveries page before the cutoff.
+
+The handbook states the takeover rule the way an admin experiences it: there is no Take over button for them, and a bot reply that needs correcting goes out through the Assistant, which confirms before sending and records who approved it.
+
 ## Assistant
 
 - **`query_customers` returns `portions_remaining`**, summed across the customer's open orders (`active` / `paused` / `payment_proof_received`, `portions_remaining > 0`) — never from the dead `customers.portions_remaining` column. "Sisa kuota berapa?" used to need a second tool call the model rarely made, and it could not answer for Nicholas Satria at all on 2026-08-19. `query_orders` also returns `portions_remaining` and `meal_time_preference`, and takes `customer_name` as well as `customer_phone` (matched on the last 9 digits, so the stored format no longer has to be guessed).
