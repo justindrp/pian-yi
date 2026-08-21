@@ -66,7 +66,10 @@ async function main() {
   await db.from("conversations").insert({
     customer_id: cust.id,
     role: "assistant",
-    content: publicUrl,
+    // The caption is the message; the file lives in media_url. Storing the URL
+    // as content is what hid an apology sent to a customer from the inbox.
+    content: caption || "[Image]",
+    media_url: publicUrl,
     message_id: messageId,
     message_type: "image",
     model_used: "human",

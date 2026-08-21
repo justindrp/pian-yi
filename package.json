@@ -1,6 +1,6 @@
 {
   "name": "pian-yi",
-  "version": "1.183.3",
+  "version": "1.183.4",
   "private": true,
   "scripts": {
     "dev": "next dev",

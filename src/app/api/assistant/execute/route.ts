@@ -180,7 +180,8 @@ export async function POST(request: Request) {
       const conversationId = await saveMessage({
         customerId: cust.id,
         role: "assistant",
-        content: imageUrl,
+        content: caption || "[Image]",
+        mediaUrl: imageUrl,
         messageType: "image",
         modelUsed: "human",
         sentBy: actor,

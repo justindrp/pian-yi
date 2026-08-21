@@ -161,7 +161,7 @@ That "latest row per customer" is served by the `inbox_threads` view (see below)
 | id | uuid | Primary key |
 | customer_id | uuid | FK → customers |
 | role | text | "user" or "assistant" |
-| content | text | Message text. For image rows, this is usually the public image URL displayed by the Inbox |
+| content | text | Message text. For image rows this is the **caption**, with the file URL in `media_url`. Rows written before 2026-08-21 (and the menu/price-list sends) hold the URL here instead, which is why the Inbox falls back to it — storing the URL as content dropped the caption from both the Inbox and the model's history, so a late-delivery apology sent to a customer appeared nowhere in the dashboard |
 | message_id | text | WhatsApp message ID. Inbound rows save this immediately; outbound rows backfill it after Meta accepts the send so status webhooks can match the row |
 | message_type | text | "text" or "image" |
 | media_id | text | WhatsApp media ID for inbound media; used by `/api/inbox/media/[mediaId]` proxy. Outbound/manual image rows usually keep this null and store the public URL in `content`. Not durable on its own — Meta deletes inbound media after about a week, so `media_url` is the reference that survives |

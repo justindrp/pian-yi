@@ -112,7 +112,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .insert({
       customer_id: customerId,
       role: "assistant",
-      content: publicUrl,
+      // The caption, not the file URL: content is the only text the inbox and
+      // the model ever see, and a URL there loses the caption entirely.
+      content: caption || "[Image]",
+      media_url: publicUrl,
       message_id: messageId,
       message_type: "image",
       model_used: "human",

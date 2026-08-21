@@ -58,14 +58,32 @@ function getInboxImageSrc(
   if (storedPath) return `/api/inbox/chat-media/${storedPath}`;
 
   if (msg.media_id) return `/api/inbox/media/${msg.media_id}`;
-  if (!msg.content?.startsWith("https://")) return null;
 
-  const deliveryProofPath = getStoragePath(msg.content, "delivery-proofs");
-  if (deliveryProofPath) {
-    return `/api/inbox/delivery-proofs/${deliveryProofPath}`;
+  // media_url first, then content: an outbound image whose caption is its
+  // content keeps the file URL in media_url, and both older rows and the menu
+  // sends still carry the URL as content.
+  for (const candidate of [msg.media_url, msg.content]) {
+    if (!candidate?.startsWith("https://")) continue;
+    const deliveryProofPath = getStoragePath(candidate, "delivery-proofs");
+    if (deliveryProofPath) {
+      return `/api/inbox/delivery-proofs/${deliveryProofPath}`;
+    }
+    return candidate;
   }
+  return null;
+}
 
-  return msg.content;
+// The text sent alongside an image. Only a content that is not itself the file
+// URL is a caption — every outbound image used to store the URL there, so the
+// caption existed only in Meta's copy of the message: an apology for a late
+// delivery was on the customer's phone and nowhere in the inbox.
+function getInboxImageCaption(
+  msg: Conversation & { message_type?: string | null },
+) {
+  if (msg.message_type !== "image") return null;
+  const text = msg.content?.trim();
+  if (!text || text.startsWith("https://") || text === "[Image]") return null;
+  return text;
 }
 
 // Pulls the object path out of a Supabase storage URL, encoded for use in our
@@ -1391,6 +1409,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                 whatsapp_error?: unknown;
               };
               const imageSrc = getInboxImageSrc(msgWithExtras);
+              const imageCaption = getInboxImageCaption(msgWithExtras);
               const docLink = getInboxDocument(msgWithExtras);
               const receiptLabel = !isUser
                 ? getReceiptLabel(msgWithExtras.whatsapp_status ?? null)
@@ -1412,11 +1431,20 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                     }`}
                   >
                     {msgWithExtras.message_type === "image" ? (
-                      imageSrc ? (
-                        <InboxImage key={imageSrc} src={imageSrc} />
-                      ) : (
-                        <div className="text-xs italic opacity-70">[Image]</div>
-                      )
+                      <>
+                        {imageSrc ? (
+                          <InboxImage key={imageSrc} src={imageSrc} />
+                        ) : (
+                          <div className="text-xs italic opacity-70">
+                            [Image]
+                          </div>
+                        )}
+                        {imageCaption ? (
+                          <p className="whitespace-pre-wrap mt-1.5">
+                            {imageCaption}
+                          </p>
+                        ) : null}
+                      </>
                     ) : msgWithExtras.message_type === "document" ? (
                       docLink ? (
                         <a
