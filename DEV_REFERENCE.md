@@ -110,7 +110,10 @@ pian-yi/
 │   │   │   ├── login/ (magic-link email login)
 │   │   │   └── callback/ (Supabase Auth callback handler)
 │   │   ├── dapur/[id]/ — public, auth-free mobile page per subcontractor: tomorrow's delivery orders + that day's bill (see `OPERATIONS.md` "Subcontractor daily bill")
+│   │   ├── page.tsx — public landing page at `/`. Reads the price ladder, the active kitchens' delivery areas and the price-list image live from the DB, so it cannot drift from what the bot quotes. Carries the legal identity block (entity name, NIB, registered address) that Meta business verification matches against the OSS record — `/` used to redirect to `/dashboard`, which showed a reviewer nothing but a login wall.
 │   │   ├── privacy/ (public privacy-policy page)
+│   │   ├── terms/ (public terms of service — required URL for Meta app review)
+│   │   ├── data-deletion/ (public deletion-request instructions — required URL for Meta app review)
 │   │   └── api/ — route handlers; see API_ROUTES.md for endpoint-level detail
 │   │       ├── webhook/whatsapp/ (Meta webhook: main chatbot entry point)
 │   │       ├── cron/ (Railway cron targets: reminders, cancellations, digests, delivery-gen)
