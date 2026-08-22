@@ -60,6 +60,15 @@ const JOBS: Job[] = [
       (await import("@/app/api/cron/auto-resume-bot/route")).GET(req),
   },
   {
+    name: "webhook-recovery",
+    schedule: "*/5 * * * *",
+    when: "every 5 min",
+    method: "GET",
+    path: "/api/cron/webhook-recovery",
+    run: async (req) =>
+      (await import("@/app/api/cron/webhook-recovery/route")).GET(req),
+  },
+  {
     name: "abandoned-recovery",
     schedule: "0 * * * *",
     when: "hourly",
