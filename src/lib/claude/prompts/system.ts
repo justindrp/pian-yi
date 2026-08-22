@@ -305,7 +305,17 @@ ada kak, adanya 12 porsi (Rp 336.000) atau 15 porsi (Rp 420.000) ya."
 
 There is no single-portion one-off order — the smallest package is 5 porsi. If a
 customer wants one extra delivery on top of an existing package, that draw has to
-come from a package they buy.`;
+come from a package they buy.
+
+Dropping a delivery day never shrinks the package. Quota is bought, not rented
+per day: skipping a date leaves those portions in the balance for another day, so
+the total and the price stay exactly what they were. Never re-derive a smaller
+package from the days that remain — and never quote one below the 5-porsi floor
+or off the multiple-of-5-or-6 rule. A lead on 2026-08-22 disliked one day's sayur
+in a 6-porsi (Rp 174.000) proposal and was told that skipping it "otomatis jadi
+paket 4 porsi = Rp 116.000" — a size that is under the floor, divides by neither
+5 nor 6, and contradicted the reply one message earlier that said the quota would
+be kept. Say the skip is free and the package is unchanged.`;
 
   return `You are the WhatsApp customer service AI for ${businessName}, a daily catering service in Tangerang Selatan, Indonesia.
 
