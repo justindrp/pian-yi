@@ -1,0 +1,460 @@
+/*
+ * Landing page only. Scoped under .pl so none of it reaches the dashboard,
+ * which runs on the shadcn tokens in globals.css and must stay untouched.
+ *
+ * Palette and type come from the Instagram post design system, so the page and
+ * the ads read as one brand. The one adaptation: a post is a single tile, a
+ * landing page is eight screens, so #C0181C is the ground for the hero and one
+ * mid-page band rather than the whole document — reading sections sit on white.
+ * Yellow stays what the system says it is, a price and accent colour, never
+ * body text on white.
+ */
+
+.pl {
+  --pl-red: #c0181c;
+  --pl-red-dark: #961216; /* hairlines and pressed states only */
+  --pl-yellow: #f7c948;
+  --pl-white: #ffffff;
+  --pl-charcoal: #2b2b2b;
+  --pl-gray: #6f6f6f;
+  --pl-hairline: #e4e4e4;
+
+  --pl-shell: min(68rem, 100% - 3rem);
+
+  background: var(--pl-white);
+  color: var(--pl-charcoal);
+  font-family: var(--pl-font-body), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.pl-shell {
+  width: var(--pl-shell);
+  margin-inline: auto;
+}
+
+.pl h1,
+.pl h2,
+.pl h3,
+.pl .pl-display {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.pl h1 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pl h2,
+.pl h3 {
+  font-weight: 700;
+}
+
+.pl-num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Eyebrow: the one repeating structural note. Poppins Medium, wide tracking. */
+.pl-eyebrow {
+  display: block;
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pl-gray);
+  margin-bottom: 1rem;
+}
+
+.pl-section--red .pl-eyebrow {
+  color: color-mix(in srgb, var(--pl-white) 72%, transparent);
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+
+.pl-hero {
+  background: var(--pl-red);
+  color: var(--pl-white);
+  padding-block: clamp(2.5rem, 7vw, 4.5rem) clamp(3rem, 8vw, 5rem);
+}
+
+.pl-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: clamp(2.5rem, 7vw, 4rem);
+}
+
+.pl-mark-name {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+}
+
+.pl-mark-tag {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--pl-white) 86%, transparent);
+  text-align: right;
+}
+
+.pl-claim {
+  font-size: clamp(2.75rem, 11vw, 6rem);
+  color: var(--pl-white);
+}
+
+.pl-claim em {
+  font-style: normal;
+  color: var(--pl-yellow);
+  display: block;
+}
+
+.pl-lede {
+  max-width: 36rem;
+  margin: 1.5rem 0 0;
+  font-size: clamp(1rem, 2vw, 1.125rem);
+  color: color-mix(in srgb, var(--pl-white) 88%, transparent);
+}
+
+/* ── The ladder: the one thing this page is remembered by ─────────────── */
+
+.pl-ladder {
+  margin-top: clamp(2.5rem, 7vw, 3.5rem);
+}
+
+.pl-rung {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding-block: clamp(0.6rem, 2vw, 0.85rem);
+  border-bottom: 1px solid color-mix(in srgb, var(--pl-white) 22%, transparent);
+  animation: pl-rung-in 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.pl-rung--head {
+  animation: none;
+  padding-block: 0 0.5rem;
+  border-bottom-color: color-mix(in srgb, var(--pl-white) 40%, transparent);
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--pl-white) 72%, transparent);
+}
+
+.pl-rung--head span:last-child {
+  text-align: right;
+}
+
+.pl-rung-porsi {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: color-mix(in srgb, var(--pl-white) 80%, transparent);
+}
+
+/* Bar length encodes price, so the ladder narrows as it descends and the
+   headline claim is demonstrated rather than asserted. Decorative — the figure
+   beside it carries the meaning. */
+.pl-bar {
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--pl-white);
+  transform-origin: left;
+  animation: pl-bar-in 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.pl-price {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: clamp(1.0625rem, 3vw, 1.5rem);
+  color: var(--pl-yellow);
+  white-space: nowrap;
+  text-align: right;
+  min-width: 7.5rem;
+}
+
+.pl-price small {
+  font-family: var(--pl-font-body), system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--pl-white) 70%, transparent);
+  margin-left: 0.3rem;
+}
+
+/* Badge, straight from the post system: white pill, charcoal Poppins Medium. */
+.pl-badge {
+  display: inline-block;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: var(--pl-white);
+  color: var(--pl-charcoal);
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.pl-badge--hemat {
+  margin-top: 1.5rem;
+}
+
+.pl-cta {
+  display: inline-block;
+  margin-top: clamp(2rem, 5vw, 2.75rem);
+  padding: 1.05rem 2.25rem;
+  border-radius: 999px;
+  background: var(--pl-yellow);
+  color: var(--pl-charcoal);
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  text-decoration: none;
+  transition: translate 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pl-cta:hover {
+  translate: 0 -2px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.22);
+}
+
+.pl-cta-note {
+  margin: 0.85rem 0 0;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--pl-white) 88%, transparent);
+}
+
+/* ── Sections ─────────────────────────────────────────────────────────── */
+
+.pl-section {
+  padding-block: clamp(3rem, 8vw, 4.5rem);
+}
+
+.pl-section--red {
+  background: var(--pl-red);
+  color: var(--pl-white);
+}
+
+.pl-section--ruled {
+  border-top: 1px solid var(--pl-hairline);
+}
+
+.pl-h2 {
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
+  margin-bottom: 1.75rem;
+  letter-spacing: -0.015em;
+}
+
+.pl-section--red .pl-h2 {
+  color: var(--pl-white);
+}
+
+.pl-steps {
+  display: grid;
+  gap: 1.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pl-step {
+  border-top: 3px solid var(--pl-red);
+  padding-top: 1rem;
+}
+
+.pl-step h3 {
+  font-size: 1.1875rem;
+  margin-bottom: 0.5rem;
+}
+
+.pl-step p {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--pl-gray);
+}
+
+/* Schedule: the week as a real sequence, Minggu struck through because it is. */
+.pl-week {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.pl-day {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: var(--pl-white);
+  color: var(--pl-charcoal);
+}
+
+.pl-day--closed {
+  background: transparent;
+  color: color-mix(in srgb, var(--pl-white) 60%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--pl-white) 45%, transparent);
+  text-decoration: line-through;
+}
+
+.pl-cutoff {
+  display: flex;
+  align-items: baseline;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 2.75rem;
+}
+
+.pl-cutoff-time {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.25rem, 8vw, 3.25rem);
+  color: var(--pl-yellow);
+  line-height: 1;
+}
+
+.pl-cutoff p {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 0.9375rem;
+  color: color-mix(in srgb, var(--pl-white) 86%, transparent);
+}
+
+.pl-areas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.pl-note {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 0.875rem;
+  color: var(--pl-gray);
+}
+
+.pl-section--red .pl-note {
+  color: color-mix(in srgb, var(--pl-white) 88%, transparent);
+}
+
+.pl-menu-img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--pl-hairline);
+}
+
+/* Identity block. Deliberately plain — this is the part a Meta reviewer reads
+   against the OSS record, and decoration only gets in the way. */
+.pl-identity {
+  display: grid;
+  gap: 1.25rem 2.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  margin: 0;
+}
+
+.pl-identity dt {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pl-gray);
+  margin-bottom: 0.25rem;
+}
+
+.pl-identity dd {
+  margin: 0 0 1rem;
+  font-size: 0.9375rem;
+}
+
+.pl-foot {
+  background: var(--pl-charcoal);
+  color: var(--pl-white);
+  padding-block: 2.75rem;
+}
+
+.pl-foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.9375rem;
+}
+
+.pl-foot a,
+.pl-identity a {
+  color: inherit;
+  text-decoration-color: var(--pl-yellow);
+  text-underline-offset: 0.25em;
+}
+
+.pl-foot small {
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--pl-white) 60%, transparent);
+}
+
+.pl a:focus-visible {
+  outline: 3px solid var(--pl-yellow);
+  outline-offset: 3px;
+}
+
+.pl-hero a:focus-visible,
+.pl-section--red a:focus-visible {
+  outline-color: var(--pl-white);
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+
+@keyframes pl-rung-in {
+  from {
+    opacity: 0;
+    translate: 0 0.6rem;
+  }
+}
+
+@keyframes pl-bar-in {
+  from {
+    scale: 0 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-rung,
+  .pl-bar {
+    animation: none;
+  }
+
+  .pl-cta {
+    transition: none;
+  }
+}
+
+@media (max-width: 30rem) {
+  .pl-rung {
+    grid-template-columns: 4.25rem 1fr auto;
+    gap: 0.6rem;
+  }
+
+  .pl-price {
+    min-width: 6rem;
+  }
+
+  .pl-mark-tag {
+    display: none;
+  }
+}
