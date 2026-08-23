@@ -113,8 +113,25 @@ export function holidayOn(ymd: string): Holiday | null {
   return HOLIDAYS.find((h) => h.date === ymd) ?? null;
 }
 
+/**
+ * Tanggal merah the kitchen works through anyway.
+ *
+ * Closure is a property of the kitchen, not of the calendar, and this table is
+ * global. On 2026-08-23 Veronica Catherine asked to start Senin 24; the cutoff
+ * had passed by two minutes, so `earliestDeliveryDate` moved to Selasa 25,
+ * found Maulid Nabi here, and moved again to Rabu 26 — costing her a delivery
+ * day that Thenie, the kitchen that actually serves her, was open for.
+ *
+ * A date belongs here when every active kitchen works it. That is a low bar
+ * today because Thenie is the only kitchen taking standing orders, and a real
+ * one again the moment a second kitchen does: revisit this before reactivating
+ * one, because a wrong entry promises deliveries nobody will cook.
+ */
+const OPEN_DESPITE_HOLIDAY = new Set<string>(["2026-08-25"]);
+
 /** True only for the days we are definitely closed. */
 export function isClosedHoliday(ymd: string): boolean {
+  if (OPEN_DESPITE_HOLIDAY.has(ymd)) return false;
   return holidayOn(ymd)?.type === "libur_nasional";
 }
 

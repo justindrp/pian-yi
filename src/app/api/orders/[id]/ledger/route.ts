@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { packageCreditDate } from "@/lib/orders/credit-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -81,10 +82,7 @@ export async function GET(
     {
       id: `pkg-${order.id}`,
       kind: "package",
-      // The day the package was bought, not the day it starts running. Dating
-      // the credit by start_date put galvent's 19 August purchase on the 20th,
-      // below deliveries that draw from it.
-      date: (order.created_at ?? order.start_date ?? "").slice(0, 10),
+      date: packageCreditDate(order),
       label:
         order.source === "free_quota"
           ? `Kuota gratis: ${order.grant_reason ?? "-"}`

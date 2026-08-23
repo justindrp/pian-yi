@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@/types/database";
 import { logEdit } from "@/lib/audit/log-edit";
+import { packageCreditDate } from "@/lib/orders/credit-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -62,7 +63,7 @@ export async function GET(
   const entries: Entry[] = [];
 
   for (const o of ordersRes.data ?? []) {
-    const date = (o.start_date ?? o.created_at ?? "").slice(0, 10);
+    const date = packageCreditDate(o);
     entries.push({
       id: `pkg-${o.id}`,
       kind: "package",
