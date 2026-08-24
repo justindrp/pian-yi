@@ -28,7 +28,11 @@ What that outage looks like from the inside, because it will happen again:
 
 The reverse on the same date: **Julian S** was promised dinner on Senin 24 *and* Selasa 25 (bot, 19 Agustus, "2 hari dinner… masih cukup dari sisa 3"). Generation dropped his 25th as a holiday before the override landed, so his rows are 24, 26, 27 and he is owed that meal with `rem = 2`.
 
-Decide whether to tell Tio and Tiwi the 25th is on. Then check nobody else's schedule was generated against the old rule — the override only changes what is generated *after* it, never rows already written.
+**The prompt half is fixed** (`46f7ebb`): `describeUpcomingHolidays()` rendered its lines off `holiday.type` and ignored `OPEN_DESPITE_HOLIDAY`, so the model was still told 25 Agustus was `TUTUP` while generation booked it. At 16:46 WIB on 24 Agustus **Veronica Catherine** asked to add lunch to her Selasa 25 delivery and was told "kami tutup dan nggak ada pengiriman hari itu" — with her dinner row for that date already on Thenie's sheet. She is owed a correction and her window is open until 24 Agustus 16:51 WIB +24h. The date now renders `BUKA` and the prompt says to treat it as an ordinary working day.
+
+The data half is not fixed, and mostly should not be: every schedule generated before 23 Agustus skips the 25th and pushes the day to the end of the calendar, so no portions are lost. Audited on 24 Agustus — **tomorrow's sheet holds 2 rows / 3 portions (Thenie only)** while these standing schedules jump 24 → 26: Tiwi (l1), Sherine Fayola (l1+d1), Lina Marlianty (l1), Nadya (l1), and Veronica's new 6-porsi order `a4bef23a` (starts 26 despite `start_date` 2026-08-24). Nothing is on the sheet that should not be. Decide whether to tell Tio and Tiwi the 25th is on before doing anything to their rows.
+
+Separately, six `active` fixed-schedule orders have quota left and **no delivery row on or after 25 Agustus at all** — their schedules simply stopped: Sky `+6282259667519` (20 of 20 left, *never generated a single row*), Fahmi (15, last 11 Agu — see below), Vania `+6281292339008` (10, last 21 Agu), Maria Marcella `+6285213668068` (1, none), Fiana Agistha `+6281299038706` (1, last 4 Agu), Nicholas Satria `+628561700441` (1, last 15 Agu). Sky is the one that costs money today: paid for 20 portions, booked for none.
 
 ### ICE BSD / INDO5 event, 21–23 Agustus — **finished; the sheet still does not know it**
 
@@ -47,6 +51,14 @@ Still open:
 - **All 9 rows still read `status: "scheduled"`, including Jum'at 21 — which was delivered.** Proofs for that day went out by hand (breakfast `7dd9f8c7`, the 18:00 dinner sent late with an apology at 19:0x), so the food shipped and the sheet does not know it. Nothing marks the day delivered by itself: **journals post when the daily sheet is worked**, so no revenue or COGS has been posted for this event at all. Work Jum'at's sheet before the numbers are read for anything.
 - **Confirm the kitchens have the PIC number and the booth detail.** Drop point: **Lobby Hall 7, booth Mastercard** (booth hitam, signage "LIVE YOUR MOTION"), PIC **Rifqi 0895-2586-6150** / **Elle 0896-9678-4101**. We told the customer "kurir kami akan menghubungi kak Rifqi sesaat sebelum tiba" — both kitchens deliver themselves, so that promise is theirs to keep. Justin said his admin is briefing them; nobody has verified the PIC number made it into the briefing.
 - The event closed clean. Ade Dian wrote a thank-you on 2026-08-24 at 10:12 WIB and was answered by hand at 14:4x. Order `96f90894` is `active` with `portions_remaining` 0 — it will not complete until the sheets are worked, because completion runs on what was **delivered**.
+
+### The bot confirms skips it cannot perform
+
+The customer bot's tool list (`src/app/api/webhook/whatsapp/route.ts:1529-1610`) is `extract_order`, `record_daily_order`, `ask_admin_for_help`, `escalate_to_human`, `mark_payment_proof_received`, `send_menu_image`. **Nothing cancels or moves a delivery row.** `record_daily_order` only inserts. So every "skip sudah saya catat" the model writes is unbacked by any write — the prompt (`system.ts:156`) tells it to confirm a skip when the deadline has not passed, and there is no path from that confirmation to the calendar.
+
+Live case: **Tiwi** `+6287808781094`, 24 Agustus 16:50 WIB — "Ka besok saya skip 1 hari" / "Di hari rabu aja ka". The bot answered "skip hari Rabu 26 Agustus (makan siang) sudah saya catat". Her 26 Agustus lunch row is still `scheduled`, and the two readings of her message point opposite ways: Justin reads it as skip **besok (25)**, deliver Rabu; the bot read it as skip **Rabu (26)**. She has no row on the 25th either way, so the calendar as it stands matches Justin's reading by accident. Ask her which day she meant — her window is open — before touching the 26 Agustus row.
+
+The fix is a `cancel_delivery` / `skip_delivery` tool, deadline-checked, quota returned to `portions_remaining`, logged through `logEdit`. Until it exists the model must not confirm a skip on its own; it should escalate.
 
 ### Fahmi's pause was never applied — he is being cooked for
 
