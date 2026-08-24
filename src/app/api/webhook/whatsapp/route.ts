@@ -9,6 +9,7 @@ import { analyzeCustomerMessage } from "@/lib/claude/analyze-customer-message";
 import {
   extractText,
   getAnthropicClient,
+  HAIKU_MODEL,
   NO_THINKING,
   SONNET_MODEL,
 } from "@/lib/claude/client";
@@ -58,6 +59,7 @@ import {
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
+import { jakartaTimeString } from "@/lib/time/jakarta";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -100,6 +102,99 @@ const MENU_SENT_CLAIM =
 // that a human is involved.
 const ESCALATION_CLAIM =
   /(cek|konfirmasi|tanya|tanyakan|koordinasi|pastikan)[\s\S]{0,40}?\b(ke|sama|dengan|dgn)\s+(tim|admin|dapur|partner|atasan|kantor|rekan)/i;
+
+// The model confirms delivery dates to a customer who already has a package and
+// calls no tool, so nothing reaches the sheet and no kitchen is told. Fahmi
+// paused on 11 Agustus, asked on 22 Agustus to resume, and was answered "saya
+// jadwalkan pengiriman mulai Senin 24 Agustus ya" — no record_daily_order, no
+// row, and nothing else would have caught it, because the nightly generator
+// only ever books tomorrow for orders it can see. On the 24th he wrote "Dah
+// nyampe blom kak" about food nobody had cooked. Matched only to decide whether
+// a turn is worth re-reading; the dates themselves come from the model below.
+const SCHEDULE_PROMISE =
+  /\b(jadwalkan|dijadwalkan|jadwalnya|kirim|kirimkan|antar|antarkan|diantar|mulai)\b[\s\S]{0,60}?(\b(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|besok|lusa)\b|\b\d{1,2}\s+(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember)\b|\b\d{4}-\d{2}-\d{2}\b)/i;
+
+/**
+ * Read the dates out of a reply that promised a schedule and called no tool.
+ *
+ * A second model call rather than a regex, because "mulai Senin 24 Agustus",
+ * "besok dan lusa" and "Senin sampai Jumat depan" all have to resolve to ISO
+ * dates against the WIB clock. It only has to produce the argument list: the
+ * record_daily_order handler is where every safety check already lives (an
+ * active order, pickDrawOrder, the customer-wide quota gate, libur nasional,
+ * and the double-booking skip), so a wrong guess is dropped there rather than
+ * written. Returns null on anything it is not sure about.
+ */
+async function extractPromisedSchedule(params: {
+  customerMessage: string;
+  reply: string;
+  defaultPortions: number;
+}): Promise<{
+  delivery_dates: string[];
+  meal_type: "lunch" | "dinner" | "both";
+  portions: number;
+} | null> {
+  const today = jakartaTimeString().slice(0, 10);
+  try {
+    const client = getAnthropicClient();
+    const res = await client.messages.create({
+      model: HAIKU_MODEL,
+      ...NO_THINKING,
+      max_tokens: 300,
+      system: `Hari ini ${today} (WIB). Baca balasan admin di bawah dan tentukan tanggal pengiriman yang SUDAH dijanjikan ke customer.
+
+Jawab HANYA JSON, tanpa penjelasan:
+{"delivery_dates":["YYYY-MM-DD"],"meal_type":"lunch"|"dinner"|"both","portions":<angka per tanggal>}
+
+Aturan:
+- Kembalikan {"delivery_dates":[]} kalau balasan itu hanya menawarkan, bertanya, atau belum memastikan tanggal.
+- "mulai <tanggal>" tanpa tanggal akhir berarti SATU tanggal saja: tanggal itu.
+- Jangan pernah menebak tanggal yang tidak disebut. Jangan masukkan tanggal sebelum ${today}.
+- Minggu tidak pernah menjadi tanggal pengiriman.`,
+      messages: [
+        {
+          role: "user",
+          content: `Pesan customer:\n${params.customerMessage}\n\nBalasan admin:\n${params.reply}`,
+        },
+      ],
+    });
+    const raw = extractText(res);
+    const match = raw?.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]) as {
+      delivery_dates?: unknown;
+      meal_type?: unknown;
+      portions?: unknown;
+    };
+    const dates = Array.isArray(parsed.delivery_dates)
+      ? parsed.delivery_dates.filter(
+          (d): d is string =>
+            typeof d === "string" &&
+            /^\d{4}-\d{2}-\d{2}$/.test(d) &&
+            d >= today,
+        )
+      : [];
+    if (dates.length === 0) return null;
+    const meal =
+      parsed.meal_type === "lunch" ||
+      parsed.meal_type === "dinner" ||
+      parsed.meal_type === "both"
+        ? parsed.meal_type
+        : null;
+    if (!meal) return null;
+    const portions =
+      typeof parsed.portions === "number" && parsed.portions > 0
+        ? Math.floor(parsed.portions)
+        : params.defaultPortions;
+    return { delivery_dates: dates, meal_type: meal, portions };
+  } catch (err) {
+    console.error(
+      "[webhook] schedule recovery extraction failed:",
+      (err as Error).message,
+    );
+    return null;
+  }
+}
 
 /** Whether a question is already sitting with an admin for this customer. */
 async function hasPendingAdminQuestion(customerId: string): Promise<boolean> {
@@ -1767,6 +1862,53 @@ export async function processSavedCustomerMessage(params: {
       phone,
       customerName,
     );
+  }
+
+  // The model promises a delivery date to a customer who already has quota and
+  // calls no tool. Nothing is booked, the kitchen is never told, and the
+  // customer waits for food that was never cooked (see SCHEDULE_PROMISE). Book
+  // it through the same handler the tool call would have gone through, so every
+  // guard in it still applies; if the dates cannot be recovered, push instead,
+  // because the customer has already been told they are set.
+  if (
+    replyText &&
+    activeOrder &&
+    (schedule?.unbooked ?? 0) > 0 &&
+    !toolUses.some((t) => t.name === "record_daily_order") &&
+    SCHEDULE_PROMISE.test(replyText)
+  ) {
+    const promisedSchedule = await extractPromisedSchedule({
+      customerMessage: text,
+      reply: replyText,
+      defaultPortions: activeOrder.portionsPerDelivery ?? 1,
+    });
+    if (promisedSchedule) {
+      console.log(
+        `[webhook] schedule promised but never booked — recording ${promisedSchedule.delivery_dates.join(", ")} for ${customerId}`,
+      );
+      await handleToolUse(
+        {
+          type: "tool_use",
+          id: "schedule-promise",
+          name: "record_daily_order",
+          input: promisedSchedule,
+          caller: null,
+        } as unknown as Anthropic.Messages.ToolUseBlock,
+        customerId,
+        phone,
+        customerName,
+      );
+    } else {
+      console.warn(
+        `[webhook] schedule promised but no dates could be recovered for ${customerId}`,
+      );
+      await sendPushToAllAdmins(
+        `Jadwal dijanjikan tapi tidak tercatat — ${customerName ?? phone}`,
+        "Bot menyanggupi tanggal pengiriman tanpa memanggil tool, dan tanggalnya tidak bisa dibaca ulang",
+        "/inbox",
+        "high",
+      );
+    }
   }
 
   // The model says it is checking with the team and calls no tool. Nothing is

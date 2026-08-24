@@ -70,9 +70,11 @@ Live case: **Tiwi** `+6287808781094`, 24 Agustus 16:50 WIB — "Ka besok saya sk
 
 The fix is a `cancel_delivery` / `skip_delivery` tool, deadline-checked, quota returned to `portions_remaining`, logged through `logEdit`. Until it exists the model must not confirm a skip on its own; it should escalate.
 
-### Fahmi's pause was never applied — he is being cooked for
+### ~~Fahmi's pause was never applied~~ — the opposite happened; rebooked 2026-08-24
 
-Order `35093d5c-d2be-42e1-b59d-a0514781eaa9` (Fahmi, `+6281341801449`, 20 porsi, 15 remaining, `dinner_only`) is `active` with **`pause_until` null**. He asked to pause until **2026-08-26**. Both the `generate-deliveries` cron and the daily-sheet builder skip an order only when `pause_until >= targetDate`, so with it null he keeps generating dinners he does not want and drawing quota for them. Set it via the Assistant's pause action (`POST /api/assistant/execute`, which writes `status: "paused"` + `pause_until`) so the change lands with an actor on it.
+Order `35093d5c-d2be-42e1-b59d-a0514781eaa9` (Fahmi, `+6281341801449`, `dinner_only`, Dapur 1). The pause was never written (`pause_until` still null on all three of his orders) — but neither was anything else: his last delivery row was **2026-08-11**, so he was not being cooked for, he was being forgotten. On 22 Agustus he asked to resume, the bot answered *"saya jadwalkan pengiriman mulai Senin 24 Agustus ya"* and called no `record_daily_order`; the `generate-deliveries` cron that would have caught it has never run. On 24 Agustus 18:22 WIB he asked where his food was.
+
+Settled by hand on 2026-08-24: package raised 20 → 21 (one free porsi, `free_quota_grant` in `edit_log`), and all 16 remaining portions booked as dinner rows 25 Agustus – 11 September, Senin–Sabtu, Dapur 1, 1 porsi each. Derived state is now `remainingToday` 16, `unbooked` 0. He still needs to confirm **dinner vs lunch** — he asked about "pesanan siang" while the order is `dinner_only`. The root cause is fixed in the webhook: see "A delivery date the bot promised is booked even when it never called the tool" in `BOT_RULES.md`.
 
 ### Cindi — order awaiting payment, second address still missing
 
