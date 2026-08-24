@@ -39,6 +39,18 @@ Two further account limits are real but were **not** the cause here: business ve
 
 Until a card is on file, **every business-initiated send is a dead letter** — delivery proofs, `jendela_24_jam`, and the `refresh-wa-window` template fallback all fail in exactly the case they exist for. `jendela_24_jam` was also auto-recategorized by Meta from UTILITY to MARKETING, which makes it billable at the higher rate and subject to marketing limits once billing works.
 
+## The manual number — the only way to reach a closed window
+
+**`+62 851-2802-4390`** is a hand-operated WhatsApp Business account Justin set up on 2026-08-24, separate from the WABA (`+62 851-1121-4390`) the app sends through. It is not connected to the API, the webhook, or `conversations`: nothing it sends or receives lands in the inbox or the audit trail, and nobody but the person holding the phone knows a message went out.
+
+It exists because of the two failures above. A customer whose 24h window has closed is unreachable from the API while `131042` stands, and that is exactly when we most need to reach them — a schedule we got wrong, a delivery arriving they were told would not. The manual number is how those get said. Lina Marlianty's 25 Agustus skip arrived this way on 24 Agustus, after the row had already been booked.
+
+Rules for it:
+
+- **Anything it changes must still be written to the system by hand** — the row, the quota, the `edit_log` entry. A reply on that number is the *only* record until someone does, and the daily sheet cannot see it.
+- **A reply there does not open the WABA window.** The customer has to message `+62 851-1121-4390` for that. If a thread needs to continue on the API, ask them to write to the business number.
+- Never quote it as a general contact channel to customers, and never let the bot mention it — one person answers it, and it has none of the guards the API path has.
+
 ## Idempotency strategy
 
 - Every incoming WhatsApp `message_id` is checked against `processed_messages` table before processing
