@@ -127,6 +127,8 @@ The prompt used to state the calendar date and the order cutoff hour and stop th
 
 The date line had a second defect fixed in the same change. It was built with `toLocaleDateString("id-ID")` and no `timeZone`, and Railway runs UTC, so between 00:00 and 07:00 WIB the prompt asserted yesterday's date. It now uses `jakartaDateString()`.
 
+**Known gap, 2026-08-24:** being told the cutoff has passed is not the same as acting on it. Julian S asked to skip tomorrow at 18:33 WIB on 23 Agustus, well past 16:00, and got "kemungkinan sudah lewat ya kak" plus an escalation — the prompt held the answer and the model parked it anyway, because skips and cutoff questions are missing from the never-escalate list and `ask_admin_for_help` is described as the default for any uncertainty. Queued in `TASKS.md` §3.
+
 ## The bot reads the schedule from the database, not from the chat above it
 
 Nothing in the prompt ever said what a customer actually had booked, so the model reconstructed it from the conversation — where a one-off change made for a date that has since passed still reads as current. On 2026-08-20 it told Nadya "pesanan besok dikirim siang jam 10.00-12.00". That was her 19 Agustus request, which applied to the 20th. Her 21 Agustus row had been `dinner` since the 18th. She believed the bot, asked to move it to malam, and the bot "confirmed" a change nobody needed and nobody made — while quoting her the 16:00 rule in a message sent at 21:24 WIB.

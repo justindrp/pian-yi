@@ -7,7 +7,7 @@ On-demand reference — read when working on the relevant area, not loaded every
 1. **Anthropic console budget cap** — $100/month hard limit, configured outside this codebase
 2. **API key hygiene** — keys only in `.env` and Railway env vars, never committed
 3. **Per-customer rate limits** — 40 bot replies/day, 9 bot replies/minute, 200,000 tokens/day per customer, enforced by `checkRateLimit()` in `src/lib/claude/safety.ts`. Exception: messages while a customer is `awaiting_payment` bypass this gate, so payment and proof-of-payment follow-up can continue even after the usual limit is hit. **`checkRateLimit()` increments the counter as a side effect, so it must be called exactly once per inbound message.** The webhook used to call it twice — once in `processWebhookAsync` and again in `processSavedCustomerMessage`, which the first always calls — which silently halved the daily cap to 10 real messages and cut off customers mid-order. The single remaining call lives in `processSavedCustomerMessage`, which is both the gate on the Sonnet call and the only gate on the `replay-latest` path. It must stay above `analyzeCustomerMessage()` there: that is a Haiku call, and a rate-limited customer should not cost a model call at all.
-4. **Token budget per request** — max 20 messages from history, max 4000 input tokens, max 1000 output tokens, max 3000 token system prompt
+4. **Token budget per request** — max 20 messages from history, max 4000 input tokens, max 1000 output tokens, a system-prompt budget that the prompt has long since outgrown — it renders at ~6–7K tokens, see "What the API actually costs"
 5. **Loop prevention** — idempotency, circuit breaker (stop calling Claude for 5min if 5 errors in 60s), echo detection (don't send duplicate replies), retry budget (max 3 retries per message)
 6. **Burst coalescing** — an inbound message waits `BURST_WINDOW_MS` (15s, `src/app/api/webhook/whatsapp/route.ts`) and is dropped if a newer one from the same customer arrives meanwhile; only the last message of a burst is answered. Customers type one thought per message, and the webhook otherwise treats each as its own turn — Cindy's four-message complaint on 13 Aug 2026 drew four separate apologies, four model calls, in 50 seconds. Echo detection cannot catch this: `detectEcho()` compares the previous reply exactly, and four differently-worded apologies are not equal strings. History loads *after* the wait, so the surviving call sees the whole burst and answers all of it at once. Only the live webhook opts in (`coalesceBurst: true`); replay and draft paths answer the message the admin picked, immediately.
 7. **Prompt injection defense** — system prompt forbids long/repetitive responses, hard `max_tokens` cap, pattern detection before calling Claude
@@ -25,6 +25,28 @@ On-demand reference — read when working on the relevant area, not loaded every
 - **Thinking is now switched off at every call site.** Spread `NO_THINKING` from `src/lib/claude/client.ts` into every `messages.create` call — it sends `thinking: { type: "disabled" }`. DeepSeek reasons by default at effort "high", and the three failures above are all downstream of that. Verified against `https://api.deepseek.com/anthropic`: with it, a reply is a single `text` block and a tool turn is `text` + `tool_use`; without it, both carry a leading `thinking` block. DeepSeek's thinking-mode guide gives `{ reasoning: { effort: "none" } }` as the Anthropic-format toggle — that form is accepted and silently ignored, so do not use it. The defensive handling above stays: the switch can be undone by a provider change, and `extractText` costs nothing.
 - **Mocking the client in tests** must spread `jest.requireActual("@/lib/claude/client")` before overriding `getAnthropicClient`, otherwise `extractText`/`extractJson` are undefined inside the module under test and every call fails into its catch branch.
 
+## What the API actually costs
+
+Read this before "optimising" a prompt, and before assuming a bill went up because a vendor raised prices. On 2026-08-24 08:28 WIB the DeepSeek balance hit zero and the bot went silent for every customer for two hours; the investigation below is why.
+
+**DeepSeek v4-flash, per 1M tokens** (`https://api-docs.deepseek.com/quick_start/pricing` — check it, this table will go stale):
+
+| | off-peak | peak |
+|---|---|---|
+| input, cache **hit** | $0.007 | $0.014 |
+| input, cache **miss** | $0.22 | $0.44 |
+| output | $0.66 | $1.32 |
+
+Peak is 01:00–04:00 and 06:00–10:00 UTC Mon–Fri — **08:00–11:00 and 13:00–17:00 WIB**, which is exactly when customers order. A cache hit costs **1/31** of a miss, so prefix caching is not a micro-optimisation here; it is most of the bill.
+
+**The spend, from the DeepSeek billing page:** $5 lasted 2026-07-08 → 08-18 (41 days, **$0.12/day**). Four $2 top-ups inside 26 hours on 18–19 Agustus — a one-off burn from replaying `extractOrderFromConversation` (a ~50KB prompt) across threads during the lost-order cleanup. The last $2 ran 08-19 16:37 → 08-24 08:28, **$0.43/day**. Inbound volume over the same span rose only ~40% (July ~40/day, 20–23 Agustus ~55/day), so **cost per message roughly tripled** while prices did not visibly move.
+
+**Where it goes.** The rendered system prompt is ~6–7K tokens (layer 4 above claims a 3000-token cap; that has not been true for months). A single inbound message can carry it three times — the reply, the validator retry, order extraction — plus the smaller `learn-context` and intent-classification calls. ~20K input tokens at the peak miss rate is ~$0.009 per message; at 55 messages/day that is ~$0.48, which is the observed figure. No price increase is needed to explain the bill.
+
+**Why nothing is ever cached.** DeepSeek caches on exact prefix match. `src/app/api/webhook/whatsapp/route.ts:1414` flips `casual` on `Math.random()` per message, and that flag renders at `src/lib/claude/prompts/system.ts:322` — the second paragraph, ahead of every business rule. Half the calls therefore cannot match the previous call's prefix and the whole prompt bills at the miss rate. The volatile per-customer block (`## Current context`, the WIB clock, the schedule) is correctly last and costs only its own tail.
+
+The fix queue is in `TASKS.md` §2 and §3. The durable rule: **anything that varies per message belongs at the end of the prompt, and anything that varies at all belongs as late as it can go.** Verify against platform.deepseek.com → Usage, which splits cache-hit from cache-miss input tokens per day.
+
 ## Performance principles
 
 - **Database indexes** on every column used in WHERE/JOIN/ORDER BY (especially `phone_number`, `message_id`, `status`, `created_at`)
@@ -41,7 +63,7 @@ VAPID keys stored in env vars. Subscriptions stored in `push_subscriptions` tabl
 
 **Recipients are filtered against `admin_users` on every send.** `user_email` is plain text with no FK, so a row outlives the person; `sendPushToAllAdmins` loads the current admin emails first and sends only to subscriptions matching one (trimmed + lowercased, because an exact-case miss would silently drop a real admin's notifications). A failed `admin_users` read sends nothing and logs — without the allowlist there is no way to tell a current admin from a revoked one. Orphan rows are left in place; they are inert once filtered, and endpoints the push service reports as expired (410/404) are deleted at the end of each send.
 
-Subscription state is per-device, never per-user: `PushSubscribeButton` reads `pushManager.getSubscription()` first and only hides itself when the server also knows that exact endpoint. If the browser holds a subscription the DB lost, the button re-POSTs it to `/api/push/subscribe` silently. iOS requires the PWA be opened from the Home Screen (standalone) before `pushManager.subscribe()` will work.
+Subscription state is per-device, never per-user: `PushSubscribeButton` reads `pushManager.getSubscription()` first, and re-registers silently when the browser holds a subscription the server lost. **It never hides.** It used to disappear once server and browser agreed, which left no way to reset a device from the phone — and a push service answers `201` for a subscription the device has quietly stopped honouring, so agreement proves nothing. It now shows Test and Turn off while subscribed; see "A device can be reset from the phone itself" in `ADMIN.md`. iOS requires the PWA be opened from the Home Screen (standalone) before `pushManager.subscribe()` will work.
 
 Threads in takeover (`escalated_to_human`) take an earlier branch in `processWebhookAsync` that never reaches that push, so they need their own — "New message — you have this thread", high priority, sent for **every** inbound message. It was previously in the `else` of a message-type check, so images and locations notified but plain text did not, which is nearly all traffic. On an escalated thread the bot is silent by design, so the admin who took it over is the only person who can reply; not telling them is how threads go quiet for days. `analyzeCustomerMessage` is not a substitute — it only surfaces anything when it proposes a write action.
 

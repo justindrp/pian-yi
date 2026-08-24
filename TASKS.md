@@ -1,12 +1,22 @@
 # Open tasks
 
-Everything outstanding as of **2026-08-23**, so a fresh session can pick up without reading back through chat history. Ordered by when it bites, not by size.
+Everything outstanding as of **2026-08-24**, so a fresh session can pick up without reading back through chat history. Ordered by when it bites, not by size.
 
 Rules that apply to all of it live in `CLAUDE.md` and the topical docs it maps (`BOT_RULES.md`, `OPERATIONS.md`, `WHATSAPP.md`, `ADMIN.md`); this file is the queue, not the reference. When an item is finished, delete it here and fold anything durable into whichever doc owns that subject.
 
 ---
 
 ## 1. Live this week — dated, will go wrong on its own
+
+### DeepSeek balance hit zero — the bot was silent for two hours this morning
+
+`GET https://api.deepseek.com/user/balance` returned `-0.01` at 2026-08-24 10:26 WIB. Every model call since **08:28 WIB** answered `402 Insufficient Balance`. Top up at platform.deepseek.com and it resumes with no deploy.
+
+What that outage looks like from the inside, because it will happen again:
+
+- The catch at `src/app/api/webhook/whatsapp/route.ts:1645` sends the `chatbot_unavailable` template and **writes no `conversations` row**, so the inbox shows the customer waiting with nothing beside it. There is no way to tell "the bot is broken" from "nobody answered".
+- The only alarm is a push, and push had been dead on Justin's iPhone since 21 Agustus.
+- Left unanswered while it was down: **Julian S** (3 messages, from 09:33), **Veronica Catherine** (3, from 09:55), **Ade Dian / ICE BSD** (1, 10:12), and a lead asking "bisa catering 3 lauk tanpa nasi?" at 08:53. Answer them by hand.
 
 ### ICE BSD / INDO5 event, 21–23 Agustus — **running now, day 2 of 3**
 
@@ -52,11 +62,34 @@ Vania `2ca04f0d-d448-4b79-aa5e-7c5140ee6dd6` (`+6281292339008`) has never been a
 - **WABA payment restriction `131042`.** Every business-initiated send is a dead letter: delivery proofs outside the window, `jendela_24_jam`, the `refresh-wa-window` fallback. A debit card was attached 2026-08-18 and the error only changed wording ("no payment method is set up" → "payment has been restricted"), so there is a restriction on the account itself, most likely an unpaid balance from a declined card. Clear it by hand: `business.facebook.com/billing_hub` → business `1304799927697056`, asset `1603294840784079`. Re-probe with `scripts/probe-template-window.ts`, which reads the receipt back off `conversations.whatsapp_error`. Still failing as of 2026-08-23 01:35 WIB — a `delivery_proof` template to a number with no open window returned HTTP 200 `accepted`, then failed async with the same 131042. **The send endpoint always 200s**; the restriction only ever surfaces in the status webhook, so never read a successful POST as proof the channel works.
 - **Business verification never submitted** (`141010`, `verification_status: pending_submission`) → `health_status.can_send_message: LIMITED`. Separate from 131042 — verification is not what blocks sends. Details for the submission form: entity **Pian Yi Catering**, NIB **2307250135661**, registered address in Rawabuntu, Serpong. Website field is `https://pian-yi.up.railway.app/`, which now serves a real landing page carrying that same identity block; it used to redirect to the dashboard login, giving a reviewer nothing to match against the OSS record.
 - **Display name unapproved** → the number is stuck at `TIER_250`.
+- **Keep a balance on the DeepSeek account, and let the code watch it.** Current burn is ~$0.43/day (~$13/month) and the account runs on $2 top-ups, so it empties every four or five days without warning. Either top up in larger increments or expect another outage. The alarm is a code task (§3); the money is not.
 - **Free-quota orders for the overdrawn customers** (`OVERDRAW.md`, 32 customers / 178 portions). The customers overdrawn by only 1–2 portions are the missing balance guard, not deliberate free quota; the interpretation of each case is in `OVERDRAW.md`. Pending Justin's per-customer verification of what was actually granted — do not create them speculatively.
 
 ---
 
 ## 3. Correctness bugs, unfixed
+
+### Cut the DeepSeek bill — ordered by size of the win
+
+Diagnosis, prices and the arithmetic are in "What the API actually costs" in `DEV_REFERENCE.md`. Cost per message roughly tripled since July while volume rose ~40%; a cache hit costs 1/31 of a miss and we appear to get almost none. Confirm first at platform.deepseek.com → Usage, which splits cache-hit from cache-miss input tokens per day — if hit tokens are near zero, the diagnosis is exact.
+
+1. **Stop the casual coin flip from breaking the cache prefix.** `src/app/api/webhook/whatsapp/route.ts:1414` rolls `Math.random()` per message and the flag renders at `src/lib/claude/prompts/system.ts:322`, the second paragraph — ahead of ~6–7K tokens of business rules, so half of all calls bill the whole prompt at the miss rate. Move the instruction to the end of the prompt **and** derive it from a hash of `customer_id` instead of per message: same variety across customers, stable prefix per customer. Biggest single lever, est. 60–80%.
+2. **Move `## Current context` out of the system prompt into the first user turn.** It is already last, so it costs only its own tail today — but any edit above it truncates the cached prefix, and the clock inside it changes every call.
+3. **Skip `validateReply()` on replies that cannot hallucinate.** It doubles the call count on "iya kak". Gate on length and on whether the reply asserts anything customer-specific.
+4. **Alarm on the balance.** Add `GET https://api.deepseek.com/user/balance` to a daily cron and push below $1. Add a `conversations` row when `chatbot_unavailable` goes out, so an outage is visible in the inbox instead of looking like customers being ignored, and treat `402` as its own case rather than a generic API error.
+
+### A skip past the cutoff is escalated instead of answered
+
+Julian S asked on 2026-08-23 at 18:33 WIB whether tomorrow's delivery could be skipped — two and a half hours past the 16:00 cutoff. `cutoffLine` had already told the model the deadline was **SUDAH LEWAT** and not to accept a skip for tomorrow. It replied "kemungkinan sudah lewat ya kak" and parked the question with an admin instead. Two causes, both fixable in the prompt:
+
+- The never-escalate list at `src/lib/claude/prompts/system.ts:550` covers totals, prices, off-list sizes, package days, area and libur dates — **not** skips, changes or the cutoff. Add them, and make the wording general: anything the system prompt already states is not an escalation.
+- `ask_admin_for_help`'s own tool description (`route.ts:1575`) says "Use this by default for uncertainty", and line 554 repeats it. Nothing outranks it, so a question the prompt answers still falls through to the default. Say explicitly that a fact stated in the prompt beats the uncertainty default.
+
+Same shape as "A payment-date question is answered, not escalated" in `BOT_RULES.md` — third time this pattern has cost a customer.
+
+### Julian S has carried a parked question since 19 Agustus
+
+`customer_flags.pending_bot_response` has been true on `4acddf61-76f8-43b4-a20d-e836b49d3c4a` for five days, question: "Julian skip pengiriman Kamis 20 dan Jumat 21, lalu request dinner Senin 24 dan Selasa 25. Kuota tersisa 3/5. Mohon konfirmasi." Nobody ever answered it. That flag injects the "A question is with an admin right now" block (`system.ts:581`) into every turn, which instructs the model to say the matter is still being checked — so his new, unrelated skip question could not be answered either. Clear the flag, and consider an age limit: a question parked for more than a day or two is not being answered, and going on silencing part of the thread for it makes things worse. His live order is `eb3179b7` (dinner_only, booked 24, 26, 27 Agustus).
 
 - **`statedBareTotal()` cannot read "kuota", the word the bot itself uses.** `src/lib/claude/extract-order.ts:339` matches only `\d+\s*porsi`. Veronica Catherine wrote "Bole kak saya pesen 10 kuota" and was sold **6** — `rawPackageSize` (`:946`) falls back to the sum of the scheduled days whenever the extraction carries a `delivery_schedule`, and the stated-total guard that exists for exactly this case never fired. The bot's own replies say "kuota" constantly, so it trains customers into a word it cannot parse back. Add the synonym to the regex (and to `statedWeeks`'s neighbours while there), then re-run the replay corpus.
 - **`createOrderFromExtraction` re-sends the transfer message every time it is called.** `sendPaymentInfo` defaults to `true` (`:942`) with no guard against having already sent one; the amend block at `:1084` prevents a duplicate *order* (the Sherine Fayola fix) but not a duplicate *payment message*. Veronica got Rp 280.000 at 09:08, before any details were collected, then Rp 174.000 at 09:13, and asked "174 atau 280 yaa kak?". Only the webhook recovery path (`route.ts:868`) passes `false`. Suppress the second send when the open order already has one on the thread.
