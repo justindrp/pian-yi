@@ -179,6 +179,16 @@ export function formatHolidayDate(ymd: string): string {
 /**
  * The prompt block. Returns null when nothing is coming up, so the caller can
  * leave the section out entirely rather than print an empty heading.
+ *
+ * Every line asks `isClosedHoliday`, never `h.type`, so an entry in
+ * `OPEN_DESPITE_HOLIDAY` reads as a working day here too. This block used to
+ * print "TUTUP, tidak ada pengiriman" straight off the type: on 2026-08-24 at
+ * 16:46 WIB Veronica Catherine asked to add lunch to her Selasa 25 delivery and
+ * was told "kami tutup dan nggak ada pengiriman hari itu" — while her dinner row
+ * for that date sat on Thenie's sheet, because generation had already been
+ * taught the override. The customer would have received food she had just been
+ * told was not coming. One rule, one source: the schedule and the sentence have
+ * to be read off the same function.
  */
 export function describeUpcomingHolidays(
   today: string = jakartaDateString(),
@@ -189,13 +199,13 @@ export function describeUpcomingHolidays(
   if (upcoming.length === 0) return null;
 
   return upcoming
-    .map(
-      (h) =>
-        `- ${formatHolidayDate(h.date)} — ${h.name}${h.type === "cuti_bersama" ? " (cuti bersama)" : ""}: ${
-          h.type === "libur_nasional"
-            ? "TUTUP, tidak ada pengiriman"
-            : "belum tentu tutup — tergantung dapur partner, harus dicek dulu"
-        }`,
-    )
+    .map((h) => {
+      const when = `- ${formatHolidayDate(h.date)} — ${h.name}${h.type === "cuti_bersama" ? " (cuti bersama)" : ""}`;
+      if (h.type === "cuti_bersama")
+        return `${when}: belum tentu tutup — tergantung dapur partner, harus dicek dulu`;
+      if (!isClosedHoliday(h.date))
+        return `${when}: BUKA — tanggal merah, tapi kami tetap mengirim seperti biasa hari itu`;
+      return `${when}: TUTUP, tidak ada pengiriman`;
+    })
     .join("\n");
 }
