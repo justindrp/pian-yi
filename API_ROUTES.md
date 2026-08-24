@@ -132,7 +132,8 @@ A public, auth-free mobile page at `/dapur/[subcontractor-uuid]` shared with eac
 ### Push notifications
 - `GET /api/push/config?endpoint=<push-endpoint>` — VAPID public key + whether *this browser's* endpoint is stored. `hasSubscription` matches on `user_email` **and** `endpoint`; omitting `endpoint` returns `hasSubscription: false` (per-email matching hid the enable button on every other device)
 - `POST /api/push/subscribe` — Save a push subscription for this browser
-- `POST /api/push/test` — Send a test push notification to this browser
+- `POST /api/push/test` — Send a test push to **the caller's own devices only**, optionally narrowed to one `endpoint`. Returns `results[]` with the push service's raw `status` per endpoint, and deletes any subscription answering 410/404. It used to call `sendPushToAllAdmins`, so testing your own phone buzzed everyone else's. Reporting the status code instead of swallowing it is the point: a dead subscription is answered `201` by Apple exactly like a live one — see "A device can be reset from the phone itself" in `ADMIN.md`
+- `DELETE /api/push/subscribe` — Drop this browser's subscription row. Paired with `subscription.unsubscribe()` in the client; either alone is not a reset
 
 ### Health
 - `GET /api/health` — **Liveness** probe (returns 200 OK). Touches nothing, deliberately: this is Railway's `healthcheckPath`, and a deploy-time check that fails on a vendor outage would roll back a perfectly good release. Do not add a database query here.
