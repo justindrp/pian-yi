@@ -51,7 +51,11 @@ import {
 } from "@/lib/customers/lifecycle";
 import { shouldAutoResume } from "@/lib/customers/takeover";
 import { describeMenuWeeks } from "@/lib/menu/week";
-import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
+import {
+  loadCustomerSchedule,
+  unbookedByOrder,
+} from "@/lib/orders/customer-schedule";
+import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -1480,7 +1484,6 @@ export async function processSavedCustomerMessage(params: {
   const activeOrder = activeOrderRow
     ? {
         id: activeOrderRow.id,
-        portionsRemaining: activeOrderRow.portions_remaining,
         packageSize: activeOrderRow.package_size,
         portionsPerDelivery: activeOrderRow.portions_per_delivery,
         mealTimePreference: activeOrderRow.meal_time_preference,
@@ -1497,6 +1500,12 @@ export async function processSavedCustomerMessage(params: {
   const pendingAdminQuestion = pendingFlags?.pending_bot_response
     ? (pendingFlags.pending_bot_question ?? "")
     : null;
+
+  // What is actually booked, so the model stops reconstructing the schedule
+  // from the chat scrollback and quoting the wrong "sisa kuota". Both numbers
+  // on it are counted from the delivery rows; nothing here trusts
+  // orders.portions_remaining.
+  const schedule = await loadCustomerSchedule(db, customerId);
 
   // Build system prompt
   const systemPrompt = await buildSystemPrompt({
@@ -1515,9 +1524,7 @@ export async function processSavedCustomerMessage(params: {
     servedAreas,
     neighborhoods,
     activeOrder,
-    // What is actually booked, so the model stops reconstructing the schedule
-    // from the chat scrollback and quoting the wrong "sisa kuota".
-    schedule: await loadCustomerSchedule(db, customerId),
+    schedule,
     pendingAdminQuestion,
     // A corporate customer's negotiated rate replaces the whole price list.
     contractPricePerPortion: await contractPrice(customerId),
@@ -1861,7 +1868,7 @@ export async function processSavedCustomerMessage(params: {
       customerState: stateRow?.state ?? "new",
       activeOrder: activeOrder
         ? {
-            portionsRemaining: activeOrder.portionsRemaining,
+            unbooked: schedule?.unbooked ?? 0,
             packageSize: activeOrder.packageSize,
           }
         : null,
@@ -2233,28 +2240,23 @@ async function handleToolUse(
         "custom_schedule",
       ],
     };
-    const { data: matchedOrder } = await db
+    // Every active order, with its undated portions counted from the delivery
+    // rows. `orders.portions_remaining` is a stored counter nothing keeps
+    // honest — the daily sheet's delete button removes a row and leaves it
+    // where it was — and on 2026-08-24 it disagreed with the rows for 63 of
+    // the 195 customers holding an active order. Vania's read 0 with ten
+    // portions genuinely left, so this bailed and three dinners the bot had
+    // already confirmed to her were never written.
+    const { data: activeOrders } = await db
       .from("orders")
-      .select("id, portions_remaining, subcontractor_id")
+      .select(
+        "id, package_size, portions_remaining, start_date, created_at, subcontractor_id, meal_time_preference",
+      )
       .eq("customer_id", customerId)
-      .eq("status", "active")
-      .in("meal_time_preference", mealPrefs[input.meal_type])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const { data: fallbackOrder } = matchedOrder
-      ? { data: null }
-      : await db
-          .from("orders")
-          .select("id, portions_remaining, subcontractor_id")
-          .eq("customer_id", customerId)
-          .eq("status", "active")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-    const order = matchedOrder ?? fallbackOrder;
+      .eq("status", "active");
 
-    if (!order) {
+    const candidates = activeOrders ?? [];
+    if (candidates.length === 0) {
       console.error(
         "[webhook] record_daily_order: no active order for customer",
         customerId,
@@ -2262,10 +2264,51 @@ async function handleToolUse(
       return;
     }
 
-    if (order.portions_remaining <= 0) {
+    const unbookedPerOrder = await unbookedByOrder(
+      db,
+      candidates.map((o) => ({ id: o.id, package_size: o.package_size })),
+    );
+
+    // Which package the rows bill to: the oldest one that still has undated
+    // portions, per pickDrawOrder. It reads `portions_remaining` off its
+    // candidates, so it is handed the derived count under that name rather
+    // than the stored one. Orders whose meal_time_preference covers the
+    // requested meal are preferred; when none does, every active order is a
+    // candidate, because quota belongs to the customer and not to one package.
+    const asCandidates = (rows: typeof candidates) =>
+      rows.map((o) => ({ ...o, portions_remaining: unbookedPerOrder.get(o.id) ?? 0 }));
+    const mealMatched = candidates.filter((o) =>
+      mealPrefs[input.meal_type].includes(o.meal_time_preference ?? ""),
+    );
+    const order =
+      pickDrawOrder(asCandidates(mealMatched.length > 0 ? mealMatched : candidates)) ??
+      pickDrawOrder(asCandidates(candidates));
+
+    if (!order) {
+      console.error(
+        "[webhook] record_daily_order: no draw order for customer",
+        customerId,
+      );
+      return;
+    }
+
+    // The gate is customer-wide: a customer with two packages can draw across
+    // both, and pickDrawOrder above decides which one the row is charged to.
+    const custUnbooked = (await loadCustomerSchedule(db, customerId))?.unbooked ?? 0;
+
+    if (custUnbooked <= 0) {
       console.warn(
-        "[webhook] record_daily_order: quota exhausted for order",
-        order.id,
+        "[webhook] record_daily_order: every portion this customer bought already has a date",
+        customerId,
+      );
+      // Never a silent drop: the bot has already told the customer the dates
+      // are booked by the time this runs, so somebody has to know it did not
+      // happen.
+      await sendPushToAllAdmins(
+        `Order harian tidak tercatat — ${customerName ?? phone}`,
+        `Bot menyanggupi ${dates.length} tanggal, tapi semua porsi customer sudah punya tanggal`,
+        "/deliveries",
+        "high",
       );
       return;
     }
@@ -2306,7 +2349,7 @@ async function handleToolUse(
     // portions is per date. Book only as many dates as the quota covers — a
     // multi-day request must not be the thing that pushes an order negative.
     const perDate = Math.max(1, input.portions);
-    const affordable = Math.floor(order.portions_remaining / perDate);
+    const affordable = Math.floor(custUnbooked / perDate);
     const booking = fresh.slice(0, affordable);
 
     if (booking.length === 0) {
@@ -2349,10 +2392,16 @@ async function handleToolUse(
 
     const deducted = booking.length * perDate;
 
+    // The stored counter no longer steers anything here, but it is still what
+    // the dashboard and the crons read, so keep it moving with the rows.
     await db
       .from("orders")
       .update({
-        portions_remaining: Math.max(0, order.portions_remaining - deducted),
+        portions_remaining: Math.max(
+          0,
+          (activeOrders?.find((o) => o.id === order.id)?.portions_remaining ?? 0) -
+            deducted,
+        ),
       })
       .eq("id", order.id);
 
@@ -2402,7 +2451,7 @@ async function handleToolUse(
     if (booking.length < fresh.length) {
       await sendPushToAllAdmins(
         `Kuota kurang — ${customerName ?? phone}`,
-        `Diminta ${fresh.length} hari, hanya ${booking.length} tercatat (sisa kuota ${order.portions_remaining} porsi)`,
+        `Diminta ${fresh.length} hari, hanya ${booking.length} tercatat (${custUnbooked} porsi belum punya tanggal)`,
         "/deliveries",
         "high",
       );

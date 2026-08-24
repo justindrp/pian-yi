@@ -104,12 +104,12 @@ async function main() {
     neighborhoods: {},
     activeOrder: {
       id: "sim-order",
-      portionsRemaining: remaining,
       packageSize: 40,
       portionsPerDelivery: 1,
       mealTimePreference: "per_day_decision",
     },
-    schedule: null,
+    // Quota is customer-level and lives here now, not on activeOrder.
+    schedule: { upcoming: [], remainingToday: remaining, unbooked: remaining },
   });
 
   console.log(`Today: ${today} — active order ${remaining}/40, 1 porsi/meal, per_day_decision\n`);

@@ -46,14 +46,23 @@ export async function buildSystemPrompt(params: {
   neighborhoods: Record<string, string[]>;
   activeOrder: {
     id: string;
-    portionsRemaining: number;
     packageSize: number;
     portionsPerDelivery: number;
     mealTimePreference: string | null;
   } | null;
   /**
    * What is actually on the customer's calendar, and the two different numbers
-   * people mean by "sisa kuota".
+   * people mean by "sisa kuota". Both are counted from the delivery rows, and
+   * both are customer-level: quota belongs to the customer, not to one package,
+   * and which order a delivery bills to is `pickDrawOrder()`'s business.
+   *
+   * The booking rules below read `unbooked` from here rather than
+   * `orders.portions_remaining`, a stored counter nothing keeps honest — the
+   * daily sheet's delete button removes a row and leaves it where it was. On
+   * 2026-08-24 the counter and the rows disagreed for 63 of the 195 customers
+   * holding an active order. Vania's read 0 with ten portions genuinely left,
+   * so `record_daily_order` bailed and three dinners the bot had already
+   * confirmed to her were never written.
    *
    * The prompt used to carry neither, so the model rebuilt a customer's
    * schedule out of the chat scrollback. On 2026-08-20 it told Nadya her next
@@ -466,7 +475,7 @@ After the customer confirms, call extract_order. The transfer details (bank, acc
 ## Daily quota ordering
 ${
   params.activeOrder
-    ? `This customer has an active quota-based order (${params.activeOrder.portionsRemaining} of ${params.activeOrder.packageSize} portions remaining, ${params.activeOrder.portionsPerDelivery} porsi per meal).
+    ? `This customer has an active quota-based order (${params.schedule?.unbooked ?? 0} portions still without a date, package ${params.activeOrder.packageSize}, ${params.activeOrder.portionsPerDelivery} porsi per meal).
 
 When they request one or more deliveries (an order for the next day must arrive before ${dailyDeadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the dates.
 
@@ -482,9 +491,9 @@ Portion deduction rules:
 - siang or malam only: deduct ${params.activeOrder.portionsPerDelivery} portion(s)
 - keduanya: deduct ${params.activeOrder.portionsPerDelivery * 2} portions per date (${params.activeOrder.portionsPerDelivery} per meal × 2)
 
-Insufficient quota: if the customer requests keduanya but portions_remaining < ${params.activeOrder.portionsPerDelivery * 2}, explain they only have ${params.activeOrder.portionsRemaining} portion(s) left — enough for ${params.activeOrder.portionsRemaining >= params.activeOrder.portionsPerDelivery ? "one meal (siang or malam, not both)" : "nothing — quota is exhausted"}. Never call record_daily_order if it would overdraft. The same applies to a multi-day run: with ${params.activeOrder.portionsRemaining} portion(s) left, never agree to more days than the quota covers — say how many days are left in the quota and offer a new package for the rest.
+Insufficient quota: if the customer requests keduanya but fewer than ${params.activeOrder.portionsPerDelivery * 2} portions are still without a date, explain they can only schedule ${params.schedule?.unbooked ?? 0} more portion(s) — enough for ${(params.schedule?.unbooked ?? 0) >= params.activeOrder.portionsPerDelivery ? "one meal (siang or malam, not both)" : "no further dates"}. Never call record_daily_order if it would overdraft. The same applies to a multi-day run: with ${params.schedule?.unbooked ?? 0} portion(s) still undated, never agree to more days than that covers — say how many days can still be scheduled and offer a new package for the rest.
 
-${params.activeOrder.portionsRemaining <= 0 ? `Quota exhausted: offer the same package again — "Mau lanjut paket yang sama lagi kak? ${params.activeOrder.packageSize} porsi ${params.activeOrder.mealTimePreference === "lunch_only" ? "makan siang" : params.activeOrder.mealTimePreference === "dinner_only" ? "makan malam" : params.activeOrder.mealTimePreference === "both_fixed" || params.activeOrder.mealTimePreference === "per_day_decision" ? "keduanya" : ""}." If they say yes, go straight to the order form (skip re-asking their preferences — those are already known). Only re-ask if they want to change something.` : ""}`
+${(params.schedule?.remainingToday ?? 0) <= 0 ? `Quota exhausted: offer the same package again — "Mau lanjut paket yang sama lagi kak? ${params.activeOrder.packageSize} porsi ${params.activeOrder.mealTimePreference === "lunch_only" ? "makan siang" : params.activeOrder.mealTimePreference === "dinner_only" ? "makan malam" : params.activeOrder.mealTimePreference === "both_fixed" || params.activeOrder.mealTimePreference === "per_day_decision" ? "keduanya" : ""}." If they say yes, go straight to the order form (skip re-asking their preferences — those are already known). Only re-ask if they want to change something.` : ""}`
     : "This customer has no active quota-based order. If they mention wanting to order for tomorrow without an existing package, direct them through the normal order flow."
 }
 
@@ -581,7 +590,7 @@ ${cutoffLine}
     typeof params.pendingAdminQuestion === "string"
       ? `\n\n## A question is with an admin right now\nYou already asked an admin: "${params.pendingAdminQuestion || "(pertanyaan sebelumnya)"}". It is still unanswered.\n\n- Do not answer that question yourself and do not guess at it. If the customer chases it, say it is still being checked — one short clause, not a whole message.\n- Do not call ask_admin_for_help again for the same question. Asking twice tells nobody anything new.\n- Keep doing everything else normally: quote prices, take the address, take the portions, and call extract_order the moment the customer agrees. One open side question never blocks an order. On 2026-08-18 two customers gave their address, their portion count and asked for the bank details after a question like this, and got nothing back at all.`
       : ""
-  }${params.activeOrder ? `\n- Active order: paket ${params.activeOrder.packageSize} porsi, ${params.activeOrder.portionsRemaining} porsi belum dijadwalkan tanggalnya (bukan sisa makanan — lihat Jadwal pengiriman di bawah)` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
+  }${params.activeOrder ? `\n- Active order: paket ${params.activeOrder.packageSize} porsi, ${params.schedule?.unbooked ?? 0} porsi belum dijadwalkan tanggalnya (bukan sisa makanan — lihat Jadwal pengiriman di bawah)` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""

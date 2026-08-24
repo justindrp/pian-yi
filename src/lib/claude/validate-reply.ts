@@ -5,7 +5,7 @@ export interface ValidateReplyParams {
   customerName: string | null;
   customerNotes: string | null;
   customerState: string;
-  activeOrder: { portionsRemaining: number; packageSize: number } | null;
+  activeOrder: { unbooked: number; packageSize: number } | null;
   /**
    * The tail of the conversation, oldest first. Without it the validator sees
    * only what the database already knows, so the one turn where the bot reads
@@ -27,7 +27,7 @@ export async function validateReply(
   const context = `Customer state: ${params.customerState}
 Customer name (if known): ${params.customerName ?? "unknown"}
 Customer notes / learned context: ${params.customerNotes?.trim() || "none"}
-Active order quota: ${params.activeOrder ? `${params.activeOrder.portionsRemaining} / ${params.activeOrder.packageSize} portions remaining` : "no active order"}`;
+Active order quota: ${params.activeOrder ? `${params.activeOrder.unbooked} of ${params.activeOrder.packageSize} portions not yet scheduled` : "no active order"}`;
 
   const transcript = (params.transcript ?? [])
     .map((m) => `${m.role === "assistant" ? "BOT" : "CUSTOMER"}: ${m.content}`)

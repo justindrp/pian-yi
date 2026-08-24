@@ -61,7 +61,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   const activeOrder = body.hasActiveOrder
     ? {
         id: "sim-order",
-        portionsRemaining: 30,
         packageSize: 50,
         portionsPerDelivery: 1,
         mealTimePreference: "per_day_decision",
