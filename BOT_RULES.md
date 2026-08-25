@@ -218,6 +218,8 @@ The model re-calls `extract_order` every time it restates the summary, and each 
 
 `createOrderFromExtraction` wrote `customer_name` from the extraction on every order, and the model returns whatever signature it reads off the chat: Julian S was renamed to "Julian" by a phantom order he never placed. The name is now only ever filled when the record has none.
 
+That makes `rawNameForRecord` a **write-flag, not a display name** — it is deliberately null for exactly the customers whose name we already know. The payment message read it as a name anyway (`rawNameForRecord?.split(" ")[0] ?? "kak"`), so a returning customer with a name on file got the fallback and the greeting came out **"Terima kasih kak kak!"** — 6 messages across 4 customers between 19 and 25 Agustus, and only ever the customers we know best. The greeting now reads `existingName` first and falls back to the bare `"kak"` with no doubling. Never read `rawNameForRecord` for display: it is null precisely when there is something to display.
+
 ## The bot must not claim it sent the menu without sending it
 
 The model writes "menu minggu ini sudah saya kirim gambarnya ya" and calls no tool. Nicholas Satria was told to check an image that was never sent and answered "blmm ada kak"; Sherine Fayola was told the same thing an hour later. The webhook now matches `MENU_SENT_CLAIM` on any toolless reply and, when we have sent this customer no image in the last 15 minutes, runs `send_menu_image` itself. Sending the menu twice costs nothing; telling someone to look at an image that does not exist costs a customer.

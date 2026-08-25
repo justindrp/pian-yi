@@ -4,6 +4,14 @@ import { updateTokenCount } from "@/lib/claude/safety";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
 
+// The "Preferensi:" bullet label above is a contract, not a style choice.
+// /dapur/[id] is unauthenticated, so it strips this whole block and re-admits
+// only bullets matching PREF_BULLET — which requires that exact label. The
+// summarizer was never told to emit it, so dietary facts landed under labels
+// like "Pemesanan aktif" and never reached the kitchen. On 2026-08-25 Surya
+// ordered 15 porsi tanpa nasi; the summary recorded it twice and Thenie's sheet
+// showed a normal bento, caught by hand the evening before delivery. Changing
+// the label here without changing PREF_BULLET there re-breaks it silently.
 export const LEARNED_CONTEXT_START = "[AI learned context]";
 export const LEARNED_CONTEXT_END = "[/AI learned context]";
 
@@ -59,6 +67,13 @@ Rules:
 - Return Indonesian only.
 - Keep 3-6 short bullet points.
 - Include preferences, constraints, recurring questions, order intent, address or schedule context if present.
+- Anything the kitchen has to act on while cooking or dropping off — dietary
+  requests and restrictions (tanpa nasi, tidak pedas, tanpa seafood, alergi),
+  portion notes, and drop-off instructions — MUST go in a bullet that begins
+  with the exact label "Preferensi:". Put every such fact in that bullet, and
+  never put a price, a total, a discount or a bank detail in it. Only bullets
+  carrying this exact label are shown to the kitchen; the same fact written
+  under any other label is invisible to them.
 - Do not invent facts.
 - Do not include temporary chatter, greetings, or exact payment/card details.
 

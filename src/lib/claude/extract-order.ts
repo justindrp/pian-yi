@@ -1368,8 +1368,20 @@ export async function createOrderFromExtraction(
   // The model sometimes fills customer_name with the literal "unknown" when the
   // customer never typed their name — Julian S's renewal was addressed to
   // "kak unknown" on 2026-08-18. Neither that nor an empty string is a name.
-  const displayName = rawNameForRecord?.split(" ")[0] ?? "kak";
-  const paymentMsg = `Terima kasih kak ${displayName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
+  //
+  // Greet from the name we KNOW, not from `rawNameForRecord`. That one is a
+  // write-flag: it is deliberately null whenever the customer already has a
+  // name, because we only ever fill a name that is missing. Reading it here
+  // inverted the greeting — first-time buyers got "kak Surya" and renewals got
+  // "Terima kasih kak kak!", because the fallback "kak" landed after the "kak"
+  // already in the sentence. Six payment messages went out that way between
+  // 2026-08-19 and 2026-08-25, to four customers, Kurniadi Tan's Rp 540.000
+  // renewal among them. The honorific now lives in `greeting`, so a customer we
+  // have no name for gets a clean "Terima kasih kak!" instead of a doubled one.
+  const knownName = (existingName || rawNameForRecord || "").trim();
+  const displayName = knownName.split(" ")[0];
+  const greeting = displayName ? `kak ${displayName}` : "kak";
+  const paymentMsg = `Terima kasih ${greeting}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
