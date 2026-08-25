@@ -571,6 +571,31 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 
 # Views
 
+## tasks
+
+The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude could update went stale between sessions and Annie and Daevin could never see it. Edited at `/tasks`, printed by `pnpm tasks`. Statuses are plain text, not an enum — `open | in_progress | blocked | done` — so a new one costs no migration. Priority is 1 (highest) to 3.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| title | text | Required |
+| body | text | Free text — file:line pointers, the incident, whatever the task needs. No markdown renderer exists; it displays as written |
+| status | text | `open` (default), `in_progress`, `blocked`, `done` |
+| priority | integer | 1 = highest, 2 = default, 3 = lowest |
+| area | text | Free label (`bot`, `calendar`, `deferred`, …) — the section headings the old file had |
+| assignee | text | Email, or a name. Not FK'd to `admin_users` — a task can be on Annie before she has a login row |
+| customer_id | uuid | FK `customers(id)` `on delete set null` — the task links to a real record, so `/tasks` shows a live link |
+| order_id | uuid | FK `orders(id)` `on delete set null` |
+| blocked_on | text | What the task is waiting for. Shown in red on the row when `status = 'blocked'` |
+| due_date | date | |
+| created_at | timestamp | |
+| updated_at | timestamp | Set by the route, never a trigger — this schema has none |
+| done_at | timestamp | Stamped by the API when status becomes `done`, cleared when it moves back off |
+
+Indexes: `tasks_open_idx (priority, created_at) where status <> 'done'` — the queue read is always the open set — plus `tasks_customer_idx` and `tasks_order_idx`. RLS on, one service-role policy; every read and write goes through `/api/tasks`, which is session-gated and calls `logEdit()`. Tasks are hard-deleted, so DELETE writes the whole prior row into `edit_log.changes`.
+
+---
+
 ## inbox_threads
 
 Regular (non-materialized) view, added in migration `059_inbox_threads_view.sql`. Returns exactly one row per customer — that customer's most recent `conversations` row — and backs the admin inbox thread list.

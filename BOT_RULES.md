@@ -109,7 +109,7 @@ Cindi's order was written with `subcontractor_id` null, and 33 open orders carry
 
 `createOrderFromExtraction` now falls back the way an admin would: the kitchen the customer already buys from, then the only active kitchen whose `delivery_areas` covers the order's area. Two candidates is a genuine choice between kitchens and stays null.
 
-The backlog was cleaned up on 2026-08-22 only as far as it was actually breaking something. **Of every future `daily_deliveries` row with a null kitchen, all 12 were Cindi's**, so her order (`1e331e01`, Karawaci — one covering kitchen, no judgement call) and those 12 rows were written to Dapur 1 by hand, guarded on `.is("subcontractor_id", null)` and logged to `edit_log` as `system:assign-kitchen` with the reason. **32 open orders still read null and are deliberately untouched**: none of them has a future delivery row, so none is invisible on a kitchen sheet, and 4 of them are a real choice between the three kitchens covering BSD Baru/BSD Lama that no fallback should make silently. The count and the buckets are in `TASKS.md` §3. Assigning a kitchen to an order that has no rows yet buys nothing and guesses on the customer's behalf.
+The backlog was cleaned up on 2026-08-22 only as far as it was actually breaking something. **Of every future `daily_deliveries` row with a null kitchen, all 12 were Cindi's**, so her order (`1e331e01`, Karawaci — one covering kitchen, no judgement call) and those 12 rows were written to Dapur 1 by hand, guarded on `.is("subcontractor_id", null)` and logged to `edit_log` as `system:assign-kitchen` with the reason. **32 open orders still read null and are deliberately untouched**: none of them has a future delivery row, so none is invisible on a kitchen sheet, and 4 of them are a real choice between the three kitchens covering BSD Baru/BSD Lama that no fallback should make silently. The count and the buckets are in the queue (`pnpm tasks`). Assigning a kitchen to an order that has no rows yet buys nothing and guesses on the customer's behalf.
 
 ## A split-address order carries the slot, instead of promising an admin will set it
 
@@ -127,7 +127,7 @@ The prompt used to state the calendar date and the order cutoff hour and stop th
 
 The date line had a second defect fixed in the same change. It was built with `toLocaleDateString("id-ID")` and no `timeZone`, and Railway runs UTC, so between 00:00 and 07:00 WIB the prompt asserted yesterday's date. It now uses `jakartaDateString()`.
 
-**Known gap, 2026-08-24:** being told the cutoff has passed is not the same as acting on it. Julian S asked to skip tomorrow at 18:33 WIB on 23 Agustus, well past 16:00, and got "kemungkinan sudah lewat ya kak" plus an escalation — the prompt held the answer and the model parked it anyway, because skips and cutoff questions are missing from the never-escalate list and `ask_admin_for_help` is described as the default for any uncertainty. Queued in `TASKS.md` §3.
+**Known gap, 2026-08-24:** being told the cutoff has passed is not the same as acting on it. Julian S asked to skip tomorrow at 18:33 WIB on 23 Agustus, well past 16:00, and got "kemungkinan sudah lewat ya kak" plus an escalation — the prompt held the answer and the model parked it anyway, because skips and cutoff questions are missing from the never-escalate list and `ask_admin_for_help` is described as the default for any uncertainty. Queued in the `tasks` table.
 
 ## The bot reads the schedule from the database, not from the chat above it
 

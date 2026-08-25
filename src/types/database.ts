@@ -1239,6 +1239,72 @@ export type Database = {
         }
         Relationships: []
       }
+      tasks: {
+        Row: {
+          area: string | null
+          assignee: string | null
+          blocked_on: string | null
+          body: string | null
+          created_at: string
+          customer_id: string | null
+          done_at: string | null
+          due_date: string | null
+          id: string
+          order_id: string | null
+          priority: number
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          area?: string | null
+          assignee?: string | null
+          blocked_on?: string | null
+          body?: string | null
+          created_at?: string
+          customer_id?: string | null
+          done_at?: string | null
+          due_date?: string | null
+          id?: string
+          order_id?: string | null
+          priority?: number
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          area?: string | null
+          assignee?: string | null
+          blocked_on?: string | null
+          body?: string | null
+          created_at?: string
+          customer_id?: string | null
+          done_at?: string | null
+          due_date?: string | null
+          id?: string
+          order_id?: string | null
+          priority?: number
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_events: {
         Row: {
           error: string | null

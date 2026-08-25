@@ -45,7 +45,7 @@ Peak is 01:00–04:00 and 06:00–10:00 UTC Mon–Fri — **08:00–11:00 and 13
 
 **Why nothing is ever cached.** DeepSeek caches on exact prefix match. `src/app/api/webhook/whatsapp/route.ts:1414` flips `casual` on `Math.random()` per message, and that flag renders at `src/lib/claude/prompts/system.ts:322` — the second paragraph, ahead of every business rule. Half the calls therefore cannot match the previous call's prefix and the whole prompt bills at the miss rate. The volatile per-customer block (`## Current context`, the WIB clock, the schedule) is correctly last and costs only its own tail.
 
-The fix queue is in `TASKS.md` §2 and §3. The durable rule: **anything that varies per message belongs at the end of the prompt, and anything that varies at all belongs as late as it can go.** Verify against platform.deepseek.com → Usage, which splits cache-hit from cache-miss input tokens per day.
+The fix queue is in the `tasks` table (`pnpm tasks`). The durable rule: **anything that varies per message belongs at the end of the prompt, and anything that varies at all belongs as late as it can go.** Verify against platform.deepseek.com → Usage, which splits cache-hit from cache-miss input tokens per day.
 
 ## Performance principles
 
@@ -199,7 +199,7 @@ pian-yi/
 │   │   │   └── areas.ts (**the only source of delivery-area strings.** `activeDeliveryAreas(db)` = union over `is_active` kitchens; `knownDeliveryAreas(db)` = union over all of them, for the two screens that define coverage; `unionAreas(rows)` for callers that already hold the rows. Never type an area list anywhere else)
 │   │   ├── utils/ — shared formatting/timing helpers
 │   │   │   ├── delay.ts (dynamic typing delay)
-│   │   │   └── format.ts (currency, dates, getDeliveryRoute() — still a literal five-area→route map, see `TASKS.md`)
+│   │   │   └── format.ts (currency, dates, getDeliveryRoute() — still a literal five-area→route map, queued)
 │   │   ├── env.ts (typed required-env-var accessor)
 │   │   └── utils.ts (generic helpers, e.g. `cn()` classname merge for shadcn)
 │   ├── hooks/

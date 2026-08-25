@@ -13,7 +13,7 @@ Read at the start of every session. Permanent context, conventions, and the rule
 
 | File | Read it before |
 | --- | --- |
-| `TASKS.md` | **anything** — the live queue of outstanding work, dated items first |
+| `pnpm tasks` (not a file) | **anything** — the live queue, printed from the `tasks` table; edit it at `/tasks` |
 | `BOT_RULES.md` | changing the customer-facing chatbot, its prompt, order extraction, or the recovery guards |
 | `OPERATIONS.md` | pricing, order lifecycle, delivery generation, quota draws, subcontractor billing |
 | `WHATSAPP.md` | outbound sends, the webhook, the 24h window, WABA account state |
@@ -147,4 +147,4 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 ## Known issues / tech debt
 
-**`TASKS.md` is the live queue** — bugs with file:line pointers, what is blocked on Justin, the deferred designs (Instagram generator, accounting phases 4–5, the `drawdown` naming refactor), and the dated items this file has no place for. Read it before picking up work.
+**The live queue is the `tasks` table, not a file.** Run `pnpm tasks` to print it (`pnpm tasks all` includes done, `pnpm tasks <area>` filters); admins edit it at `/tasks`. It holds the bugs with file:line pointers, what is blocked on Justin, and the deferred designs (Instagram generator, accounting phases 4–5, the `drawdown` naming refactor). Read it before picking up work. It replaced `TASKS.md` on 2026-08-25 — a doc only I could update, so it went stale between sessions and Annie and Daevin could never see it.

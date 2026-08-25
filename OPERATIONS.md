@@ -88,7 +88,7 @@ What is durable is the shape, and it is the thing to check before assuming an ar
 
 Area names that appear in older docs are not evidence of coverage. On 2026-08-21 a Bintaro lead (`+62811811442`) asked "Gak sampai bintaro jaya ya" and the bot never answered: the docs said we served Bintaro, the live union said we did not, and nobody could tell which was true. The live union is always the one that is true.
 
-**Everything derived from an area, however, is still hardcoded, and a new area silently gets nothing.** `getDeliveryRoute()` (`src/lib/utils/format.ts`) maps five specific area names to Route 1 or 2 and returns `null` for anything else; the Route labels in `deliveries-client.tsx` name the same areas; and the BSD Baru/BSD Lama split in the webhook is a longitude comparison. Adding an area to a kitchen therefore makes it orderable but unrouteable. That is open work, not a rule — see `TASKS.md`.
+**Everything derived from an area, however, is still hardcoded, and a new area silently gets nothing.** `getDeliveryRoute()` (`src/lib/utils/format.ts`) maps five specific area names to Route 1 or 2 and returns `null` for anything else; the Route labels in `deliveries-client.tsx` name the same areas; and the BSD Baru/BSD Lama split in the webhook is a longitude comparison. Adding an area to a kitchen therefore makes it orderable but unrouteable. That is open work, not a rule — see the queue (`pnpm tasks`).
 
 ### Deadlines, assignment and data rules
 

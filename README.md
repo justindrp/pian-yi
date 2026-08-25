@@ -83,7 +83,7 @@ test/                 Jest suite
 
 WhatsApp webhook (after deploy): `https://<railway-app>.up.railway.app/api/webhook/whatsapp`
 
-Docs: `CLAUDE.md` (conventions + the rule map, read every session), `TASKS.md` (what is outstanding), `BOT_RULES.md` (the WhatsApp chatbot), `OPERATIONS.md` (pricing, orders, deliveries, kitchens), `WHATSAPP.md` (sends, window, webhook), `ADMIN.md` (roles, takeover, Assistant), `DATABASE.md` (schema), `API_ROUTES.md` (endpoints), `DEV_REFERENCE.md` (cost controls, folder tree, tooling).
+Docs: `CLAUDE.md` (conventions + the rule map, read every session), `BOT_RULES.md` (the WhatsApp chatbot), `OPERATIONS.md` (pricing, orders, deliveries, kitchens), `WHATSAPP.md` (sends, window, webhook), `ADMIN.md` (roles, takeover, Assistant), `DATABASE.md` (schema), `API_ROUTES.md` (endpoints), `DEV_REFERENCE.md` (cost controls, folder tree, tooling).
 
 ## Testing
 

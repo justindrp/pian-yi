@@ -78,6 +78,14 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 ### Activity (audit log)
 - `GET /api/audit` — The `edit_log` timeline, newest first, paginated with `.range()` at 50 rows a page. Optional `?entity_type=`, `?actor=` (exact `changed_by` match) and `?entity_id=`; returns `{ data, total, page, pageSize }`. Any signed-in admin. Backs the `/activity` page, which is the only thing in the app that reads `edit_log` — the table had been collecting rows for months with no reader, so "who changed this" was answerable only from a SQL prompt. Writes go through `logEdit()` (`src/lib/audit/log-edit.ts`); see the `edit_log` section of `DATABASE.md` for what is and is not covered.
 
+### Tasks
+- `GET /api/tasks` — The whole queue, ordered status → priority → `created_at`, with `customers(id, name, phone_number)` and `orders(id, package_size, status, total_price)` embedded so a task can show a live link to what it is about. No pagination: the queue is tens of rows and the page filters client-side. Any signed-in admin.
+- `POST /api/tasks` — Create. `title` required (400 without it). `id`, `created_at`, `updated_at` and `done_at` are never taken from the client; `done_at` is stamped server-side when `status` arrives as `done`.
+- `PATCH /api/tasks/[id]` — Explicit field allowlist (`title, body, status, priority, area, assignee, customer_id, order_id, blocked_on, due_date`); anything else in the body is ignored. Reads the row first, drops unchanged fields, and returns early without a write when nothing differs, so `edit_log` gets no empty entries. `done_at` follows `status` in both directions.
+- `DELETE /api/tasks/[id]` — Hard delete. The entire prior row goes into the audit `changes`, because there is nothing left to reconstruct it from.
+
+All four call `logEdit()` with `entityType: "tasks"`. They replaced `TASKS.md` on 2026-08-25; `pnpm tasks` prints the queue for a terminal.
+
 ### Delivery areas
 - `GET /api/areas` — The areas we can deliver to right now: the union of `delivery_areas` across subcontractors with `is_active = true`, deduplicated and sorted. `?scope=known` widens it to every area name any kitchen has ever carried, active or not — the vocabulary the subcontractor and neighborhood editors need, since they define coverage rather than consume it. Admin-only (coverage is internal). Backed by `activeDeliveryAreas()` / `knownDeliveryAreas()` in `src/lib/subcontractors/areas.ts`; consumed client-side through `useDeliveryAreas()` (`src/hooks/use-delivery-areas.ts`). Server code with the subcontractor rows already in hand should call `unionAreas(rows)` instead of paying for a second query.
 

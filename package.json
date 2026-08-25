@@ -19,7 +19,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:webhook": "tsx scripts/test-webhook.ts"
+    "test:webhook": "tsx scripts/test-webhook.ts",
+    "tasks": "tsx --env-file=.env.local scripts/tasks.ts"
   },
   "engines": {
     "node": "26.3.1"
