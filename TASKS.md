@@ -127,6 +127,21 @@ Her real package is `b29f2945` (pkg 20, `paid_at` 2026-06-29, 19 rows drawn, 1 l
 
 This is the "one order per purchase" failure with the money still on the books — `f22b47df` is a live `active` order counted as a liability. Needs Justin's call on whether either was ever paid before anything is cancelled. She also orders for a group (Maria, Fiana Agistha, Kiki Aristiawati); Fiana's stranded 1 portion looks like the same artifact.
 
+### The kitchen never sees "tanpa nasi", and nothing warns anyone
+
+Two independent breaks, found 2026-08-25 on Surya (`+628561884348`, 15 porsi from 26 Agustus, ordered tanpa nasi):
+
+1. **`extract_order` has no field for it.** `ExtractedOrderInput` (`src/lib/claude/extract-order.ts:34`) carries 18 fields; the only rice one is `nasi_merah`, a *paid* upsell. `system.ts:506` instructs the bot to accept tanpa nasi and never stall — then gives it nowhere to record the promise. `buildRecurringDeliveryRows` writes no `notes`, so all five of Surya's rows are `notes: null`.
+2. **The kitchen page filters it out even when it *is* captured.** `learnCustomerContext` did record it correctly — Surya's `[AI learned context]` says "tanpa nasi (protein +25%)" twice. But `/dapur/[id]/page.tsx` strips the whole AI block and re-admits only bullets matching `PREF_BULLET`, which requires the literal label **`Preferensi`**. The summarizer was never told to emit that label; Surya's bullets are `Pemesanan aktif`, `Alamat pengiriman`, `Pelanggan atas nama Surya`, `Pengiriman siang`, `Batas order`, `Kebiasaan`. None pass. The clearest one also contains "Rp 420.000", so the `MONEY` guard would have dropped it regardless.
+
+The filter itself is right — a dropped preference is recoverable, a leaked price is not. The bug is that the writer and the reader were built against different contracts. Fix is the label: instruct `learn-context.ts` to emit dietary and drop-off facts under a `Preferensi` bullet with no prices in it. Until then **every allergy, no-seafood and tanpa-nasi note is invisible to the kitchen**, silently.
+
+Surya's own delivery was patched by hand for 26 Agustus; the class of bug is not fixed.
+
+### The bot bills an event order before it knows what the order is
+
+See "An event order is gathered, not priced" in `BOT_RULES.md` for the rule and the 2026-08-25 incident (`+6285810115162`, 40 porsi for 22 September: order created and BCA details sent within two minutes, before any price existed or anyone asked what went in the box; thread dead since 08:18). No code guard exists — `extract_order` fires on an event brief exactly as it does on a package. Needs either a tender path or a refusal to create when the request looks like a one-off event.
+
 ### A failed send tells nobody
 
 `updateMessageReceipt` writes Meta's `errors[]` to `conversations.whatsapp_error` and `processWebhookAsync` logs `[webhook] message delivery failed:` — and that is the whole response. No push, no inbox banner, nothing that reaches a person who is not reading Railway logs. Ten image sends failed 20–22 Agustus and nobody knew; 296 delivery proofs failed silently across two months before that. Fix: call `sendPushToAllAdmins` from the failed-status branch, at least for `131042`/`131047`/`131026`, deep-linking to `/inbox`. Cheap, and it is the difference between finding this in a day and finding it in June.

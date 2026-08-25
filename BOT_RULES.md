@@ -137,6 +137,16 @@ Nothing in the prompt ever said what a customer actually had booked, so the mode
 
 The two quota numbers are stated separately and deliberately — `remainingToday` (paid for, not yet delivered) and `unbooked` (not yet on the calendar). `orders.portions_remaining` is the second one. Quoting it as the first tells a customer with twelve meals coming that they have none; see the "Sisa kuota" rule in `OPERATIONS.md`.
 
+## An event order is gathered, not priced — and never billed early
+
+A one-off event (a single date, a box count, no subscription) is priced by tendering it to the kitchens, never off `pricing_tiers`. The bot's job ends at collecting the brief: budget ceiling, what goes in the box, date, portions, meal time, area and address, drop-off window. It confirms that brief back to the customer and hands off to an admin. It does not name a per-portion price, and it **does not call `extract_order`** — creating the order is what sends the bank details, so an early order is an early bill.
+
+On 2026-08-25 a lead asked at 08:08 for 40 porsi makan siang in Gading Serpong on 22 September, budget under Rp 30.000. At 08:10 the bot had created the order and sent BCA details for a total nobody had agreed, having never asked what should be in the box. The customer asked for the menu twice and then "18 rb itu dapat apa saja" — a number the bot had invented and so could not defend. It stalled at 08:18 and the thread died with a payment request in it.
+
+The ordinary package path is different on purpose: a subscription is sellable the instant a size is named, which is why `extract_order` fires early there. The distinguishing question is whether a kitchen has to bid before we know the cost. If yes, gather and escalate; never quote, never create.
+
+See "A custom/event order is tendered to the kitchens" in `OPERATIONS.md` for the full operational sequence.
+
 ## Tanpa nasi is free, and saying otherwise loses the customer
 
 `system.ts` lists four accepted custom requests but the header said "exactly three exceptions", and item 3 (*tidak ada nasi*) named the +25% protein compensation without ever saying what it costs — directly above item 4, which carries an explicit +Rp 5.000 nasi merah surcharge. The model read the pair the only way it could and hedged on price. On 2026-08-20 two unrelated customers asked for tanpa nasi within two hours; to the first (`+6287812476058`) the bot said "perlu saya cek dulu ke tim terkait macam lauk dan harganya" and asked for a portion count instead, and the customer left with "Batal..ribet". There is no tanpa-nasi rate anywhere in the code — `getExtractedOrderPricing` takes only `nasiMerah`, and `NASI_MERAH_SURCHARGE` is the single add-on — so the price is simply the normal ladder. Item 3 now says `harga sama, tidak ada biaya tambahan` in the instruction and in the sentence the model is given to say, the header counts four, and the decline line lists all four rather than omitting nasi merah.

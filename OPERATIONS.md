@@ -44,6 +44,24 @@ Set it on the Customers page ("Harga Kontrak / Porsi", blank = ordinary pricing)
 - Bulk adjust supported: `PATCH /api/settings/pricing` with `{ adjust: number }` increments all tiers at once
 - Package sizes offered by the chatbot: 5, 6, 10, 12, 20, 24, 40, 48, 60, 72, 120, 144 total portions. The 6-multiples were added alongside Saturday delivery; the prices are spelled out in the "Package sizes and prices" section of `system.ts` and stored in `pricing_tiers`. Sizes off that list are priced by the tier-below rule above when divisible by 5 or 6, and refused otherwise.
 
+## A custom/event order is tendered to the kitchens, never quoted from the ladder
+
+An event order — one date, a large box count, no subscription — is not a package and must never be priced off `pricing_tiers`. We do not know what it costs until a kitchen bids on it, so **the quote comes from the kitchens, not from us**. The order of operations is fixed:
+
+1. **Budget** — ask the customer's ceiling per portion and take it as a constraint, not an opening offer.
+2. **Contents** — ask what they actually want in the box. An event buyer chooses the spec; a subscription customer receives the daily menu. Never assume the standard nasi + lauk + sayur + sambal.
+3. **Everything else that pins the job down** — date, portion count, meal time, delivery area and address, drop-off window.
+4. **Confirm the whole brief back to the customer** and get their agreement to it.
+5. **Only then tender it to the subcontractors** and price the customer from the bids that come back.
+
+**No payment request may be sent before step 4.** The bank details are composed by `createOrderFromExtraction`, so any path that creates an order also asks for money — which means creating the order early *is* asking for money early.
+
+The rule is written from the failure. On 2026-08-25 at 08:08 a lead asked for 40 porsi makan siang in Gading Serpong for 22 September with a budget under Rp 30.000. By 08:10 — two minutes, before any price existed, before anyone had asked what should be in the box — the bot had created an order and sent BCA details with a total on it. The customer never asked for a total; they asked "minta menu nya", twice, and then "18 rb itu dapat apa saja". The bot could not answer, because Rp 18.000 was a number it had produced rather than received, and it stalled at 08:18. The thread went cold with a payment request sitting in it for a job nobody had costed.
+
+Two things went wrong and both matter: the bot **priced an event off the personal ladder**, and it **billed before it understood the order**. A subscription package is sellable the moment a size is named, which is why `extract_order` fires early and why that is right for the ordinary path. An event is not sellable until a kitchen has bid. Treating the two the same turns a live corporate lead into an unanswerable quote.
+
+Tendering itself is manual today — the broadcast to the kitchens is composed by hand, bids may be split across two or three of them, and the customer's selling price is never shown to a bidder. There is no tool for it and no automated path; the bot's job is to gather the brief and hand it to an admin.
+
 ## Order sizes (S / M)
 
 - Every order has a `size` column (`text`, default `'s'`, constraint `IN ('s', 'm')`) added in migration 043
