@@ -113,6 +113,20 @@ Diagnosis, prices and the arithmetic are in "What the API actually costs" in `DE
 3. **Skip `validateReply()` on replies that cannot hallucinate.** It doubles the call count on "iya kak". Gate on length and on whether the reply asserts anything customer-specific.
 4. **Alarm on the balance.** Add `GET https://api.deepseek.com/user/balance` to a daily cron and push below $1. Add a `conversations` row when `chatbot_unavailable` goes out, so an outage is visible in the inbox instead of looking like customers being ignored, and treat `402` as its own case rather than a generic API error.
 
+### `meal_time_preference` is a snapshot that nothing ever updates
+
+An order's `meal_time_preference` is written once at creation and never moves again, but customers switch meals. Vania's order `11b8b86d` was created 2 Agustus as `lunch_only`; every delivery she has taken since 3 Agustus is **dinner**, and on 24 Agustus she ordered makan malam for 26–28 Agustus in her own words. The order still read `lunch_only` on 25 Agustus, corrected by hand that day.
+
+This is not cosmetic. `lunch_only` is in `FIXED_SCHEDULE_PREFS`, so the Deliveries page's Generate button would have written Vania a **lunch** row she never asked for, and `buildRecurringDeliveryRows()` builds a whole calendar off the same stale field. Nicholas Satria has the milder version — `dinner_only` on the order, three lunch rows in Agustus.
+
+Nothing heals it: `record_daily_order` books whatever meal the customer names without touching the order's preference, so the divergence only widens. Fix is a choice, not obvious — either have `record_daily_order` update the order's preference when it books a different meal for the Nth time, or stop reading the stored field as truth and derive the standing pattern from recent `daily_deliveries` rows. Decide before the next Generate press; until then the field is only as good as the day the order was created.
+
+### Maria Marcella holds two orders she never bought
+
+Her real package is `b29f2945` (pkg 20, `paid_at` 2026-06-29, 19 rows drawn, 1 left). Sitting beside it: `f22b47df`, `active`, pkg 20, `portions_remaining` 20, **`paid_at` null**, zero delivery rows — set active without ever going through `mark_paid`; and `f9f95966`, `pending_payment`, pkg 20, open since 7 Juli. Together they inflate her balance to 21 portions when she is owed at most 1, and she declined renewal outright on 30 Juli ("gak usah ya kak"), so she is churned, not waiting.
+
+This is the "one order per purchase" failure with the money still on the books — `f22b47df` is a live `active` order counted as a liability. Needs Justin's call on whether either was ever paid before anything is cancelled. She also orders for a group (Maria, Fiana Agistha, Kiki Aristiawati); Fiana's stranded 1 portion looks like the same artifact.
+
 ### A failed send tells nobody
 
 `updateMessageReceipt` writes Meta's `errors[]` to `conversations.whatsapp_error` and `processWebhookAsync` logs `[webhook] message delivery failed:` — and that is the whole response. No push, no inbox banner, nothing that reaches a person who is not reading Railway logs. Ten image sends failed 20–22 Agustus and nobody knew; 296 delivery proofs failed silently across two months before that. Fix: call `sendPushToAllAdmins` from the failed-status branch, at least for `131042`/`131047`/`131026`, deep-linking to `/inbox`. Cheap, and it is the difference between finding this in a day and finding it in June.
