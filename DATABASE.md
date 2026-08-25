@@ -573,7 +573,7 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 
 ## tasks
 
-The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude could update went stale between sessions and Annie and Daevin could never see it. Edited at `/tasks`, printed by `pnpm tasks`. Statuses are plain text, not an enum — `open | in_progress | blocked | done` — so a new one costs no migration. Priority is 1 (highest) to 3.
+The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude could update went stale between sessions and Annie and Daevin could never see it. Edited at `/tasks`, printed by `pnpm tasks`. Statuses are plain text, not an enum — `open | in_progress | blocked | done` — so a new one costs no migration; the allowlist that keeps a typo out lives in `src/app/api/tasks/validate.ts`, and adding a status means adding it there and to `STATUS_RANK` as well. Nothing at the database level rejects a bad value: a fuzzing pass stored `status: "transcended"` and `priority: 999`, and such a row is then invisible in every filter chip but "All". Priority is 1 (highest) to 3.
 
 | Column | Type | Notes |
 |--------|------|-------|

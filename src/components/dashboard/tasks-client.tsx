@@ -73,6 +73,9 @@ export default function TasksClient() {
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Bumped after a save so the drawer remounts on the server's copy of the row
+  // rather than keeping a draft that has already been written.
+  const [savedSeq, setSavedSeq] = useState(0);
 
   const areas = useMemo(
     () => [...new Set(tasks.map((t) => t.area).filter(Boolean) as string[])].sort(),
@@ -112,7 +115,10 @@ export default function TasksClient() {
       if (!json.ok) throw new Error(json.error ?? "Save failed");
       return json.data as Task;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onSuccess: () => {
+      setSavedSeq((n) => n + 1);
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 
   const remove = useMutation({
@@ -277,9 +283,17 @@ export default function TasksClient() {
 
       {selected && (
         <TaskPanel
+          key={`${selected.id}-${savedSeq}`}
           task={selected}
           areas={areas}
-          saving={save.isPending}
+          saving={save.isPending || remove.isPending}
+          error={
+            save.error instanceof Error
+              ? save.error.message
+              : remove.error instanceof Error
+                ? remove.error.message
+                : null
+          }
           onClose={() => setOpenId(null)}
           onSave={(patch) => save.mutate({ id: selected.id, patch })}
           onDelete={() => remove.mutate(selected.id)}
@@ -290,6 +304,7 @@ export default function TasksClient() {
         <NewTaskPanel
           areas={areas}
           saving={create.isPending}
+          error={create.error instanceof Error ? create.error.message : null}
           onClose={() => setCreating(false)}
           onCreate={(patch) => create.mutate(patch)}
         />
@@ -357,6 +372,14 @@ function Drawer({
   );
 }
 
+function ErrorNote({ message }: { message: string }) {
+  return (
+    <p className="rounded-md bg-red-50 text-red-700 text-sm px-3 py-2 mb-3">
+      {message}
+    </p>
+  );
+}
+
 function Field({
   id,
   label,
@@ -383,6 +406,7 @@ function TaskPanel({
   task,
   areas,
   saving,
+  error,
   onClose,
   onSave,
   onDelete,
@@ -390,6 +414,7 @@ function TaskPanel({
   task: Task;
   areas: string[];
   saving: boolean;
+  error: string | null;
   onClose: () => void;
   onSave: (patch: Partial<Task>) => void;
   onDelete: () => void;
@@ -400,8 +425,11 @@ function TaskPanel({
   const set = (patch: Partial<Task>) => setDraft({ ...draft, ...patch });
   const dirty = Object.keys(draft).length > 0;
 
+  const titleMissing = !String(value("title") ?? "").trim();
+
   return (
     <Drawer title="Task" onClose={onClose}>
+      {error && <ErrorNote message={error} />}
       <Field id="task-title" label="Title">
         <Input
           id="task-title"
@@ -487,14 +515,21 @@ function TaskPanel({
           <p className="text-xs text-gray-500 mb-1.5">This task is about</p>
           {task.customers && (
             <a
-              href={`/customers?q=${encodeURIComponent(task.customers.phone_number ?? "")}`}
+              href={`/customers?f=phone_number:contains:${encodeURIComponent(
+                task.customers.phone_number ?? task.customers.name ?? "",
+              )}`}
               className="block underline"
             >
               {task.customers.name ?? task.customers.phone_number}
             </a>
           )}
           {task.orders && (
-            <a href={`/orders?id=${task.orders.id}`} className="block underline mt-1">
+            <a
+              href={`/orders?status=&search=${encodeURIComponent(
+                task.customers?.phone_number ?? "",
+              )}`}
+              className="block underline mt-1"
+            >
               {task.orders.package_size ?? "?"} porsi · {rupiah(task.orders.total_price)} ·{" "}
               {task.orders.status}
             </a>
@@ -512,14 +547,18 @@ function TaskPanel({
         />
       </Field>
 
+      {titleMissing && (
+        <p className="text-xs text-red-600 -mt-1 mb-3">A task needs a title.</p>
+      )}
+
       <div className="flex items-center gap-2 mt-4">
-        <Button disabled={!dirty || saving} onClick={() => onSave(draft)}>
+        <Button disabled={!dirty || saving || titleMissing} onClick={() => onSave(draft)}>
           {saving ? "Saving…" : "Save"}
         </Button>
         {value("status") !== "done" && (
           <Button
             variant="outline"
-            disabled={saving}
+            disabled={saving || titleMissing}
             onClick={() => onSave({ ...draft, status: "done" })}
           >
             Mark done
@@ -540,11 +579,13 @@ function TaskPanel({
 function NewTaskPanel({
   areas,
   saving,
+  error,
   onClose,
   onCreate,
 }: {
   areas: string[];
   saving: boolean;
+  error: string | null;
   onClose: () => void;
   onCreate: (patch: Partial<Task>) => void;
 }) {
@@ -553,6 +594,7 @@ function NewTaskPanel({
 
   return (
     <Drawer title="New task" onClose={onClose}>
+      {error && <ErrorNote message={error} />}
       <Field id="new-task-title" label="Title">
         <Input
           id="new-task-title"

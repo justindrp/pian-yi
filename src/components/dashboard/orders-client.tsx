@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,9 +103,17 @@ type EditForm = {
 
 
 export default function OrdersClient() {
-  const [statusFilter, setStatusFilter] = useState("active");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  // A link can open this page on one customer's orders — /tasks points here
+  // when a task is about a specific order. `status=` (empty) means every status,
+  // since the order in question is often not an active one.
+  const params = useSearchParams();
+  const initialStatus = params.get("status");
+  const initialSearch = params.get("search") ?? "";
+  const [statusFilter, setStatusFilter] = useState(
+    initialStatus === null ? "active" : initialStatus,
+  );
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [selected, setSelected] = useState<Order | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);

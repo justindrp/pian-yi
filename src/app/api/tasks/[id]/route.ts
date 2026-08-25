@@ -3,6 +3,7 @@ import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/types/database";
+import { badRequest, validateTaskInput } from "../validate";
 
 // Explicit allowlist, never mass assignment (CLAUDE.md, "allowlist field
 // updates"). done_at and updated_at are derived below, not taken from input.
@@ -35,7 +36,18 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const input = (await req.json()) as Record<string, unknown>;
+  let input: Record<string, unknown>;
+  try {
+    input = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return badRequest("Body is not valid JSON");
+  }
+
+  // Only the fields present are checked, so a status-only PATCH is not asked
+  // for a title. A cleared title still fails here rather than as a not-null
+  // violation from Postgres.
+  const invalid = validateTaskInput(input, { titleRequired: false });
+  if (invalid) return badRequest(invalid);
 
   const db = createAdminClient();
   const { data: before, error: readError } = await db
@@ -85,6 +97,9 @@ export async function PATCH(
     .single();
 
   if (error) {
+    if (error.code === "23503")
+      return badRequest("Linked customer or order does not exist");
+    console.error("[tasks] update failed", error.message);
     return NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 },
@@ -127,6 +142,14 @@ export async function DELETE(
     .select("*")
     .eq("id", id)
     .single();
+  // Without this a delete of an id that never existed answers ok, and writes an
+  // audit entry with an empty body.
+  if (!before) {
+    return NextResponse.json(
+      { ok: false, error: "Task not found" },
+      { status: 404 },
+    );
+  }
 
   const { error } = await db.from("tasks").delete().eq("id", id);
   if (error) {
@@ -142,7 +165,7 @@ export async function DELETE(
     entityType: "tasks",
     entityId: id,
     action: "delete",
-    changes: { deleted: before ?? {} },
+    changes: { deleted: before },
   });
 
   return NextResponse.json({ ok: true });

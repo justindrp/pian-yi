@@ -79,10 +79,25 @@ Standing per-meal address rule on `orders` (migration 048): `lunch_address_slot`
 - `GET /api/audit` — The `edit_log` timeline, newest first, paginated with `.range()` at 50 rows a page. Optional `?entity_type=`, `?actor=` (exact `changed_by` match) and `?entity_id=`; returns `{ data, total, page, pageSize }`. Any signed-in admin. Backs the `/activity` page, which is the only thing in the app that reads `edit_log` — the table had been collecting rows for months with no reader, so "who changed this" was answerable only from a SQL prompt. Writes go through `logEdit()` (`src/lib/audit/log-edit.ts`); see the `edit_log` section of `DATABASE.md` for what is and is not covered.
 
 ### Tasks
-- `GET /api/tasks` — The whole queue, ordered status → priority → `created_at`, with `customers(id, name, phone_number)` and `orders(id, package_size, status, total_price)` embedded so a task can show a live link to what it is about. No pagination: the queue is tens of rows and the page filters client-side. Any signed-in admin.
-- `POST /api/tasks` — Create. `title` required (400 without it). `id`, `created_at`, `updated_at` and `done_at` are never taken from the client; `done_at` is stamped server-side when `status` arrives as `done`.
+- `GET /api/tasks` — The whole queue, with `customers(id, name, phone_number)` and `orders(id, package_size, status, total_price)` embedded so a task can show a live link to what it is about. Paginated through `fetchAllRows()` — it selected unpaginated at first, which PostgREST silently caps at 1000 rows. Ordered `priority` → `created_at` in the query, then re-sorted in the route by `STATUS_RANK` (blocked, in_progress, open, done): ordering on the `status` column sorts it alphabetically, which puts `done` **second**, ahead of the open work. Any signed-in admin.
+- `POST /api/tasks` — Create. `title` required. `id`, `created_at`, `updated_at` and `done_at` are never taken from the client; `done_at` is stamped server-side when `status` arrives as `done`.
 - `PATCH /api/tasks/[id]` — Explicit field allowlist (`title, body, status, priority, area, assignee, customer_id, order_id, blocked_on, due_date`); anything else in the body is ignored. Reads the row first, drops unchanged fields, and returns early without a write when nothing differs, so `edit_log` gets no empty entries. `done_at` follows `status` in both directions.
-- `DELETE /api/tasks/[id]` — Hard delete. The entire prior row goes into the audit `changes`, because there is nothing left to reconstruct it from.
+- `DELETE /api/tasks/[id]` — Hard delete. The entire prior row goes into the audit `changes`, because there is nothing left to reconstruct it from. **404 when the id does not exist** — it used to answer `ok` and write an `edit_log` row with an empty `changes` object, so a delete of nothing was indistinguishable in the trail from a delete of something.
+
+**Validation contract** (`src/app/api/tasks/validate.ts`, shared by POST and PATCH — POST requires `title`, PATCH only checks the fields present). Every failure is a 400 with a sentence a human can act on, never a raw Postgres string:
+
+| Field | Rule |
+| --- | --- |
+| `title` | non-blank, ≤ 300 chars |
+| `status` | one of `open`, `in_progress`, `blocked`, `done` |
+| `priority` | integer 1, 2 or 3 |
+| `customer_id`, `order_id` | a uuid, or null |
+| `due_date` | `YYYY-MM-DD`, or null |
+| `body`, `area`, `assignee`, `blocked_on` | text, or null |
+
+A malformed JSON body is a 400 too, not an unhandled throw. Postgres `23503` (the linked customer or order does not exist) is translated to a 400 rather than surfacing the constraint name. This layer exists because an adversarial pass on the shipped routes got `status: "transcended"` and `priority: 999` **stored** — rows that then showed up in no filter chip except "All" — and turned a blank title, a 5000-character title, `due_date: "besok"` and a non-uuid `customer_id` into 500s carrying raw pg text.
+
+**The drawer's "This task is about" links are real URLs into the other pages**, and both were dead when the page shipped. The customer link uses the Customers page's own filter grammar (`/customers?f=phone_number:contains:<phone>`) — `?q=` was invented and that page never read it. The order link is `/orders?status=&search=<phone>`: `/api/orders?search=` matches a customer's name or phone, never an order id, and the empty `status=` means every status, since the order a task is about is usually not an active one. `orders-client.tsx` had no URL state at all before this and now seeds `statusFilter`/`search` from the query string, which is why `orders/page.tsx` needs the `<Suspense>` wrapper `customers/page.tsx` already had.
 
 All four call `logEdit()` with `entityType: "tasks"`. They replaced `TASKS.md` on 2026-08-25; `pnpm tasks` prints the queue for a terminal.
 
