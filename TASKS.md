@@ -80,7 +80,11 @@ Settled by hand on 2026-08-24: package raised 20 → 21 (one free porsi, `free_q
 
 Customer `2f1690c9-e52b-4874-884c-27e70ec05e2a` (`+6281263655316`). Order `1e331e01-c497-4392-84d8-746a344f6d04`: 12 porsi, `pending_payment`, Rp 336.000, first delivery ~1 September, kitchen now set (Dapur 1 `52cd5e62-da09-49c9-939c-2f1246566c40`, assigned by hand 2026-08-22 along with its 12 delivery rows — see `BOT_RULES.md`, "A dapur the model omits").
 
-She wants **dinner to her kost in Karawaci, lunch to UPH**, and has not sent the UPH address yet, so `lunch_address_slot` / `dinner_address_slot` are both `1` and every row books to the kost. The amend path now carries `address_2` / `address_2_meal` (shipped `72f2c7d`), so when she sends it the bot can take it — but nothing prompts her. Ask, or set it by hand on the order before 1 September.
+She wants **dinner to her kost in Karawaci, lunch to UPH**, and has not sent the UPH address yet, so `lunch_address_slot` / `dinner_address_slot` are both `1` and every row books to the kost. The amend path now carries `address_2` / `address_2_meal` (shipped `72f2c7d`), so when she sends it the bot can take it — but nothing prompts her.
+
+**We cannot ask her.** Her last message was 22 Agustus 09:21 WIB; checked 25 Agustus 16:10, the window has been shut for 78,8 hours. Free-form is rejected `131047`, and the template that exists to reopen a window is itself business-initiated, so it dies on the WABA billing restriction — see §2. She is unreachable until she writes first, and nothing in the flow gives her a reason to before 1 September.
+
+All 12 rows for 2–8 September are already built against the kost (`address_slot` 1, kitchen set). **If she has not sent the UPH address by 1 September, the six lunch rows deliver to the wrong place.** Two ways out that do not need her: set the second address by hand on the order once we have it from any source, or have Justin message her from his personal number (`+6281213098656`), which is not on the WABA and not subject to the restriction.
 
 ### Vania's week is unbooked
 
