@@ -117,7 +117,7 @@ Diagnosis, prices and the arithmetic are in "What the API actually costs" in `DE
 
 An order's `meal_time_preference` is written once at creation and never moves again, but customers switch meals. Vania's order `11b8b86d` was created 2 Agustus as `lunch_only`; every delivery she has taken since 3 Agustus is **dinner**, and on 24 Agustus she ordered makan malam for 26–28 Agustus in her own words. The order still read `lunch_only` on 25 Agustus, corrected by hand that day.
 
-This is not cosmetic. `lunch_only` is in `FIXED_SCHEDULE_PREFS`, so the Deliveries page's Generate button would have written Vania a **lunch** row she never asked for, and `buildRecurringDeliveryRows()` builds a whole calendar off the same stale field. Nicholas Satria has the milder version — `dinner_only` on the order, three lunch rows in Agustus.
+This is not cosmetic: `buildRecurringDeliveryRows()` builds a whole calendar off the stale field at order creation, so a renewal would have booked Vania a month of **lunches** she never asked for. Nicholas Satria has the milder version — `dinner_only` on the order, three lunch rows in Agustus.
 
 Nothing heals it: `record_daily_order` books whatever meal the customer names without touching the order's preference, so the divergence only widens. Fix is a choice, not obvious — either have `record_daily_order` update the order's preference when it books a different meal for the Nth time, or stop reading the stored field as truth and derive the standing pattern from recent `daily_deliveries` rows. Decide before the next Generate press; until then the field is only as good as the day the order was created.
 

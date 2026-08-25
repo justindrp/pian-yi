@@ -1,9 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { getSetting } from "@/lib/cache/settings";
-import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
-import { unbookedByOrder } from "@/lib/orders/customer-schedule";
-import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,122 +22,6 @@ export async function GET(req: NextRequest): Promise<Response> {
     .eq("delivery_date", date);
 
   return NextResponse.json({ ok: true, data: rows ?? [] });
-}
-
-export async function POST(req: NextRequest): Promise<Response> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json() as { date: string };
-  const date = body.date;
-  if (!date) return NextResponse.json({ ok: false, error: "date required" }, { status: 400 });
-
-  const db = createAdminClient();
-
-  // Load active orders that have started by the target date
-  const { data: allOrders } = await db
-    .from("orders")
-    .select("id, customer_id, meal_time_preference, portions_lunch, portions_dinner, portions_per_delivery, pause_until, subcontractor_id, portions_remaining, package_size, start_date, created_at, customers(name, phone_number, area, subcontractor_id)")
-    .eq("status", "active")
-    .in("meal_time_preference", FIXED_SCHEDULE_PREFS)
-    .lte("start_date", date);
-
-  if (!allOrders) return NextResponse.json({ ok: true, data: [] });
-
-  // One order per customer. Two standing orders on the same customer used to
-  // push two rows for the same (date, customer, meal_type), and the upsert's
-  // ignoreDuplicates then kept whichever landed first — the same arbitrary
-  // choice pickDrawOrder exists to remove.
-  const byCustomer = new Map<string, typeof allOrders>();
-  for (const o of allOrders) {
-    if (!o.customer_id) continue;
-    const list = byCustomer.get(o.customer_id);
-    if (list) list.push(o);
-    else byCustomer.set(o.customer_id, [o]);
-  }
-  const orders = [...byCustomer.values()]
-    .map((list) => pickDrawOrder(list))
-    .filter((o): o is NonNullable<typeof o> => o != null);
-
-  // Never write a row an order has no quota left to cover. Without this,
-  // status = 'active' plus a standing meal_time_preference was the whole test,
-  // so a fully-booked order kept generating rows past its package — 21 of the
-  // 28 rows built for 2026-08-21 were already over-draws. It is also what makes
-  // reactivating a wrongly-completed order safe: Nadya, Kurniadi Tan and Jordy
-  // each have every owed portion already dated, so they generate nothing new.
-  const unbooked = await unbookedByOrder(db, orders);
-
-  const targetDate = new Date(date);
-
-  const rows: {
-    delivery_date: string;
-    customer_id: string;
-    order_id: string;
-    meal_type: string;
-    portions: number;
-    subcontractor_id: string | null;
-    status: string;
-  }[] = [];
-
-  for (const order of orders) {
-    const customer = order.customers as { name: string | null; phone_number: string; area: string; subcontractor_id: string | null } | null;
-    if (!customer) continue;
-    const subcontractorId = (order as unknown as { subcontractor_id: string | null }).subcontractor_id ?? customer.subcontractor_id;
-    if (!subcontractorId) continue;
-
-    // Skip paused
-    if (order.pause_until && new Date(order.pause_until) >= targetDate) continue;
-
-    // Fully booked: every portion already has a date. Nothing left to write.
-    let left = unbooked.get(order.id) ?? 0;
-    if (left <= 0) continue;
-
-    const pref = order.meal_time_preference;
-
-    const isLunch = pref === "lunch_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_lunch";
-    const isDinner = pref === "dinner_only" || pref === "both_fixed" || pref === "keduanya" || pref === "default_dinner";
-
-    if (isLunch && !order.customer_id) continue;
-
-    const lunchPortions = (order.portions_lunch ?? 0) > 0 ? (order.portions_lunch ?? 0) : order.portions_per_delivery;
-    if (isLunch && lunchPortions <= left) {
-      left -= lunchPortions;
-      rows.push({
-        delivery_date: date,
-        customer_id: order.customer_id as string,
-        order_id: order.id,
-        meal_type: "lunch",
-        portions: lunchPortions,
-        subcontractor_id: subcontractorId,
-        status: "scheduled",
-      });
-    }
-
-    const dinnerPortions = (order.portions_dinner ?? 0) > 0 ? (order.portions_dinner ?? 0) : order.portions_per_delivery;
-    if (isDinner && dinnerPortions <= left) {
-      left -= dinnerPortions;
-      rows.push({
-        delivery_date: date,
-        customer_id: order.customer_id as string,
-        order_id: order.id,
-        meal_type: "dinner",
-        portions: dinnerPortions,
-        subcontractor_id: subcontractorId,
-        status: "scheduled",
-      });
-    }
-  }
-
-  // Upsert
-  if (rows.length > 0) {
-    await db.from("daily_deliveries").upsert(rows, {
-      onConflict: "delivery_date,customer_id,meal_type",
-      ignoreDuplicates: true,
-    });
-  }
-
-  return NextResponse.json({ ok: true, data: rows });
 }
 
 // Save: upsert rows and deduct portions_remaining

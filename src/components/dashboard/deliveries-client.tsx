@@ -579,19 +579,6 @@ export default function DeliveriesClient() {
     }
   }, [sheetData]);
 
-  const generate = useMutation({
-    mutationFn: async () => {
-      await fetch("/api/deliveries/daily-sheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date }),
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["daily-sheet", date] });
-    },
-  });
-
   const save = useMutation({
     mutationFn: async () => {
       await fetch("/api/deliveries/daily-sheet", {
@@ -964,14 +951,11 @@ export default function DeliveriesClient() {
                 type="button"
                 variant="outline"
                 onClick={() =>
-                  rows.length === 0
-                    ? generate.mutate()
-                    : qc.invalidateQueries({ queryKey: ["daily-sheet", date] })
+                  qc.invalidateQueries({ queryKey: ["daily-sheet", date] })
                 }
-                disabled={generate.isPending}
-                className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40 h-auto"
+                className="px-4 py-2 border-gray-200 text-gray-900 text-sm rounded-lg hover:bg-gray-50 h-auto"
               >
-                {generate.isPending ? "Refreshing..." : "Refresh"}
+                Refresh
               </Button>
               <Button
                 type="button"
