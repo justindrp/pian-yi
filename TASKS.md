@@ -141,6 +141,22 @@ What is left is a different, smaller problem: **8 untouched orders created on an
 
 **Shape when it is cleared: cancel-and-zero, never `DELETE`.** `daily_deliveries.order_id` carries no `ON DELETE` rule, so deleting an order with rows throws; `journals` links by `source_id` with no FK at all, so a delete silently orphans the ledger. `scripts/cancel-phantom-orders.ts` is the working precedent — except it also decrements `customers.portions_remaining`, which is a dead column and must not be touched again.
 
+### Three of the eight `pending_payment` orders are amendment duplicates — and the rows are on the wrong half
+
+Rp 3.836.000 sits in `pending_payment` across 8 orders. Read against the threads on 2026-08-25, five of them are one purchase recorded twice. The shape is identical every time and it is **not** the phantom shape: pre-fix `extract_order` **inserted a new order when the customer amended** instead of amending the open one, so the calendar stayed on the superseded order while the payment landed on the new one. Neither half is complete, so neither can simply be deleted.
+
+| customer | holds the rows | holds the payment | verdict |
+| --- | --- | --- | --- |
+| **Sky** `+6282259667519` | `ff2b359c` pending, pkg 20, **10 rows** (13–17 Juli, 2 porsi each = 20) | `442f4cb8` active, `paid_at` 2026-07-12, **0 rows** | one purchase. Ordered 1 Juli, thread died on a custom split; re-ordered 10 Juli, verified 12 Juli. Move the rows to `442f4cb8`, cancel `ff2b359c` |
+| **Rani** `+6285219802061` | `695d82ac` pending, pkg 10, **payment proof on file**, 5 dinner rows (14–17, 20 Juli — all delivered) | `8df39cd3` active, pkg 5, 0 rows | inverted. `695d82ac` is the **real** order, wrongly left `pending_payment`; `8df39cd3` is the duplicate the 13 Juli switch to dinner-only should have been an amendment of |
+| **Fidela** `+6281293333039` | `58ffbbe2` pending, pkg 10, 8 rows (28–31 Juli, delivered) | `c4640d6d` active, pkg 8, Rp 224.000, 0 rows | she skipped 27 Juli and cut 10 → 8. `725d29f7` (pkg 10, Rp 280.000, **0 rows**) is a **pure duplicate** — the bot re-sent the old Rp 280.000 request at 05:46 and corrected it to Rp 224.000 at 06:38, 30 minutes later |
+
+The remaining three are genuine, not duplicates: **Cindi** `1e331e01` (payment agreed for 1 September), **Naya** `67aeb972` (20 rows, starts 31 Agustus), and the event lead's `155d5dab` — which is wrong for its own reason, see "The bot bills an event order" below.
+
+Only `725d29f7` and `f9f95966` can be cancelled outright — zero rows, superseded, nothing depends on them. The other three pairs need the delivery rows **re-pointed** to the paid order before the superseded half is cancelled, or the served history is lost. Rani additionally needs a decision Justin has to make: her proof is for Rp 280.000 but the arrangement she actually took was Rp 145.000, so either she is owed 5 portions (`rem=5` already says so) or the order should be resized to 5 and completed.
+
+Same guard as the phantom work: **cancel-and-zero, never `DELETE`**, and do not touch `customers.portions_remaining`.
+
 ### The kitchen never sees "tanpa nasi", and nothing warns anyone
 
 Two independent breaks, found 2026-08-25 on Surya (`+628561884348`, 15 porsi from 26 Agustus, ordered tanpa nasi):
