@@ -127,6 +127,16 @@ Her real package is `b29f2945` (pkg 20, `paid_at` 2026-06-29, 19 rows drawn, 1 l
 
 This is the "one order per purchase" failure with the money still on the books — `f22b47df` is a live `active` order counted as a liability. Needs Justin's call on whether either was ever paid before anything is cancelled. She also orders for a group (Maria, Fiana Agistha, Kiki Aristiawati); Fiana's stranded 1 portion looks like the same artifact.
 
+**Dry run, 2026-08-25 — "delete all phantom orders" has no clean set behind it.** Three passes, no writes:
+
+- Naively, 113 open orders are `active` + never paid + zero delivery rows, Rp 27,2 juta on the books. All but four are the **bulk import**: 378 of 456 orders were created on 2026-06-08 (127), 06-24 (94), 07-04 (21) and 07-07 (136), and the import never backfilled payment. They are unpaid by construction, not by fact. Any phantom hunt must exclude those five dates first.
+- 22 more are `active` + never paid but **have** delivery rows. Not phantoms either — this is `paid_at` never being backfilled. Kurniadi's own exhausted `3c96151b` sits in this bucket. The `delivered` count is no help here: it reads 0 for every order, because of the 2754 past rows still `scheduled`.
+- Of the four that survive both filters, the threads clear three of them. **Rani** `8df39cd3` was told "bukti pembayaran sudah kami terima" on 13 Juli and got delivery proofs on 14, 15, 16, 17 and 20 Juli — a paid, served order whose deliveries were sent by hand so no rows exist. Deleting it would erase real revenue. **Hanna** `32be3ec0` and **Darren** `779c8ae4` are `free_quota` grants at Rp 0. **Fidela** holds three open orders and was served through 31 Juli; which are duplicates needs a human read.
+
+What is left is a different, smaller problem: **8 untouched orders created on an import day sitting beside a real order for the same customer, Rp 1.462.000** — Maria Marcella (`f22b47df`, `f9f95966`), Hanna (`a52c074b`, `6fd89acb`, `b5852e69`), Aurelia Shella (`b86577bb`), Fenny (`5ba4f724`), Agustina (`97797e05`). Import duplicates, not bot phantoms. Maria is the only unambiguous one — she declined renewal on 30 Juli and carries 40 untouched portions beside a package with 1 left. For Aurelia and Fenny the *other* order is the junk one (pkg 0, Rp 0), so the pairing cannot be resolved mechanically.
+
+**Shape when it is cleared: cancel-and-zero, never `DELETE`.** `daily_deliveries.order_id` carries no `ON DELETE` rule, so deleting an order with rows throws; `journals` links by `source_id` with no FK at all, so a delete silently orphans the ledger. `scripts/cancel-phantom-orders.ts` is the working precedent — except it also decrements `customers.portions_remaining`, which is a dead column and must not be touched again.
+
 ### The kitchen never sees "tanpa nasi", and nothing warns anyone
 
 Two independent breaks, found 2026-08-25 on Surya (`+628561884348`, 15 porsi from 26 Agustus, ordered tanpa nasi):
@@ -141,6 +151,8 @@ Break 1 is still open: with no structured field, a tanpa-nasi order still depend
 ### The bot bills an event order before it knows what the order is
 
 See "An event order is gathered, not priced" in `BOT_RULES.md` for the rule and the 2026-08-25 incident (`+6285810115162`, 40 porsi for 22 September: order created and BCA details sent within two minutes, before any price existed or anyone asked what went in the box; thread dead since 08:18). No code guard exists — `extract_order` fires on an event brief exactly as it does on a package. Needs either a tender path or a refusal to create when the request looks like a one-off event.
+
+The customer was recovered by hand on 2026-08-25 at 16:07 WIB, inside the window: the premature transfer request was withdrawn and named as our mistake, the four missing brief items were asked (arrival time, lauk and extras, packaging, full address plus on-site PIC), and he was told plainly that nothing is payable yet. His order `155d5dab` is still open at `pending_payment` for Rp 1.040.000 — a number the bot invented, and one that contradicts the Rp 18.000/porsi it quoted in the same thread. It books nothing and draws no quota, so it is not urgent, but it should be cancelled or repriced once the tender comes back.
 
 ### A failed send tells nobody
 
