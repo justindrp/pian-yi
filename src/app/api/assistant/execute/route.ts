@@ -353,7 +353,7 @@ export async function POST(request: Request) {
         start_date: order.start_date ?? null,
         // Order kitchen overrides, customer kitchen is the default. A null here
         // makes the delivery invisible on /dapur/[id], which filters strictly on
-        // subcontractor_id. Same rule as the generate-deliveries cron.
+        // subcontractor_id. Same rule as POST /api/deliveries/daily-sheet.
         subcontractor_id:
           order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
       });

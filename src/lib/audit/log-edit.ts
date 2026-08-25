@@ -47,7 +47,7 @@ export async function logEdit(params: {
   }
 }
 
-/** Prefix for a write nobody pressed a button for. `system:generate-deliveries`. */
+/** Prefix for a write nobody pressed a button for. `system:deduct-daily-quota`. */
 export function systemActor(job: string): string {
   return `system:${job}`;
 }

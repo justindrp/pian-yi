@@ -645,7 +645,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       // Without the fallback a delivery row carries a null subcontractor_id, and
       // /dapur/[id] filters strictly on it — so the kitchen never sees the
       // delivery. Julian S's whole renewal was invisible that way. Same rule as
-      // the generate-deliveries cron.
+      // POST /api/deliveries/daily-sheet.
       subcontractor_id:
         order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
     },

@@ -1219,9 +1219,9 @@ export async function createOrderFromExtraction(
     // The model supplies delivery_schedule when it has spelled the days out.
     // When it has not, a fixed-schedule order used to get an order row and no
     // deliveries at all — nothing else fills them in, so the customer had paid
-    // for a package that would never be cooked. Derive the days from the same
-    // helper the generate-deliveries cron uses instead of depending on the
-    // model to emit an array of dates.
+    // for a package that would never be cooked. This is the only automatic
+    // writer of a fixed schedule: derive the days from buildRecurringDeliveryRows
+    // instead of depending on the model to emit an array of dates.
     const derived =
       !sortedSchedule && FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
         ? buildRecurringDeliveryRows(
