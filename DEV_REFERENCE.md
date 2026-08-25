@@ -283,7 +283,7 @@ Suites: `webhook`, `orders`, `orders-post`, `customers-delete`, `customers-post`
 
 Any fire-and-forget Claude call in a route under test must be mocked, not just ignored. `analyzeCustomerMessage` is unawaited but goes through the same `getAnthropicClient` mock the webhook tests count calls on, so leaving it real stole responses off the `mockResolvedValueOnce` queue, inflated every `toHaveBeenCalledTimes` by one, and — because it is unawaited — failed on different lines in isolation than in the full suite. `test/webhook.test.ts` mocks it at module level.
 
-Pre-push hook (`.git/hooks/pre-push`): `pnpm lint && pnpm typecheck && pnpm test` — blocks on any failure.
+Pre-push hook (`.githooks/pre-push`): `pnpm install --frozen-lockfile`, then `pnpm lint`, `pnpm typecheck`, `pnpm test` — blocks on any failure. **The path matters.** `core.hooksPath` is set to `.githooks`, so the copy at `.git/hooks/pre-push` never runs; it holds an older version of these checks and reading it gives a false sense of what the push path enforces. The live hook checked only the lockfile until 2026-08-26, which is how `test/jakarta-time.test.ts` stayed red on main for days without a single push being blocked.
 
 When adding new API routes or webhook code paths, add a corresponding test in `test/`.
 

@@ -1,4 +1,11 @@
 #!/bin/bash
 set -e
 
+# core.hooksPath points here, so .git/hooks/pre-push never runs. This file used
+# to check only the lockfile, and test/jakarta-time.test.ts sat red on main for
+# days because nothing on the push path looked at the suite.
 pnpm install --frozen-lockfile
+
+pnpm lint
+pnpm typecheck
+pnpm test --passWithNoTests
