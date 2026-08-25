@@ -28,8 +28,16 @@ describe("isDeliveryDay", () => {
     expect(isDeliveryDay("2026-08-23")).toBe(false);
   });
 
-  test("Maulid Nabi is closed", () => {
-    expect(isDeliveryDay("2026-08-25")).toBe(false);
+  test("a libur nasional is closed", () => {
+    expect(isDeliveryDay("2026-08-17")).toBe(false);
+  });
+
+  // Closure is a property of the kitchen, not of the calendar. Maulid Nabi is
+  // in OPEN_DESPITE_HOLIDAY because Thenie works it, and this test asserted the
+  // opposite for a day after that entry landed — the exception had no coverage
+  // of its own, so the only thing that noticed was a stale red test.
+  test("a tanggal merah in OPEN_DESPITE_HOLIDAY is open", () => {
+    expect(isDeliveryDay("2026-08-25")).toBe(true);
   });
 
   test("an ordinary Sabtu is open", () => {
@@ -69,8 +77,15 @@ describe("earliestDeliveryDate", () => {
   });
 
   test("skips a libur nasional", () => {
+    // Minggu 16 → Senin 17 is Kemerdekaan → Selasa 18.
+    expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-16T08:00:00Z") }).date).toBe(
+      "2026-08-18",
+    );
+  });
+
+  test("does not skip a tanggal merah the kitchen works through", () => {
     expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-24T08:00:00Z") }).date).toBe(
-      "2026-08-26",
+      "2026-08-25",
     );
   });
 });

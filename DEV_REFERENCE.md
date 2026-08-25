@@ -277,7 +277,9 @@ Standard commands (always use these spellings):
 
 Jest suite in `test/`. Uses `next/jest`, `testEnvironment: "node"`, `jest.mock()` for all externals (Supabase, Claude, WhatsApp). No real network calls.
 
-Suites: `webhook`, `orders`, `orders-post`, `customers-delete`, `customers-post`, `inbox`, `assistant`, `assistant-execute`, `assistant-history`, `delivery-proofs`, `accounting`, `accounting-accounts`, `accounting-reports`, `addable-customers`, `settings`.
+Suites: `webhook`, `orders`, `orders-post`, `customers-delete`, `customers-post`, `inbox`, `assistant`, `assistant-execute`, `assistant-history`, `delivery-proofs`, `accounting`, `accounting-accounts`, `accounting-reports`, `addable-customers`, `settings`, `tasks`.
+
+`test/api/tasks.test.ts` is the pattern to copy for a new route: it tests `validate.ts` directly as a pure function (no mocks at all — that is where the input rules live) and mocks Supabase only for the handler-level behaviour a validator cannot express (the STATUS_RANK re-sort, `fetchAllRows` walking a second page, the 404 on a ghost DELETE, the allowlist, the no-op PATCH that must not write). It exists because the routes were first tested by hand — curl and browser screenshots — which found eleven real defects and then left nothing behind that would catch any of them coming back. Mutation-check a suite before trusting it: break the code on purpose, confirm the tests go red, restore.
 
 Any fire-and-forget Claude call in a route under test must be mocked, not just ignored. `analyzeCustomerMessage` is unawaited but goes through the same `getAnthropicClient` mock the webhook tests count calls on, so leaving it real stole responses off the `mockResolvedValueOnce` queue, inflated every `toHaveBeenCalledTimes` by one, and — because it is unawaited — failed on different lines in isolation than in the full suite. `test/webhook.test.ts` mocks it at module level.
 
