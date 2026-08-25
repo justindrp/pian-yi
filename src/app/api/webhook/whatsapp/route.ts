@@ -26,7 +26,6 @@ import {
   applyLatestCustomerSize,
   contractPrice,
   extractOrderFromConversation,
-  minPackageSize,
   resizePendingOrderFromMessage,
 } from "@/lib/claude/extract-order";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
@@ -312,13 +311,34 @@ async function customerStatedSize(
 }
 
 /**
- * Builds the order the conversation already contains, when the bot itself failed
- * to. Shared by the two ways that happens: a promise it never kept, and a
- * clarification loop it never broke out of. Returns whether an order was made.
+ * Flags a conversation that looks like it contains an order the bot never
+ * booked, and tells an admin. It does not create anything.
+ *
+ * It used to. `recoverOrderFromConversation` built the order itself and let
+ * `createOrderFromExtraction` send the bank details, which is how a guess
+ * turned into a bill: Nicholas Satria asked what the week's menu was and was
+ * charged Rp 280.000 twenty-seven seconds later; Julian S asked to skip two
+ * deliveries and got Rp 145.000; Nadya asked to move one delivery to lunch and
+ * her finished package came back as Rp 540.000; Fahmi asked where his dinner
+ * was and was billed Rp 448.000 for the sixteen portions he had already paid
+ * for, on an order whose past `start_date` also forged a `delivered` row for a
+ * meal nobody cooked.
+ *
+ * Eight guards were added over those six incidents and the seventh still got
+ * through, because the thing being guarded is unguardable: "16 porsi" in a chat
+ * is genuinely ambiguous between buying sixteen and scheduling sixteen already
+ * owned. No text rule separates them. What was fixable was the consequence —
+ * an inference no longer holds write authority, so a wrong one costs a
+ * notification instead of a customer.
+ *
+ * Three filters survive, and only to keep the push rare: the extraction found
+ * an order, the customer typed the size themselves, and it is not one already
+ * on file. The rest went with the write.
  */
-async function recoverOrderFromConversation(
+async function flagOrderAtRisk(
   customerId: string,
   phone: string,
+  customerName: string | null,
   reason: string,
 ): Promise<boolean> {
   const db = createAdminClient();
@@ -327,54 +347,20 @@ async function recoverOrderFromConversation(
     .select("id, status, package_size, start_date, created_at")
     .eq("customer_id", customerId)
     .order("created_at", { ascending: false });
-  // An order still being paid for means we are mid-flow on that order; a second
-  // one is never what the customer meant. A *running* package is different: a
-  // top-up is a new order and needs nothing from the one already going. Febby
-  // asked "mau tambah lagi yaa untuk 30 porsi" on top of an active package and
-  // recovery refused to build it, because the guard treated any open order as
-  // proof she already had what she was asking for.
-  const midFlowOrder = (orders ?? []).find((o) =>
-    ["pending_payment", "payment_proof_received"].includes(o.status),
-  );
-  if (midFlowOrder) {
-    console.log(
-      `[webhook] order recovery (${reason}) skipped: order ${midFlowOrder.id} is mid-flow (${midFlowOrder.status})`,
-    );
-    return false;
-  }
 
   // Recovery re-reads the chat, so for a customer who has ordered before, the
   // window must start after their newest order — otherwise the messages that
-  // produced that order are still in view and get built a second time. Nadya
-  // asked on 2026-08-19 to move one delivery to lunch, the reply said "sudah
-  // kami catat" (of the schedule, not an order), ORDER_PROMISE matched, and
-  // her finished 8 Agustus package was rebuilt as a Rp 540.000 bill she was
-  // then asked to pay.
+  // produced that order are still in view and get read as a second one.
   const newestOrder = (orders ?? [])[0];
 
   try {
-    const minSize = await minPackageSize();
     const raw = await extractOrderFromConversation(customerId, {
       since: newestOrder?.created_at ?? undefined,
     });
-    if (!raw || raw.package_size <= 0) {
-      console.log(
-        `[webhook] order recovery (${reason}) skipped: extraction returned ${raw ? `package_size ${raw.package_size}` : "nothing"} for ${customerId}`,
-      );
-      return false;
-    }
-    // A size below the smallest package is never a package. createOrderFromExtraction
-    // floors it, which is right when an admin or the model has confirmed the
-    // purchase and wrong here: it turns "2 porsi besok" into a 5-porsi bill.
-    if (raw.package_size < minSize) {
-      console.log(
-        `[webhook] order recovery (${reason}) skipped: package_size ${raw.package_size} below smallest package ${minSize} for ${customerId}`,
-      );
-      return false;
-    }
-    // The customer has to have named this package. Recovery runs on every reply
-    // that called no tool, and without this it billed four real customers for
-    // packages they never mentioned.
+    if (!raw || raw.package_size <= 0) return false;
+
+    // The customer has to have named this package. The trigger fires on every
+    // reply that called no tool, and without this it flagged every browser.
     if (
       !(await customerStatedSize(
         customerId,
@@ -382,82 +368,59 @@ async function recoverOrderFromConversation(
         raw.package_size,
       ))
     ) {
-      console.log(
-        `[webhook] order recovery (${reason}) skipped: customer never stated ${raw.package_size} porsi for ${customerId}`,
-      );
       return false;
     }
-    // An address sent as a photo is an address: the model never sees the image,
-    // but the admin does, and it is sitting in the inbox. Fahmi was quoted 20
-    // porsi at Rp 540.000, sent his address as a picture, and recovery refused
-    // to build the order because extraction found no address text. Record the
-    // pointer the prompt already specifies rather than losing the order over a
-    // field an admin can read off the thread.
-    const extracted = raw.address?.trim()
-      ? raw
-      : (await hasInboundImage(
-            customerId,
-            newestOrder?.created_at ?? undefined,
-          ))
-        ? { ...raw, address: "Alamat dikirim sebagai foto - lihat inbox" }
-        : raw;
-    if (!extracted.address) {
-      console.log(
-        `[webhook] order recovery (${reason}) skipped: no address in chat or on record for ${customerId}`,
-      );
-      return false;
-    }
-    // Second layer: an extraction that reproduces an order already on file is
-    // the old conversation echoing, never a new purchase.
-    if (
-      (orders ?? []).some(
-        (o) =>
-          o.package_size === extracted.package_size &&
-          // Same size and same start is the old conversation echoing. So is the
-          // same size on an order bought in this same window: Nicholas's phantom
-          // matched his active 10-porsi package on size and differed only on a
-          // start date the extraction had invented.
-          (o.start_date === extracted.start_date ||
-            (o.created_at ?? "") >
-              new Date(Date.now() - BUY_EVIDENCE_WINDOW_MS).toISOString()),
-      )
-    ) {
-      console.log(
-        `[webhook] order recovery (${reason}) skipped: duplicates an existing order for ${customerId}`,
-      );
-      return false;
-    }
-    await createOrderFromExtraction(
-      customerId,
-      phone,
-      await applyLatestCustomerSize(customerId, extracted),
+
+    // An extraction that reproduces an order already on file is the old
+    // conversation echoing, never a new purchase. Same size and same start, or
+    // the same size on anything bought in this same window — Nicholas's phantom
+    // matched his active package on size and differed only on a start date the
+    // extraction had invented.
+    const echoesExistingOrder = (orders ?? []).some(
+      (o) =>
+        o.package_size === raw.package_size &&
+        (o.start_date === raw.start_date ||
+          (o.created_at ?? "") >
+            new Date(Date.now() - BUY_EVIDENCE_WINDOW_MS).toISOString()),
     );
-    console.log(`[webhook] order created from ${reason} for ${customerId}`);
+    if (echoesExistingOrder) return false;
+
+    // One push per unresolved flag. The trigger fires on every turn, and an
+    // admin who has already been told does not need telling again each time the
+    // customer writes.
+    const { data: flags } = await db
+      .from("customer_flags")
+      .select("needs_human_review")
+      .eq("customer_id", customerId)
+      .maybeSingle();
+    if (flags?.needs_human_review === true) return false;
+
+    const note = `${raw.package_size} porsi${raw.start_date ? `, mulai ${raw.start_date}` : ""} — ${reason}`;
+    await db
+      .from("customer_flags")
+      .update({
+        needs_human_review: true,
+        escalation_reason: `Kemungkinan order belum tercatat: ${note}`,
+      })
+      .eq("customer_id", customerId);
+
+    await sendPushToAllAdmins(
+      `Order mungkin belum tercatat — ${customerName ?? phone}`,
+      note,
+      "/inbox",
+      "high",
+    );
+    console.log(
+      `[webhook] order at risk flagged (${reason}) for ${customerId}: ${note}`,
+    );
     return true;
   } catch (err) {
     console.error(
-      `[webhook] order recovery (${reason}) failed:`,
+      `[webhook] order-at-risk flag (${reason}) failed:`,
       (err as Error).message,
     );
     return false;
   }
-}
-
-/** Whether the customer sent a photo or document we would have to read by eye. */
-async function hasInboundImage(
-  customerId: string,
-  sinceIso?: string,
-): Promise<boolean> {
-  const db = createAdminClient();
-  let query = db
-    .from("conversations")
-    .select("id")
-    .eq("customer_id", customerId)
-    .eq("role", "user")
-    .in("message_type", ["image", "document"]);
-  if (sinceIso) query = query.gt("created_at", sinceIso);
-  const { data } = await query.limit(1);
-  return (data ?? []).length > 0;
 }
 
 /** How many of the most recent assistant replies in a row ended up asking something. */
@@ -1808,28 +1771,27 @@ export async function processSavedCustomerMessage(params: {
   }
 
   // An order the conversation already contains must never die in a turn that
-  // did not create it. Two named shapes used to trigger recovery — a promise
-  // the model never kept ("saya catat pesanannya sekarang"), and a
-  // clarification loop where it asks one more question every turn — and both
-  // kept missing new ones: Fahmi agreed to 20 porsi dinner, sent his address as
-  // a photo, and was asked for his name; Febby asked to add 30 porsi and was
-  // told the admin was being consulted. Neither reply promised anything and
-  // neither ended in a loop, and both orders were lost.
+  // did not create it. Two named shapes used to trigger this — a promise the
+  // model never kept ("saya catat pesanannya sekarang"), and a clarification
+  // loop where it asks one more question every turn — and both kept missing new
+  // ones: Fahmi agreed to 20 porsi dinner, sent his address as a photo, and was
+  // asked for his name; Febby asked to add 30 porsi and was told the admin was
+  // being consulted. Neither reply promised anything and neither ended in a
+  // loop, and both orders were lost. So the trigger is simply: the model
+  // replied and did not call extract_order. The two shapes survive only as the
+  // reason we hand the admin.
   //
-  // So the trigger is now simply: the model replied and did not call
-  // extract_order. The real guard was never the shape of the sentence, it is
-  // the extraction itself — it returns null when the chat holds no order, it
-  // reads only messages newer than the customer's newest order, it refuses an
-  // extraction that duplicates one on file, and the create is gated on a size
-  // and an address. A browsing customer produces nothing at any of those gates.
+  // What this does with the answer changed on 2026-08-25: it flags and pushes,
+  // it does not build. See flagOrderAtRisk.
   if (replyText && !toolUses.some((t) => t.name === "extract_order")) {
     const promised = ORDER_PROMISE.test(replyText);
     const looping =
       replyText.includes("?") &&
       (await consecutiveUnansweredQuestions(customerId)) >= 2;
-    await recoverOrderFromConversation(
+    await flagOrderAtRisk(
       customerId,
       phone,
+      customerName,
       promised
         ? "an unkept promise"
         : looping

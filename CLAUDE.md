@@ -107,7 +107,7 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 **`orders.order_type` is gone** (migration 063). The question it pretended to answer is answered by `meal_time_preference` via `FIXED_SCHEDULE_PREFS`. Do not add a new flag.
 
-**One order per purchase.** `extract_order` amends the customer's open `pending_payment` order rather than inserting a second one; a promise the bot makes without calling the tool is recovered from the conversation, but only when the customer typed the size themselves. Both halves have already produced phantom orders billed to real customers.
+**One order per purchase, and the bot is the only thing that may create one.** `extract_order` amends the customer's open `pending_payment` order rather than inserting a second one. A reply that calls no tool no longer builds the order it implied — `flagOrderAtRisk()` pushes it to an admin and writes nothing. The path that did build it billed seven real customers for packages they already owned and forged a `delivered` row for a meal nobody cooked; no guard fixes that, because "16 porsi" in a chat cannot be told apart from scheduling sixteen already bought. Never wire an inference to `createOrderFromExtraction`. See `BOT_RULES.md`.
 
 **The 24-hour window is told to the customer, not hidden** (`src/lib/whatsapp/window-notice.ts`). And right now **every business-initiated send fails on `131042`** — the WABA has a payment restriction. Delivery proofs, templates and the window-refresh fallback are all dead letters until it is cleared by hand. The send endpoint still returns 200 `accepted`; the failure only arrives in the status webhook, so a successful POST is never proof the channel works.
 
