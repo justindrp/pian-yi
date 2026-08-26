@@ -9,6 +9,7 @@ import {
   HelpCircle,
   History,
   LogOut,
+  MapPin,
   Megaphone,
   MessageSquare,
   Settings,
@@ -43,6 +44,7 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/activity": History,
   "/handbook": GraduationCap,
   "/guide": HelpCircle,
+  "/areas": MapPin,
   "/settings": Settings,
   "/dapur/52cd5e62-da09-49c9-939c-2f1246566c40": ChefHat,
 };

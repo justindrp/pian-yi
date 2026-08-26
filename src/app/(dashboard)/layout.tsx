@@ -23,6 +23,10 @@ const allNavItems = [
   { href: "/tasks", label: "Tasks", ownerOnly: false },
   { href: "/handbook", label: "Handbook", ownerOnly: false },
   { href: "/guide", label: "Panduan", ownerOnly: false },
+  // /areas shipped without a nav entry and was unreachable for anyone who did
+  // not already know the URL — the only editor for the neighborhood names the
+  // chatbot matches addresses against.
+  { href: "/areas", label: "Areas", ownerOnly: false },
   { href: "/settings", label: "Settings", ownerOnly: false },
 ];
 
