@@ -106,3 +106,45 @@ describe("sanitizeReply — WhatsApp formatting", () => {
     expect(sanitizeReply(reply)).toBe(reply);
   });
 });
+
+describe("sanitizeReply — image stage directions", () => {
+  // ****7277 on 2026-08-26 read these brackets in WhatsApp, twice in four
+  // minutes, with no image behind either.
+  it("drops a stage-direction paragraph and keeps the rest", () => {
+    const out = sanitizeReply(
+      "Tentu kak, boleh banget liat-lihat dulu. Berikut menu gambar untuk minggu ini (Senin 24 – Sabtu 29 Agustus 2026) saya kirimkan ya.\n\n[gambar menu terkirim]\n\nSilakan dipertimbangkan dulu 🙏",
+    );
+    expect(out).not.toContain("[");
+    expect(out).toContain("Tentu kak");
+    expect(out).toContain("Silakan dipertimbangkan dulu");
+    // No blank crater where the paragraph was.
+    expect(out).not.toMatch(/\n{3,}/);
+  });
+
+  it("drops the second shape too", () => {
+    const out = sanitizeReply(
+      "Oh iya kak, maaf. Saya kirimkan lagi menu minggu ini sekarang ya.\n\n[gambar menu terkirim]",
+    );
+    expect(out).toBe(
+      "Oh iya kak, maaf. Saya kirimkan lagi menu minggu ini sekarang ya.",
+    );
+  });
+
+  it("cuts an inline stage direction without eating the sentence", () => {
+    expect(sanitizeReply("Ini menunya kak [gambar terkirim] ya.")).toBe(
+      "Ini menunya kak ya.",
+    );
+  });
+
+  it("leaves the webhook's own bracketed labels alone", () => {
+    // Written by the webhook into conversations, not by the model, and they
+    // describe the customer's message rather than a fake attachment.
+    const label = "[Bukti pembayaran dikirim]";
+    expect(sanitizeReply(label)).toBe(label);
+  });
+
+  it("leaves ordinary brackets alone", () => {
+    const t = "Paket 20 porsi (Rp 520.000) ya kak.";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+});

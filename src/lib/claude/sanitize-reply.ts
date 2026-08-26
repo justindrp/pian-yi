@@ -112,6 +112,34 @@ function stripRetraction(text: string): string {
 }
 
 /**
+ * Drops a bracketed stage direction standing in for an image.
+ *
+ * `historyContent()` rewrites every image we have sent to
+ * "[gambar terkirim ke customer]" so the model never sees a bare storage URL to
+ * copy. It copied the replacement instead: on 2026-08-26 ****7277 was sent
+ * "Berikut menu gambar untuk minggu ini ... saya kirimkan ya.\n\n[gambar menu
+ * terkirim]" with no `send_menu_image` call behind it, then the same brackets
+ * again four minutes later. The customer read our stage direction verbatim and
+ * answered "belum ada fotonya kak maaf".
+ *
+ * The missing image is handled by the webhook, which resends it. This is the
+ * other half: the brackets are ours and must never be on a customer's screen,
+ * whether or not an image ends up going out. A paragraph that is nothing else
+ * disappears; inline, only the brackets are cut.
+ */
+export const IMAGE_STAGE_DIRECTION =
+  /\[[^\]\n]{0,60}?\b(gambar|foto|menu|image)\b[^\]\n]{0,60}?\b(terkirim|dikirim|dilampirkan|terlampir|sent|attached)\b[^\]\n]{0,20}\]|\[\s*(gambar|foto|image)\s+(menu|harga|price list)[^\]\n]{0,40}\]/gi;
+
+function stripStageDirections(text: string): string {
+  return text
+    .replace(IMAGE_STAGE_DIRECTION, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * WhatsApp bold is `*one asterisk*`. Markdown `**two**` renders literally, and
  * the model mixes the two within a single conversation — the 2026-08-16 pricing
  * run sent `*Rp 420.000*` and `**Rp 1.300.000**` two replies apart.
@@ -122,7 +150,7 @@ function normalizeBold(text: string): string {
 
 export function sanitizeReply(text: string): string {
   const paragraphs = stripReasoning(
-    stripRetraction(unquote(text))
+    stripStageDirections(stripRetraction(unquote(text)))
       .split(/\n{2,}/)
       .map((p) => unquote(p))
       .filter((p) => p.length > 0),

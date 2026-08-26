@@ -13,6 +13,15 @@ export type WhatsAppMessageStatus = "sent" | "delivered" | "read" | "failed";
  *
  * So a URL never reaches the model as message text. Captions and labels do —
  * only content that is itself a bare link is replaced.
+ *
+ * The replacement for our own images is deliberately tagged `sistem:` rather
+ * than left as a bare bracketed phrase. The untagged version read as ordinary
+ * assistant prose, and the model copied it: on 2026-08-26 ****7277 was sent
+ * "[gambar menu terkirim]" as text, twice, with no `send_menu_image` behind
+ * either, and replied "belum ada fotonya kak maaf". Fixing the URL leak had
+ * taught it to fake the send instead. Keep the tag — the webhook resends the
+ * missing image and `sanitizeReply` strips the brackets, but this is the line
+ * that stops the model reaching for the shape at all.
  */
 export function historyContent(row: {
   role: string;
@@ -24,7 +33,7 @@ export function historyContent(row: {
   if (!isMedia || !/^https?:\/\/\S+$/.test(row.content.trim()))
     return row.content;
   return row.role === "assistant"
-    ? "[gambar terkirim ke customer]"
+    ? "[sistem: gambar sudah terkirim ke customer]"
     : "[customer mengirim gambar]";
 }
 

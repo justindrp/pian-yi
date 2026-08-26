@@ -6,14 +6,17 @@ const MENU_URL =
   "https://mtepdwekiifqdtzhqoys.supabase.co/storage/v1/object/public/menu-images/subcontractors/52cd5e62-da09-49c9-939c-2f1246566c40/1786636411403.jpg";
 
 describe("historyContent", () => {
-  it("hides the URL of an image we sent", () => {
+  // Tagged `sistem:` on purpose. The untagged "[gambar terkirim ke customer]"
+  // read as assistant prose and the model started writing it itself instead of
+  // calling send_menu_image — see the comment on historyContent.
+  it("hides the URL of an image we sent, marked as a system note", () => {
     expect(
       historyContent({
         role: "assistant",
         content: MENU_URL,
         message_type: "image",
       }),
-    ).toBe("[gambar terkirim ke customer]");
+    ).toBe("[sistem: gambar sudah terkirim ke customer]");
   });
 
   it("hides the URL of an image the customer sent", () => {

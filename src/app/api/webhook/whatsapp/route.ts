@@ -44,7 +44,10 @@ import {
   recordSuccess,
   updateTokenCount,
 } from "@/lib/claude/safety";
-import { sanitizeReply } from "@/lib/claude/sanitize-reply";
+import {
+  IMAGE_STAGE_DIRECTION,
+  sanitizeReply,
+} from "@/lib/claude/sanitize-reply";
 import { validateReply } from "@/lib/claude/validate-reply";
 import {
   hasCurrentOrder,
@@ -90,8 +93,51 @@ const ORDER_PROMISE =
 // Nicholas Satria was told "menu minggu ini sudah saya kirim gambarnya ya" with
 // no image anywhere in the thread and answered "blmm ada kak", and Sherine
 // Fayola was told to check one above that had never been sent.
-const MENU_SENT_CLAIM =
-  /(menu|gambar)[\s\S]{0,80}?(sudah|udah|telah)\s+((saya|aku|kami)\s+)?(kirim|kirimkan|share)/i;
+//
+// Widened on 2026-08-26. The original required "sudah/udah/telah" between the
+// noun and the verb, which is only the *past* tense of the lie. ****7277 was
+// told "Berikut menu gambar untuk minggu ini ... saya kirimkan ya" and then
+// "Saya kirimkan lagi menu minggu ini ... sekarang ya" — a present-tense claim
+// and an explicit re-send promise, no tool call behind either, and neither
+// matched. A promise to send in this same message is a claim: the customer goes
+// looking for the image either way. A genuinely future "nanti saya kirim" is
+// excluded below, because that one is still true when nothing goes out now.
+const MENU_SENT_CLAIM = new RegExp(
+  [
+    // "menu ... sudah saya kirim", the original past-tense shape
+    /(menu|gambar|foto)[\s\S]{0,80}?(sudah|udah|telah)\s+((saya|aku|kami)\s+)?(kirim|kirimkan|share|lampirkan)/
+      .source,
+    // "saya kirimkan menunya ya" / "menunya saya kirimkan sekarang"
+    /(saya|aku|kami)\s+(kirim|kirimkan|share|lampirkan)(kan)?\s+(lagi\s+)?(gambar\s+)?(menu|foto|price\s*list|daftar harga)/
+      .source,
+    // "menunya saya kirimkan", and with the week wedged in between:
+    // "Menu minggu ini saya kirimkan ya kak". Bounded to one sentence so it
+    // cannot reach across a full stop into an unrelated clause.
+    /(menu|gambar|foto)\w*[^.!?\n]{0,40}?\s(saya|aku|kami)\s+(kirim|kirimkan|share|lampirkan)\w*/
+      .source,
+    // "berikut menu ..." / "ini dia menunya" — presenting something not attached.
+    // `\w*` on the noun because Indonesian suffixes it: "menunya", "gambarnya".
+    /(berikut|ini dia|terlampir|silakan (dilihat|dicek))[\s\S]{0,40}?\b(menu|gambar|foto)\w*/
+      .source,
+    // The stage direction itself.
+    IMAGE_STAGE_DIRECTION.source,
+  ].join("|"),
+  "i",
+);
+
+// "nanti saya kirim menunya" is a promise about a later turn, not a claim that
+// an image is attached to this one. Firing the menu at a customer who was just
+// told to expect it later contradicts the reply they are reading, so these
+// spans are cut before the claim is matched — cut, not used to veto the whole
+// reply, because one message can do both: promise next week's menu later and
+// claim this week's now. Only what is left counts as a claim.
+const MENU_SEND_DEFERRED =
+  /\b(nanti|besok|setelah|kalau sudah|begitu|menyusul)\b[^.!?\n]{0,60}?\b(kirim|kirimkan)\w*|\b(kirim|kirimkan)\w*[^.!?\n]{0,30}?\b(menyusul|nanti|besok)\b/gi;
+
+/** Whether the reply tells the customer an image is on its way right now. */
+export function claimsMenuSent(replyText: string): boolean {
+  return MENU_SENT_CLAIM.test(replyText.replace(MENU_SEND_DEFERRED, " "));
+}
 
 // The model saying it will check with the team. It writes this instead of
 // calling ask_admin_for_help, so nothing is flagged, no admin is pushed, and
@@ -238,16 +284,44 @@ async function recordClaimedEscalation(
   );
 }
 
-/** Whether we actually sent this customer an image recently. */
-async function sentImageRecently(customerId: string): Promise<boolean> {
+/**
+ * Whether we have sent this customer an image since they last spoke.
+ *
+ * This used to be a flat 15-minute window, and the window was the bug. The
+ * welcome sequence fires a price list and a menu on first contact, so for the
+ * next quarter of an hour every menu claim the model made read as true and the
+ * resend was skipped. ****7277 got the welcome images at 10:20:11, asked to see
+ * the menu variants at 10:26:15, and was told twice that the menu was on its
+ * way — 10:26:46 and 10:30:10, both inside the window, both suppressed, neither
+ * image sent. They replied "belum ada fotonya kak maaf".
+ *
+ * The customer's own last message is the right boundary. An image sent after it
+ * is one they have not looked for yet, so the claim is true; anything older is
+ * a different question, already answered, and asking again earns a resend. It
+ * also keeps the welcome sequence from double-sending: those images land after
+ * the first inbound, so a claim in the same turn is correctly left alone.
+ */
+async function sentImageSinceLastInbound(customerId: string): Promise<boolean> {
   const db = createAdminClient();
+  const { data: lastInbound } = await db
+    .from("conversations")
+    .select("created_at")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  // No inbound message at all: nothing to measure against, and nothing this
+  // customer is waiting on. Treat as sent so we do not fire a menu unprompted.
+  if (!lastInbound?.created_at) return true;
+
   const { data } = await db
     .from("conversations")
     .select("id")
     .eq("customer_id", customerId)
     .eq("role", "assistant")
     .eq("message_type", "image")
-    .gt("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString())
+    .gte("created_at", lastInbound.created_at)
     .limit(1);
   return (data ?? []).length > 0;
 }
@@ -1824,8 +1898,8 @@ export async function processSavedCustomerMessage(params: {
   if (
     replyText &&
     !toolUses.some((t) => t.name === "send_menu_image") &&
-    MENU_SENT_CLAIM.test(replyText) &&
-    !(await sentImageRecently(customerId))
+    claimsMenuSent(replyText) &&
+    !(await sentImageSinceLastInbound(customerId))
   ) {
     console.log(
       `[webhook] menu claimed but never sent — sending it for ${customerId}`,
