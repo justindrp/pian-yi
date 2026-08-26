@@ -1042,6 +1042,56 @@ export async function createOrderFromExtraction(
   const db = createAdminClient();
   const sendPaymentInfo = options?.sendPaymentInfo ?? true;
 
+  // Never ask a customer for money before we know their name.
+  //
+  // `shouldRecordName` deliberately refuses to store "Kak", "Customer" or
+  // "unknown", so a nameless order is not a gap that closes itself: nothing
+  // asks again once the order exists, and `/dapur/[id]` prints "—" where the
+  // name goes, on every delivery row. +6287895957020 paid Rp 145.000 on
+  // 2026-08-26 for five September dinners and went to the kitchen as a dash;
+  // the name was not recoverable from anything we held — not the transcript,
+  // not the transfer receipt — so it had to be asked for by hand.
+  //
+  // The prompt has told the model to ask since 2026-08-26 and it still skipped
+  // it, which is the usual reason a rule like this ends up in code.
+  //
+  // Refuse the whole order, not just the payment message: an order created
+  // without bank details leaves the customer waiting on a transfer they were
+  // never asked to make. Returning here lets the model call extract_order
+  // again next turn, once it has the name.
+  //
+  // Only when we are the ones asking for money. The payment-proof path
+  // (`sendPaymentInfo: false`) is a customer who has *already* transferred —
+  // blocking there would throw away the order behind a real payment.
+  if (sendPaymentInfo) {
+    const { data: named } = await db
+      .from("customers")
+      .select("name")
+      .eq("id", customerId)
+      .maybeSingle();
+    const onRecord = (named?.name ?? "").trim();
+    if (!onRecord && !shouldRecordName(input.customer_name, null)) {
+      const askMsg =
+        "Sebelum saya siapkan pesanannya, boleh tahu nama kakak dulu? 🙏 Nama ini yang kami tulis di paket dan di catatan pengiriman, biar tidak tertukar dengan pesanan lain ya kak.";
+      const conversationId = await saveMessage({
+        customerId,
+        role: "assistant",
+        content: askMsg,
+        modelUsed: "system",
+      });
+      const askMessageId = await sendTextMessage(phone, askMsg);
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: askMessageId,
+        status: "sent",
+      });
+      console.log(
+        `[extract-order] order withheld for ${customerId}: no name on record and none given`,
+      );
+      return;
+    }
+  }
+
   const schedule = input.delivery_schedule?.length
     ? input.delivery_schedule
     : null;
