@@ -2019,7 +2019,32 @@ export async function processSavedCustomerMessage(params: {
             { role: "assistant", content: replyText },
             {
               role: "user",
-              content: `Balasan sebelumnya berisi klaim yang tidak didukung data: ${validation.unsupportedClaims.join(", ")}. Tulis ulang balasan tanpa menebak — hanya gunakan fakta dari Current context di system prompt. Jika data tidak tersedia, katakan akan dicek dulu.`,
+              // This instruction used to say "hanya gunakan fakta dari Current
+              // context di system prompt. Jika data tidak tersedia, katakan
+              // akan dicek dulu." Both halves were wrong and cost real orders.
+              //
+              // "Only Current context" is narrower than the validator's own
+              // rule, which explicitly does NOT flag business info. Current
+              // context holds this customer's row, not the pricing ladder or
+              // the custom-request exceptions — so on retry the model lost
+              // access to facts it legitimately had and reversed correct
+              // answers. On 2026-08-26 +6287895957020 was told tanpa nasi is
+              // free (right), then after a retry that it needed to "cek dulu
+              // ke tim" about the price (wrong, and there is no such rate to
+              // check). The customer deferred and the thread stalled.
+              //
+              // "Katakan akan dicek dulu" is worse: nothing schedules that
+              // follow-up, so it is a promise the business cannot keep. It is
+              // the exact shape /api/cron/stalled-leads now has to detect
+              // after the fact. Ask the customer instead — they are right
+              // there, and they are the only source for their own data.
+              content: `Balasan sebelumnya berisi klaim tentang data pelanggan ini yang tidak didukung: ${validation.unsupportedClaims.join(", ")}.
+
+Tulis ulang balasan itu dengan HANYA memperbaiki klaim tersebut — bagian lain yang sudah benar biarkan apa adanya.
+
+Aturan bisnis di system prompt (harga, menu, area, hari pengiriman, ketentuan permintaan khusus) tetap boleh dipakai sepenuhnya. Yang tidak boleh ditebak hanya data pribadi pelanggan ini: nama, sisa kuota, ukuran paket, status order, status pembayaran.
+
+Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggannya. Jangan pernah menjanjikan akan mengecek dulu ke tim atau ke admin — tidak ada yang menjadwalkan follow-up itu, jadi janji seperti itu tidak akan pernah ditepati.`,
             },
           ],
           tools,

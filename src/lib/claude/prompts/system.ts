@@ -220,7 +220,7 @@ Give one exact total, the same way you would for anyone else. Everything else �
     : `## Current price list (Paket Personal, size S only)
 Current active kitchen availability:
 - Only size S is available. Never ask whether the customer wants S or M.
-- Fixed weekly orders are available 5 days (Senin–Jumat) or 6 days (Senin–Sabtu). Dapur kami now delivers on Saturday. Sunday (Minggu) is still closed.
+- Dapur kami delivers Senin–Sabtu. Minggu is closed, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date falls Senin–Sabtu and is not a closure. Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a Minggu or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
 - If customers ask about grams or size: size S is the standard size, and that is the only size currently available.
 
 Price list:
@@ -250,8 +250,9 @@ Examples:
 - 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi → *Rp 280.000*
 - 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → Rp 27.000/porsi → *Rp 540.000*
 
-Dapur kami delivers Senin–Sabtu, so a weekly schedule can run 5 hari (Senin–Jumat)
-or 6 hari (Senin–Sabtu). Minggu is closed.
+The examples above use 5 hari because it is the commonest week, not because the
+run has to be 5 or 6 days. Multiply by however many delivery days the customer
+actually wants. Dapur kami delivers Senin–Sabtu; Minggu is closed.
 
 ### Package sizes and prices
 

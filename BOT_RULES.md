@@ -159,6 +159,22 @@ See "A custom/event order is tendered to the kitchens" in `OPERATIONS.md` for th
 
 **Allergy requests are declined, and the reason is said out loud.** Everything is cooked in one shared kitchen, so "bebas dari X" is not something we can guarantee. The prompt now gives the model the sentence — "masakannya dibuat dalam satu dapur bersama, jadi kami belum bisa menjamin bebas dari bahan tertentu" — rather than leaving it to invent a bare no.
 
+## The validator's retry told the bot to stall, and to forget the price list
+
+When `validateReply()` rejects a draft, the webhook asks the model to rewrite it. That retry instruction used to read: *"hanya gunakan fakta dari Current context di system prompt. Jika data tidak tersedia, katakan akan dicek dulu."* Both halves were wrong.
+
+"Only Current context" is **narrower than the validator's own rule**, which says in as many words that it does not flag business info. Current context holds this customer's row — name, quota, order status — not the pricing ladder and not the custom-request exceptions. So a retry stripped the model of facts it legitimately had. On 2026-08-26 `+6287895957020` was told tanpa nasi costs the same (correct, per exception 4), and then, after a retry, that the price "belum saya pastikan ... ini saya cek dulu ke tim ya kak" — about a rate that does not exist anywhere to be checked. The customer answered "Pastiin dulu aja harganya kak, takutnya gak cocok" and the thread stopped on a Rp 145.000 order that was already fully specified.
+
+"Katakan akan dicek dulu" is the worse half: nothing schedules that follow-up, so it instructed the bot to make a promise the business cannot keep. It is the exact shape `/api/cron/stalled-leads` now has to detect after the fact — the prompt was manufacturing the stalls the cron job exists to clean up.
+
+The retry now says: fix only the flagged claims and leave the rest alone; business rules in the system prompt stay fully usable and only this customer's personal data may not be guessed; and if that data is unknown, **ask the customer** rather than promising to check with the team.
+
+## 5 and 6 days are the common weeks, not the only packages we sell
+
+The price list section said "Fixed weekly orders are available 5 days (Senin–Jumat) or 6 days (Senin–Sabtu)", and the worked examples all used 5 hari. The model read the pair as the permitted set and began refusing anything else — a customer asking for a 7-day run was told we only do 5- or 6-day packages, which is not a rule that exists. The ladder in `pricing_tiers` is priced on **total portions** (5 → 144), never on a number of days, and `extract_order` already accepts an arbitrary date set with gaps.
+
+Both places now say 5 and 6 are the commonest shapes rather than the menu, that any run is sellable as long as every date falls Senin–Sabtu and is not a closure, and that a run containing a Minggu or a libur is answered by naming the closed dates and offering the rest — not by refusing the package. This also removes the framing that had the bot calling Sabtu closed and then correcting itself: the line now leads with "Dapur kami delivers Senin–Sabtu".
+
 ## Never deny something printed on our own price list
 
 The price list image is a copy of the accepted-request list that the model cannot see, so when a customer quotes it back there is nothing for the model to check it against — and its instinct is to disown it. On 2026-08-22 a lead read `TANPA SUSU` off the image (V2 carried a `REQUEST ALERGI` card) and asked about it. The bot answered twice that "request susu itu bukan dari kami ya kak — bisa jadi dari layanan lain", telling a customer that our own artwork belonged to another company while they were looking straight at it; the lead pushed back with "Ini kan ada requestnya." and the bot repeated itself. The prompt now forbids attributing a named request to anyone else: say whether we serve it today, and treat the image as the thing the customer is holding.
