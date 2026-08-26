@@ -186,6 +186,33 @@ export function extractOrderProperties(areas: string[]) {
   };
 }
 
+/**
+ * Words the model sends in `customer_name` when the customer never gave one.
+ * `customer_name` is a required field of extract_order, so the model must put
+ * something there, and the system prompt used to instruct it to put the literal
+ * "Kak" — which was stored and then read back out by every greeting, so
+ * +6285692715738 was addressed as "Halo kak Kak!" on 2026-08-26 and their
+ * order, inbox thread and delivery label all carried "Kak" as the name. The
+ * prompt now asks for an empty string, but the prompt is a request and this is
+ * the guard: an honorific is not a name no matter which field it arrives in.
+ */
+const PLACEHOLDER_NAMES = new Set([
+  "kak",
+  "kakak",
+  "kk",
+  "ka",
+  "unknown",
+  "tidak diketahui",
+  "belum diketahui",
+  "customer",
+  "pelanggan",
+  "-",
+]);
+
+export function isPlaceholderName(name: string): boolean {
+  return PLACEHOLDER_NAMES.has(name.trim().toLowerCase().replace(/[.,!]+$/, ""));
+}
+
 export function extractOrderTool(areas: string[]): Anthropic.Messages.Tool {
   return {
     name: "extract_order",
@@ -1297,9 +1324,7 @@ export async function createOrderFromExtraction(
   // that is missing.
   const existingName = (existingCustomer?.name ?? "").trim();
   const rawNameForRecord =
-    !existingName &&
-    nameFromModel &&
-    nameFromModel.toLowerCase() !== "unknown"
+    !existingName && nameFromModel && !isPlaceholderName(nameFromModel)
       ? nameFromModel
       : null;
   // A replayed conversation carries the real customer's name, and writing it to

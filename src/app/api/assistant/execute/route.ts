@@ -381,8 +381,12 @@ export async function POST(request: Request) {
         phone_number: string;
       } | null;
       if (customer?.phone_number && order.customer_id) {
-        const firstName = (customer.name ?? "").split(" ")[0] || "kak";
-        const msg = `Halo kak ${firstName}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉\n\n${WINDOW_NOTICE_SHORT}`;
+        // The honorific lives in `greeting`, never in the sentence: a customer we
+        // have no name for gets a clean "Halo kak!" instead of "Halo kak kak!".
+        // Same doubling extract-order.ts already fixed for the payment request.
+        const displayName = (customer.name ?? "").trim().split(" ")[0];
+        const greeting = displayName ? `kak ${displayName}` : "kak";
+        const msg = `Halo ${greeting}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉\n\n${WINDOW_NOTICE_SHORT}`;
         try {
           const conversationId = await saveMessage({
             customerId: order.customer_id,
@@ -444,9 +448,10 @@ export async function POST(request: Request) {
           phone_number: string;
         } | null;
         if (customer?.phone_number && order.customer_id) {
-          const firstName = (customer.name ?? "").split(" ")[0] || "kak";
+          const displayName = (customer.name ?? "").trim().split(" ")[0];
+          const greeting = displayName ? `kak ${displayName}` : "kak";
           const reasonText = reason ? ` Alasan: ${reason}.` : "";
-          const msg = `Halo kak ${firstName}, mohon maaf pesanan kamu terpaksa kami batalkan.${reasonText} Silakan hubungi kami jika ada pertanyaan ya kak.`;
+          const msg = `Halo ${greeting}, mohon maaf pesanan kamu terpaksa kami batalkan.${reasonText} Silakan hubungi kami jika ada pertanyaan ya kak.`;
           try {
             const conversationId = await saveMessage({
               customerId: order.customer_id,
@@ -641,9 +646,10 @@ export async function POST(request: Request) {
       const bankName = bankNameRes.data?.value ?? "";
       const bankAccount = bankAccountRes.data?.value ?? "";
       const bankHolder = bankHolderRes.data?.value ?? "";
-      const firstName = (customer.name ?? "").split(" ")[0] || "kak";
+      const displayName = (customer.name ?? "").trim().split(" ")[0];
+      const greeting = displayName ? `kak ${displayName}` : "kak";
       const totalPrice = (order as { total_price?: number }).total_price ?? 0;
-      const msg = `Terima kasih kak ${firstName}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccount}\n👤 a.n. ${bankHolder}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
+      const msg = `Terima kasih ${greeting}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccount}\n👤 a.n. ${bankHolder}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.`;
       try {
         const convId = await saveMessage({
           customerId: order.customer_id ?? "",

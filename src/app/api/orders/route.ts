@@ -678,8 +678,12 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     order.customer_id,
   );
   if (customer?.phone_number && order.customer_id) {
-    const firstName = (customer.name ?? "").split(" ")[0] || "kak";
-    const msg = `Halo kak ${firstName}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉\n\n${WINDOW_NOTICE_SHORT}`;
+    // The honorific lives in `greeting`, never in the sentence: a customer we
+    // have no name for gets a clean "Halo kak!" instead of "Halo kak kak!".
+    // Same doubling extract-order.ts already fixed for the payment request.
+    const displayName = (customer.name ?? "").trim().split(" ")[0];
+    const greeting = displayName ? `kak ${displayName}` : "kak";
+    const msg = `Halo ${greeting}! Pembayaran kamu sudah kami verifikasi dan pesananmu sekarang sudah aktif. Terima kasih ya kak, selamat menikmati! 🎉\n\n${WINDOW_NOTICE_SHORT}`;
     try {
       const conversationId = await saveMessage({
         customerId: order.customer_id,
