@@ -23,14 +23,16 @@ Chart of accounts for double-entry bookkeeping. Key accounts: 1001–1004 (Cash/
 
 ## admin_users
 
-People who can log in to the dashboard. Email is the primary key (matches Supabase Auth).
+People who can log in to the dashboard. Email is the primary key (matches Supabase Auth). **There is no `id` column** — anything writing to `edit_log` about a row here passes the email as `entity_id`, and an insert that omits `name` fails on the not-null constraint.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| email | text | Primary key — must match a Supabase Auth account |
-| name | text | Display name |
+| email | text | Primary key — must match a Supabase Auth account. One person may hold more than one row: Justin signs in as two addresses and needs a row for each, because push filters on this column |
+| name | text | Display name. Not null |
 | role | text | `"owner"` or `"admin"` — owners have full access, admins are blocked from Accounting |
 | created_at | timestamp | |
+
+**A missing row is not a locked door.** `getSessionWithRole()` returns `data?.role ?? "admin"`, so any address with a live Supabase Auth identity gets in with the `admin` role whether or not it appears here. Deleting a row removes push and the owner-only pages; revoking access means deleting the Auth identity as well. See "User roles" in `ADMIN.md`.
 
 ---
 
@@ -573,7 +575,7 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 
 ## tasks
 
-The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude could update went stale between sessions and Annie and Daevin could never see it. Edited at `/tasks`, printed by `pnpm tasks`. Statuses are plain text, not an enum — `open | in_progress | blocked | done` — so a new one costs no migration; the allowlist that keeps a typo out lives in `src/app/api/tasks/validate.ts`, and adding a status means adding it there and to `STATUS_RANK` as well. Nothing at the database level rejects a bad value: a fuzzing pass stored `status: "transcended"` and `priority: 999`, and such a row is then invisible in every filter chip but "All". Priority is 1 (highest) to 3.
+The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude could update went stale between sessions and no other admin could ever see it. Edited at `/tasks`, printed by `pnpm tasks`. Statuses are plain text, not an enum — `open | in_progress | blocked | done` — so a new one costs no migration; the allowlist that keeps a typo out lives in `src/app/api/tasks/validate.ts`, and adding a status means adding it there and to `STATUS_RANK` as well. Nothing at the database level rejects a bad value: a fuzzing pass stored `status: "transcended"` and `priority: 999`, and such a row is then invisible in every filter chip but "All". Priority is 1 (highest) to 3.
 
 | Column | Type | Notes |
 |--------|------|-------|

@@ -32,7 +32,7 @@ A WhatsApp-based ordering system for Pian Yi Catering, a daily catering business
 Two end users:
 
 - **Customers** — interact only via WhatsApp with an AI chatbot (DeepSeek V4 Flash; see the AI line below — the code says "Sonnet" but nothing here runs on Claude)
-- **Admins** (Justin, Annie, Daevin) — interact via a PWA dashboard for operations; Justin and Annie are `owner` role, Daevin is `admin` role (see `ADMIN.md`)
+- **Admins** (Justin, Annie, Friska) — interact via a PWA dashboard for operations; all three are `owner` role and nobody holds `admin` right now (see `ADMIN.md`). Justin signs in as two different emails and holds a row for each
 
 ## Tech stack
 
@@ -111,7 +111,7 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 **The 24-hour window is told to the customer, not hidden** (`src/lib/whatsapp/window-notice.ts`). And right now **every business-initiated send fails on `131042`** — the WABA has a payment restriction. Delivery proofs, templates and the window-refresh fallback are all dead letters until it is cleared by hand. The send endpoint still returns 200 `accepted`; the failure only arrives in the status webhook, so a successful POST is never proof the channel works.
 
-**Roles.** `owner` (Justin, Annie) has everything. `admin` (Daevin) has everything except Accounting and inbox takeover, and cannot hand-type to a customer at all — enforced server-side, not just hidden. Removing an admin is one delete (`admin_users`); push sends filter against that table. Who did what is in `edit_log` and, for hand-typed messages, `conversations.sent_by` — see "Who did what" in `ADMIN.md`.
+**Roles.** `owner` (Justin ×2, Annie, Friska) has everything. `admin` — everything except Accounting and inbox takeover, and no hand-typing to a customer at all, enforced server-side rather than hidden — is currently held by nobody. **Revoking someone is two deletes, not one**: the `admin_users` row, *and* their Supabase Auth identity, because `getSessionWithRole()` falls back to `role: "admin"` for any signed-in email with no row, so the identity alone is a working admin login. Push sends filter on `admin_users.email`, so a person signed in as an address with no row silently gets no notifications. Who did what is in `edit_log` and, for hand-typed messages, `conversations.sent_by` — see "Who did what" in `ADMIN.md`.
 
 ## Coding conventions
 
@@ -147,4 +147,4 @@ Full versions, with the incidents behind them, in `BOT_RULES.md` and `OPERATIONS
 
 ## Known issues / tech debt
 
-**The live queue is the `tasks` table, not a file.** Run `pnpm tasks` to print it (`pnpm tasks all` includes done, `pnpm tasks <area>` filters); admins edit it at `/tasks`. It holds the bugs with file:line pointers, what is blocked on Justin, and the deferred designs (Instagram generator, accounting phases 4–5, the `drawdown` naming refactor). Read it before picking up work. It replaced `TASKS.md` on 2026-08-25 — a doc only I could update, so it went stale between sessions and Annie and Daevin could never see it.
+**The live queue is the `tasks` table, not a file.** Run `pnpm tasks` to print it (`pnpm tasks all` includes done, `pnpm tasks <area>` filters); admins edit it at `/tasks`. It holds the bugs with file:line pointers, what is blocked on Justin, and the deferred designs (Instagram generator, accounting phases 4–5, the `drawdown` naming refactor). Read it before picking up work. It replaced `TASKS.md` on 2026-08-25 — a doc only I could update, so it went stale between sessions and nobody but me could ever see it.
