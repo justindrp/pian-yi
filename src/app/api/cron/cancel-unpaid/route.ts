@@ -22,11 +22,31 @@ export async function POST(req: NextRequest): Promise<Response> {
     Date.now() - cancelHours * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data: orders } = await db
+  // The FK hint is mandatory: `orders` reaches `customers` two ways —
+  // `orders_customer_id_fkey` (orders.customer_id → customers.id, the one we
+  // want) and `customers_linked_order_id_fkey` (customers.linked_order_id →
+  // orders.id, pointing the other way). Without naming one, PostgREST refuses
+  // the whole request with PGRST201 and returns no rows at all.
+  const { data: orders, error } = await db
     .from("orders")
-    .select("id, customer_id, customers(phone_number)")
+    .select("id, customer_id, customers!orders_customer_id_fkey(phone_number)")
     .eq("status", "pending_payment")
     .lt("confirmed_at", cutoff);
+
+  // A failed query must not read as "nothing to cancel". This route ran hourly
+  // for months on the ambiguous embed above: the error was discarded, `orders`
+  // came back null, and the empty-result branch below returned `ok: true` —
+  // which the scheduler recorded as a successful run. Zero orders were ever
+  // cancelled and nothing ever alerted, because a broken query looked exactly
+  // like a business with no unpaid orders. Fail loudly instead: a non-2xx is
+  // logged by the scheduler and leaves `cron_runs` unstamped.
+  if (error) {
+    console.error("[cron/cancel-unpaid] order query failed:", error.message);
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
+  }
 
   if (!orders?.length) return NextResponse.json({ ok: true, cancelled: 0 });
 
@@ -38,7 +58,10 @@ export async function POST(req: NextRequest): Promise<Response> {
       ?.phone_number;
 
     try {
-      await db
+      // Same reason as the query above: an unchecked error here would count a
+      // cancellation that never landed, and the count is what the admin push
+      // and the response report.
+      const { error: updateError } = await db
         .from("orders")
         .update({
           status: "cancelled_unpaid",
@@ -46,6 +69,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           cancellation_reason: "Payment not received within 24 hours",
         })
         .eq("id", order.id);
+      if (updateError) throw new Error(updateError.message);
 
       if (phone)
         await sendTextMessage(phone, `${template}\n\n${WINDOW_NOTICE_SHORT}`);
