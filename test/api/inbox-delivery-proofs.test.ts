@@ -9,7 +9,10 @@ jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 function makeDbMock() {
   const storageMock = {
     createSignedUrl: jest.fn().mockResolvedValue({
-      data: { signedUrl: "https://supabase.test/storage/v1/object/sign/delivery-proofs/manual/2026-06-30/cust-1/img.jpg" },
+      data: {
+        signedUrl:
+          "https://supabase.test/storage/v1/object/sign/delivery-proofs/manual/2026-06-30/cust-1/img.jpg",
+      },
       error: null,
     }),
   };
@@ -36,14 +39,26 @@ describe("GET /api/inbox/delivery-proofs/[...path]", () => {
     const db = makeDbMock();
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await GET(new NextRequest("http://localhost/api/inbox/delivery-proofs/manual/2026-06-30/cust-1/img.jpg"), {
-      params: Promise.resolve({ path: ["manual", "2026-06-30", "cust-1", "img.jpg"] }),
-    });
+    const res = await GET(
+      new NextRequest(
+        "http://localhost/api/inbox/delivery-proofs/manual/2026-06-30/cust-1/img.jpg",
+      ),
+      {
+        params: Promise.resolve({
+          path: ["manual", "2026-06-30", "cust-1", "img.jpg"],
+        }),
+      },
+    );
 
     expect(res.status).toBe(307);
     expect(db.storage.from).toHaveBeenCalledWith("delivery-proofs");
-    expect(db.storageMock.createSignedUrl).toHaveBeenCalledWith("manual/2026-06-30/cust-1/img.jpg", 3600);
-    expect(res.headers.get("location")).toBe("https://supabase.test/storage/v1/object/sign/delivery-proofs/manual/2026-06-30/cust-1/img.jpg");
+    expect(db.storageMock.createSignedUrl).toHaveBeenCalledWith(
+      "manual/2026-06-30/cust-1/img.jpg",
+      3600,
+    );
+    expect(res.headers.get("location")).toBe(
+      "https://supabase.test/storage/v1/object/sign/delivery-proofs/manual/2026-06-30/cust-1/img.jpg",
+    );
   });
 
   test("T2 — unauthenticated returns 401", async () => {
@@ -53,9 +68,16 @@ describe("GET /api/inbox/delivery-proofs/[...path]", () => {
       },
     });
 
-    const res = await GET(new NextRequest("http://localhost/api/inbox/delivery-proofs/manual/2026-06-30/cust-1/img.jpg"), {
-      params: Promise.resolve({ path: ["manual", "2026-06-30", "cust-1", "img.jpg"] }),
-    });
+    const res = await GET(
+      new NextRequest(
+        "http://localhost/api/inbox/delivery-proofs/manual/2026-06-30/cust-1/img.jpg",
+      ),
+      {
+        params: Promise.resolve({
+          path: ["manual", "2026-06-30", "cust-1", "img.jpg"],
+        }),
+      },
+    );
 
     expect(res.status).toBe(401);
   });

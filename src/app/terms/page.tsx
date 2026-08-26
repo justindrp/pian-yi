@@ -59,7 +59,9 @@ export default function TermsPage() {
       </section>
 
       <section className="mb-6">
-        <h2 className="text-base font-semibold mb-2">6. Cancellation and refunds</h2>
+        <h2 className="text-base font-semibold mb-2">
+          6. Cancellation and refunds
+        </h2>
         <p className="text-sm leading-relaxed">
           You may pause or cancel your remaining meals at any time by messaging
           us, subject to the deadline in section 4. Meals already delivered are
@@ -102,7 +104,9 @@ export default function TermsPage() {
       </section>
 
       <section className="mb-6">
-        <h2 className="text-base font-semibold mb-2">10. Changes and contact</h2>
+        <h2 className="text-base font-semibold mb-2">
+          10. Changes and contact
+        </h2>
         <p className="text-sm leading-relaxed">
           We may update these terms from time to time; the latest version is
           always at this URL. Questions go to{" "}

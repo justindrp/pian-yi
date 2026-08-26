@@ -3,7 +3,10 @@
  * the way the inbox compose box does. For driving a thread the bot has parked.
  *   tsx scripts/manual-send.ts +62... "text" [--apply]
  */
-import { saveMessage, updateMessageReceipt } from "../src/lib/claude/conversation";
+import {
+  saveMessage,
+  updateMessageReceipt,
+} from "../src/lib/claude/conversation";
 import { createAdminClient } from "../src/lib/supabase/admin";
 import { sendTextMessage } from "../src/lib/whatsapp/client";
 
@@ -31,7 +34,9 @@ async function main() {
     ? (Date.now() - new Date(last.created_at).getTime()) / 3_600_000
     : Number.POSITIVE_INFINITY;
 
-  console.log(`${cust.name ?? "(no name)"} ${phone} — window ${hours < 24 ? "OPEN" : "SHUT"} (${hours.toFixed(1)}h)\n${text}\n`);
+  console.log(
+    `${cust.name ?? "(no name)"} ${phone} — window ${hours < 24 ? "OPEN" : "SHUT"} (${hours.toFixed(1)}h)\n${text}\n`,
+  );
   if (!apply) return console.log("dry run — pass --apply");
   if (hours >= 24) throw new Error("window shut");
 
@@ -45,7 +50,17 @@ async function main() {
     // the script rather than left blank, which would read as a bot message.
     sentBy: "script:manual-send",
   });
-  await updateMessageReceipt({ conversationId, whatsappMessageId: messageId, status: "sent" });
+  await updateMessageReceipt({
+    conversationId,
+    whatsappMessageId: messageId,
+    status: "sent",
+  });
   console.log(`sent — ${messageId}`);
 }
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

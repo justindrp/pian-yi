@@ -10,7 +10,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
+  const host =
+    req.headers.get("x-forwarded-host") ??
+    req.headers.get("host") ??
+    "localhost:3000";
   const proto = req.headers.get("x-forwarded-proto") ?? "http";
   return NextResponse.redirect(`${proto}://${host}/dashboard`);
 }

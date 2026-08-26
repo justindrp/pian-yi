@@ -79,10 +79,14 @@ async function main() {
 
   const { data: activeSubs } = await db
     .from("subcontractors")
-    .select("id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas")
+    .select(
+      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas",
+    )
     .eq("is_active", true)
     .not("customer_nickname", "is", null);
-  const rawSubs = (activeSubs ?? []).filter((s) => s.customer_nickname !== null);
+  const rawSubs = (activeSubs ?? []).filter(
+    (s) => s.customer_nickname !== null,
+  );
 
   // Tio's real state: 15 of 40 portions left, 1 porsi per meal, bebas.
   const systemPrompt = await buildSystemPrompt({
@@ -100,7 +104,9 @@ async function main() {
       rawSubs.filter((s) => !!s.menu_image_url).map((s) => s.menu_week_start),
       today,
     ),
-    servedAreas: [...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? []))].sort(),
+    servedAreas: [
+      ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
+    ].sort(),
     neighborhoods: {},
     activeOrder: {
       id: "sim-order",
@@ -112,7 +118,9 @@ async function main() {
     schedule: { upcoming: [], remainingToday: remaining, unbooked: remaining },
   });
 
-  console.log(`Today: ${today} — active order ${remaining}/40, 1 porsi/meal, per_day_decision\n`);
+  console.log(
+    `Today: ${today} — active order ${remaining}/40, 1 porsi/meal, per_day_decision\n`,
+  );
 
   const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -175,7 +183,10 @@ async function main() {
     console.log(`> ${turn}`);
     for (const t of toolUses) {
       const input = t.input as { delivery_dates?: string[] };
-      if (t.name === "record_daily_order" && Array.isArray(input.delivery_dates)) {
+      if (
+        t.name === "record_daily_order" &&
+        Array.isArray(input.delivery_dates)
+      ) {
         booked += input.delivery_dates.length;
       }
       console.log(`  TOOL ${t.name} ${JSON.stringify(t.input)}`);

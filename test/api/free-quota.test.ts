@@ -1,6 +1,6 @@
+import { POST } from "@/app/api/customers/free-quota/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { POST } from "@/app/api/customers/free-quota/route";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
@@ -9,22 +9,37 @@ type Chain = Record<string, jest.Mock> & {
   then: (resolve: (v: unknown) => unknown) => Promise<unknown>;
 };
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }): Chain {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+): Chain {
   const chain = {} as Chain;
-  for (const m of ["select", "insert", "update", "delete", "eq", "order", "in", "limit"]) {
+  for (const m of [
+    "select",
+    "insert",
+    "update",
+    "delete",
+    "eq",
+    "order",
+    "in",
+    "limit",
+  ]) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve);
+  chain.then = (resolve: (v: unknown) => unknown) =>
+    Promise.resolve(result).then(resolve);
   return chain;
 }
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
@@ -42,7 +57,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   (createClient as jest.Mock).mockResolvedValue({
     auth: {
-      getUser: jest.fn().mockResolvedValue({ data: { user: { id: "u1", email: "admin@example.com" } } }),
+      getUser: jest.fn().mockResolvedValue({
+        data: { user: { id: "u1", email: "admin@example.com" } },
+      }),
     },
   });
 });
@@ -52,32 +69,62 @@ describe("POST /api/customers/free-quota", () => {
     (createClient as jest.Mock).mockResolvedValue({
       auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
     });
-    const res = await POST(postRequest({ grants: [{ customer_id: "c1", portions: 5, date: "2026-07-04", reason: "late delivery" }] }));
+    const res = await POST(
+      postRequest({
+        grants: [
+          {
+            customer_id: "c1",
+            portions: 5,
+            date: "2026-07-04",
+            reason: "late delivery",
+          },
+        ],
+      }),
+    );
     expect(res.status).toBe(401);
   });
 
   test("T2 — empty grants array returns 400", async () => {
-    const db = makeDbMock({ admin_users: { data: { role: "admin" }, error: null } });
+    const db = makeDbMock({
+      admin_users: { data: { role: "admin" }, error: null },
+    });
     (createAdminClient as jest.Mock).mockReturnValue(db);
     const res = await POST(postRequest({ grants: [] }));
     expect(res.status).toBe(400);
   });
 
   test("T3 — grant missing reason returns 400 without hitting DB", async () => {
-    const db = makeDbMock({ admin_users: { data: { role: "admin" }, error: null } });
+    const db = makeDbMock({
+      admin_users: { data: { role: "admin" }, error: null },
+    });
     (createAdminClient as jest.Mock).mockReturnValue(db);
     const res = await POST(
-      postRequest({ grants: [{ customer_id: "c1", portions: 5, date: "2026-07-04", reason: "  " }] }),
+      postRequest({
+        grants: [
+          { customer_id: "c1", portions: 5, date: "2026-07-04", reason: "  " },
+        ],
+      }),
     );
     expect(res.status).toBe(400);
     expect(db.chains.customers).toBeUndefined();
   });
 
   test("T4 — grant with portions <= 0 returns 400", async () => {
-    const db = makeDbMock({ admin_users: { data: { role: "admin" }, error: null } });
+    const db = makeDbMock({
+      admin_users: { data: { role: "admin" }, error: null },
+    });
     (createAdminClient as jest.Mock).mockReturnValue(db);
     const res = await POST(
-      postRequest({ grants: [{ customer_id: "c1", portions: 0, date: "2026-07-04", reason: "oops" }] }),
+      postRequest({
+        grants: [
+          {
+            customer_id: "c1",
+            portions: 0,
+            date: "2026-07-04",
+            reason: "oops",
+          },
+        ],
+      }),
     );
     expect(res.status).toBe(400);
   });
@@ -89,7 +136,16 @@ describe("POST /api/customers/free-quota", () => {
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
     const res = await POST(
-      postRequest({ grants: [{ customer_id: "missing-1", portions: 5, date: "2026-07-04", reason: "late delivery" }] }),
+      postRequest({
+        grants: [
+          {
+            customer_id: "missing-1",
+            portions: 5,
+            date: "2026-07-04",
+            reason: "late delivery",
+          },
+        ],
+      }),
     );
     const json = await res.json();
     expect(res.status).toBe(400);
@@ -108,12 +164,21 @@ describe("POST /api/customers/free-quota", () => {
     db.chains.orders.select.mockReturnValue({
       // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
       then: (resolve: (v: unknown) => unknown) =>
-        Promise.resolve({ data: [{ id: "order-1" }], error: null }).then(resolve),
+        Promise.resolve({ data: [{ id: "order-1" }], error: null }).then(
+          resolve,
+        ),
     });
 
     const res = await POST(
       postRequest({
-        grants: [{ customer_id: "c1", portions: 5, date: "2026-07-04", reason: "late delivery compensation" }],
+        grants: [
+          {
+            customer_id: "c1",
+            portions: 5,
+            date: "2026-07-04",
+            reason: "late delivery compensation",
+          },
+        ],
       }),
     );
     const json = await res.json();
@@ -135,7 +200,9 @@ describe("POST /api/customers/free-quota", () => {
       }),
     ]);
 
-    expect(db.chains.customers.update).toHaveBeenCalledWith({ portions_remaining: 15 });
+    expect(db.chains.customers.update).toHaveBeenCalledWith({
+      portions_remaining: 15,
+    });
 
     expect(db.chains.edit_log.insert).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -6,19 +6,31 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const { searchParams } = new URL(req.url);
   const date = searchParams.get("date");
-  if (!date) return NextResponse.json({ ok: false, error: "date required" }, { status: 400 });
+  if (!date)
+    return NextResponse.json(
+      { ok: false, error: "date required" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
 
   // Load existing daily_deliveries for this date
   const { data: rows } = await db
     .from("daily_deliveries")
-    .select("*, customers(name, phone_number, area, sub_area, address, google_maps_link, address_2, area_2, sub_area_2, google_maps_link_2, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, meal_time_preference, size)")
+    .select(
+      "*, customers(name, phone_number, area, sub_area, address, google_maps_link, address_2, area_2, sub_area_2, google_maps_link_2, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, meal_time_preference, size)",
+    )
     .eq("delivery_date", date);
 
   return NextResponse.json({ ok: true, data: rows ?? [] });
@@ -27,10 +39,16 @@ export async function GET(req: NextRequest): Promise<Response> {
 // Save: upsert rows and deduct portions_remaining
 export async function PUT(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     date: string;
     rows: {
       id?: string;
@@ -62,8 +80,13 @@ export async function PUT(req: NextRequest): Promise<Response> {
     const { data: who } = await db
       .from("customers")
       .select("name")
-      .in("id", unbacked.map((r) => r.customer_id));
-    const names = [...new Set((who ?? []).map((c) => c.name ?? "?"))].join(", ");
+      .in(
+        "id",
+        unbacked.map((r) => r.customer_id),
+      );
+    const names = [...new Set((who ?? []).map((c) => c.name ?? "?"))].join(
+      ", ",
+    );
     return NextResponse.json(
       {
         ok: false,
@@ -78,7 +101,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
     .from("subcontractors")
     .select("id, cost_per_portion, cost_per_portion_route1");
   const subcontractors = rawSubs ?? [];
-  const subCostMap = new Map<string, number>(subcontractors.map((s) => [s.id, s.cost_per_portion ?? 0]));
+  const subCostMap = new Map<string, number>(
+    subcontractors.map((s) => [s.id, s.cost_per_portion ?? 0]),
+  );
   const subCostRoute1Map = new Map<string, number | null>(
     subcontractors.map((s) => [s.id, s.cost_per_portion_route1 ?? null]),
   );
@@ -113,7 +138,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
         if (cust) {
           await db
             .from("customers")
-            .update({ portions_remaining: cust.portions_remaining + existing.portions })
+            .update({
+              portions_remaining: cust.portions_remaining + existing.portions,
+            })
             .eq("id", row.customer_id);
         }
 
@@ -126,14 +153,20 @@ export async function PUT(req: NextRequest): Promise<Response> {
           if (ord && ord.portions_remaining !== null) {
             await db
               .from("orders")
-              .update({ portions_remaining: ord.portions_remaining + existing.portions })
+              .update({
+                portions_remaining: ord.portions_remaining + existing.portions,
+              })
               .eq("id", existing.order_id);
           }
         }
 
         await db
           .from("daily_deliveries")
-          .update({ status: "cancelled", quota_deducted: false, updated_at: new Date().toISOString() })
+          .update({
+            status: "cancelled",
+            quota_deducted: false,
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", existing.id);
       } else if (existing) {
         await db
@@ -145,21 +178,25 @@ export async function PUT(req: NextRequest): Promise<Response> {
     }
 
     const status = row.skip ? "skipped" : "scheduled";
-    const { data: upserted } = await db.from("daily_deliveries").upsert(
-      {
-        delivery_date: body.date,
-        customer_id: row.customer_id,
-        order_id: row.order_id,
-        meal_type: row.meal_type,
-        portions: row.portions,
-        subcontractor_id: row.subcontractor_id,
-        notes: row.notes,
-        address_slot: row.address_slot ?? 1,
-        status,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "delivery_date,customer_id,meal_type" },
-    ).select("id").single();
+    const { data: upserted } = await db
+      .from("daily_deliveries")
+      .upsert(
+        {
+          delivery_date: body.date,
+          customer_id: row.customer_id,
+          order_id: row.order_id,
+          meal_type: row.meal_type,
+          portions: row.portions,
+          subcontractor_id: row.subcontractor_id,
+          notes: row.notes,
+          address_slot: row.address_slot ?? 1,
+          status,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "delivery_date,customer_id,meal_type" },
+      )
+      .select("id")
+      .single();
 
     // Accumulate journal data for non-skipped rows; journals created after loop
     if (!row.skip && upserted?.id && row.order_id) {
@@ -201,9 +238,15 @@ export async function PUT(req: NextRequest): Promise<Response> {
       // Revenue: group by price_per_portion
       const revenueByRate = new Map<number, number>();
       for (const e of entries) {
-        revenueByRate.set(e.pricePerPortion, (revenueByRate.get(e.pricePerPortion) ?? 0) + e.portions);
+        revenueByRate.set(
+          e.pricePerPortion,
+          (revenueByRate.get(e.pricePerPortion) ?? 0) + e.portions,
+        );
       }
-      const totalRevenue = [...revenueByRate.entries()].reduce((s, [price, p]) => s + price * p, 0);
+      const totalRevenue = [...revenueByRate.entries()].reduce(
+        (s, [price, p]) => s + price * p,
+        0,
+      );
       if (totalRevenue > 0) {
         const totalPortions = entries.reduce((s, e) => s + e.portions, 0);
         const revParts = [...revenueByRate.entries()]
@@ -219,7 +262,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
             { accountCode: "2100", debit: totalRevenue, credit: 0 },
             { accountCode: "4001", debit: 0, credit: totalRevenue },
           ],
-        }).catch((err) => console.error("[delivery] revenue journal error:", err));
+        }).catch((err) =>
+          console.error("[delivery] revenue journal error:", err),
+        );
       }
 
       // COGS: group by effective cost per portion (route-aware)
@@ -229,15 +274,25 @@ export async function PUT(req: NextRequest): Promise<Response> {
         const baseCost = subId ? (subCostMap.get(subId) ?? 0) : 0;
         const route1Cost = subId ? (subCostRoute1Map.get(subId) ?? null) : null;
         const route = routeMap.get(e.customerId);
-        const subCost = route1Cost !== null && route === "1" ? route1Cost : baseCost;
+        const subCost =
+          route1Cost !== null && route === "1" ? route1Cost : baseCost;
         const totalRate = subCost + e.addonCostPerPortion;
         if (totalRate > 0) {
-          cogsByRate.set(totalRate, (cogsByRate.get(totalRate) ?? 0) + e.portions);
+          cogsByRate.set(
+            totalRate,
+            (cogsByRate.get(totalRate) ?? 0) + e.portions,
+          );
         }
       }
-      const totalCogs = [...cogsByRate.entries()].reduce((s, [rate, p]) => s + rate * p, 0);
+      const totalCogs = [...cogsByRate.entries()].reduce(
+        (s, [rate, p]) => s + rate * p,
+        0,
+      );
       if (totalCogs > 0) {
-        const totalCogsPortions = [...cogsByRate.values()].reduce((s, p) => s + p, 0);
+        const totalCogsPortions = [...cogsByRate.values()].reduce(
+          (s, p) => s + p,
+          0,
+        );
         const cogsParts = [...cogsByRate.entries()]
           .sort(([a], [b]) => a - b)
           .map(([rate, p]) => `${p}p × Rp${rate.toLocaleString("id-ID")}`);
@@ -269,12 +324,22 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
 export async function DELETE(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const body = (await req.json()) as { id?: string };
   const id = body.id?.trim();
-  if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
+  if (!id)
+    return NextResponse.json(
+      { ok: false, error: "Missing id" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
   // Detach delivery proofs (FK has no cascade) before removing the row.
@@ -283,11 +348,18 @@ export async function DELETE(req: NextRequest): Promise<Response> {
     .update({ matched_delivery_id: null })
     .eq("matched_delivery_id", id);
   if (detach.error) {
-    return NextResponse.json({ ok: false, error: detach.error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: detach.error.message },
+      { status: 500 },
+    );
   }
 
   const { error } = await db.from("daily_deliveries").delete().eq("id", id);
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   await db.from("edit_log").insert({
     entity_type: "daily_deliveries",

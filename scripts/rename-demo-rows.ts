@@ -3,8 +3,9 @@
  * the inbox shows two threads with the same name and an admin can reply to the
  * wrong one. Rename any demo row that is not already labelled.
  */
-import { demoDisplayName, isDemoPhone } from "../src/lib/whatsapp/demo";
+
 import { createAdminClient } from "../src/lib/supabase/admin";
+import { demoDisplayName, isDemoPhone } from "../src/lib/whatsapp/demo";
 
 async function main() {
   const db = createAdminClient();

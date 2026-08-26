@@ -1,23 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
-  MessageSquare,
-  Users,
-  ClipboardList,
-  Truck,
-  CreditCard,
-  Megaphone,
-  Sparkles,
   BookOpen,
-  Settings,
-  History,
+  ChefHat,
+  ClipboardList,
+  CreditCard,
   GraduationCap,
   HelpCircle,
+  History,
   LogOut,
-  ChefHat,
+  Megaphone,
+  MessageSquare,
+  Settings,
+  Sparkles,
+  Truck,
+  Users,
 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 interface NavItem {
   href: string;
@@ -47,13 +47,20 @@ const NAV_ICONS: Record<string, React.ElementType> = {
   "/dapur/52cd5e62-da09-49c9-939c-2f1246566c40": ChefHat,
 };
 
-export default function DesktopNav({ navItems, userEmail, version }: DesktopNavProps) {
+export default function DesktopNav({
+  navItems,
+  userEmail,
+  version,
+}: DesktopNavProps) {
   const pathname = usePathname();
 
   return (
     <aside className="hidden md:flex w-56 bg-white border-r border-gray-100 flex-col">
       <div className="px-5 py-5 border-b border-gray-100">
-        <Link href="/dashboard" className="font-semibold text-gray-900 text-sm hover:text-gray-700 transition-colors">
+        <Link
+          href="/dashboard"
+          className="font-semibold text-gray-900 text-sm hover:text-gray-700 transition-colors"
+        >
           Pian Yi Catering
         </Link>
         <p className="text-xs text-gray-400 mt-0.5">{userEmail}</p>
@@ -61,7 +68,8 @@ export default function DesktopNav({ navItems, userEmail, version }: DesktopNavP
       <nav className="flex-1 p-3 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = NAV_ICONS[item.href];
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active =
+            pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
@@ -98,7 +106,9 @@ export default function DesktopNav({ navItems, userEmail, version }: DesktopNavP
             <span>Sign out</span>
           </button>
         </form>
-        <p className="text-[10px] text-gray-300 px-3 pt-2 font-mono">{version}</p>
+        <p className="text-[10px] text-gray-300 px-3 pt-2 font-mono">
+          {version}
+        </p>
       </div>
     </aside>
   );

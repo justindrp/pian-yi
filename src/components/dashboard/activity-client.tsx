@@ -26,7 +26,11 @@ async function fetchAudit(
   if (actor.trim()) params.set("actor", actor.trim());
   const res = await fetch(`/api/audit?${params}`);
   const json = await res.json();
-  return { data: json.data ?? [], total: json.total ?? 0, pageSize: json.pageSize ?? 50 };
+  return {
+    data: json.data ?? [],
+    total: json.total ?? 0,
+    pageSize: json.pageSize ?? 50,
+  };
 }
 
 function formatWhen(iso: string | null): string {
@@ -92,7 +96,9 @@ export default function ActivityClient() {
       {isLoading && !data ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-500">Nothing recorded for this filter.</p>
+        <p className="text-sm text-gray-500">
+          Nothing recorded for this filter.
+        </p>
       ) : (
         <div className="bg-white border border-gray-100 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
@@ -109,12 +115,16 @@ export default function ActivityClient() {
                 <tr
                   key={row.id}
                   className="border-b border-gray-50 last:border-0 align-top cursor-pointer hover:bg-gray-50"
-                  onClick={() => setExpanded(expanded === row.id ? null : row.id)}
+                  onClick={() =>
+                    setExpanded(expanded === row.id ? null : row.id)
+                  }
                 >
                   <td className="px-3 py-2 whitespace-nowrap text-gray-500">
                     {formatWhen(row.created_at)}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.changed_by || "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {row.changed_by || "—"}
+                  </td>
                   <td className="px-3 py-2">
                     <span className="font-medium">{row.action}</span>{" "}
                     <span className="text-gray-500">{row.entity_type}</span>
@@ -144,7 +154,9 @@ export default function ActivityClient() {
           Previous
         </button>
         <span className="text-gray-500">
-          {total === 0 ? "0" : `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)}`}{" "}
+          {total === 0
+            ? "0"
+            : `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)}`}{" "}
           of {total}
         </span>
         <button

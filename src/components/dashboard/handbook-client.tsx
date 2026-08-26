@@ -35,24 +35,40 @@ function contentId(f: Facts): Section[] {
     {
       title: "Bisnis ini",
       blocks: [
-        p("Pian Yi Catering menjual paket makan harian di Tangerang Selatan. Pelanggan membayar di muka untuk sejumlah porsi, lalu menarik porsi itu hari demi hari. Satu paket bisa habis dalam seminggu atau berbulan-bulan."),
-        p("Masakannya bukan kami yang bikin. Ada beberapa dapur partner yang memasak dan mengantar; kami yang menerima pesanan, menagih, menjadwalkan, dan menjawab pelanggan."),
-        p("Dua jenis pengguna: pelanggan yang hanya lewat WhatsApp, dan admin yang memakai dashboard ini."),
+        p(
+          "Pian Yi Catering menjual paket makan harian di Tangerang Selatan. Pelanggan membayar di muka untuk sejumlah porsi, lalu menarik porsi itu hari demi hari. Satu paket bisa habis dalam seminggu atau berbulan-bulan.",
+        ),
+        p(
+          "Masakannya bukan kami yang bikin. Ada beberapa dapur partner yang memasak dan mengantar; kami yang menerima pesanan, menagih, menjadwalkan, dan menjawab pelanggan.",
+        ),
+        p(
+          "Dua jenis pengguna: pelanggan yang hanya lewat WhatsApp, dan admin yang memakai dashboard ini.",
+        ),
       ],
     },
     {
       title: "Pelanggan bicara dengan bot, bukan dengan kita",
       blocks: [
-        p("Setiap pesan WhatsApp masuk dijawab chatbot AI dalam Bahasa Indonesia. Bot yang menjelaskan menu, menghitung harga, mencatat pesanan, dan mengirim instruksi transfer."),
-        p("Tugas admin bukan mengetik balasan sehari-hari, tapi mengawasi: cek Inbox, pastikan bot tidak salah paham, dan tangani yang bot tidak bisa (pembayaran, komplain, perubahan jadwal rumit)."),
-        rule("Verifikasi pembayaran selalu manual. Bukti transfer masuk ke halaman Payments dan manusia yang memutuskan lunas atau tidak."),
+        p(
+          "Setiap pesan WhatsApp masuk dijawab chatbot AI dalam Bahasa Indonesia. Bot yang menjelaskan menu, menghitung harga, mencatat pesanan, dan mengirim instruksi transfer.",
+        ),
+        p(
+          "Tugas admin bukan mengetik balasan sehari-hari, tapi mengawasi: cek Inbox, pastikan bot tidak salah paham, dan tangani yang bot tidak bisa (pembayaran, komplain, perubahan jadwal rumit).",
+        ),
+        rule(
+          "Verifikasi pembayaran selalu manual. Bukti transfer masuk ke halaman Payments dan manusia yang memutuskan lunas atau tidak.",
+        ),
       ],
     },
     {
       title: "Peranmu: admin, bukan owner",
       blocks: [
-        p("Ada dua peran. Owner (Justin, Annie) bisa semuanya. Admin bisa semuanya kecuali dua hal: halaman Accounting, dan mengetik langsung ke pelanggan."),
-        p("Batasan itu dijaga server, bukan cuma disembunyikan di tampilan. Menekan tombol yang tidak seharusnya akan ditolak, bukan diam-diam jalan."),
+        p(
+          "Ada dua peran. Owner (Justin, Annie) bisa semuanya. Admin bisa semuanya kecuali dua hal: halaman Accounting, dan mengetik langsung ke pelanggan.",
+        ),
+        p(
+          "Batasan itu dijaga server, bukan cuma disembunyikan di tampilan. Menekan tombol yang tidak seharusnya akan ditolak, bukan diam-diam jalan.",
+        ),
         list([
           "Bisa: Inbox, Customers, Orders, Deliveries, Payments, Broadcasts, Assistant, Activity, Settings.",
           "Tidak bisa: Accounting (COGS, margin, jurnal).",
@@ -63,16 +79,26 @@ function contentId(f: Facts): Section[] {
     {
       title: "Kalau bot salah jawab",
       blocks: [
-        p("Jangan cari tombol Take over di Inbox — untuk peran admin tombol itu tidak ada lagi. Kirim koreksinya lewat Assistant."),
-        p("Buka Assistant, sebutkan pelanggannya dan apa yang mau dikirim. Assistant menampilkan kartu konfirmasi dulu; kamu yang menyetujui, baru pesannya terkirim, tercatat di Inbox, dan tercatat siapa yang mengirim."),
-        p("Alasannya bukan soal kepercayaan. Mengambil alih chat membuat bot bisu untuk pelanggan itu, dan semua yang biasanya bot kerjakan sendiri — terutama menulis jadwal pengiriman satu paket — jadi tugas manusia yang harus diingat. Satu pelanggan pernah kehilangan tiga dari lima hari paketnya karena itu."),
-        rule("Bot salah = kirim koreksi lewat Assistant. Kalau butuh percakapan panjang atau pelanggan marah, minta owner yang ambil alih."),
+        p(
+          "Jangan cari tombol Take over di Inbox — untuk peran admin tombol itu tidak ada lagi. Kirim koreksinya lewat Assistant.",
+        ),
+        p(
+          "Buka Assistant, sebutkan pelanggannya dan apa yang mau dikirim. Assistant menampilkan kartu konfirmasi dulu; kamu yang menyetujui, baru pesannya terkirim, tercatat di Inbox, dan tercatat siapa yang mengirim.",
+        ),
+        p(
+          "Alasannya bukan soal kepercayaan. Mengambil alih chat membuat bot bisu untuk pelanggan itu, dan semua yang biasanya bot kerjakan sendiri — terutama menulis jadwal pengiriman satu paket — jadi tugas manusia yang harus diingat. Satu pelanggan pernah kehilangan tiga dari lima hari paketnya karena itu.",
+        ),
+        rule(
+          "Bot salah = kirim koreksi lewat Assistant. Kalau butuh percakapan panjang atau pelanggan marah, minta owner yang ambil alih.",
+        ),
       ],
     },
     {
       title: "Perjalanan satu pesanan",
       blocks: [
-        p("Status pesanan berjalan berurutan, dan status itulah sumber kebenarannya — bukan ingatan atau catatan di chat."),
+        p(
+          "Status pesanan berjalan berurutan, dan status itulah sumber kebenarannya — bukan ingatan atau catatan di chat.",
+        ),
         list([
           "pending_payment — pesanan dicatat, belum bayar.",
           "payment_proof_received — bukti transfer masuk, menunggu diperiksa.",
@@ -81,56 +107,94 @@ function contentId(f: Facts): Section[] {
           "completed — semua porsi sudah diantar.",
           "Ditambah beberapa status pembatalan.",
         ]),
-        rule("Satu pembelian = satu pesanan. Kalau pelanggan menambah porsi sebelum bayar, pesanan yang lama diubah, bukan dibuat pesanan kedua."),
+        rule(
+          "Satu pembelian = satu pesanan. Kalau pelanggan menambah porsi sebelum bayar, pesanan yang lama diubah, bukan dibuat pesanan kedua.",
+        ),
       ],
     },
     {
       title: "Harga",
       blocks: [
-        p("Harga per porsi turun mengikuti jumlah porsi yang dibeli. Ini daftar yang dipakai sistem hari ini:"),
+        p(
+          "Harga per porsi turun mengikuti jumlah porsi yang dibeli. Ini daftar yang dipakai sistem hari ini:",
+        ),
         { kind: "ladder" },
-        p("Total yang tidak persis ada di daftar tapi habis dibagi 5 atau 6 tetap boleh dijual, memakai tarif ukuran terdaftar terbesar di bawahnya. Jangan pernah menjumlahkan beberapa paket kecil — pelanggan jadi bayar lebih mahal untuk pesanan yang lebih besar."),
-        p("Pelanggan korporat bisa punya harga kontrak sendiri yang mengabaikan daftar ini. Pesanan yang sudah dibuat mengunci harganya di harga saat itu."),
+        p(
+          "Total yang tidak persis ada di daftar tapi habis dibagi 5 atau 6 tetap boleh dijual, memakai tarif ukuran terdaftar terbesar di bawahnya. Jangan pernah menjumlahkan beberapa paket kecil — pelanggan jadi bayar lebih mahal untuk pesanan yang lebih besar.",
+        ),
+        p(
+          "Pelanggan korporat bisa punya harga kontrak sendiri yang mengabaikan daftar ini. Pesanan yang sudah dibuat mengunci harganya di harga saat itu.",
+        ),
       ],
     },
     {
       title: "Pengiriman dan batas waktu",
       blocks: [
-        p(`Kirim Senin sampai Sabtu. Minggu tutup. Libur nasional tutup. Batas pemesanan pukul ${String(f.deadlineHour).padStart(2, "0")}.00 WIB sehari sebelumnya — batas yang sama berlaku untuk perubahan dan permintaan skip, bukan cuma pesanan baru.`),
-        p(`Area yang dilayani sekarang: ${areas || "(belum ada dapur aktif)"}.`),
-        rule("Daftar area itu bukan daftar tetap. Setiap dapur punya daftarnya sendiri, dan yang kamu lihat adalah gabungan dapur yang sedang aktif. Ada area yang hanya dilayani satu dapur — menonaktifkan dapur itu menghapus areanya. Jangan pernah menghafal atau menyalin daftar ini."),
+        p(
+          `Kirim Senin sampai Sabtu. Minggu tutup. Libur nasional tutup. Batas pemesanan pukul ${String(f.deadlineHour).padStart(2, "0")}.00 WIB sehari sebelumnya — batas yang sama berlaku untuk perubahan dan permintaan skip, bukan cuma pesanan baru.`,
+        ),
+        p(
+          `Area yang dilayani sekarang: ${areas || "(belum ada dapur aktif)"}.`,
+        ),
+        rule(
+          "Daftar area itu bukan daftar tetap. Setiap dapur punya daftarnya sendiri, dan yang kamu lihat adalah gabungan dapur yang sedang aktif. Ada area yang hanya dilayani satu dapur — menonaktifkan dapur itu menghapus areanya. Jangan pernah menghafal atau menyalin daftar ini.",
+        ),
       ],
     },
     {
       title: "Sisa kuota — jebakan yang paling sering",
       blocks: [
-        p("Kalau pelanggan bertanya 'sisa berapa?', jangan baca angka sisa porsi di pesanan mentah-mentah. Angka itu artinya porsi yang belum dijadwalkan, bukan porsi yang belum diantar."),
-        p("Pelanggan yang seluruh paketnya sudah masuk kalender akan terbaca 0, padahal makanannya belum diantar sama sekali."),
-        p("Yang benar ada di ledger pelanggan: buka halaman Customers, klik pelanggannya, lihat bagian Riwayat pemakaian. Di situ setiap paket masuk sebagai +N dan setiap penarikan harian sebagai −N, lalu ada Sisa hari ini di baris paling bawah. Itulah angka yang sah."),
-        rule("Bot kadang menyebut sisa kuota yang salah ke pelanggan. Kalau ada pelanggan bertanya atau protes soal sisa porsinya, buka ledger dan cek sendiri sebelum menjawab — ledger yang benar, bukan bot."),
+        p(
+          "Kalau pelanggan bertanya 'sisa berapa?', jangan baca angka sisa porsi di pesanan mentah-mentah. Angka itu artinya porsi yang belum dijadwalkan, bukan porsi yang belum diantar.",
+        ),
+        p(
+          "Pelanggan yang seluruh paketnya sudah masuk kalender akan terbaca 0, padahal makanannya belum diantar sama sekali.",
+        ),
+        p(
+          "Yang benar ada di ledger pelanggan: buka halaman Customers, klik pelanggannya, lihat bagian Riwayat pemakaian. Di situ setiap paket masuk sebagai +N dan setiap penarikan harian sebagai −N, lalu ada Sisa hari ini di baris paling bawah. Itulah angka yang sah.",
+        ),
+        rule(
+          "Bot kadang menyebut sisa kuota yang salah ke pelanggan. Kalau ada pelanggan bertanya atau protes soal sisa porsinya, buka ledger dan cek sendiri sebelum menjawab — ledger yang benar, bukan bot.",
+        ),
       ],
     },
     {
       title: "Dapur partner itu rahasia",
       blocks: [
-        p(`Pelanggan tidak boleh tahu dapur mana yang memasak. Ke pelanggan, dapur hanya disebut dengan nama samaran: ${kitchens || "(belum ada dapur aktif)"}. Di luar itu, sebut saja 'dapur partner kami'.`),
-        p("Yang rahasia adalah dapur yang mana, bukan bahwa kami bekerja dengan dapur partner. Kalau pelanggan menyebut nama sebuah dapur, jangan dibenarkan dan jangan dibantah. Bilang 'kami masak sendiri' adalah kebohongan yang bisa ketahuan."),
-        rule("Jangan pernah menyebut nama asli dapur, harga modal, atau margin ke pelanggan. Kalau ada error teknis, jelaskan seadanya dan umum — jangan tempelkan pesan error sistem."),
+        p(
+          `Pelanggan tidak boleh tahu dapur mana yang memasak. Ke pelanggan, dapur hanya disebut dengan nama samaran: ${kitchens || "(belum ada dapur aktif)"}. Di luar itu, sebut saja 'dapur partner kami'.`,
+        ),
+        p(
+          "Yang rahasia adalah dapur yang mana, bukan bahwa kami bekerja dengan dapur partner. Kalau pelanggan menyebut nama sebuah dapur, jangan dibenarkan dan jangan dibantah. Bilang 'kami masak sendiri' adalah kebohongan yang bisa ketahuan.",
+        ),
+        rule(
+          "Jangan pernah menyebut nama asli dapur, harga modal, atau margin ke pelanggan. Kalau ada error teknis, jelaskan seadanya dan umum — jangan tempelkan pesan error sistem.",
+        ),
       ],
     },
     {
       title: "Bukti pengiriman dan jendela 24 jam",
       blocks: [
-        p("WhatsApp hanya mengizinkan kami mengirim pesan bebas dalam 24 jam setelah pelanggan terakhir mengirim pesan. Lewat dari itu, hanya template resmi yang bisa lewat. Inbox menampilkan sisa waktunya."),
-        p("Saat ini semua pengiriman di luar jendela itu gagal karena ada pembatasan pembayaran di akun WhatsApp Business kami. Artinya: bukti pengiriman ke pelanggan yang sudah lama diam tidak akan sampai, dan itu bukan kesalahanmu."),
-        rule("Kalau sesuatu penting dan jendelanya tertutup, telepon pelanggannya. Jangan anggap pesan terkirim hanya karena tombolnya sudah ditekan."),
+        p(
+          "WhatsApp hanya mengizinkan kami mengirim pesan bebas dalam 24 jam setelah pelanggan terakhir mengirim pesan. Lewat dari itu, hanya template resmi yang bisa lewat. Inbox menampilkan sisa waktunya.",
+        ),
+        p(
+          "Saat ini semua pengiriman di luar jendela itu gagal karena ada pembatasan pembayaran di akun WhatsApp Business kami. Artinya: bukti pengiriman ke pelanggan yang sudah lama diam tidak akan sampai, dan itu bukan kesalahanmu.",
+        ),
+        rule(
+          "Kalau sesuatu penting dan jendelanya tertutup, telepon pelanggannya. Jangan anggap pesan terkirim hanya karena tombolnya sudah ditekan.",
+        ),
       ],
     },
     {
       title: "Semua tindakan tercatat",
       blocks: [
-        p("Setiap perubahan lewat dashboard dicatat: siapa, kapan, dan field apa yang berubah. Bisa dibaca di halaman Activity."),
-        p("Ini bukan pengawasan, ini supaya kesalahan bisa ditelusuri. Kalau kamu salah tekan, bilang saja — jauh lebih cepat diperbaiki kalau kita tahu apa yang berubah."),
+        p(
+          "Setiap perubahan lewat dashboard dicatat: siapa, kapan, dan field apa yang berubah. Bisa dibaca di halaman Activity.",
+        ),
+        p(
+          "Ini bukan pengawasan, ini supaya kesalahan bisa ditelusuri. Kalau kamu salah tekan, bilang saja — jauh lebih cepat diperbaiki kalau kita tahu apa yang berubah.",
+        ),
       ],
     },
     {
@@ -154,24 +218,40 @@ function contentEn(f: Facts): Section[] {
     {
       title: "What this business is",
       blocks: [
-        p("Pian Yi Catering sells prepaid daily meal packages in Tangerang Selatan. A customer pays up front for a number of portions and then draws them down day by day. One package can be finished in a week or stretched over months."),
-        p("We do not cook. Partner kitchens cook and deliver; we take the orders, collect the money, build the schedule and answer the customer."),
-        p("Two kinds of user: customers, who only ever use WhatsApp, and admins, who use this dashboard."),
+        p(
+          "Pian Yi Catering sells prepaid daily meal packages in Tangerang Selatan. A customer pays up front for a number of portions and then draws them down day by day. One package can be finished in a week or stretched over months.",
+        ),
+        p(
+          "We do not cook. Partner kitchens cook and deliver; we take the orders, collect the money, build the schedule and answer the customer.",
+        ),
+        p(
+          "Two kinds of user: customers, who only ever use WhatsApp, and admins, who use this dashboard.",
+        ),
       ],
     },
     {
       title: "Customers talk to the bot, not to us",
       blocks: [
-        p("Every inbound WhatsApp message is answered by an AI chatbot in Indonesian. It explains the menu, quotes prices, records orders and sends payment instructions."),
-        p("An admin's job is not to type the day-to-day replies. It is to watch: read the Inbox, catch the bot misunderstanding something, and handle what it cannot — payments, complaints, awkward schedule changes."),
-        rule("Payment verification is always manual. Transfer proofs land on the Payments page and a human decides whether it is paid."),
+        p(
+          "Every inbound WhatsApp message is answered by an AI chatbot in Indonesian. It explains the menu, quotes prices, records orders and sends payment instructions.",
+        ),
+        p(
+          "An admin's job is not to type the day-to-day replies. It is to watch: read the Inbox, catch the bot misunderstanding something, and handle what it cannot — payments, complaints, awkward schedule changes.",
+        ),
+        rule(
+          "Payment verification is always manual. Transfer proofs land on the Payments page and a human decides whether it is paid.",
+        ),
       ],
     },
     {
       title: "Your role: admin, not owner",
       blocks: [
-        p("Two roles. Owners (Justin, Annie) can do everything. Admins can do everything except two things: the Accounting page, and typing directly to a customer."),
-        p("Those limits are enforced on the server, not merely hidden in the UI. Pressing something you should not have runs into a refusal, not a silent success."),
+        p(
+          "Two roles. Owners (Justin, Annie) can do everything. Admins can do everything except two things: the Accounting page, and typing directly to a customer.",
+        ),
+        p(
+          "Those limits are enforced on the server, not merely hidden in the UI. Pressing something you should not have runs into a refusal, not a silent success.",
+        ),
         list([
           "Yours: Inbox, Customers, Orders, Deliveries, Payments, Broadcasts, Assistant, Activity, Settings.",
           "Not yours: Accounting (COGS, margins, the journal).",
@@ -182,16 +262,26 @@ function contentEn(f: Facts): Section[] {
     {
       title: "When the bot answers wrong",
       blocks: [
-        p("Do not look for a Take over button in the Inbox — for the admin role it is no longer there. Send the correction through the Assistant instead."),
-        p("Open Assistant, name the customer and say what should go out. The Assistant shows you a confirmation card first; you approve it, and only then is the message sent, logged in the Inbox, and attributed to you."),
-        p("The reason is not trust. Taking a thread over silences the bot for that customer, and everything the bot would have done unprompted — above all writing a package's delivery schedule — quietly becomes a human's job to remember. One customer lost three of his five paid days that way."),
-        rule("Bot got it wrong? Send the correction via the Assistant. If it needs a real back-and-forth, or the customer is angry, ask an owner to take the thread."),
+        p(
+          "Do not look for a Take over button in the Inbox — for the admin role it is no longer there. Send the correction through the Assistant instead.",
+        ),
+        p(
+          "Open Assistant, name the customer and say what should go out. The Assistant shows you a confirmation card first; you approve it, and only then is the message sent, logged in the Inbox, and attributed to you.",
+        ),
+        p(
+          "The reason is not trust. Taking a thread over silences the bot for that customer, and everything the bot would have done unprompted — above all writing a package's delivery schedule — quietly becomes a human's job to remember. One customer lost three of his five paid days that way.",
+        ),
+        rule(
+          "Bot got it wrong? Send the correction via the Assistant. If it needs a real back-and-forth, or the customer is angry, ask an owner to take the thread.",
+        ),
       ],
     },
     {
       title: "The life of an order",
       blocks: [
-        p("An order moves through statuses in sequence, and that status is the source of truth — not memory, not what the chat says."),
+        p(
+          "An order moves through statuses in sequence, and that status is the source of truth — not memory, not what the chat says.",
+        ),
         list([
           "pending_payment — order recorded, not paid.",
           "payment_proof_received — transfer proof in, waiting to be checked.",
@@ -200,56 +290,92 @@ function contentEn(f: Facts): Section[] {
           "completed — every portion delivered.",
           "Plus a few cancellation statuses.",
         ]),
-        rule("One purchase, one order. If a customer adds portions before paying, the existing order is amended — never a second order."),
+        rule(
+          "One purchase, one order. If a customer adds portions before paying, the existing order is amended — never a second order.",
+        ),
       ],
     },
     {
       title: "Pricing",
       blocks: [
-        p("Price per portion falls as the package gets bigger. This is the ladder the system is using right now:"),
+        p(
+          "Price per portion falls as the package gets bigger. This is the ladder the system is using right now:",
+        ),
         { kind: "ladder" },
-        p("A total that is not on the list but divides by 5 or 6 can still be sold, at the rate of the largest listed size below it. Never add up several smaller packages — that charges more for a bigger order."),
-        p("Corporate customers can carry a contract price that replaces the ladder entirely. An order locks its price at the moment it is created."),
+        p(
+          "A total that is not on the list but divides by 5 or 6 can still be sold, at the rate of the largest listed size below it. Never add up several smaller packages — that charges more for a bigger order.",
+        ),
+        p(
+          "Corporate customers can carry a contract price that replaces the ladder entirely. An order locks its price at the moment it is created.",
+        ),
       ],
     },
     {
       title: "Delivery and the cutoff",
       blocks: [
-        p(`We deliver Monday to Saturday. Sunday closed. National holidays closed. Orders close at ${String(f.deadlineHour).padStart(2, "0")}:00 WIB the day before — and that same cutoff governs changes and skip requests, not just new orders.`),
+        p(
+          `We deliver Monday to Saturday. Sunday closed. National holidays closed. Orders close at ${String(f.deadlineHour).padStart(2, "0")}:00 WIB the day before — and that same cutoff governs changes and skip requests, not just new orders.`,
+        ),
         p(`Areas served right now: ${areas || "(no active kitchen)"}.`),
-        rule("That list is not fixed. Each kitchen carries its own areas, and what you see is the union of the kitchens currently active. Some areas rest on a single kitchen, so deactivating it removes the area outright. Never memorise or copy this list."),
+        rule(
+          "That list is not fixed. Each kitchen carries its own areas, and what you see is the union of the kitchens currently active. Some areas rest on a single kitchen, so deactivating it removes the area outright. Never memorise or copy this list.",
+        ),
       ],
     },
     {
       title: "Remaining quota — the trap everyone hits",
       blocks: [
-        p("When a customer asks how much they have left, do not read the order's remaining-portions number straight out. It means portions not yet scheduled, not portions not yet delivered."),
-        p("A customer whose whole package is already on the calendar reads 0 while still being owed every meal."),
-        p("The real number is in the customer's ledger: Customers page, click the customer, look at Riwayat pemakaian. Every package lands there as +N and every daily draw as −N, with Sisa hari ini on the last line. That is the number that counts."),
-        rule("The bot sometimes quotes a customer the wrong remaining quota. Whenever a customer asks about their balance or disputes it, open the ledger and check for yourself before replying — the ledger is right, the bot is not always."),
+        p(
+          "When a customer asks how much they have left, do not read the order's remaining-portions number straight out. It means portions not yet scheduled, not portions not yet delivered.",
+        ),
+        p(
+          "A customer whose whole package is already on the calendar reads 0 while still being owed every meal.",
+        ),
+        p(
+          "The real number is in the customer's ledger: Customers page, click the customer, look at Riwayat pemakaian. Every package lands there as +N and every daily draw as −N, with Sisa hari ini on the last line. That is the number that counts.",
+        ),
+        rule(
+          "The bot sometimes quotes a customer the wrong remaining quota. Whenever a customer asks about their balance or disputes it, open the ledger and check for yourself before replying — the ledger is right, the bot is not always.",
+        ),
       ],
     },
     {
       title: "Partner kitchens are confidential",
       blocks: [
-        p(`Customers must never learn which kitchen cooks their food. To a customer, a kitchen only ever has a nickname: ${kitchens || "(no active kitchen)"}. Otherwise say "dapur partner kami".`),
-        p("What is confidential is which kitchens, not that partner kitchens exist. If a customer names a supplier, neither confirm nor deny — claiming we cook it ourselves is a lie they can find out."),
-        rule("Never give a customer a kitchen's real name, our cost, or our margin. If something breaks, keep the explanation plain and generic — never paste a system error."),
+        p(
+          `Customers must never learn which kitchen cooks their food. To a customer, a kitchen only ever has a nickname: ${kitchens || "(no active kitchen)"}. Otherwise say "dapur partner kami".`,
+        ),
+        p(
+          "What is confidential is which kitchens, not that partner kitchens exist. If a customer names a supplier, neither confirm nor deny — claiming we cook it ourselves is a lie they can find out.",
+        ),
+        rule(
+          "Never give a customer a kitchen's real name, our cost, or our margin. If something breaks, keep the explanation plain and generic — never paste a system error.",
+        ),
       ],
     },
     {
       title: "Delivery proofs and the 24-hour window",
       blocks: [
-        p("WhatsApp only lets us send freely for 24 hours after the customer's last message. After that only approved templates get through. The Inbox shows how long is left."),
-        p("Right now every send outside that window fails, because of a payment restriction on our WhatsApp Business account. So a delivery proof to a customer who has been quiet will not arrive — and that is not your fault."),
-        rule("If something matters and the window is shut, phone the customer. Never assume a message went out just because you pressed send."),
+        p(
+          "WhatsApp only lets us send freely for 24 hours after the customer's last message. After that only approved templates get through. The Inbox shows how long is left.",
+        ),
+        p(
+          "Right now every send outside that window fails, because of a payment restriction on our WhatsApp Business account. So a delivery proof to a customer who has been quiet will not arrive — and that is not your fault.",
+        ),
+        rule(
+          "If something matters and the window is shut, phone the customer. Never assume a message went out just because you pressed send.",
+        ),
       ],
     },
     {
       title: "Everything is recorded",
       blocks: [
-        p("Every change made through the dashboard records who made it, when, and which fields moved. You can read it on the Activity page."),
-        p("This is not surveillance, it is traceability. If you press the wrong thing, say so — it is far faster to fix when we know what changed."),
+        p(
+          "Every change made through the dashboard records who made it, when, and which fields moved. You can read it on the Activity page.",
+        ),
+        p(
+          "This is not surveillance, it is traceability. If you press the wrong thing, say so — it is far faster to fix when we know what changed.",
+        ),
       ],
     },
     {
@@ -359,7 +485,9 @@ function Block({
   lang: Lang;
 }) {
   if (block.kind === "p") {
-    return <p className="text-sm text-gray-600 leading-relaxed">{block.text}</p>;
+    return (
+      <p className="text-sm text-gray-600 leading-relaxed">{block.text}</p>
+    );
   }
   if (block.kind === "list") {
     return (

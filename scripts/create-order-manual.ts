@@ -12,8 +12,8 @@ import { readFileSync } from "node:fs";
 import {
   createOrderFromExtraction,
   type ExtractedOrderInput,
+  getExtractedOrderPricing,
 } from "../src/lib/claude/extract-order";
-import { getExtractedOrderPricing } from "../src/lib/claude/extract-order";
 import { createAdminClient } from "../src/lib/supabase/admin";
 
 async function main() {
@@ -37,9 +37,13 @@ async function main() {
   const pricing = await getExtractedOrderPricing(size);
 
   console.log(JSON.stringify(input, null, 1));
-  console.log(`\npackage ${size} porsi @ ${pricing.price_per_portion} = Rp ${pricing.total_price}`);
+  console.log(
+    `\npackage ${size} porsi @ ${pricing.price_per_portion} = Rp ${pricing.total_price}`,
+  );
   console.log(`delivery rows: ${schedule.length}`);
-  console.log(`payment message: ${sendPaymentInfo ? "WILL BE SENT" : "suppressed"}`);
+  console.log(
+    `payment message: ${sendPaymentInfo ? "WILL BE SENT" : "suppressed"}`,
+  );
   if (!apply) return console.log("\ndry run — pass --apply");
 
   await createOrderFromExtraction(cust.id, phone, input, { sendPaymentInfo });
@@ -54,6 +58,17 @@ async function main() {
     .eq("customer_id", cust.id)
     .order("delivery_date");
   console.log("\norders:", JSON.stringify(ords));
-  console.log("deliveries:", (dels ?? []).map((d) => `${d.delivery_date} ${d.meal_type} ${d.portions}p`).join(", "));
+  console.log(
+    "deliveries:",
+    (dels ?? [])
+      .map((d) => `${d.delivery_date} ${d.meal_type} ${d.portions}p`)
+      .join(", "),
+  );
 }
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

@@ -7,8 +7,8 @@ import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
-import type { Database } from "@/types/database";
 import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
+import type { Database } from "@/types/database";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -141,7 +141,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const dates = hasSchedule ? schedule.map((s) => s.date).sort() : [];
   const startDate = hasSchedule ? dates[0] : body.start_date;
-  const endDate = hasSchedule ? dates[dates.length - 1] : (body.end_date ?? null);
+  const endDate = hasSchedule
+    ? dates[dates.length - 1]
+    : (body.end_date ?? null);
 
   if (!packageSize || !startDate) {
     return NextResponse.json(
@@ -201,7 +203,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   await db
     .from("customers")
-    .update({ portions_remaining: (custQuota?.portions_remaining ?? 0) + packageSize })
+    .update({
+      portions_remaining: (custQuota?.portions_remaining ?? 0) + packageSize,
+    })
     .eq("id", body.customer_id);
 
   await logEdit({

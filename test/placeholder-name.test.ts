@@ -1,4 +1,7 @@
-import { isPlaceholderName, shouldRecordName } from "@/lib/claude/extract-order";
+import {
+  isPlaceholderName,
+  shouldRecordName,
+} from "@/lib/claude/extract-order";
 
 describe("isPlaceholderName", () => {
   // The literal the old system prompt told the model to send when the customer

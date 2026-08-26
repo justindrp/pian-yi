@@ -16,7 +16,10 @@ interface CreateJournalOptions {
 }
 
 // Returns true if a journal already exists for this source (idempotency guard)
-async function journalExists(sourceType: string, sourceId: string): Promise<boolean> {
+async function journalExists(
+  sourceType: string,
+  sourceId: string,
+): Promise<boolean> {
   const db = createAdminClient();
   const { data } = await db
     .from("journals")
@@ -27,7 +30,9 @@ async function journalExists(sourceType: string, sourceId: string): Promise<bool
   return data !== null;
 }
 
-export async function createJournalEntry(opts: CreateJournalOptions): Promise<void> {
+export async function createJournalEntry(
+  opts: CreateJournalOptions,
+): Promise<void> {
   if (await journalExists(opts.sourceType, opts.sourceId)) return;
 
   const db = createAdminClient();
@@ -56,9 +61,14 @@ export async function createJournalEntry(opts: CreateJournalOptions): Promise<vo
 
   // Generate reference atomically
   const year = new Date(opts.date).getFullYear();
-  const { data: ref, error: refErr } = await db.rpc("next_journal_reference", { p_year: year });
+  const { data: ref, error: refErr } = await db.rpc("next_journal_reference", {
+    p_year: year,
+  });
   if (refErr || !ref) {
-    console.error("[accounting] failed to generate reference:", refErr?.message);
+    console.error(
+      "[accounting] failed to generate reference:",
+      refErr?.message,
+    );
     return;
   }
 
@@ -76,7 +86,10 @@ export async function createJournalEntry(opts: CreateJournalOptions): Promise<vo
     .single();
 
   if (journalErr || !journal) {
-    console.error("[accounting] failed to insert journal:", journalErr?.message);
+    console.error(
+      "[accounting] failed to insert journal:",
+      journalErr?.message,
+    );
     return;
   }
 
@@ -90,7 +103,10 @@ export async function createJournalEntry(opts: CreateJournalOptions): Promise<vo
   );
 
   if (linesErr) {
-    console.error("[accounting] failed to insert journal lines:", linesErr.message);
+    console.error(
+      "[accounting] failed to insert journal lines:",
+      linesErr.message,
+    );
     // Clean up orphaned header
     await db.from("journals").delete().eq("id", journal.id);
   }

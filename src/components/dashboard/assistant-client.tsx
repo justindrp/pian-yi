@@ -788,9 +788,7 @@ function StepList({ steps }: { steps: Step[] }) {
           <span className={s.summary ? "" : "animate-pulse"}>
             {s.summary ? "✓" : "○"} {s.label}
           </span>
-          {s.summary && (
-            <span className="text-[#C4C0BB]"> — {s.summary}</span>
-          )}
+          {s.summary && <span className="text-[#C4C0BB]"> — {s.summary}</span>}
         </li>
       ))}
     </ul>

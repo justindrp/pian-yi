@@ -6,8 +6,14 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const db = createAdminClient();
   const { data, error } = await db
@@ -15,16 +21,29 @@ export async function GET(): Promise<Response> {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
   return NextResponse.json({ ok: true, data });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as { instruction: string; description?: string };
+  const body = (await req.json()) as {
+    instruction: string;
+    description?: string;
+  };
   const db = createAdminClient();
 
   const { data, error } = await db
@@ -37,7 +56,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   await logEdit({
     db,
@@ -45,7 +68,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     entityType: "chatbot_instructions",
     entityId: data.id,
     action: "create",
-    changes: { instruction: body.instruction, description: body.description ?? null },
+    changes: {
+      instruction: body.instruction,
+      description: body.description ?? null,
+    },
   });
 
   invalidateCache();
@@ -54,10 +80,16 @@ export async function POST(req: NextRequest): Promise<Response> {
 
 export async function PATCH(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     id: string;
     instruction?: string;
     description?: string;
@@ -73,7 +105,11 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   // These lines go into the bot's system prompt, so an edit here changes what
   // every customer is told from the next message on.
@@ -92,14 +128,24 @@ export async function PATCH(req: NextRequest): Promise<Response> {
 
 export async function DELETE(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const { id } = await req.json() as { id: string };
+  const { id } = (await req.json()) as { id: string };
   const db = createAdminClient();
   const { error } = await db.from("chatbot_instructions").delete().eq("id", id);
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   await logEdit({
     db,

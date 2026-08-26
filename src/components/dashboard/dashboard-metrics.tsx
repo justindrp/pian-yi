@@ -40,8 +40,16 @@ export default function DashboardMetrics() {
   return (
     <>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <StatCard label="Active Customers" value={data?.activeCustomers} loading={isLoading} />
-        <StatCard label="Deliveries Today" value={data?.deliveriesToday} loading={isLoading} />
+        <StatCard
+          label="Active Customers"
+          value={data?.activeCustomers}
+          loading={isLoading}
+        />
+        <StatCard
+          label="Deliveries Today"
+          value={data?.deliveriesToday}
+          loading={isLoading}
+        />
         <StatCard
           label="Pending Payments"
           value={data?.pendingPayments}
@@ -70,7 +78,8 @@ export default function DashboardMetrics() {
       <div className="bg-white rounded-xl border border-gray-100 p-5">
         <h2 className="text-sm font-medium text-gray-900 mb-1">AI Chatbot</h2>
         <p className="text-xs text-gray-500 mb-4">
-          Disable to stop all AI responses. Customers will receive a fallback message.
+          Disable to stop all AI responses. Customers will receive a fallback
+          message.
         </p>
         {isLoading || !data ? (
           <div className="h-6 w-32 rounded bg-gray-100 animate-pulse" />

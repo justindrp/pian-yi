@@ -49,20 +49,22 @@ function parseDate(cell: string): string | null {
 }
 
 export function parseGrantPaste(text: string): ParsedGrantRow[] {
-  return text
-    .split(/\r?\n/)
-    // Not l.trim(): a row whose name cell is empty starts with a tab, and
-    // trimming it would promote the portions cell to the name.
-    .filter((l) => l.trim().length > 0)
-    .map(splitCells)
-    .filter((cells) => cells.some((c) => c.length > 0))
-    .map((cells) => ({
-      name: cells[0] ?? "",
-      portions: parsePortions(cells[1] ?? ""),
-      date: parseDate(cells[2] ?? ""),
-      reason: (cells[3] ?? "").trim(),
-    }))
-    .filter((row) => row.name.length > 0);
+  return (
+    text
+      .split(/\r?\n/)
+      // Not l.trim(): a row whose name cell is empty starts with a tab, and
+      // trimming it would promote the portions cell to the name.
+      .filter((l) => l.trim().length > 0)
+      .map(splitCells)
+      .filter((cells) => cells.some((c) => c.length > 0))
+      .map((cells) => ({
+        name: cells[0] ?? "",
+        portions: parsePortions(cells[1] ?? ""),
+        date: parseDate(cells[2] ?? ""),
+        reason: (cells[3] ?? "").trim(),
+      }))
+      .filter((row) => row.name.length > 0)
+  );
 }
 
 /**
@@ -73,22 +75,23 @@ export function parseGrantPaste(text: string): ParsedGrantRow[] {
  * ledger, and that is invisible once written — so an ambiguous name comes back
  * unmatched and the admin picks from the dropdown.
  */
-export function matchCustomerByName<T extends { id: string; name: string | null; phone_number: string | null }>(
-  name: string,
-  customers: T[],
-): T | null {
+export function matchCustomerByName<
+  T extends { id: string; name: string | null; phone_number: string | null },
+>(name: string, customers: T[]): T | null {
   const q = name.trim().toLowerCase();
   if (!q) return null;
 
   const digits = q.replace(/\D/g, "");
   if (digits.length >= 8) {
-    const byPhone = customers.filter(
-      (c) => (c.phone_number ?? "").replace(/\D/g, "").endsWith(digits.slice(-9)),
+    const byPhone = customers.filter((c) =>
+      (c.phone_number ?? "").replace(/\D/g, "").endsWith(digits.slice(-9)),
     );
     if (byPhone.length === 1) return byPhone[0];
   }
 
-  const exact = customers.filter((c) => (c.name ?? "").trim().toLowerCase() === q);
+  const exact = customers.filter(
+    (c) => (c.name ?? "").trim().toLowerCase() === q,
+  );
   if (exact.length === 1) return exact[0];
   return null;
 }

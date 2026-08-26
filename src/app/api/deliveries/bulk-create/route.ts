@@ -10,7 +10,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const body = (await req.json()) as {
     customer_id: string;
@@ -19,7 +22,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   const { customer_id, deliveries } = body;
 
   if (!customer_id || !deliveries?.length) {
-    return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing required fields" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -31,7 +37,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (!customer)
-    return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Customer not found" },
+      { status: 404 },
+    );
 
   if (!customer.subcontractor_id) {
     return NextResponse.json(
@@ -53,7 +62,11 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   if (!order) {
     return NextResponse.json(
-      { ok: false, error: "Customer has no active order — cannot create draws without balance" },
+      {
+        ok: false,
+        error:
+          "Customer has no active order — cannot create draws without balance",
+      },
       { status: 400 },
     );
   }
@@ -74,7 +87,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   });
 
   if (error)
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   await logEdit({
     db,

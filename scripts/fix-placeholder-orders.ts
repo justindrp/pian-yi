@@ -104,7 +104,9 @@ async function main() {
       .eq("name", name);
     if (cErr) throw new Error(cErr.message);
     if (custs?.length !== 1) {
-      throw new Error(`expected 1 customer named "${name}", got ${custs?.length}`);
+      throw new Error(
+        `expected 1 customer named "${name}", got ${custs?.length}`,
+      );
     }
     const customer = custs[0];
 
@@ -116,8 +118,11 @@ async function main() {
       .eq("customer_id", customer.id);
     if (oErr) throw new Error(oErr.message);
 
-    const placeholder = (orders as Order[]).find((o) => o.id.startsWith(prefix));
-    if (!placeholder) throw new Error(`placeholder ${prefix} not found for ${name}`);
+    const placeholder = (orders as Order[]).find((o) =>
+      o.id.startsWith(prefix),
+    );
+    if (!placeholder)
+      throw new Error(`placeholder ${prefix} not found for ${name}`);
 
     let real = (orders as Order[]).filter((o) => o.id !== placeholder.id);
 
@@ -180,15 +185,16 @@ async function main() {
 
     for (const d of (deliveries ?? []) as Delivery[]) {
       const target =
-        real.find((o) => (capacity.get(o.id) ?? 0) > 0) ?? real[real.length - 1];
-      capacity.set(target.id, (capacity.get(target.id) ?? 0) - (d.portions ?? 0));
+        real.find((o) => (capacity.get(o.id) ?? 0) > 0) ??
+        real[real.length - 1];
+      capacity.set(
+        target.id,
+        (capacity.get(target.id) ?? 0) - (d.portions ?? 0),
+      );
       assignment.set(d.id, target.id);
     }
 
-    const drawn = (deliveries ?? []).reduce(
-      (s, d) => s + (d.portions ?? 0),
-      0,
-    );
+    const drawn = (deliveries ?? []).reduce((s, d) => s + (d.portions ?? 0), 0);
     const bought = real.reduce((s, o) => s + (o.package_size ?? 0), 0);
     console.log(
       `  ${deliveries?.length ?? 0} deliveries, ${drawn} portions drawn vs ${bought} bought -> balance ${bought - drawn}`,

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 import AccountingClient from "@/components/dashboard/accounting-client";
+import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
 export const metadata = { title: "Accounting" };
 

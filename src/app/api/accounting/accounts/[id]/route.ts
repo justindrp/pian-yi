@@ -12,8 +12,16 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const session = await getSessionWithRole();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  if (!isOwner(session.role)) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  if (!session)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  if (!isOwner(session.role))
+    return NextResponse.json(
+      { ok: false, error: "Forbidden" },
+      { status: 403 },
+    );
 
   const { id } = await params;
 
@@ -21,30 +29,48 @@ export async function PATCH(
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid JSON" },
+      { status: 400 },
+    );
   }
 
   const update: { name?: string; category?: string; is_active?: boolean } = {};
 
   if (body.name !== undefined) {
     const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name) return NextResponse.json({ ok: false, error: "Nama akun wajib diisi" }, { status: 400 });
+    if (!name)
+      return NextResponse.json(
+        { ok: false, error: "Nama akun wajib diisi" },
+        { status: 400 },
+      );
     update.name = name;
   }
   if (body.category !== undefined) {
-    const category = typeof body.category === "string" ? body.category.trim() : "";
-    if (!category) return NextResponse.json({ ok: false, error: "Kategori wajib diisi" }, { status: 400 });
+    const category =
+      typeof body.category === "string" ? body.category.trim() : "";
+    if (!category)
+      return NextResponse.json(
+        { ok: false, error: "Kategori wajib diisi" },
+        { status: 400 },
+      );
     update.category = category;
   }
   if (body.is_active !== undefined) {
     if (typeof body.is_active !== "boolean") {
-      return NextResponse.json({ ok: false, error: "is_active harus boolean" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "is_active harus boolean" },
+        { status: 400 },
+      );
     }
     update.is_active = body.is_active;
   }
 
   if (Object.keys(update).length === 0) {
-    return NextResponse.json({ ok: false, error: "Tidak ada perubahan" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Tidak ada perubahan" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -56,7 +82,10 @@ export async function PATCH(
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ ok: false, error: error?.message ?? "Akun tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: error?.message ?? "Akun tidak ditemukan" },
+      { status: 404 },
+    );
   }
 
   await logEdit({

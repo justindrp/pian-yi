@@ -15,8 +15,8 @@ import {
   sendTextMessage,
   uploadMediaToMeta,
 } from "@/lib/whatsapp/client";
-import type { Database } from "@/types/database";
 import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
+import type { Database } from "@/types/database";
 
 // Typed against the generated row types, so a field added to either allowlist
 // that is not actually an editable column fails typecheck instead of failing at

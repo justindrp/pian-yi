@@ -6,8 +6,18 @@ describe("parseGrantPaste", () => {
       "Defi Lugito\t6\t2026-08-14\tkompensasi telat\nValen\t4\t2026-08-14\tkompensasi telat",
     );
     expect(rows).toEqual([
-      { name: "Defi Lugito", portions: 6, date: "2026-08-14", reason: "kompensasi telat" },
-      { name: "Valen", portions: 4, date: "2026-08-14", reason: "kompensasi telat" },
+      {
+        name: "Defi Lugito",
+        portions: 6,
+        date: "2026-08-14",
+        reason: "kompensasi telat",
+      },
+      {
+        name: "Valen",
+        portions: 4,
+        date: "2026-08-14",
+        reason: "kompensasi telat",
+      },
     ]);
   });
 

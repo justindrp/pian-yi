@@ -1,11 +1,10 @@
-import { demoDisplayName, isDemoPhone } from "@/lib/whatsapp/demo";
 import type Anthropic from "@anthropic-ai/sdk";
 import { getSetting } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
 import {
+  getAnthropicClient,
   NO_THINKING,
   SONNET_MODEL,
-  getAnthropicClient,
 } from "@/lib/claude/client";
 import {
   loadHistory,
@@ -13,16 +12,17 @@ import {
   updateMessageReceipt,
 } from "@/lib/claude/conversation";
 import { isClosedHoliday } from "@/lib/holidays/id";
-import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import {
-  FIXED_SCHEDULE_PREFS,
   buildRecurringDeliveryRows,
+  FIXED_SCHEDULE_PREFS,
   portionsInRange,
 } from "@/lib/orders/build-recurring-deliveries";
 import { sendPushToAllAdmins } from "@/lib/push/send";
+import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDeliveryRoute } from "@/lib/utils/format";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { demoDisplayName, isDemoPhone } from "@/lib/whatsapp/demo";
 import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
 export interface DeliveryScheduleSlot {
@@ -210,7 +210,12 @@ const PLACEHOLDER_NAMES = new Set([
 ]);
 
 export function isPlaceholderName(name: string): boolean {
-  return PLACEHOLDER_NAMES.has(name.trim().toLowerCase().replace(/[.,!]+$/, ""));
+  return PLACEHOLDER_NAMES.has(
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[.,!]+$/, ""),
+  );
 }
 
 /**
@@ -384,7 +389,8 @@ export function statedBareTotal(text: string): number | null {
     /(?<![\w.,])(\d+)[ \t]*porsi\b(?!\s*:)(?!\s*(?:\/|per\s)?\s*(?:hari|pengiriman|kali|x\b))/gi,
   )) {
     const n = Number(match[1]);
-    if (Number.isFinite(n) && n > 0 && n <= LARGEST_PLAUSIBLE_SIZE) sizes.add(n);
+    if (Number.isFinite(n) && n > 0 && n <= LARGEST_PLAUSIBLE_SIZE)
+      sizes.add(n);
   }
   return sizes.size === 1 ? ([...sizes][0] as number) : null;
 }
@@ -421,7 +427,8 @@ export function statedWeeks(text: string): number | null {
 const LUNCH_WORDS = /\b(makan siang|siang aja|siang saja|siang doang|lunch)\b/i;
 
 /** A customer who never wrote one of these never asked for dinner. */
-const DINNER_WORDS = /\b(malam|dinner|keduanya|2\s*(x|kali)\s*sehari|dua kali)\b/i;
+const DINNER_WORDS =
+  /\b(malam|dinner|keduanya|2\s*(x|kali)\s*sehari|dua kali)\b/i;
 
 /** The customer's own messages, newest last, as one string per message. */
 async function customerMessages(
@@ -817,7 +824,9 @@ async function fillMissingSchedule(
 
   const extracted = await extractOrderFromConversation(customerId);
   const schedule = extracted?.delivery_schedule?.length
-    ? [...extracted.delivery_schedule].sort((a, b) => a.date.localeCompare(b.date))
+    ? [...extracted.delivery_schedule].sort((a, b) =>
+        a.date.localeCompare(b.date),
+      )
     : null;
   if (!schedule) return;
 
@@ -872,12 +881,11 @@ async function fillMissingSchedule(
     .update({
       start_date: rows[0].delivery_date,
       end_date: rows[rows.length - 1].delivery_date,
-      meal_time_preference:
-        schedule.every((s) => s.meal_type === "lunch")
-          ? "lunch_only"
-          : schedule.every((s) => s.meal_type === "dinner")
-            ? "dinner_only"
-            : "custom_schedule",
+      meal_time_preference: schedule.every((s) => s.meal_type === "lunch")
+        ? "lunch_only"
+        : schedule.every((s) => s.meal_type === "dinner")
+          ? "dinner_only"
+          : "custom_schedule",
     })
     .eq("id", orderId);
   console.log(
@@ -944,7 +952,10 @@ export async function resizePendingOrderFromMessage(
     })
     .eq("id", order.id);
   if (error) {
-    console.error("[extract-order] pending order resize failed:", error.message);
+    console.error(
+      "[extract-order] pending order resize failed:",
+      error.message,
+    );
     return false;
   }
 
@@ -1070,7 +1081,9 @@ export async function createOrderFromExtraction(
   // When both dates and a standing meal pattern are present, count the days the
   // range actually produces instead of trusting the number the model wrote.
   const rangeSize =
-    !sortedSchedule && endDate && FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
+    !sortedSchedule &&
+    endDate &&
+    FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
       ? portionsInRange(
           {
             portions_per_delivery: input.portions_per_delivery ?? 1,
@@ -1133,10 +1146,7 @@ export async function createOrderFromExtraction(
     .select("id")
     .eq("customer_id", customerId)
     .eq("status", "pending_payment")
-    .gt(
-      "created_at",
-      new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    )
+    .gt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -1195,33 +1205,33 @@ export async function createOrderFromExtraction(
   }
 
   const orderFields = {
-      customer_id: customerId,
-      package_size: packageSize,
-      price_per_portion: pricePerPortion,
-      total_price: totalPrice,
-      addon_cost_per_portion: nasiMerah ? NASI_MERAH_SURCHARGE : 0,
-      // NOT NULL, and the model omits it whenever the conversation never
-      // discussed portions per day — Nadya's 20-porsi order was rejected on
-      // it and she got nothing. One per delivery is the prompt's own default.
-      portions_per_delivery: input.portions_per_delivery ?? 1,
-      portions_lunch: input.portions_lunch ?? 0,
-      portions_dinner: input.portions_dinner ?? 0,
-      portions_remaining: packageSize,
-      // The computed preference, not the raw extraction: the inference below it
-      // decides which deliveries get written, and storing the model's value
-      // instead left the order row disagreeing with its own schedule.
-      meal_time_preference: mealTimePreference,
-      lunch_address_slot: lunchSlot,
-      dinner_address_slot: dinnerSlot,
-      custom_schedule: (input.custom_schedule ?? null) as
-        | import("@/types/database").Json
-        | null,
-      start_date: startDate,
-      end_date: endDate,
-      size: "s",
-      subcontractor_id: subcontractorId,
-      status: "pending_payment" as const,
-      confirmed_at: new Date().toISOString(),
+    customer_id: customerId,
+    package_size: packageSize,
+    price_per_portion: pricePerPortion,
+    total_price: totalPrice,
+    addon_cost_per_portion: nasiMerah ? NASI_MERAH_SURCHARGE : 0,
+    // NOT NULL, and the model omits it whenever the conversation never
+    // discussed portions per day — Nadya's 20-porsi order was rejected on
+    // it and she got nothing. One per delivery is the prompt's own default.
+    portions_per_delivery: input.portions_per_delivery ?? 1,
+    portions_lunch: input.portions_lunch ?? 0,
+    portions_dinner: input.portions_dinner ?? 0,
+    portions_remaining: packageSize,
+    // The computed preference, not the raw extraction: the inference below it
+    // decides which deliveries get written, and storing the model's value
+    // instead left the order row disagreeing with its own schedule.
+    meal_time_preference: mealTimePreference,
+    lunch_address_slot: lunchSlot,
+    dinner_address_slot: dinnerSlot,
+    custom_schedule: (input.custom_schedule ?? null) as
+      | import("@/types/database").Json
+      | null,
+    start_date: startDate,
+    end_date: endDate,
+    size: "s",
+    subcontractor_id: subcontractorId,
+    status: "pending_payment" as const,
+    confirmed_at: new Date().toISOString(),
   };
 
   const { data: insertedOrder, error: insertError } = openOrder
@@ -1381,9 +1391,7 @@ export async function createOrderFromExtraction(
       ...(input.area_2?.trim()
         ? { area_2: input.area_2, sub_area_2: input.sub_area_2 ?? null }
         : {}),
-      ...(input.maps_link_2
-        ? { google_maps_link_2: input.maps_link_2 }
-        : {}),
+      ...(input.maps_link_2 ? { google_maps_link_2: input.maps_link_2 } : {}),
       ...(input.subcontractor_id
         ? { subcontractor_id: input.subcontractor_id }
         : {}),

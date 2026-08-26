@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/assistant/route";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAnthropicClient } from "@/lib/claude/client";
-import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { buildPendingAction } from "@/lib/claude/assistant-tools";
+import { getAnthropicClient } from "@/lib/claude/client";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/claude/client", () => ({
@@ -30,12 +30,32 @@ jest.mock("@/lib/claude/assistant-tools", () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown; count?: number } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown; count?: number } = {
+    data: null,
+    error: null,
+  },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in", "ilike",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "ilike",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
@@ -43,8 +63,10 @@ function makeChain(result: { data: unknown; error: unknown; count?: number } = {
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -52,10 +74,18 @@ function makeChain(result: { data: unknown; error: unknown; count?: number } = {
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown; count?: number }> = {}) {
+function makeDbMock(
+  config: Record<
+    string,
+    { data: unknown; error: unknown; count?: number }
+  > = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: [], error: null, count: 0 });
+    if (!chains[table])
+      chains[table] = makeChain(
+        config[table] ?? { data: [], error: null, count: 0 },
+      );
     return chains[table];
   });
   return { from, chains };
@@ -69,7 +99,12 @@ function postRequest(body: unknown) {
   });
 }
 
-function makeClaudeMock(responses: Array<{ content: Array<{ type: string; [k: string]: unknown }>; stop_reason: string }>) {
+function makeClaudeMock(
+  responses: Array<{
+    content: Array<{ type: string; [k: string]: unknown }>;
+    stop_reason: string;
+  }>,
+) {
   let call = 0;
   return {
     messages: {
@@ -88,7 +123,10 @@ function makeClaudeMock(responses: Array<{ content: Array<{ type: string; [k: st
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (getSessionWithRole as jest.Mock).mockResolvedValue({ email: "drpramadyo@gmail.com", role: "owner" });
+  (getSessionWithRole as jest.Mock).mockResolvedValue({
+    email: "drpramadyo@gmail.com",
+    role: "owner",
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -99,7 +137,9 @@ describe("POST /api/assistant", () => {
   test("T1 — unauthenticated returns 401", async () => {
     (getSessionWithRole as jest.Mock).mockResolvedValue(null);
 
-    const res = await POST(postRequest({ messages: [{ role: "user", content: "hello" }] }));
+    const res = await POST(
+      postRequest({ messages: [{ role: "user", content: "hello" }] }),
+    );
 
     expect(res.status).toBe(401);
     const body = await res.json();
@@ -145,7 +185,9 @@ describe("POST /api/assistant", () => {
     );
 
     const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "how many active orders?" }] }),
+      postRequest({
+        messages: [{ role: "user", content: "how many active orders?" }],
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -168,7 +210,9 @@ describe("POST /api/assistant", () => {
       makeClaudeMock([
         {
           stop_reason: "tool_use",
-          content: [{ type: "tool_use", id: "t1", name: "query_metrics", input: {} }],
+          content: [
+            { type: "tool_use", id: "t1", name: "query_metrics", input: {} },
+          ],
         },
         {
           stop_reason: "end_turn",
@@ -177,7 +221,9 @@ describe("POST /api/assistant", () => {
       ]),
     );
 
-    await POST(postRequest({ messages: [{ role: "user", content: "metrics" }] }));
+    await POST(
+      postRequest({ messages: [{ role: "user", content: "metrics" }] }),
+    );
 
     expect(db.from).toHaveBeenCalledWith("orders");
     expect(db.from).toHaveBeenCalledWith("daily_deliveries");
@@ -195,14 +241,21 @@ describe("POST /api/assistant", () => {
           stop_reason: "tool_use",
           content: [
             { type: "text", text: "I'll mark that order as paid." },
-            { type: "tool_use", id: "t1", name: "mark_order_paid", input: { order_id: "order-1" } },
+            {
+              type: "tool_use",
+              id: "t1",
+              name: "mark_order_paid",
+              input: { order_id: "order-1" },
+            },
           ],
         },
       ]),
     );
 
     const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "mark order order-1 as paid" }] }),
+      postRequest({
+        messages: [{ role: "user", content: "mark order order-1 as paid" }],
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -210,7 +263,10 @@ describe("POST /api/assistant", () => {
     expect(body.ok).toBe(true);
     expect(body.pendingAction).toBeDefined();
     expect(body.pendingAction.tool).toBe("mark_order_paid");
-    expect(buildPendingAction as jest.Mock).toHaveBeenCalledWith("mark_order_paid", { order_id: "order-1" });
+    expect(buildPendingAction as jest.Mock).toHaveBeenCalledWith(
+      "mark_order_paid",
+      { order_id: "order-1" },
+    );
     // orders table must NOT have been updated
     expect(db.chains.orders?.update).toBeUndefined();
   });
@@ -230,21 +286,35 @@ describe("POST /api/assistant", () => {
         // turn 1: read tool
         {
           stop_reason: "tool_use",
-          content: [{ type: "tool_use", id: "t1", name: "query_metrics", input: {} }],
+          content: [
+            { type: "tool_use", id: "t1", name: "query_metrics", input: {} },
+          ],
         },
         // turn 2: write tool
         {
           stop_reason: "tool_use",
           content: [
-            { type: "text", text: "Looks like order-1 is unpaid. Marking it now." },
-            { type: "tool_use", id: "t2", name: "mark_order_paid", input: { order_id: "order-1" } },
+            {
+              type: "text",
+              text: "Looks like order-1 is unpaid. Marking it now.",
+            },
+            {
+              type: "tool_use",
+              id: "t2",
+              name: "mark_order_paid",
+              input: { order_id: "order-1" },
+            },
           ],
         },
       ]),
     );
 
     const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "check metrics then mark order-1 paid" }] }),
+      postRequest({
+        messages: [
+          { role: "user", content: "check metrics then mark order-1 paid" },
+        ],
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -253,7 +323,8 @@ describe("POST /api/assistant", () => {
     expect(body.pendingAction).toBeDefined();
     expect(body.pendingAction.tool).toBe("mark_order_paid");
     // loop should have called create exactly twice
-    const mockCreate = (getAnthropicClient as jest.Mock).mock.results[0].value.messages.create;
+    const mockCreate = (getAnthropicClient as jest.Mock).mock.results[0].value
+      .messages.create;
     expect(mockCreate.mock.calls.length).toBe(2);
   });
 
@@ -293,7 +364,9 @@ describe("POST /api/assistant", () => {
     );
 
     const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "send menu and price list" }] }),
+      postRequest({
+        messages: [{ role: "user", content: "send menu and price list" }],
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -301,8 +374,12 @@ describe("POST /api/assistant", () => {
     expect(body.ok).toBe(true);
     expect(body.pendingAction.tool).toBe("batch");
     expect(body.pendingAction.input.actions).toHaveLength(2);
-    expect(body.pendingAction.input.actions[0].tool).toBe("send_whatsapp_image");
-    expect(body.pendingAction.input.actions[1].input.image_url).toBe("https://example.com/prices.jpg");
+    expect(body.pendingAction.input.actions[0].tool).toBe(
+      "send_whatsapp_image",
+    );
+    expect(body.pendingAction.input.actions[1].input.image_url).toBe(
+      "https://example.com/prices.jpg",
+    );
     expect(buildPendingAction as jest.Mock).toHaveBeenCalledTimes(2);
   });
 
@@ -319,7 +396,9 @@ describe("POST /api/assistant", () => {
     // Claude always returns tool_use — loop must cap and not hang
     const alwaysToolUse = {
       stop_reason: "tool_use",
-      content: [{ type: "tool_use", id: "t1", name: "query_metrics", input: {} }],
+      content: [
+        { type: "tool_use", id: "t1", name: "query_metrics", input: {} },
+      ],
     };
     (getAnthropicClient as jest.Mock).mockReturnValue(
       makeClaudeMock(Array(10).fill(alwaysToolUse)),
@@ -334,7 +413,8 @@ describe("POST /api/assistant", () => {
     expect(body.ok).toBe(true);
     // At most MAX_TURNS (10) loop calls, plus the one tools-free wrap-up call
     // the route makes when the loop ends without an answer.
-    const mockCreate = (getAnthropicClient as jest.Mock).mock.results[0].value.messages.create;
+    const mockCreate = (getAnthropicClient as jest.Mock).mock.results[0].value
+      .messages.create;
     expect(mockCreate.mock.calls.length).toBeLessThanOrEqual(11);
   });
 });

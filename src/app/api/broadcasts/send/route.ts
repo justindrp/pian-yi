@@ -11,10 +11,16 @@ interface RecipientInput {
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     instruction: string;
     message_template: string;
     filter: Record<string, unknown>;
@@ -22,7 +28,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   };
 
   const { instruction, message_template, filter, recipients } = body;
-  if (!recipients?.length) return NextResponse.json({ ok: false, error: "No recipients" }, { status: 400 });
+  if (!recipients?.length)
+    return NextResponse.json(
+      { ok: false, error: "No recipients" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
 
@@ -41,7 +51,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (broadcastError || !broadcast) {
-    return NextResponse.json({ ok: false, error: "Failed to create broadcast" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Failed to create broadcast" },
+      { status: 500 },
+    );
   }
 
   // Send messages and record results
@@ -88,7 +101,10 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // Update status to failed if all failed
   if (sentCount === 0) {
-    await db.from("broadcasts").update({ status: "failed" }).eq("id", broadcast.id);
+    await db
+      .from("broadcasts")
+      .update({ status: "failed" })
+      .eq("id", broadcast.id);
   }
 
   await db.from("edit_log").insert({
@@ -99,7 +115,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     changes: { sent: sentCount, failed: failedCount },
   });
 
-  return NextResponse.json({ ok: true, data: { broadcast_id: broadcast.id, sent: sentCount, failed: failedCount } });
+  return NextResponse.json({
+    ok: true,
+    data: { broadcast_id: broadcast.id, sent: sentCount, failed: failedCount },
+  });
 }
 
 export const dynamic = "force-dynamic";

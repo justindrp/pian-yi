@@ -15,7 +15,9 @@ import { useQuery } from "@tanstack/react-query";
  * kitchen serves, and neither offered Karawaci, which one does — so a Karawaci
  * customer could not be filed at all.
  */
-export function useDeliveryAreas(scope: "active" | "known" = "active"): string[] {
+export function useDeliveryAreas(
+  scope: "active" | "known" = "active",
+): string[] {
   const { data } = useQuery({
     queryKey: ["delivery-areas", scope],
     queryFn: async (): Promise<string[]> => {
@@ -39,5 +41,7 @@ export function withCurrentAreas(
   areas: string[],
   ...current: (string | null | undefined)[]
 ): string[] {
-  return [...new Set([...areas, ...current.filter((a): a is string => !!a)])].sort();
+  return [
+    ...new Set([...areas, ...current.filter((a): a is string => !!a)]),
+  ].sort();
 }

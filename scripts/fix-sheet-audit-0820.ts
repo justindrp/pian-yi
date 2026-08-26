@@ -42,13 +42,21 @@ async function main() {
   const db = createAdminClient();
   const log = (...a: unknown[]) => console.log(APPLY ? "APPLY" : "DRY", ...a);
 
-  const { data: kitchens } = await db.from("subcontractors").select("id,name,is_active");
+  const { data: kitchens } = await db
+    .from("subcontractors")
+    .select("id,name,is_active");
   const thenie = (kitchens ?? []).find((k) => k.is_active)?.id ?? THENIE;
 
   const { data: customers } = await db
     .from("customers")
     .select("id,name,subcontractor_id")
-    .in("name", ["galvent", "Tio Jason", "Sherine Fayola", "Lina Marlianty", "Julian S"]);
+    .in("name", [
+      "galvent",
+      "Tio Jason",
+      "Sherine Fayola",
+      "Lina Marlianty",
+      "Julian S",
+    ]);
   const by = (n: string) => (customers ?? []).find((c) => c.name === n);
 
   // 1 + 2 — rows and orders pointing at no kitchen or a retired one.
@@ -61,24 +69,56 @@ async function main() {
       .eq("customer_id", c.id)
       .gte("delivery_date", "2026-08-20");
     const bad = (rows ?? []).filter((r) => r.subcontractor_id !== thenie);
-    log(name, "rows to repoint:", bad.map((r) => r.delivery_date).join(", ") || "none");
+    log(
+      name,
+      "rows to repoint:",
+      bad.map((r) => r.delivery_date).join(", ") || "none",
+    );
     if (APPLY && bad.length) {
       await db
         .from("daily_deliveries")
         .update({ subcontractor_id: thenie })
-        .in("id", bad.map((r) => r.id));
-      const orderIds = [...new Set(bad.map((r) => r.order_id).filter(Boolean))] as string[];
-      await db.from("orders").update({ subcontractor_id: thenie }).in("id", orderIds);
+        .in(
+          "id",
+          bad.map((r) => r.id),
+        );
+      const orderIds = [
+        ...new Set(bad.map((r) => r.order_id).filter(Boolean)),
+      ] as string[];
+      await db
+        .from("orders")
+        .update({ subcontractor_id: thenie })
+        .in("id", orderIds);
     }
   }
 
   // 3, 4, 5 — schedules that disagree with what the customer asked for.
   // Julian S asked on the 19th for Kamis 20 and Jumat 21 to be skipped and the
   // portions moved to Senin 24 onward, so his run starts there, not tomorrow.
-  const rebuilds: { name: string; allowed: number[]; note: string; from: string }[] = [
-    { name: "Sherine Fayola", allowed: [1, 2, 3, 4, 5], note: "weekdays only", from: "2026-08-20" },
-    { name: "Lina Marlianty", allowed: [1, 2, 3, 4], note: "Jumat libur", from: "2026-08-20" },
-    { name: "Julian S", allowed: [1, 2, 3, 4, 5], note: "no weekend, skips 20-21", from: "2026-08-24" },
+  const rebuilds: {
+    name: string;
+    allowed: number[];
+    note: string;
+    from: string;
+  }[] = [
+    {
+      name: "Sherine Fayola",
+      allowed: [1, 2, 3, 4, 5],
+      note: "weekdays only",
+      from: "2026-08-20",
+    },
+    {
+      name: "Lina Marlianty",
+      allowed: [1, 2, 3, 4],
+      note: "Jumat libur",
+      from: "2026-08-20",
+    },
+    {
+      name: "Julian S",
+      allowed: [1, 2, 3, 4, 5],
+      note: "no weekend, skips 20-21",
+      from: "2026-08-24",
+    },
   ];
 
   for (const r of rebuilds) {
@@ -101,7 +141,14 @@ async function main() {
 
     const drop = have.filter((d) => !wanted.includes(d));
     const add = wanted.filter((d) => !have.includes(d));
-    log(r.name, `(${r.note}, ${meals.join("+")})`, "drop:", drop.join(",") || "none", "| add:", add.join(",") || "none");
+    log(
+      r.name,
+      `(${r.note}, ${meals.join("+")})`,
+      "drop:",
+      drop.join(",") || "none",
+      "| add:",
+      add.join(",") || "none",
+    );
     if (!APPLY) continue;
 
     if (drop.length) {

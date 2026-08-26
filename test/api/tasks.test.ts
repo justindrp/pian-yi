@@ -343,8 +343,9 @@ describe("POST /api/tasks", () => {
 
   it("400s on a bad status without touching the database", async () => {
     const { from } = mockDb({ data: null, error: null });
-    expect((await postTask(req("POST", { title: "x", status: "vibes" }))).status)
-      .toBe(400);
+    expect(
+      (await postTask(req("POST", { title: "x", status: "vibes" }))).status,
+    ).toBe(400);
     expect(from).not.toHaveBeenCalled();
   });
 
@@ -395,7 +396,10 @@ describe("POST /api/tasks", () => {
   // A well-formed uuid that points at no row. The raw constraint sentence
   // helps nobody and reads as our bug rather than the caller's.
   it("turns an FK violation into a 400", async () => {
-    mockDb({ data: null, error: { code: "23503", message: 'violates "tasks_customer_id_fkey"' } });
+    mockDb({
+      data: null,
+      error: { code: "23503", message: 'violates "tasks_customer_id_fkey"' },
+    });
     const res = await postTask(
       req("POST", {
         title: "x",
@@ -454,8 +458,9 @@ describe("PATCH /api/tasks/[id]", () => {
 
   it("404s on an id that does not exist", async () => {
     mockDb({ data: null, error: { message: "no rows" } });
-    expect((await patchTask(req("PATCH", { status: "done" }), params)).status)
-      .toBe(404);
+    expect(
+      (await patchTask(req("PATCH", { status: "done" }), params)).status,
+    ).toBe(404);
   });
 
   it("400s on a cleared title, which used to be a not-null 500", async () => {
@@ -465,7 +470,10 @@ describe("PATCH /api/tasks/[id]", () => {
   });
 
   it("stamps done_at on done and clears it on reopen", async () => {
-    const done = mockDb({ data: existing, error: null }, { data: existing, error: null });
+    const done = mockDb(
+      { data: existing, error: null },
+      { data: existing, error: null },
+    );
     await patchTask(req("PATCH", { status: "done" }), params);
     const update = (done.chains[1].update as jest.Mock).mock.calls[0][0];
     expect(update.status).toBe("done");
@@ -474,12 +482,16 @@ describe("PATCH /api/tasks/[id]", () => {
     jest.clearAllMocks();
     signedIn();
     const reopen = mockDb(
-      { data: { ...existing, status: "done", done_at: "2026-08-25" }, error: null },
+      {
+        data: { ...existing, status: "done", done_at: "2026-08-25" },
+        error: null,
+      },
       { data: existing, error: null },
     );
     await patchTask(req("PATCH", { status: "open" }), params);
-    expect((reopen.chains[1].update as jest.Mock).mock.calls[0][0].done_at)
-      .toBeNull();
+    expect(
+      (reopen.chains[1].update as jest.Mock).mock.calls[0][0].done_at,
+    ).toBeNull();
   });
 
   // Mass assignment is the failure mode this guards (CLAUDE.md, "allowlist

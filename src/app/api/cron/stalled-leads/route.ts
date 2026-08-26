@@ -36,7 +36,10 @@ type Msg = {
 
 export async function GET(req: NextRequest): Promise<Response> {
   if (req.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const db = createAdminClient();
@@ -47,23 +50,41 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Every customer who has ever had an order, so "lead" means what it says.
   // Walked rather than selected in one go: `orders` is past the 1000-row cap,
   // and a truncated set here would flag paying customers as abandoned leads.
-  const ordered = await fetchAllRows<{ customer_id: string | null }>((from, to) =>
-    db.from("orders").select("customer_id").not("customer_id", "is", null).range(from, to),
+  const ordered = await fetchAllRows<{ customer_id: string | null }>(
+    (from, to) =>
+      db
+        .from("orders")
+        .select("customer_id")
+        .not("customer_id", "is", null)
+        .range(from, to),
   );
   if (ordered.error) {
-    return NextResponse.json({ ok: false, error: ordered.error }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: ordered.error },
+      { status: 500 },
+    );
   }
   const hasOrder = new Set(ordered.rows.map((o) => o.customer_id));
 
   const states = await fetchAllRows<{ customer_id: string }>((from, to) =>
-    db.from("customer_state").select("customer_id").eq("state", "ordering").range(from, to),
+    db
+      .from("customer_state")
+      .select("customer_id")
+      .eq("state", "ordering")
+      .range(from, to),
   );
   if (states.error) {
-    return NextResponse.json({ ok: false, error: states.error }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: states.error },
+      { status: 500 },
+    );
   }
 
-  const candidates = states.rows.map((s) => s.customer_id).filter((id) => !hasOrder.has(id));
-  if (candidates.length === 0) return NextResponse.json({ ok: true, flagged: 0 });
+  const candidates = states.rows
+    .map((s) => s.customer_id)
+    .filter((id) => !hasOrder.has(id));
+  if (candidates.length === 0)
+    return NextResponse.json({ ok: true, flagged: 0 });
 
   // Already-flagged leads are skipped, not re-pushed. Same rule as
   // flagOrderAtRisk: one push per unresolved flag, or an admin who has already
@@ -74,7 +95,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     .in("customer_id", candidates);
   const flagged = new Set(
     (flagRows ?? [])
-      .filter((f) => f.needs_human_review === true || f.escalated_to_human === true)
+      .filter(
+        (f) => f.needs_human_review === true || f.escalated_to_human === true,
+      )
       .map((f) => f.customer_id),
   );
 
@@ -95,7 +118,10 @@ export async function GET(req: NextRequest): Promise<Response> {
         .range(from, to),
     );
     if (msgs.error) {
-      return NextResponse.json({ ok: false, error: msgs.error }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: msgs.error },
+        { status: 500 },
+      );
     }
 
     // Ordered ascending, so the last write per customer wins. Rows with no
@@ -123,7 +149,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       const c = byId.get(id);
       const label = c?.name?.trim() || c?.phone_number || id;
       const asked = (last.content ?? "").replace(/\s+/g, " ").slice(0, 120);
-      const waited = Math.floor((Date.now() - new Date(last.created_at).getTime()) / 3600_000);
+      const waited = Math.floor(
+        (Date.now() - new Date(last.created_at).getTime()) / 3600_000,
+      );
 
       const { error } = await db.from("customer_flags").upsert(
         {
@@ -157,13 +185,17 @@ export async function GET(req: NextRequest): Promise<Response> {
       newlyFlagged.length === 1
         ? `Lead belum dibalas — ${first.label}`
         : `${newlyFlagged.length} lead belum dibalas`,
-      newlyFlagged.length === 1 ? first.asked : `Terlama: ${first.label} — "${first.asked}"`,
+      newlyFlagged.length === 1
+        ? first.asked
+        : `Terlama: ${first.label} — "${first.asked}"`,
       "/inbox",
       "high",
     );
   }
 
-  console.log(`[stalled-leads] flagged ${newlyFlagged.length} of ${pending.length} candidates`);
+  console.log(
+    `[stalled-leads] flagged ${newlyFlagged.length} of ${pending.length} candidates`,
+  );
   return NextResponse.json({ ok: true, flagged: newlyFlagged.length });
 }
 

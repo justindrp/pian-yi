@@ -613,7 +613,10 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     const takeoverRes = await fetch("/api/inbox/takeover", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: selectedCustomerId, escalated: false }),
+      body: JSON.stringify({
+        customer_id: selectedCustomerId,
+        escalated: false,
+      }),
     });
     if (!takeoverRes.ok) {
       setRegenerating(false);
@@ -1376,9 +1379,13 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
             <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium text-amber-800">Bot paused — awaiting admin input</p>
+                  <p className="font-medium text-amber-800">
+                    Bot paused — awaiting admin input
+                  </p>
                   {flags.pending_bot_question && (
-                    <p className="mt-0.5 text-amber-700 break-words">{flags.pending_bot_question}</p>
+                    <p className="mt-0.5 text-amber-700 break-words">
+                      {flags.pending_bot_question}
+                    </p>
                   )}
                 </div>
                 <Button
@@ -1417,7 +1424,9 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
               // Meta's reason for a failed send. Without it on screen a red
               // "Failed" is undiagnosable — 296 delivery proofs failed silently
               // for two months because the code only ever reached the logs.
-              const receiptError = getReceiptError(msgWithExtras.whatsapp_error);
+              const receiptError = getReceiptError(
+                msgWithExtras.whatsapp_error,
+              );
               return (
                 <div
                   key={msg.id}
@@ -1735,7 +1744,8 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                   }
                   if (slots.length === 0) {
                     slots.push({
-                      date: o.start_date ?? new Date().toISOString().slice(0, 10),
+                      date:
+                        o.start_date ?? new Date().toISOString().slice(0, 10),
                       meal_type: "lunch",
                       portions: defaultPortions,
                     });
@@ -1756,16 +1766,26 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                   const rows = [...(o.delivery_schedule ?? [])];
                   rows[idx] = { ...rows[idx], ...patch };
                   const newTotal = rows.reduce((s, r) => s + r.portions, 0);
-                  setExtractedOrder({ ...o, delivery_schedule: rows, package_size: newTotal });
+                  setExtractedOrder({
+                    ...o,
+                    delivery_schedule: rows,
+                    package_size: newTotal,
+                  });
                   if (patch.portions !== undefined) {
                     void refreshExtractedOrderPricing(newTotal);
                   }
                 }
 
                 function removeScheduleRow(idx: number) {
-                  const rows = (o.delivery_schedule ?? []).filter((_, i) => i !== idx);
+                  const rows = (o.delivery_schedule ?? []).filter(
+                    (_, i) => i !== idx,
+                  );
                   const newTotal = rows.reduce((s, r) => s + r.portions, 0);
-                  setExtractedOrder({ ...o, delivery_schedule: rows, package_size: newTotal });
+                  setExtractedOrder({
+                    ...o,
+                    delivery_schedule: rows,
+                    package_size: newTotal,
+                  });
                   void refreshExtractedOrderPricing(newTotal);
                 }
 
@@ -1788,7 +1808,11 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                     },
                   ];
                   const newTotal = newRows.reduce((s, r) => s + r.portions, 0);
-                  setExtractedOrder({ ...o, delivery_schedule: newRows, package_size: newTotal });
+                  setExtractedOrder({
+                    ...o,
+                    delivery_schedule: newRows,
+                    package_size: newTotal,
+                  });
                   void refreshExtractedOrderPricing(newTotal);
                 }
 
@@ -1802,7 +1826,11 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                         <button
                           type="button"
                           onClick={() => scheduleMode && toggleScheduleMode()}
-                          className={!scheduleMode ? "text-blue-600 font-semibold" : "text-gray-400 hover:text-gray-600"}
+                          className={
+                            !scheduleMode
+                              ? "text-blue-600 font-semibold"
+                              : "text-gray-400 hover:text-gray-600"
+                          }
                         >
                           Seragam
                         </button>
@@ -1810,7 +1838,11 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                         <button
                           type="button"
                           onClick={() => !scheduleMode && toggleScheduleMode()}
-                          className={scheduleMode ? "text-blue-600 font-semibold" : "text-gray-400 hover:text-gray-600"}
+                          className={
+                            scheduleMode
+                              ? "text-blue-600 font-semibold"
+                              : "text-gray-400 hover:text-gray-600"
+                          }
                         >
                           Per hari
                         </button>
@@ -1830,11 +1862,15 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                             setExtractedOrder({
                               ...o,
                               package_size: packageSize,
-                              ...(Number.isFinite(packageSize) && packageSize > 0
+                              ...(Number.isFinite(packageSize) &&
+                              packageSize > 0
                                 ? {}
                                 : { price_per_portion: 0, total_price: 0 }),
                             });
-                            if (Number.isFinite(packageSize) && packageSize > 0) {
+                            if (
+                              Number.isFinite(packageSize) &&
+                              packageSize > 0
+                            ) {
                               void refreshExtractedOrderPricing(packageSize);
                             }
                           }}
@@ -1875,7 +1911,9 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                             <select
                               value={slot.meal_type}
                               onChange={(e) =>
-                                updateScheduleRow(idx, { meal_type: e.target.value })
+                                updateScheduleRow(idx, {
+                                  meal_type: e.target.value,
+                                })
                               }
                               className="text-xs h-8 border rounded px-1 bg-white"
                             >
@@ -1888,7 +1926,9 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                               min={1}
                               className="text-xs h-8 w-14"
                               onChange={(e) =>
-                                updateScheduleRow(idx, { portions: Number(e.target.value) })
+                                updateScheduleRow(idx, {
+                                  portions: Number(e.target.value),
+                                })
                               }
                             />
                             <button

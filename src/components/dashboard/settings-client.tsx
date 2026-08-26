@@ -1,15 +1,30 @@
 "use client";
 
-import { Switch } from "@/components/ui/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import SubcontractorsClient from "@/components/dashboard/subcontractors-client";
+import { Switch } from "@/components/ui/switch";
 import { useDeliveryAreas } from "@/hooks/use-delivery-areas";
 
-interface SettingRow { key: string; value: string; description?: string | null }
-interface PricingRow { portions: number; price_per_portion: number }
-interface TemplateRow { key: string; template: string; description?: string | null }
-interface AdminRow { email: string; created_at: string; role: string }
+interface SettingRow {
+  key: string;
+  value: string;
+  description?: string | null;
+}
+interface PricingRow {
+  portions: number;
+  price_per_portion: number;
+}
+interface TemplateRow {
+  key: string;
+  template: string;
+  description?: string | null;
+}
+interface AdminRow {
+  email: string;
+  created_at: string;
+  role: string;
+}
 
 interface SettingsData {
   settings: SettingRow[];
@@ -18,19 +33,37 @@ interface SettingsData {
   admins: AdminRow[];
 }
 
-const BUSINESS_KEYS = ["business_name", "instagram_handle", "bank_name", "bank_account_number", "bank_account_name"];
+const BUSINESS_KEYS = [
+  "business_name",
+  "instagram_handle",
+  "bank_name",
+  "bank_account_number",
+  "bank_account_name",
+];
 // `delivery_areas` is deliberately absent. The key exists in `settings` and
 // this screen used to edit it, but nothing has ever read it: coverage is the
 // union of the active subcontractors' own `delivery_areas`. Editing it here
 // changed nothing while looking authoritative, so the control is now a
 // read-only view of the real answer.
 const DELIVERY_KEYS = ["order_deadline_hour"];
-const CHATBOT_KEYS = ["chatbot_enabled", "casual_mode_probability", "typing_delay_base_seconds", "typing_delay_per_char_seconds", "typing_delay_max_seconds", "photo_match_confidence_threshold"];
-const AUTOMATION_KEYS = ["unpaid_reminder_hours", "unpaid_cancel_hours", "low_quota_first_warning", "low_quota_final_warning"];
+const CHATBOT_KEYS = [
+  "chatbot_enabled",
+  "casual_mode_probability",
+  "typing_delay_base_seconds",
+  "typing_delay_per_char_seconds",
+  "typing_delay_max_seconds",
+  "photo_match_confidence_threshold",
+];
+const AUTOMATION_KEYS = [
+  "unpaid_reminder_hours",
+  "unpaid_cancel_hours",
+  "low_quota_first_warning",
+  "low_quota_final_warning",
+];
 
 async function fetchSettings(): Promise<SettingsData> {
   const res = await fetch("/api/settings");
-  const json = await res.json() as { ok: boolean; data: SettingsData };
+  const json = (await res.json()) as { ok: boolean; data: SettingsData };
   return json.data;
 }
 
@@ -38,7 +71,11 @@ function useSettingsMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (updates: Record<string, string>) => {
-      await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates }) });
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
@@ -46,7 +83,10 @@ function useSettingsMutation() {
 
 export default function SettingsClient() {
   const [tab, setTab] = useState<"general" | "subcontractors">("general");
-  const { data, isLoading } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const { data, isLoading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: fetchSettings,
+  });
 
   const tabs = [
     { id: "general", label: "General" },
@@ -72,30 +112,47 @@ export default function SettingsClient() {
         <SubcontractorsClient />
       ) : isLoading ? (
         <div className="text-gray-400 text-sm p-4">Loading...</div>
-      ) : !data ? null : (() => {
-        const settingsMap = Object.fromEntries(data.settings.map((s) => [s.key, s.value]));
-        return (
-          <div className="space-y-8 max-w-3xl">
-            <BusinessSection settingsMap={settingsMap} />
-            <PricingSection rows={data.pricing} />
-            <DeliverySection settingsMap={settingsMap} />
-            <MessagesSection settingsMap={settingsMap} templates={data.templates} />
-            <ChatbotSection settingsMap={settingsMap} />
-            <AutomationSection settingsMap={settingsMap} />
-            <EscalationSection settingsMap={settingsMap} />
-            <WeeklyMenuSection settingsMap={settingsMap} />
-            <TemplatesSection rows={data.templates.filter((t) => t.key !== "chatbot_unavailable")} />
-            <AdminsSection rows={data.admins} />
-          </div>
-        );
-      })()}
+      ) : !data ? null : (
+        (() => {
+          const settingsMap = Object.fromEntries(
+            data.settings.map((s) => [s.key, s.value]),
+          );
+          return (
+            <div className="space-y-8 max-w-3xl">
+              <BusinessSection settingsMap={settingsMap} />
+              <PricingSection rows={data.pricing} />
+              <DeliverySection settingsMap={settingsMap} />
+              <MessagesSection
+                settingsMap={settingsMap}
+                templates={data.templates}
+              />
+              <ChatbotSection settingsMap={settingsMap} />
+              <AutomationSection settingsMap={settingsMap} />
+              <EscalationSection settingsMap={settingsMap} />
+              <WeeklyMenuSection settingsMap={settingsMap} />
+              <TemplatesSection
+                rows={data.templates.filter(
+                  (t) => t.key !== "chatbot_unavailable",
+                )}
+              />
+              <AdminsSection rows={data.admins} />
+            </div>
+          );
+        })()
+      )}
     </div>
   );
 }
 
 // --- Business Info ---
-function BusinessSection({ settingsMap }: { settingsMap: Record<string, string> }) {
-  const [form, setForm] = useState(() => Object.fromEntries(BUSINESS_KEYS.map((k) => [k, settingsMap[k] ?? ""])));
+function BusinessSection({
+  settingsMap,
+}: {
+  settingsMap: Record<string, string>;
+}) {
+  const [form, setForm] = useState(() =>
+    Object.fromEntries(BUSINESS_KEYS.map((k) => [k, settingsMap[k] ?? ""])),
+  );
   const [confirm, setConfirm] = useState(false);
   const save = useSettingsMutation();
 
@@ -104,11 +161,27 @@ function BusinessSection({ settingsMap }: { settingsMap: Record<string, string> 
       <div className="space-y-3">
         {BUSINESS_KEYS.map((k) => (
           <div key={k}>
-            <label htmlFor={`business-${k}`} className="block text-xs text-gray-500 mb-1 capitalize">{k.replace(/_/g, " ")}</label>
-            <input id={`business-${k}`} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+            <label
+              htmlFor={`business-${k}`}
+              className="block text-xs text-gray-500 mb-1 capitalize"
+            >
+              {k.replace(/_/g, " ")}
+            </label>
+            <input
+              id={`business-${k}`}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              value={form[k] ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
+            />
           </div>
         ))}
-        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
+        <ConfirmSaveButton
+          onConfirm={() => save.mutate(form)}
+          confirm={confirm}
+          setConfirm={setConfirm}
+          loading={save.isPending}
+          success={save.isSuccess}
+        />
       </div>
     </Section>
   );
@@ -124,17 +197,38 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
   const [adjustConfirm, setAdjustConfirm] = useState(false);
 
   const save = useMutation({
-    mutationFn: async ({ portions, price_per_portion }: { portions: number; price_per_portion: number }) => {
-      await fetch("/api/settings/pricing", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ portions, price_per_portion }) });
+    mutationFn: async ({
+      portions,
+      price_per_portion,
+    }: {
+      portions: number;
+      price_per_portion: number;
+    }) => {
+      await fetch("/api/settings/pricing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ portions, price_per_portion }),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setEditPortions(null); setConfirm(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setEditPortions(null);
+      setConfirm(false);
+    },
   });
 
   const bulkAdjust = useMutation({
     mutationFn: async (adjust: number) => {
-      await fetch("/api/settings/pricing", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adjust }) });
+      await fetch("/api/settings/pricing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adjust }),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setAdjustConfirm(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setAdjustConfirm(false);
+    },
   });
 
   const adjustNum = Number(adjustAmount);
@@ -156,7 +250,12 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
                 <td className="px-4 py-3 text-gray-900">{r.portions} porsi</td>
                 <td className="px-4 py-3 text-gray-900">
                   {editPortions === r.portions ? (
-                    <input type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="border border-gray-200 rounded px-2 py-1 text-sm w-28" />
+                    <input
+                      type="number"
+                      value={editPrice}
+                      onChange={(e) => setEditPrice(e.target.value)}
+                      className="border border-gray-200 rounded px-2 py-1 text-sm w-28"
+                    />
                   ) : (
                     `Rp ${r.price_per_portion.toLocaleString("id-ID")}`
                   )}
@@ -164,11 +263,32 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
                 <td className="px-4 py-3">
                   {editPortions === r.portions ? (
                     <div className="flex gap-1">
-                      <button type="button" onClick={() => setConfirm(true)} className="px-2 py-1 bg-blue-600 text-white text-xs rounded">Save</button>
-                      <button type="button" onClick={() => setEditPortions(null)} className="px-2 py-1 border text-xs rounded">Cancel</button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirm(true)}
+                        className="px-2 py-1 bg-blue-600 text-white text-xs rounded"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditPortions(null)}
+                        className="px-2 py-1 border text-xs rounded"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   ) : (
-                    <button type="button" onClick={() => { setEditPortions(r.portions); setEditPrice(String(r.price_per_portion)); }} className="text-blue-500 text-xs hover:text-blue-700">Edit</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditPortions(r.portions);
+                        setEditPrice(String(r.price_per_portion));
+                      }}
+                      className="text-blue-500 text-xs hover:text-blue-700"
+                    >
+                      Edit
+                    </button>
                   )}
                 </td>
               </tr>
@@ -181,13 +301,34 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
       <div className="flex items-center gap-2 mt-3">
         <span className="text-sm text-gray-500">Adjust all tiers by</span>
         <div className="flex">
-          <button type="button" onClick={() => { setAdjustAmount((v) => String(Number(v) - 1000)); setAdjustConfirm(false); }} className="px-2 py-1 text-xs border rounded-l-lg border-gray-200 text-gray-500 hover:bg-gray-50">−</button>
-          <button type="button" onClick={() => { setAdjustAmount((v) => String(Number(v) + 1000)); setAdjustConfirm(false); }} className="px-2 py-1 text-xs border-y border-r rounded-r-lg border-gray-200 text-gray-500 hover:bg-gray-50">+</button>
+          <button
+            type="button"
+            onClick={() => {
+              setAdjustAmount((v) => String(Number(v) - 1000));
+              setAdjustConfirm(false);
+            }}
+            className="px-2 py-1 text-xs border rounded-l-lg border-gray-200 text-gray-500 hover:bg-gray-50"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAdjustAmount((v) => String(Number(v) + 1000));
+              setAdjustConfirm(false);
+            }}
+            className="px-2 py-1 text-xs border-y border-r rounded-r-lg border-gray-200 text-gray-500 hover:bg-gray-50"
+          >
+            +
+          </button>
         </div>
         <input
           type="number"
           value={adjustAmount}
-          onChange={(e) => { setAdjustAmount(e.target.value); setAdjustConfirm(false); }}
+          onChange={(e) => {
+            setAdjustAmount(e.target.value);
+            setAdjustConfirm(false);
+          }}
           className="border border-gray-200 rounded px-2 py-1 text-sm w-24"
           placeholder="1000"
           min={0}
@@ -205,10 +346,31 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
       {confirm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <p className="font-medium text-gray-900">Price changes only apply to new orders. Existing orders are not affected. Continue?</p>
+            <p className="font-medium text-gray-900">
+              Price changes only apply to new orders. Existing orders are not
+              affected. Continue?
+            </p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => { if (editPortions === null) return; save.mutate({ portions: editPortions, price_per_portion: Number(editPrice) }); }} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">{save.isPending ? "Saving..." : "Confirm"}</button>
-              <button type="button" onClick={() => setConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Cancel</button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editPortions === null) return;
+                  save.mutate({
+                    portions: editPortions,
+                    price_per_portion: Number(editPrice),
+                  });
+                }}
+                className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg"
+              >
+                {save.isPending ? "Saving..." : "Confirm"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirm(false)}
+                className="flex-1 py-2 border text-sm rounded-lg"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -218,12 +380,29 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
             <p className="font-medium text-gray-900">
-              {adjustNum > 0 ? "Increase" : "Decrease"} all tiers by Rp {Math.abs(adjustNum).toLocaleString("id-ID")}?
+              {adjustNum > 0 ? "Increase" : "Decrease"} all tiers by Rp{" "}
+              {Math.abs(adjustNum).toLocaleString("id-ID")}?
             </p>
-            <p className="text-sm text-gray-500">Price changes only apply to new orders. Existing orders are not affected.</p>
+            <p className="text-sm text-gray-500">
+              Price changes only apply to new orders. Existing orders are not
+              affected.
+            </p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => bulkAdjust.mutate(adjustNum)} disabled={bulkAdjust.isPending} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40">{bulkAdjust.isPending ? "Saving..." : "Confirm"}</button>
-              <button type="button" onClick={() => setAdjustConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Cancel</button>
+              <button
+                type="button"
+                onClick={() => bulkAdjust.mutate(adjustNum)}
+                disabled={bulkAdjust.isPending}
+                className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-40"
+              >
+                {bulkAdjust.isPending ? "Saving..." : "Confirm"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdjustConfirm(false)}
+                className="flex-1 py-2 border text-sm rounded-lg"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -233,8 +412,14 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
 }
 
 // --- Delivery ---
-function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> }) {
-  const [form, setForm] = useState(() => Object.fromEntries(DELIVERY_KEYS.map((k) => [k, settingsMap[k] ?? ""])));
+function DeliverySection({
+  settingsMap,
+}: {
+  settingsMap: Record<string, string>;
+}) {
+  const [form, setForm] = useState(() =>
+    Object.fromEntries(DELIVERY_KEYS.map((k) => [k, settingsMap[k] ?? ""])),
+  );
   const [confirm, setConfirm] = useState(false);
   const save = useSettingsMutation();
   const areas = useDeliveryAreas();
@@ -246,28 +431,65 @@ function DeliverySection({ settingsMap }: { settingsMap: Record<string, string> 
           <p className="block text-xs text-gray-500 mb-1">Delivery areas</p>
           <div className="flex flex-wrap gap-1">
             {areas.length === 0 ? (
-              <span className="text-xs text-gray-400">No active kitchen has any area set.</span>
+              <span className="text-xs text-gray-400">
+                No active kitchen has any area set.
+              </span>
             ) : (
               areas.map((a) => (
-                <span key={a} className="px-2 py-0.5 rounded text-xs border bg-blue-100 border-blue-300 text-blue-700">{a}</span>
+                <span
+                  key={a}
+                  className="px-2 py-0.5 rounded text-xs border bg-blue-100 border-blue-300 text-blue-700"
+                >
+                  {a}
+                </span>
               ))
             )}
           </div>
-          <p className="mt-1 text-xs text-gray-400">Set per kitchen under Subcontractors. This is the union of the active ones.</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Set per kitchen under Subcontractors. This is the union of the
+            active ones.
+          </p>
         </div>
         <div>
-          <label htmlFor="delivery-order-deadline-hour" className="block text-xs text-gray-500 mb-1">Order deadline hour (WIB)</label>
-          <input id="delivery-order-deadline-hour" type="number" min={0} max={23} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form.order_deadline_hour ?? ""} onChange={(e) => setForm((f) => ({ ...f, order_deadline_hour: e.target.value }))} />
+          <label
+            htmlFor="delivery-order-deadline-hour"
+            className="block text-xs text-gray-500 mb-1"
+          >
+            Order deadline hour (WIB)
+          </label>
+          <input
+            id="delivery-order-deadline-hour"
+            type="number"
+            min={0}
+            max={23}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24"
+            value={form.order_deadline_hour ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, order_deadline_hour: e.target.value }))
+            }
+          />
         </div>
-        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
+        <ConfirmSaveButton
+          onConfirm={() => save.mutate(form)}
+          confirm={confirm}
+          setConfirm={setConfirm}
+          loading={save.isPending}
+          success={save.isSuccess}
+        />
       </div>
     </Section>
   );
 }
 
 // --- Chatbot behavior ---
-function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }) {
-  const [form, setForm] = useState(() => Object.fromEntries(CHATBOT_KEYS.map((k) => [k, settingsMap[k] ?? ""])));
+function ChatbotSection({
+  settingsMap,
+}: {
+  settingsMap: Record<string, string>;
+}) {
+  const [form, setForm] = useState(() =>
+    Object.fromEntries(CHATBOT_KEYS.map((k) => [k, settingsMap[k] ?? ""])),
+  );
   const [confirm, setConfirm] = useState(false);
   const save = useSettingsMutation();
 
@@ -275,7 +497,9 @@ function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }
     <Section title="Chatbot Behavior">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <label htmlFor="chatbot-enabled" className="text-sm text-gray-700">Chatbot enabled (kill switch)</label>
+          <label htmlFor="chatbot-enabled" className="text-sm text-gray-700">
+            Chatbot enabled (kill switch)
+          </label>
           <Switch
             id="chatbot-enabled"
             checked={form.chatbot_enabled === "true"}
@@ -287,26 +511,64 @@ function ChatbotSection({ settingsMap }: { settingsMap: Record<string, string> }
           />
         </div>
         {[
-          { key: "casual_mode_probability", label: "Casual mode probability (0–1)" },
-          { key: "typing_delay_base_seconds", label: "Typing delay base (sec)" },
-          { key: "typing_delay_per_char_seconds", label: "Typing delay per char (sec)" },
+          {
+            key: "casual_mode_probability",
+            label: "Casual mode probability (0–1)",
+          },
+          {
+            key: "typing_delay_base_seconds",
+            label: "Typing delay base (sec)",
+          },
+          {
+            key: "typing_delay_per_char_seconds",
+            label: "Typing delay per char (sec)",
+          },
           { key: "typing_delay_max_seconds", label: "Typing delay max (sec)" },
-          { key: "photo_match_confidence_threshold", label: "Photo match threshold (0–1)" },
+          {
+            key: "photo_match_confidence_threshold",
+            label: "Photo match threshold (0–1)",
+          },
         ].map(({ key, label }) => (
           <div key={key}>
-            <label htmlFor={`chatbot-${key}`} className="block text-xs text-gray-500 mb-1">{label}</label>
-            <input id={`chatbot-${key}`} type="number" step="0.01" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-32" value={form[key] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
+            <label
+              htmlFor={`chatbot-${key}`}
+              className="block text-xs text-gray-500 mb-1"
+            >
+              {label}
+            </label>
+            <input
+              id={`chatbot-${key}`}
+              type="number"
+              step="0.01"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-32"
+              value={form[key] ?? ""}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, [key]: e.target.value }))
+              }
+            />
           </div>
         ))}
-        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
+        <ConfirmSaveButton
+          onConfirm={() => save.mutate(form)}
+          confirm={confirm}
+          setConfirm={setConfirm}
+          loading={save.isPending}
+          success={save.isSuccess}
+        />
       </div>
     </Section>
   );
 }
 
 // --- Automation ---
-function AutomationSection({ settingsMap }: { settingsMap: Record<string, string> }) {
-  const [form, setForm] = useState(() => Object.fromEntries(AUTOMATION_KEYS.map((k) => [k, settingsMap[k] ?? ""])));
+function AutomationSection({
+  settingsMap,
+}: {
+  settingsMap: Record<string, string>;
+}) {
+  const [form, setForm] = useState(() =>
+    Object.fromEntries(AUTOMATION_KEYS.map((k) => [k, settingsMap[k] ?? ""])),
+  );
   const [confirm, setConfirm] = useState(false);
   const save = useSettingsMutation();
 
@@ -322,19 +584,46 @@ function AutomationSection({ settingsMap }: { settingsMap: Record<string, string
       <div className="space-y-3">
         {AUTOMATION_KEYS.map((k) => (
           <div key={k}>
-            <label htmlFor={`automation-${k}`} className="block text-xs text-gray-500 mb-1">{labels[k]}</label>
-            <input id={`automation-${k}`} type="number" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24" value={form[k] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+            <label
+              htmlFor={`automation-${k}`}
+              className="block text-xs text-gray-500 mb-1"
+            >
+              {labels[k]}
+            </label>
+            <input
+              id={`automation-${k}`}
+              type="number"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24"
+              value={form[k] ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
+            />
           </div>
         ))}
-        <ConfirmSaveButton onConfirm={() => save.mutate(form)} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
+        <ConfirmSaveButton
+          onConfirm={() => save.mutate(form)}
+          confirm={confirm}
+          setConfirm={setConfirm}
+          loading={save.isPending}
+          success={save.isSuccess}
+        />
       </div>
     </Section>
   );
 }
 
 // --- Escalation keywords ---
-function EscalationSection({ settingsMap }: { settingsMap: Record<string, string> }) {
-  const [keywords, setKeywords] = useState<string[]>(() => { try { return JSON.parse(settingsMap.escalation_keywords ?? "[]"); } catch { return []; } });
+function EscalationSection({
+  settingsMap,
+}: {
+  settingsMap: Record<string, string>;
+}) {
+  const [keywords, setKeywords] = useState<string[]>(() => {
+    try {
+      return JSON.parse(settingsMap.escalation_keywords ?? "[]");
+    } catch {
+      return [];
+    }
+  });
   const [newKw, setNewKw] = useState("");
   const [confirm, setConfirm] = useState(false);
   const save = useSettingsMutation();
@@ -344,17 +633,56 @@ function EscalationSection({ settingsMap }: { settingsMap: Record<string, string
       <div className="space-y-2">
         <div className="flex flex-wrap gap-1">
           {keywords.map((kw) => (
-            <span key={kw} className="px-2 py-0.5 bg-red-50 border border-red-100 text-red-600 text-xs rounded-full flex items-center gap-1">
+            <span
+              key={kw}
+              className="px-2 py-0.5 bg-red-50 border border-red-100 text-red-600 text-xs rounded-full flex items-center gap-1"
+            >
               {kw}
-              <button type="button" onClick={() => setKeywords((k) => k.filter((x) => x !== kw))} className="text-red-400 hover:text-red-600 ml-1">&times;</button>
+              <button
+                type="button"
+                onClick={() => setKeywords((k) => k.filter((x) => x !== kw))}
+                className="text-red-400 hover:text-red-600 ml-1"
+              >
+                &times;
+              </button>
             </span>
           ))}
         </div>
         <div className="flex gap-2">
-          <input value={newKw} onChange={(e) => setNewKw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && newKw.trim()) { setKeywords((k) => [...k, newKw.trim()]); setNewKw(""); } }} placeholder="Add keyword..." className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
-          <button type="button" onClick={() => { if (newKw.trim()) { setKeywords((k) => [...k, newKw.trim()]); setNewKw(""); } }} className="px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg">Add</button>
+          <input
+            value={newKw}
+            onChange={(e) => setNewKw(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newKw.trim()) {
+                setKeywords((k) => [...k, newKw.trim()]);
+                setNewKw("");
+              }
+            }}
+            placeholder="Add keyword..."
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (newKw.trim()) {
+                setKeywords((k) => [...k, newKw.trim()]);
+                setNewKw("");
+              }
+            }}
+            className="px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg"
+          >
+            Add
+          </button>
         </div>
-        <ConfirmSaveButton onConfirm={() => save.mutate({ escalation_keywords: JSON.stringify(keywords) })} confirm={confirm} setConfirm={setConfirm} loading={save.isPending} success={save.isSuccess} />
+        <ConfirmSaveButton
+          onConfirm={() =>
+            save.mutate({ escalation_keywords: JSON.stringify(keywords) })
+          }
+          confirm={confirm}
+          setConfirm={setConfirm}
+          loading={save.isPending}
+          success={save.isSuccess}
+        />
       </div>
     </Section>
   );
@@ -368,10 +696,24 @@ function TemplatesSection({ rows }: { rows: TemplateRow[] }) {
   const [confirm, setConfirm] = useState(false);
 
   const save = useMutation({
-    mutationFn: async ({ key, template }: { key: string; template: string }) => {
-      await fetch("/api/settings/templates", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, template }) });
+    mutationFn: async ({
+      key,
+      template,
+    }: {
+      key: string;
+      template: string;
+    }) => {
+      await fetch("/api/settings/templates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, template }),
+      });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setEditing(null); setConfirm(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setEditing(null);
+      setConfirm(false);
+    },
   });
 
   return (
@@ -381,21 +723,53 @@ function TemplatesSection({ rows }: { rows: TemplateRow[] }) {
           <div key={t.key} className="p-4 bg-gray-50 rounded-xl">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <code className="text-xs text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">{t.key}</code>
-                {t.description && <span className="text-xs text-gray-400">{t.description}</span>}
+                <code className="text-xs text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+                  {t.key}
+                </code>
+                {t.description && (
+                  <span className="text-xs text-gray-400">{t.description}</span>
+                )}
               </div>
-              <button type="button" onClick={() => { setEditing(t.key); setEditText(t.template); }} className="text-blue-500 text-xs hover:text-blue-700">Edit</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(t.key);
+                  setEditText(t.template);
+                }}
+                className="text-blue-500 text-xs hover:text-blue-700"
+              >
+                Edit
+              </button>
             </div>
             {editing === t.key ? (
               <div className="space-y-2">
-                <textarea rows={4} value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                <textarea
+                  rows={4}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setConfirm(true)} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg">Save</button>
-                  <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 border text-xs rounded-lg">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirm(true)}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(null)}
+                    className="px-3 py-1.5 border text-xs rounded-lg"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{t.template}</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                {t.template}
+              </p>
             )}
           </div>
         ))}
@@ -403,10 +777,26 @@ function TemplatesSection({ rows }: { rows: TemplateRow[] }) {
       {confirm && editing && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <p className="font-medium text-gray-900">Simpan template {editing}?</p>
+            <p className="font-medium text-gray-900">
+              Simpan template {editing}?
+            </p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => save.mutate({ key: editing, template: editText })} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg">Save</button>
-              <button type="button" onClick={() => setConfirm(false)} className="flex-1 py-2 border text-sm rounded-lg">Batal</button>
+              <button
+                type="button"
+                onClick={() =>
+                  save.mutate({ key: editing, template: editText })
+                }
+                className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirm(false)}
+                className="flex-1 py-2 border text-sm rounded-lg"
+              >
+                Batal
+              </button>
             </div>
           </div>
         </div>
@@ -420,7 +810,15 @@ const MENU_IMAGE_KEYS: { key: string; label: string }[] = [
   { key: "price_list_image_url", label: "Price list image" },
 ];
 
-function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: string; label: string; currentUrl: string }) {
+function MenuImageUploader({
+  settingKey,
+  label,
+  currentUrl,
+}: {
+  settingKey: string;
+  label: string;
+  currentUrl: string;
+}) {
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
@@ -435,8 +833,11 @@ function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: stri
     const form = new FormData();
     form.append("file", file);
     form.append("key", settingKey);
-    const res = await fetch("/api/settings/menu-image", { method: "POST", body: form });
-    const json = await res.json() as { ok: boolean; error?: string };
+    const res = await fetch("/api/settings/menu-image", {
+      method: "POST",
+      body: form,
+    });
+    const json = (await res.json()) as { ok: boolean; error?: string };
     setUploading(false);
     if (json.ok) {
       setUploaded(true);
@@ -454,13 +855,27 @@ function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: stri
       {currentUrl && (
         <a href={currentUrl} target="_blank" rel="noreferrer">
           {/* biome-ignore lint/performance/noImgElement: Supabase Storage URL — next/image impractical */}
-          <img src={currentUrl} alt={label} className="h-24 w-auto rounded-lg border border-gray-200 object-cover" />
+          <img
+            src={currentUrl}
+            alt={label}
+            className="h-24 w-auto rounded-lg border border-gray-200 object-cover"
+          />
         </a>
       )}
       <div className="flex items-center gap-2">
-        <label htmlFor={`menu-image-${settingKey}`} className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}>
+        <label
+          htmlFor={`menu-image-${settingKey}`}
+          className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${uploading ? "opacity-40 pointer-events-none" : "hover:bg-gray-50"} border-gray-200 text-gray-700`}
+        >
           {uploading ? "Uploading..." : currentUrl ? "Replace" : "Upload"}
-          <input id={`menu-image-${settingKey}`} type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+          <input
+            id={`menu-image-${settingKey}`}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFile}
+            disabled={uploading}
+          />
         </label>
         {uploaded && <span className="text-xs text-green-600">Saved!</span>}
         {error && <span className="text-xs text-red-500">{error}</span>}
@@ -469,13 +884,25 @@ function MenuImageUploader({ settingKey, label, currentUrl }: { settingKey: stri
   );
 }
 
-function WeeklyMenuSection({ settingsMap }: { settingsMap: Record<string, string> }) {
+function WeeklyMenuSection({
+  settingsMap,
+}: {
+  settingsMap: Record<string, string>;
+}) {
   return (
     <Section title="Price List">
       <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-4">
-        <p className="text-xs text-gray-400">Sent to new customers automatically on first contact. Menu images are managed per subcontractor.</p>
+        <p className="text-xs text-gray-400">
+          Sent to new customers automatically on first contact. Menu images are
+          managed per subcontractor.
+        </p>
         {MENU_IMAGE_KEYS.map(({ key, label }) => (
-          <MenuImageUploader key={key} settingKey={key} label={label} currentUrl={settingsMap[key] ?? ""} />
+          <MenuImageUploader
+            key={key}
+            settingKey={key}
+            label={label}
+            currentUrl={settingsMap[key] ?? ""}
+          />
         ))}
       </div>
     </Section>
@@ -492,18 +919,31 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
 
   const add = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
-      const res = await fetch("/api/settings/admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
-      const json = await res.json() as { ok: boolean; error?: string };
+      const res = await fetch("/api/settings/admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
       if (!json.ok) throw new Error(json.error ?? "Failed");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setNewEmail(""); setNewRole("admin"); setError(""); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setNewEmail("");
+      setNewRole("admin");
+      setError("");
+    },
     onError: (e: Error) => setError(e.message),
   });
 
   const changeRole = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
-      const res = await fetch("/api/settings/admins", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
-      const json = await res.json() as { ok: boolean; error?: string };
+      const res = await fetch("/api/settings/admins", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
       if (!json.ok) throw new Error(json.error ?? "Failed");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
@@ -512,11 +952,18 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
 
   const remove = useMutation({
     mutationFn: async (email: string) => {
-      const res = await fetch("/api/settings/admins", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
-      const json = await res.json() as { ok: boolean; error?: string };
+      const res = await fetch("/api/settings/admins", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
       if (!json.ok) throw new Error(json.error ?? "Failed");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); setConfirmRemove(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setConfirmRemove(null);
+    },
     onError: (e: Error) => setError(e.message),
   });
 
@@ -540,16 +987,29 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
                   <td className="px-4 py-3">
                     <select
                       value={a.role}
-                      onChange={(e) => changeRole.mutate({ email: a.email, role: e.target.value })}
+                      onChange={(e) =>
+                        changeRole.mutate({
+                          email: a.email,
+                          role: e.target.value,
+                        })
+                      }
                       className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white"
                     >
                       <option value="admin">admin</option>
                       <option value="owner">owner</option>
                     </select>
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{new Date(a.created_at).toLocaleDateString("id-ID")}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">
+                    {new Date(a.created_at).toLocaleDateString("id-ID")}
+                  </td>
                   <td className="px-4 py-3">
-                    <button type="button" onClick={() => setConfirmRemove(a.email)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRemove(a.email)}
+                      className="text-red-400 hover:text-red-600 text-xs"
+                    >
+                      Remove
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -560,8 +1020,14 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
           <input
             type="email"
             value={newEmail}
-            onChange={(e) => { setNewEmail(e.target.value); setError(""); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && newEmail.trim()) add.mutate({ email: newEmail.trim(), role: newRole }); }}
+            onChange={(e) => {
+              setNewEmail(e.target.value);
+              setError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newEmail.trim())
+                add.mutate({ email: newEmail.trim(), role: newRole });
+            }}
             placeholder="newadmin@example.com"
             className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
           />
@@ -573,7 +1039,15 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
             <option value="admin">admin</option>
             <option value="owner">owner</option>
           </select>
-          <button type="button" onClick={() => { if (newEmail.trim()) add.mutate({ email: newEmail.trim(), role: newRole }); }} disabled={add.isPending} className="px-4 py-2 bg-gray-800 text-white text-sm rounded-lg disabled:opacity-40">
+          <button
+            type="button"
+            onClick={() => {
+              if (newEmail.trim())
+                add.mutate({ email: newEmail.trim(), role: newRole });
+            }}
+            disabled={add.isPending}
+            className="px-4 py-2 bg-gray-800 text-white text-sm rounded-lg disabled:opacity-40"
+          >
             {add.isPending ? "Adding..." : "Add admin"}
           </button>
         </div>
@@ -583,10 +1057,26 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
       {confirmRemove && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
-            <p className="font-medium">Remove <span className="text-red-600">{confirmRemove}</span> as admin?</p>
+            <p className="font-medium">
+              Remove <span className="text-red-600">{confirmRemove}</span> as
+              admin?
+            </p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => remove.mutate(confirmRemove)} disabled={remove.isPending} className="flex-1 py-2 bg-red-600 text-white text-sm rounded-lg disabled:opacity-40">{remove.isPending ? "Removing..." : "Ya, remove"}</button>
-              <button type="button" onClick={() => setConfirmRemove(null)} className="flex-1 py-2 border text-sm rounded-lg">Batal</button>
+              <button
+                type="button"
+                onClick={() => remove.mutate(confirmRemove)}
+                disabled={remove.isPending}
+                className="flex-1 py-2 bg-red-600 text-white text-sm rounded-lg disabled:opacity-40"
+              >
+                {remove.isPending ? "Removing..." : "Ya, remove"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmRemove(null)}
+                className="flex-1 py-2 border text-sm rounded-lg"
+              >
+                Batal
+              </button>
             </div>
           </div>
         </div>
@@ -596,7 +1086,13 @@ function AdminsSection({ rows }: { rows: AdminRow[] }) {
 }
 
 // --- Messages ---
-function MessagesSection({ settingsMap, templates }: { settingsMap: Record<string, string>; templates: TemplateRow[] }) {
+function MessagesSection({
+  settingsMap,
+  templates,
+}: {
+  settingsMap: Record<string, string>;
+  templates: TemplateRow[];
+}) {
   const qc = useQueryClient();
   const [greeting, setGreeting] = useState(settingsMap.welcome_message ?? "");
   const [greetingConfirm, setGreetingConfirm] = useState(false);
@@ -622,14 +1118,23 @@ function MessagesSection({ settingsMap, templates }: { settingsMap: Record<strin
     <Section title="Messages">
       <div className="space-y-6">
         <div className="space-y-2">
-          <label htmlFor="settings-greeting-message" className="block text-xs text-gray-500">
-            Greeting message <span className="text-gray-400">— sent to new customers on first contact</span>
+          <label
+            htmlFor="settings-greeting-message"
+            className="block text-xs text-gray-500"
+          >
+            Greeting message{" "}
+            <span className="text-gray-400">
+              — sent to new customers on first contact
+            </span>
           </label>
           <textarea
             id="settings-greeting-message"
             rows={5}
             value={greeting}
-            onChange={(e) => { setGreeting(e.target.value); setGreetingConfirm(false); }}
+            onChange={(e) => {
+              setGreeting(e.target.value);
+              setGreetingConfirm(false);
+            }}
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
           />
           <ConfirmSaveButton
@@ -641,14 +1146,23 @@ function MessagesSection({ settingsMap, templates }: { settingsMap: Record<strin
           />
         </div>
         <div className="space-y-2">
-          <label htmlFor="settings-away-message" className="block text-xs text-gray-500">
-            Away message <span className="text-gray-400">— sent when chatbot is disabled</span>
+          <label
+            htmlFor="settings-away-message"
+            className="block text-xs text-gray-500"
+          >
+            Away message{" "}
+            <span className="text-gray-400">
+              — sent when chatbot is disabled
+            </span>
           </label>
           <textarea
             id="settings-away-message"
             rows={3}
             value={away}
-            onChange={(e) => { setAway(e.target.value); setAwayConfirm(false); }}
+            onChange={(e) => {
+              setAway(e.target.value);
+              setAwayConfirm(false);
+            }}
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
           />
           <ConfirmSaveButton
@@ -665,7 +1179,13 @@ function MessagesSection({ settingsMap, templates }: { settingsMap: Record<strin
 }
 
 // --- Shared ---
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <h2 className="text-sm font-semibold text-gray-700 mb-3">{title}</h2>
@@ -674,7 +1194,19 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ConfirmSaveButton({ onConfirm, confirm, setConfirm, loading, success }: { onConfirm: () => void; confirm: boolean; setConfirm: (v: boolean) => void; loading: boolean; success?: boolean }) {
+function ConfirmSaveButton({
+  onConfirm,
+  confirm,
+  setConfirm,
+  loading,
+  success,
+}: {
+  onConfirm: () => void;
+  confirm: boolean;
+  setConfirm: (v: boolean) => void;
+  loading: boolean;
+  success?: boolean;
+}) {
   const [showSaved, setShowSaved] = useState(false);
 
   useEffect(() => {
@@ -692,10 +1224,29 @@ function ConfirmSaveButton({ onConfirm, confirm, setConfirm, loading, success }:
   return confirm ? (
     <div className="flex gap-2 items-center">
       <span className="text-sm text-gray-600">Save changes?</span>
-      <button type="button" onClick={onConfirm} disabled={loading} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40">{loading ? "Saving..." : "Confirm"}</button>
-      <button type="button" onClick={() => setConfirm(false)} className="px-3 py-1.5 border text-xs rounded-lg">Cancel</button>
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={loading}
+        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-40"
+      >
+        {loading ? "Saving..." : "Confirm"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirm(false)}
+        className="px-3 py-1.5 border text-xs rounded-lg"
+      >
+        Cancel
+      </button>
     </div>
   ) : (
-    <button type="button" onClick={() => setConfirm(true)} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">Save changes</button>
+    <button
+      type="button"
+      onClick={() => setConfirm(true)}
+      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+    >
+      Save changes
+    </button>
   );
 }

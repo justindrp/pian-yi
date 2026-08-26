@@ -29,7 +29,11 @@ export async function GET(
       .in("status", ["scheduled", "delivered"]),
   ]);
 
-  if (!sub) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+  if (!sub)
+    return NextResponse.json(
+      { ok: false, error: "Not found" },
+      { status: 404 },
+    );
 
   const deliveries = rows ?? [];
 

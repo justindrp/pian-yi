@@ -6,9 +6,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const db = createAdminClient();
@@ -37,7 +42,13 @@ export async function GET(): Promise<Response> {
     lapsedRes,
     chatbotRes,
   ] = await Promise.all([
-    timed("active", db.from("orders").select("id", { count: "exact", head: true }).eq("status", "active")),
+    timed(
+      "active",
+      db
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "active"),
+    ),
     timed(
       "deliveries",
       db
@@ -57,7 +68,9 @@ export async function GET(): Promise<Response> {
       "revenue",
       db
         .from("journal_lines")
-        .select("credit, account:accounts!inner(code), journal:journals!inner(date, source_type)")
+        .select(
+          "credit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
+        )
         .eq("account.code", "4001")
         .eq("journal.date", today)
         .eq("journal.source_type", "delivery"),

@@ -217,7 +217,9 @@
   font-weight: 700;
   font-size: 1.0625rem;
   text-decoration: none;
-  transition: translate 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    translate 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .pl-cta:hover {

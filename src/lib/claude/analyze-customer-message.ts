@@ -1,8 +1,20 @@
-import type { MessageParam, ToolResultBlockParam } from "@anthropic-ai/sdk/resources/messages";
-import { NO_THINKING, SONNET_MODEL, getAnthropicClient } from "@/lib/claude/client";
-import { getAssistantSystemPrompt } from "@/lib/claude/assistant-prompt";
-import { assistantTools, runTool, isWriteTool, buildPendingAction } from "@/lib/claude/assistant-tools";
+import type {
+  MessageParam,
+  ToolResultBlockParam,
+} from "@anthropic-ai/sdk/resources/messages";
 import { createConversation, saveTurn } from "@/lib/claude/assistant-history";
+import { getAssistantSystemPrompt } from "@/lib/claude/assistant-prompt";
+import {
+  assistantTools,
+  buildPendingAction,
+  isWriteTool,
+  runTool,
+} from "@/lib/claude/assistant-tools";
+import {
+  getAnthropicClient,
+  NO_THINKING,
+  SONNET_MODEL,
+} from "@/lib/claude/client";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
@@ -45,16 +57,20 @@ export async function analyzeCustomerMessage({
     }
 
     if (response.stop_reason === "tool_use") {
-      const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
-      const writeBlocks = toolUseBlocks.filter((b) => b.type === "tool_use" && isWriteTool(b.name));
+      const toolUseBlocks = response.content.filter(
+        (b) => b.type === "tool_use",
+      );
+      const writeBlocks = toolUseBlocks.filter(
+        (b) => b.type === "tool_use" && isWriteTool(b.name),
+      );
 
       if (writeBlocks.length > 0) {
         const proposalText = response.content.find((b) => b.type === "text");
         assistantText = proposalText?.type === "text" ? proposalText.text : "";
-        pendingAction = await buildPendingAction(
+        pendingAction = (await buildPendingAction(
           writeBlocks[0].name,
           writeBlocks[0].input as Record<string, unknown>,
-        ) as unknown as Record<string, unknown>;
+        )) as unknown as Record<string, unknown>;
         break;
       }
 
@@ -62,10 +78,21 @@ export async function analyzeCustomerMessage({
       const toolResults: ToolResultBlockParam[] = await Promise.all(
         toolUseBlocks.map(async (block) => {
           if (block.type !== "tool_use") {
-            return { type: "tool_result" as const, tool_use_id: "", content: "" };
+            return {
+              type: "tool_result" as const,
+              tool_use_id: "",
+              content: "",
+            };
           }
-          const result = await runTool(block.name, block.input as Record<string, unknown>);
-          return { type: "tool_result" as const, tool_use_id: block.id, content: JSON.stringify(result) };
+          const result = await runTool(
+            block.name,
+            block.input as Record<string, unknown>,
+          );
+          return {
+            type: "tool_result" as const,
+            tool_use_id: block.id,
+            content: JSON.stringify(result),
+          };
         }),
       );
       currentMessages.push({ role: "user", content: toolResults });

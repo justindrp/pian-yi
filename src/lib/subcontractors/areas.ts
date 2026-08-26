@@ -54,7 +54,9 @@ export async function activeDeliveryAreas(db: Db): Promise<string[]> {
  * only kitchen has since been deactivated.
  */
 export async function knownDeliveryAreas(db: Db): Promise<string[]> {
-  const { data, error } = await db.from("subcontractors").select("delivery_areas");
+  const { data, error } = await db
+    .from("subcontractors")
+    .select("delivery_areas");
 
   if (error) throw new Error(`knownDeliveryAreas: ${error.message}`);
 

@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { getNeighborhoods } from "@/lib/cache/settings";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { describeMenuWeeks } from "@/lib/menu/week";
+import { unionAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { unionAreas } from "@/lib/subcontractors/areas";
 
 export const dynamic = "force-dynamic";
 

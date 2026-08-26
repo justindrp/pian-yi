@@ -21,7 +21,9 @@ async function main() {
 
   let q = db
     .from("tasks")
-    .select("title, body, status, priority, area, assignee, blocked_on, due_date")
+    .select(
+      "title, body, status, priority, area, assignee, blocked_on, due_date",
+    )
     .order("priority")
     .order("created_at");
 

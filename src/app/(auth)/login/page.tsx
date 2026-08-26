@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -131,7 +131,11 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setStep("email"); setCode(""); setError(""); }}
+              onClick={() => {
+                setStep("email");
+                setCode("");
+                setError("");
+              }}
               className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
             >
               Use a different email

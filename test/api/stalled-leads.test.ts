@@ -44,14 +44,20 @@ function makeDb(spec: Db) {
 
     chain.range = jest.fn((start: number, end: number) => {
       if (spec.failTable === table) {
-        return Promise.resolve({ data: null, error: { message: `${table} exploded` } });
+        return Promise.resolve({
+          data: null,
+          error: { message: `${table} exploded` },
+        });
       }
       return Promise.resolve({ data: rows.slice(start, end + 1), error: null });
     });
 
     chain.upsert = jest.fn((row: Row) => {
       if (spec.upsertFailsFor?.includes(row.customer_id as string)) {
-        return Promise.resolve({ data: null, error: { message: "constraint violation" } });
+        return Promise.resolve({
+          data: null,
+          error: { message: "constraint violation" },
+        });
       }
       upserted.push(row);
       return Promise.resolve({ data: null, error: null });
@@ -77,7 +83,8 @@ function req(secret: string | null = SECRET) {
   });
 }
 
-const HOURS_AGO = (h: number) => new Date(Date.now() - h * 3600 * 1000).toISOString();
+const HOURS_AGO = (h: number) =>
+  new Date(Date.now() - h * 3600 * 1000).toISOString();
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -106,10 +113,26 @@ describe("stalled-leads selection", () => {
       makeDb({
         orders: [],
         customer_state: [{ customer_id: "julie" }],
-        customer_flags: [{ customer_id: "julie", needs_human_review: false, escalated_to_human: false }],
+        customer_flags: [
+          {
+            customer_id: "julie",
+            needs_human_review: false,
+            escalated_to_human: false,
+          },
+        ],
         conversations: [
-          { customer_id: "julie", role: "assistant", content: "berapa porsi?", created_at: HOURS_AGO(331) },
-          { customer_id: "julie", role: "user", content: "2 porsi makan siang+ 2 porsi makan malam", created_at: HOURS_AGO(330) },
+          {
+            customer_id: "julie",
+            role: "assistant",
+            content: "berapa porsi?",
+            created_at: HOURS_AGO(331),
+          },
+          {
+            customer_id: "julie",
+            role: "user",
+            content: "2 porsi makan siang+ 2 porsi makan malam",
+            created_at: HOURS_AGO(330),
+          },
         ],
         customers: [{ id: "julie", name: null, phone_number: "+628159000176" }],
       }),
@@ -131,8 +154,18 @@ describe("stalled-leads selection", () => {
         customer_state: [{ customer_id: "browsing" }],
         customer_flags: [],
         conversations: [
-          { customer_id: "browsing", role: "user", content: "harga?", created_at: HOURS_AGO(100) },
-          { customer_id: "browsing", role: "assistant", content: "Rp 29.000 kak", created_at: HOURS_AGO(99) },
+          {
+            customer_id: "browsing",
+            role: "user",
+            content: "harga?",
+            created_at: HOURS_AGO(100),
+          },
+          {
+            customer_id: "browsing",
+            role: "assistant",
+            content: "Rp 29.000 kak",
+            created_at: HOURS_AGO(99),
+          },
         ],
         customers: [{ id: "browsing", name: null, phone_number: "+62800" }],
       }),
@@ -149,7 +182,12 @@ describe("stalled-leads selection", () => {
         customer_state: [{ customer_id: "fresh" }],
         customer_flags: [],
         conversations: [
-          { customer_id: "fresh", role: "user", content: "halo", created_at: HOURS_AGO(1) },
+          {
+            customer_id: "fresh",
+            role: "user",
+            content: "halo",
+            created_at: HOURS_AGO(1),
+          },
         ],
         customers: [{ id: "fresh", name: null, phone_number: "+62801" }],
       }),
@@ -165,7 +203,12 @@ describe("stalled-leads selection", () => {
         customer_state: [{ customer_id: "paying" }],
         customer_flags: [],
         conversations: [
-          { customer_id: "paying", role: "user", content: "sudah transfer", created_at: HOURS_AGO(50) },
+          {
+            customer_id: "paying",
+            role: "user",
+            content: "sudah transfer",
+            created_at: HOURS_AGO(50),
+          },
         ],
         customers: [{ id: "paying", name: "Budi", phone_number: "+62802" }],
       }),
@@ -179,14 +222,21 @@ describe("stalled-leads selection", () => {
   // rows without saying so, and every order past that would read as "no order" —
   // turning paying customers into leads and pushing their names to the admins.
   it("does not mistake the 1001st paying customer for a lead", async () => {
-    const orders = Array.from({ length: 1400 }, (_, i) => ({ customer_id: `c${i}` }));
+    const orders = Array.from({ length: 1400 }, (_, i) => ({
+      customer_id: `c${i}`,
+    }));
     (createAdminClient as jest.Mock).mockReturnValue(
       makeDb({
         orders,
         customer_state: [{ customer_id: "c1200" }],
         customer_flags: [],
         conversations: [
-          { customer_id: "c1200", role: "user", content: "?", created_at: HOURS_AGO(50) },
+          {
+            customer_id: "c1200",
+            role: "user",
+            content: "?",
+            created_at: HOURS_AGO(50),
+          },
         ],
         customers: [{ id: "c1200", name: null, phone_number: "+62803" }],
       }),
@@ -203,7 +253,12 @@ describe("stalled-leads selection", () => {
       created_at: HOURS_AGO(400 - i * 0.1),
     }));
     // Last row is the customer's, and it sits well past the first page.
-    filler.push({ customer_id: "chatty", role: "user", content: "masih ditunggu ya kak", created_at: HOURS_AGO(20) });
+    filler.push({
+      customer_id: "chatty",
+      role: "user",
+      content: "masih ditunggu ya kak",
+      created_at: HOURS_AGO(20),
+    });
 
     (createAdminClient as jest.Mock).mockReturnValue(
       makeDb({
@@ -227,9 +282,20 @@ describe("stalled-leads does not re-nag", () => {
       makeDb({
         orders: [],
         customer_state: [{ customer_id: "known" }],
-        customer_flags: [{ customer_id: "known", needs_human_review: true, escalated_to_human: false }],
+        customer_flags: [
+          {
+            customer_id: "known",
+            needs_human_review: true,
+            escalated_to_human: false,
+          },
+        ],
         conversations: [
-          { customer_id: "known", role: "user", content: "halo?", created_at: HOURS_AGO(80) },
+          {
+            customer_id: "known",
+            role: "user",
+            content: "halo?",
+            created_at: HOURS_AGO(80),
+          },
         ],
         customers: [{ id: "known", name: null, phone_number: "+62805" }],
       }),
@@ -244,9 +310,20 @@ describe("stalled-leads does not re-nag", () => {
       makeDb({
         orders: [],
         customer_state: [{ customer_id: "taken" }],
-        customer_flags: [{ customer_id: "taken", needs_human_review: false, escalated_to_human: true }],
+        customer_flags: [
+          {
+            customer_id: "taken",
+            needs_human_review: false,
+            escalated_to_human: true,
+          },
+        ],
         conversations: [
-          { customer_id: "taken", role: "user", content: "halo?", created_at: HOURS_AGO(80) },
+          {
+            customer_id: "taken",
+            role: "user",
+            content: "halo?",
+            created_at: HOURS_AGO(80),
+          },
         ],
         customers: [{ id: "taken", name: null, phone_number: "+62806" }],
       }),
@@ -263,7 +340,12 @@ describe("stalled-leads failure handling", () => {
         failTable: "orders",
         customer_state: [{ customer_id: "julie" }],
         conversations: [
-          { customer_id: "julie", role: "user", content: "?", created_at: HOURS_AGO(80) },
+          {
+            customer_id: "julie",
+            role: "user",
+            content: "?",
+            created_at: HOURS_AGO(80),
+          },
         ],
       }),
     );
@@ -282,8 +364,18 @@ describe("stalled-leads failure handling", () => {
         customer_state: [{ customer_id: "bad" }, { customer_id: "good" }],
         customer_flags: [],
         conversations: [
-          { customer_id: "bad", role: "user", content: "a", created_at: HOURS_AGO(90) },
-          { customer_id: "good", role: "user", content: "b", created_at: HOURS_AGO(80) },
+          {
+            customer_id: "bad",
+            role: "user",
+            content: "a",
+            created_at: HOURS_AGO(90),
+          },
+          {
+            customer_id: "good",
+            role: "user",
+            content: "b",
+            created_at: HOURS_AGO(80),
+          },
         ],
         customers: [
           { id: "bad", name: null, phone_number: "+62807" },
@@ -305,9 +397,24 @@ describe("stalled-leads failure handling", () => {
         customer_state: [{ customer_id: "ragged" }],
         customer_flags: [],
         conversations: [
-          { customer_id: null, role: "user", content: "orphan", created_at: HOURS_AGO(10) },
-          { customer_id: "ragged", role: "user", content: "nyata", created_at: HOURS_AGO(90) },
-          { customer_id: "ragged", role: "user", content: null, created_at: null },
+          {
+            customer_id: null,
+            role: "user",
+            content: "orphan",
+            created_at: HOURS_AGO(10),
+          },
+          {
+            customer_id: "ragged",
+            role: "user",
+            content: "nyata",
+            created_at: HOURS_AGO(90),
+          },
+          {
+            customer_id: "ragged",
+            role: "user",
+            content: null,
+            created_at: null,
+          },
         ],
         customers: [{ id: "ragged", name: null, phone_number: "+62809" }],
       }),
@@ -323,7 +430,11 @@ describe("stalled-leads failure handling", () => {
     (createAdminClient as jest.Mock).mockReturnValue(
       makeDb({
         orders: [],
-        customer_state: [{ customer_id: "a" }, { customer_id: "b" }, { customer_id: "c" }],
+        customer_state: [
+          { customer_id: "a" },
+          { customer_id: "b" },
+          { customer_id: "c" },
+        ],
         customer_flags: [],
         conversations: ["a", "b", "c"].map((id) => ({
           customer_id: id,
@@ -331,18 +442,26 @@ describe("stalled-leads failure handling", () => {
           content: `pesan ${id}`,
           created_at: HOURS_AGO(40),
         })),
-        customers: ["a", "b", "c"].map((id) => ({ id, name: null, phone_number: `+6281${id}` })),
+        customers: ["a", "b", "c"].map((id) => ({
+          id,
+          name: null,
+          phone_number: `+6281${id}`,
+        })),
       }),
     );
 
     const body = await (await GET(req())).json();
     expect(body.flagged).toBe(3);
     expect(sendPushToAllAdmins).toHaveBeenCalledTimes(1);
-    expect((sendPushToAllAdmins as jest.Mock).mock.calls[0][0]).toBe("3 lead belum dibalas");
+    expect((sendPushToAllAdmins as jest.Mock).mock.calls[0][0]).toBe(
+      "3 lead belum dibalas",
+    );
   });
 
   it("does not touch the database when nobody is in the ordering state", async () => {
-    (createAdminClient as jest.Mock).mockReturnValue(makeDb({ orders: [], customer_state: [] }));
+    (createAdminClient as jest.Mock).mockReturnValue(
+      makeDb({ orders: [], customer_state: [] }),
+    );
     expect(await (await GET(req())).json()).toEqual({ ok: true, flagged: 0 });
     expect(sendPushToAllAdmins).not.toHaveBeenCalled();
   });

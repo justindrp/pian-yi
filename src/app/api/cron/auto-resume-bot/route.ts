@@ -1,13 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { takeoverCutoff } from "@/lib/customers/takeover";
 import { replayLatestCustomerMessage } from "@/lib/inbox/replay-latest";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const secret = req.headers.get("x-cron-secret");
   if (secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const db = createAdminClient();
@@ -34,7 +37,10 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   if (selectError) {
     console.error("[auto-resume-bot]", selectError.message);
-    return NextResponse.json({ ok: false, error: selectError.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: selectError.message },
+      { status: 500 },
+    );
   }
 
   if (!candidates?.length) {

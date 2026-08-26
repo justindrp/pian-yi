@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { logEdit } from "@/lib/audit/log-edit";
-import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { createClient } from "@/lib/supabase/server";
-import { STATUS_RANK, badRequest, text, validateTaskInput } from "./validate";
+import { badRequest, STATUS_RANK, text, validateTaskInput } from "./validate";
 
 // A task may point at the customer or order it is about. The embed is the whole
 // reason this lives in the app rather than in Asana: "Cindi — second address
@@ -123,7 +123,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     entityType: "tasks",
     entityId: data.id,
     action: "create",
-    changes: { title: data.title, status: data.status, priority: data.priority },
+    changes: {
+      title: data.title,
+      status: data.status,
+      priority: data.priority,
+    },
   });
 
   return NextResponse.json({ ok: true, data });

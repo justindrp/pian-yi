@@ -13,7 +13,10 @@ export async function GET(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const { id } = await params;
   const db = createAdminClient();
@@ -27,23 +30,29 @@ export async function GET(
     .single();
 
   if (error)
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   const row = data as typeof data & {
     customer_state: { state: string }[] | { state: string } | null;
-    customer_flags: {
-      escalated_to_human: boolean;
-      pending_bot_response: boolean;
-      is_blacklisted: boolean;
-      vip_status: boolean;
-      is_suspicious: boolean;
-    }[] | {
-      escalated_to_human: boolean;
-      pending_bot_response: boolean;
-      is_blacklisted: boolean;
-      vip_status: boolean;
-      is_suspicious: boolean;
-    } | null;
+    customer_flags:
+      | {
+          escalated_to_human: boolean;
+          pending_bot_response: boolean;
+          is_blacklisted: boolean;
+          vip_status: boolean;
+          is_suspicious: boolean;
+        }[]
+      | {
+          escalated_to_human: boolean;
+          pending_bot_response: boolean;
+          is_blacklisted: boolean;
+          vip_status: boolean;
+          is_suspicious: boolean;
+        }
+      | null;
   };
 
   return NextResponse.json({

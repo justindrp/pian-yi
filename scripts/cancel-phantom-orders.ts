@@ -60,7 +60,9 @@ async function main() {
     .from("customers")
     .update({ name: "Julian S" })
     .eq("id", "4acddf61-76f8-43b4-a20d-e836b49d3c4a");
-  console.log(error ? `name restore failed: ${error.message}` : "name restored: Julian S");
+  console.log(
+    error ? `name restore failed: ${error.message}` : "name restored: Julian S",
+  );
 }
 
 main().then(

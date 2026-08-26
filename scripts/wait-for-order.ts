@@ -28,7 +28,9 @@ async function main() {
       .gt("created_at", lastSeen)
       .order("created_at", { ascending: true });
     for (const m of msgs ?? []) {
-      console.log(`${(m.created_at ?? "").slice(11, 19)} [${m.role}] ${String(m.content).slice(0, 300).replace(/\n/g, " ")}`);
+      console.log(
+        `${(m.created_at ?? "").slice(11, 19)} [${m.role}] ${String(m.content).slice(0, 300).replace(/\n/g, " ")}`,
+      );
       lastSeen = m.created_at ?? lastSeen;
     }
 
@@ -37,7 +39,9 @@ async function main() {
       .select("id, status, package_size, total_price")
       .eq("customer_id", cust.id);
     if (ords && ords.length > 0) {
-      console.log(`\n=== ORDER CREATED: ${ords.map((o) => `${o.id.slice(0, 8)} ${o.status} pkg=${o.package_size} Rp${o.total_price}`).join(" | ")}`);
+      console.log(
+        `\n=== ORDER CREATED: ${ords.map((o) => `${o.id.slice(0, 8)} ${o.status} pkg=${o.package_size} Rp${o.total_price}`).join(" | ")}`,
+      );
       return;
     }
     await new Promise((r) => setTimeout(r, 40_000));

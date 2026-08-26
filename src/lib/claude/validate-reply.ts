@@ -1,4 +1,9 @@
-import { HAIKU_MODEL, NO_THINKING, extractJson, getAnthropicClient } from "@/lib/claude/client";
+import {
+  extractJson,
+  getAnthropicClient,
+  HAIKU_MODEL,
+  NO_THINKING,
+} from "@/lib/claude/client";
 
 export interface ValidateReplyParams {
   reply: string;
@@ -60,7 +65,10 @@ Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["...
     });
     rawText = extractJson(res);
     if (!rawText) {
-      console.error("[validate-reply] Haiku returned empty content, stop_reason:", res.stop_reason);
+      console.error(
+        "[validate-reply] Haiku returned empty content, stop_reason:",
+        res.stop_reason,
+      );
       return { valid: true, unsupportedClaims: [] };
     }
     const parsed = JSON.parse(rawText) as {
@@ -72,7 +80,12 @@ Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["...
       unsupportedClaims: parsed.unsupported_claims ?? [],
     };
   } catch (err) {
-    console.error("[validate-reply] validator call failed, failing open:", (err as Error).message, "| rawText:", JSON.stringify(rawText.slice(0, 200)));
+    console.error(
+      "[validate-reply] validator call failed, failing open:",
+      (err as Error).message,
+      "| rawText:",
+      JSON.stringify(rawText.slice(0, 200)),
+    );
     return { valid: true, unsupportedClaims: [] };
   }
 }

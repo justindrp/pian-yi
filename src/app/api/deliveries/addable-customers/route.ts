@@ -15,7 +15,10 @@ export async function GET(): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const db = createAdminClient();
 
@@ -53,7 +56,10 @@ export async function GET(): Promise<Response> {
     .order("name");
 
   if (error)
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   // Own active order takes priority; otherwise fall back to the order this
   // customer is linked to (e.g. a kid drawing from a parent's package).
@@ -64,7 +70,12 @@ export async function GET(): Promise<Response> {
         orderByCustomer.get(c.id) ??
         (c.linked_order_id ? orderById.get(c.linked_order_id) : undefined),
     }))
-    .filter((c): c is typeof c & { active_order: NonNullable<typeof c.active_order> } => c.active_order != null);
+    .filter(
+      (
+        c,
+      ): c is typeof c & { active_order: NonNullable<typeof c.active_order> } =>
+        c.active_order != null,
+    );
 
   return NextResponse.json({ ok: true, data });
 }

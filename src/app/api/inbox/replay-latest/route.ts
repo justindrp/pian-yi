@@ -9,14 +9,20 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const body = (await req.json()) as { customer_id: string; draft?: boolean };
   const { customer_id, draft = false } = body;
 
   if (!customer_id) {
-    return NextResponse.json({ ok: false, error: "customer_id required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "customer_id required" },
+      { status: 400 },
+    );
   }
 
   const result = await replayLatestCustomerMessage(
@@ -33,7 +39,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   if (!result.replayed) {
-    return NextResponse.json({ ok: true, replayed: false, reason: result.reason });
+    return NextResponse.json({
+      ok: true,
+      replayed: false,
+      reason: result.reason,
+    });
   }
 
   return draft

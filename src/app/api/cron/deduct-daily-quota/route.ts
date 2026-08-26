@@ -132,7 +132,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     await db
       .from("customers")
       .update({
-        portions_remaining: Math.max(0, cust.portions_remaining - totalPortions),
+        portions_remaining: Math.max(
+          0,
+          cust.portions_remaining - totalPortions,
+        ),
       })
       .eq("id", customerId);
 

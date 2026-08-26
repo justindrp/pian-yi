@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { POST } from "@/app/api/accounting/accounts/route";
 import { PATCH } from "@/app/api/accounting/accounts/[id]/route";
+import { POST } from "@/app/api/accounting/accounts/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 
@@ -10,7 +10,9 @@ jest.mock("@/lib/supabase/get-role", () => ({
   isOwner: (role: string) => role === "owner",
 }));
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = ["select", "insert", "update", "eq", "in", "order"];
   for (const m of methods) chain[m] = jest.fn().mockReturnValue(chain);
@@ -23,7 +25,9 @@ type Chain = ReturnType<typeof makeChain>;
 
 // Each table can return a different result per call (sequential), since POST hits
 // `accounts` twice: existence check (maybeSingle) then insert (single).
-function makeDbMock(perTable: Record<string, { data: unknown; error: unknown }[]>) {
+function makeDbMock(
+  perTable: Record<string, { data: unknown; error: unknown }[]>,
+) {
   const calls: Record<string, number> = {};
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
@@ -61,18 +65,27 @@ beforeEach(() => {
 
 describe("POST /api/accounting/accounts", () => {
   test("non-owner returns 403", async () => {
-    (getSessionWithRole as jest.Mock).mockResolvedValue({ email: "a@x.com", role: "admin" });
-    const res = await POST(postReq({ code: "6005", name: "X", type: "Expense", category: "Op" }));
+    (getSessionWithRole as jest.Mock).mockResolvedValue({
+      email: "a@x.com",
+      role: "admin",
+    });
+    const res = await POST(
+      postReq({ code: "6005", name: "X", type: "Expense", category: "Op" }),
+    );
     expect(res.status).toBe(403);
   });
 
   test("invalid code returns 400", async () => {
-    const res = await POST(postReq({ code: "ABC", name: "X", type: "Expense", category: "Op" }));
+    const res = await POST(
+      postReq({ code: "ABC", name: "X", type: "Expense", category: "Op" }),
+    );
     expect(res.status).toBe(400);
   });
 
   test("invalid type returns 400", async () => {
-    const res = await POST(postReq({ code: "6005", name: "X", type: "Foo", category: "Op" }));
+    const res = await POST(
+      postReq({ code: "6005", name: "X", type: "Foo", category: "Op" }),
+    );
     expect(res.status).toBe(400);
   });
 
@@ -80,7 +93,9 @@ describe("POST /api/accounting/accounts", () => {
     (createAdminClient as jest.Mock).mockReturnValue(
       makeDbMock({ accounts: [{ data: { id: "existing" }, error: null }] }),
     );
-    const res = await POST(postReq({ code: "1002", name: "X", type: "Asset", category: "Op" }));
+    const res = await POST(
+      postReq({ code: "1002", name: "X", type: "Asset", category: "Op" }),
+    );
     expect(res.status).toBe(400);
   });
 
@@ -88,15 +103,25 @@ describe("POST /api/accounting/accounts", () => {
     const db = makeDbMock({
       accounts: [
         { data: null, error: null }, // existence check
-        { data: { id: "n1", code: "6005", name: "Sewa", type: "Expense" }, error: null }, // insert
+        {
+          data: { id: "n1", code: "6005", name: "Sewa", type: "Expense" },
+          error: null,
+        }, // insert
       ],
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
-    const res = await POST(postReq({ code: "6005", name: "Sewa", type: "Expense", category: "Op" }));
+    const res = await POST(
+      postReq({ code: "6005", name: "Sewa", type: "Expense", category: "Op" }),
+    );
     expect(res.status).toBe(200);
     // Insert chain is the second `accounts` call.
     expect(db.chains["accounts:1"].insert).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "6005", type: "Expense", normal_balance: "Debit", is_active: true }),
+      expect.objectContaining({
+        code: "6005",
+        type: "Expense",
+        normal_balance: "Debit",
+        is_active: true,
+      }),
     );
   });
 
@@ -108,7 +133,14 @@ describe("POST /api/accounting/accounts", () => {
       ],
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
-    await POST(postReq({ code: "2005", name: "Utang", type: "Liability", category: "Liab" }));
+    await POST(
+      postReq({
+        code: "2005",
+        name: "Utang",
+        type: "Liability",
+        category: "Liab",
+      }),
+    );
     expect(db.chains["accounts:1"].insert).toHaveBeenCalledWith(
       expect.objectContaining({ normal_balance: "Credit" }),
     );
@@ -130,10 +162,14 @@ describe("PATCH /api/accounting/accounts/[id]", () => {
   });
 
   test("toggle is_active succeeds", async () => {
-    const db = makeDbMock({ accounts: [{ data: { id: "a1", is_active: false }, error: null }] });
+    const db = makeDbMock({
+      accounts: [{ data: { id: "a1", is_active: false }, error: null }],
+    });
     (createAdminClient as jest.Mock).mockReturnValue(db);
     const res = await PATCH(patchReq({ is_active: false }), { params });
     expect(res.status).toBe(200);
-    expect(db.chains["accounts:0"].update).toHaveBeenCalledWith({ is_active: false });
+    expect(db.chains["accounts:0"].update).toHaveBeenCalledWith({
+      is_active: false,
+    });
   });
 });

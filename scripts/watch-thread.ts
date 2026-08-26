@@ -12,7 +12,9 @@ async function main() {
 
   const { data: cust } = await db
     .from("customers")
-    .select("id, name, phone_number, area, address, subcontractor_id, created_at")
+    .select(
+      "id, name, phone_number, area, address, subcontractor_id, created_at",
+    )
     .eq("phone_number", phone)
     .maybeSingle();
   if (!cust) return console.log(`no customer row for ${phone}`);
@@ -33,16 +35,22 @@ async function main() {
     .limit(n);
   console.log("\n--- thread ---");
   for (const m of (msgs ?? []).reverse())
-    console.log(`${(m.created_at ?? "").slice(11, 19)} [${m.role}${m.whatsapp_status ? `/${m.whatsapp_status}` : ""}] ${String(m.content).slice(0, 260).replace(/\n/g, " ")}`);
+    console.log(
+      `${(m.created_at ?? "").slice(11, 19)} [${m.role}${m.whatsapp_status ? `/${m.whatsapp_status}` : ""}] ${String(m.content).slice(0, 260).replace(/\n/g, " ")}`,
+    );
 
   const { data: ords } = await db
     .from("orders")
-    .select("id, status, package_size, portions_remaining, meal_time_preference, total_price, created_at")
+    .select(
+      "id, status, package_size, portions_remaining, meal_time_preference, total_price, created_at",
+    )
     .eq("customer_id", cust.id)
     .order("created_at", { ascending: false });
   console.log("\n--- orders ---");
   for (const o of ords ?? [])
-    console.log(`${o.id.slice(0, 8)} ${o.status} pkg=${o.package_size} rem=${o.portions_remaining} ${o.meal_time_preference} Rp${o.total_price} ${(o.created_at ?? "").slice(0, 16)}`);
+    console.log(
+      `${o.id.slice(0, 8)} ${o.status} pkg=${o.package_size} rem=${o.portions_remaining} ${o.meal_time_preference} Rp${o.total_price} ${(o.created_at ?? "").slice(0, 16)}`,
+    );
 
   const { data: dels } = await db
     .from("daily_deliveries")

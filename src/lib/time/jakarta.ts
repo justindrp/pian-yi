@@ -17,9 +17,7 @@ const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000; // WIB, UTC+7 — no DST
 
 /** HH:MM in Jakarta, 24-hour. */
 export function jakartaTimeString(at: Date = new Date()): string {
-  return new Date(at.getTime() + JAKARTA_OFFSET_MS)
-    .toISOString()
-    .slice(11, 16);
+  return new Date(at.getTime() + JAKARTA_OFFSET_MS).toISOString().slice(11, 16);
 }
 
 /** Hour of day in Jakarta, 0–23. */

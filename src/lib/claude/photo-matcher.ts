@@ -1,5 +1,10 @@
 import { getSetting } from "@/lib/cache/settings";
-import { HAIKU_MODEL, NO_THINKING, extractJson, getAnthropicClient } from "@/lib/claude/client";
+import {
+  extractJson,
+  getAnthropicClient,
+  HAIKU_MODEL,
+  NO_THINKING,
+} from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -187,7 +192,9 @@ export async function sendDeliveryPhotoToCustomer(
   }
 
   if (!phone) {
-    console.error(`[sendDeliveryPhotoToCustomer] no phone for customer ${customerId}`);
+    console.error(
+      `[sendDeliveryPhotoToCustomer] no phone for customer ${customerId}`,
+    );
     return;
   }
 

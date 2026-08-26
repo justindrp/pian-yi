@@ -19,7 +19,9 @@ describe("statedTransferAmount", () => {
   });
 
   it("ignores a price quoted outside a receipt", () => {
-    expect(statedTransferAmount("Paket 10 porsi Rp 280.000 ya kak?")).toBeNull();
+    expect(
+      statedTransferAmount("Paket 10 porsi Rp 280.000 ya kak?"),
+    ).toBeNull();
   });
 
   it("returns null when a receipt states two different amounts", () => {

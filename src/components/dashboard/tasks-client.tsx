@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-type LinkedCustomer = { id: string; name: string | null; phone_number: string | null };
+type LinkedCustomer = {
+  id: string;
+  name: string | null;
+  phone_number: string | null;
+};
 type LinkedOrder = {
   id: string;
   package_size: number | null;
@@ -48,7 +52,11 @@ const STATUS_STYLE: Record<string, string> = {
   done: "bg-gray-100 text-gray-500",
 };
 
-const PRIORITY_LABEL: Record<number, string> = { 1: "High", 2: "Normal", 3: "Low" };
+const PRIORITY_LABEL: Record<number, string> = {
+  1: "High",
+  2: "Normal",
+  3: "Low",
+};
 
 function rupiah(v: number | null): string {
   return v == null ? "—" : `Rp ${v.toLocaleString("id-ID")}`;
@@ -78,7 +86,8 @@ export default function TasksClient() {
   const [savedSeq, setSavedSeq] = useState(0);
 
   const areas = useMemo(
-    () => [...new Set(tasks.map((t) => t.area).filter(Boolean) as string[])].sort(),
+    () =>
+      [...new Set(tasks.map((t) => t.area).filter(Boolean) as string[])].sort(),
     [tasks],
   );
 
@@ -94,10 +103,15 @@ export default function TasksClient() {
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
-      if (status === "not_done" ? t.status === "done" : status && t.status !== status)
+      if (
+        status === "not_done"
+          ? t.status === "done"
+          : status && t.status !== status
+      )
         return false;
       if (area && t.area !== area) return false;
-      if (q && !`${t.title} ${t.body ?? ""}`.toLowerCase().includes(q)) return false;
+      if (q && !`${t.title} ${t.body ?? ""}`.toLowerCase().includes(q))
+        return false;
       return true;
     });
   }, [tasks, status, area, search]);
@@ -181,7 +195,11 @@ export default function TasksClient() {
             onClick={() => setStatus(s)}
           />
         ))}
-        <FilterChip label="All" active={status === ""} onClick={() => setStatus("")} />
+        <FilterChip
+          label="All"
+          active={status === ""}
+          onClick={() => setStatus("")}
+        />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
@@ -216,8 +234,12 @@ export default function TasksClient() {
               <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                 <th className="px-3 py-2 font-medium w-10" />
                 <th className="px-3 py-2 font-medium">Task</th>
-                <th className="px-3 py-2 font-medium hidden sm:table-cell">Area</th>
-                <th className="px-3 py-2 font-medium hidden md:table-cell">Owner</th>
+                <th className="px-3 py-2 font-medium hidden sm:table-cell">
+                  Area
+                </th>
+                <th className="px-3 py-2 font-medium hidden md:table-cell">
+                  Owner
+                </th>
                 <th className="px-3 py-2 font-medium">Status</th>
               </tr>
             </thead>
@@ -245,7 +267,9 @@ export default function TasksClient() {
                   <td className="px-3 py-2">
                     <span
                       className={
-                        t.status === "done" ? "text-gray-400 line-through" : "text-gray-900"
+                        t.status === "done"
+                          ? "text-gray-400 line-through"
+                          : "text-gray-900"
                       }
                     >
                       {t.title}
@@ -530,8 +554,8 @@ function TaskPanel({
               )}`}
               className="block underline mt-1"
             >
-              {task.orders.package_size ?? "?"} porsi · {rupiah(task.orders.total_price)} ·{" "}
-              {task.orders.status}
+              {task.orders.package_size ?? "?"} porsi ·{" "}
+              {rupiah(task.orders.total_price)} · {task.orders.status}
             </a>
           )}
         </div>
@@ -552,7 +576,10 @@ function TaskPanel({
       )}
 
       <div className="flex items-center gap-2 mt-4">
-        <Button disabled={!dirty || saving || titleMissing} onClick={() => onSave(draft)}>
+        <Button
+          disabled={!dirty || saving || titleMissing}
+          onClick={() => onSave(draft)}
+        >
           {saving ? "Saving…" : "Save"}
         </Button>
         {value("status") !== "done" && (
@@ -589,7 +616,10 @@ function NewTaskPanel({
   onClose: () => void;
   onCreate: (patch: Partial<Task>) => void;
 }) {
-  const [draft, setDraft] = useState<Partial<Task>>({ priority: 2, status: "open" });
+  const [draft, setDraft] = useState<Partial<Task>>({
+    priority: 2,
+    status: "open",
+  });
   const set = (patch: Partial<Task>) => setDraft({ ...draft, ...patch });
 
   return (

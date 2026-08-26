@@ -32,7 +32,10 @@ const NAYA_START = "2026-08-31";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required");
+if (!url || !key)
+  throw new Error(
+    "NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required",
+  );
 
 const db = createClient(url, key);
 
@@ -46,7 +49,11 @@ function summarise(rows: Slot[]): string {
 }
 
 async function orderById(id: string) {
-  const { data, error } = await db.from("orders").select("*").eq("id", id).single();
+  const { data, error } = await db
+    .from("orders")
+    .select("*")
+    .eq("id", id)
+    .single();
   if (error) throw error;
   return data;
 }
@@ -84,12 +91,16 @@ async function main() {
 
   console.log(`CANCEL ${cancel.id} — ${cancelRows.length} rows to delete`);
   console.log(`  ${summarise(cancelRows)}`);
-  console.log(`NAYA  ${naya.id} — start_date ${naya.start_date} -> ${NAYA_START}`);
+  console.log(
+    `NAYA  ${naya.id} — start_date ${naya.start_date} -> ${NAYA_START}`,
+  );
   console.log(`  delete ${nayaRows.length}: ${summarise(nayaRows)}`);
   console.log(`  insert ${rebuilt.length}: ${summarise(rebuilt)}`);
 
   if (rebuilt.length !== nayaRows.length) {
-    console.warn(`  WARN row count changed ${nayaRows.length} -> ${rebuilt.length}`);
+    console.warn(
+      `  WARN row count changed ${nayaRows.length} -> ${rebuilt.length}`,
+    );
   }
 
   if (!APPLY) {
@@ -104,7 +115,10 @@ async function main() {
   console.log(`\nrollback written to ${OUT}`);
 
   // 1. Out-of-area order: rows off the calendar, then the order itself.
-  const { error: e1 } = await db.from("daily_deliveries").delete().eq("order_id", cancel.id);
+  const { error: e1 } = await db
+    .from("daily_deliveries")
+    .delete()
+    .eq("order_id", cancel.id);
   if (e1) throw e1;
   const { error: e2 } = await db
     .from("orders")
@@ -131,9 +145,15 @@ async function main() {
   console.log(`cancelled ${cancel.id}, deleted ${cancelRows.length} rows`);
 
   // 2. Naya: same package, correct week.
-  const { error: e3 } = await db.from("daily_deliveries").delete().eq("order_id", naya.id);
+  const { error: e3 } = await db
+    .from("daily_deliveries")
+    .delete()
+    .eq("order_id", naya.id);
   if (e3) throw e3;
-  const { error: e4 } = await db.from("orders").update({ start_date: NAYA_START }).eq("id", naya.id);
+  const { error: e4 } = await db
+    .from("orders")
+    .update({ start_date: NAYA_START })
+    .eq("id", naya.id);
   if (e4) throw e4;
   const { error: e5 } = await db.from("daily_deliveries").insert(rebuilt);
   if (e5) throw e5;
@@ -144,12 +164,15 @@ async function main() {
     entityId: naya.id,
     action: "edit",
     changes: {
-      reason: 'customer said "mulai tgl 31 Agust"; order defaulted to the earliest deliverable date',
+      reason:
+        'customer said "mulai tgl 31 Agust"; order defaulted to the earliest deliverable date',
       start_date: { from: naya.start_date, to: NAYA_START },
       deliveries_rebuilt: { from: nayaRows.length, to: rebuilt.length },
     },
   });
-  console.log(`moved ${naya.id} to ${NAYA_START}, rebuilt ${rebuilt.length} rows`);
+  console.log(
+    `moved ${naya.id} to ${NAYA_START}, rebuilt ${rebuilt.length} rows`,
+  );
 }
 
 main().catch((e) => {

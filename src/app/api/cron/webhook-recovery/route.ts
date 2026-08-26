@@ -2,7 +2,10 @@ import { type NextRequest, NextResponse } from "next/server";
 import { replayLatestCustomerMessage } from "@/lib/inbox/replay-latest";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isDemoPhone } from "@/lib/whatsapp/demo";
-import { parseMessage, type WhatsAppWebhookPayload } from "@/lib/whatsapp/types";
+import {
+  parseMessage,
+  type WhatsAppWebhookPayload,
+} from "@/lib/whatsapp/types";
 
 // Answers customers whose message the webhook accepted and then dropped on the
 // floor.
@@ -150,7 +153,11 @@ export async function GET(req: NextRequest): Promise<Response> {
       );
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      console.error("[webhook-recovery] replay failed:", event.event_key, reason);
+      console.error(
+        "[webhook-recovery] replay failed:",
+        event.event_key,
+        reason,
+      );
       await stamp(event.id, `replay_failed: ${reason}`, false);
     }
   }

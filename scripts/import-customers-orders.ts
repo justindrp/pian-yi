@@ -13,9 +13,9 @@
  *     --orders=scripts/import-data/orders.csv
  */
 
-import { parse } from "csv-parse/sync";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
+import { parse } from "csv-parse/sync";
 import type { Database } from "../src/types/database";
 
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -23,7 +23,9 @@ import type { Database } from "../src/types/database";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl || !serviceRoleKey) {
-  console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  console.error(
+    "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+  );
   process.exit(1);
 }
 const db = createClient<Database>(supabaseUrl, serviceRoleKey);
@@ -41,11 +43,17 @@ const AREA_PREFIXES: [string, string][] = [
   ["GR", "Graha Raya"],
 ];
 
-function parseAreaSubArea(raw: string): { area: string; sub_area: string | null } {
+function parseAreaSubArea(raw: string): {
+  area: string;
+  sub_area: string | null;
+} {
   const trimmed = raw.trim();
   for (const [prefix, area] of AREA_PREFIXES) {
     if (trimmed.startsWith(`${prefix}-`)) {
-      return { area, sub_area: trimmed.slice(prefix.length + 1).trim() || null };
+      return {
+        area,
+        sub_area: trimmed.slice(prefix.length + 1).trim() || null,
+      };
     }
     if (trimmed === prefix) {
       return { area, sub_area: null };
@@ -65,14 +73,20 @@ function parseName(name: string): { base: string; index: number } {
 }
 
 function slugify(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
 }
 
 // Candidate match keys for a sheet name: full (lower), parentheticals stripped
 // (e.g. "Elaine (Lunch)" → "elaine"), and the base without a trailing index.
 function nameKeys(name: string): string[] {
   const lower = name.trim().toLowerCase();
-  const noParen = lower.replace(/\(.*?\)/g, "").replace(/\s+/g, " ").trim();
+  const noParen = lower
+    .replace(/\(.*?\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   const base = parseName(noParen).base;
   return [...new Set([lower, noParen, base])].filter((k) => k.length > 0);
 }
@@ -133,7 +147,7 @@ interface CustomerRow {
   no: string;
   nama: string;
   areaSubArea: string; // legacy combined format "Alsut-Pacific Garden"
-  subArea: string;     // separate Sub Area column (new sheet format)
+  subArea: string; // separate Sub Area column (new sheet format)
   alamat: string;
   mapsLink: string;
   catatan: string;
@@ -145,15 +159,15 @@ interface CustomerRow {
 }
 
 interface OrderRow {
-  tanggal: string;   // Date / Tanggal
-  mealType: string;  // Meal / Lunch/Dinner column value
-  nama: string;      // Customer / Nama
+  tanggal: string; // Date / Tanggal
+  mealType: string; // Meal / Lunch/Dinner column value
+  nama: string; // Customer / Nama
   areaSubArea: string;
   subArea: string;
-  alamat: string;    // Address / Alamat
+  alamat: string; // Address / Alamat
   mapsLink: string;
-  jumlah: string;    // Portions / Jumlah
-  catatan: string;   // Notes / Catatan
+  jumlah: string; // Portions / Jumlah
+  catatan: string; // Notes / Catatan
   subcontractor: string; // Vendor / Subcontractor
 }
 
@@ -176,7 +190,10 @@ async function loadCsvContent(source: string): Promise<string> {
     const csvUrl = toSheetsCsvUrl(source);
     console.log(`  Fetching sheet: ${csvUrl}`);
     const res = await fetch(csvUrl);
-    if (!res.ok) throw new Error(`Failed to fetch sheet (${res.status}): ${res.statusText}`);
+    if (!res.ok)
+      throw new Error(
+        `Failed to fetch sheet (${res.status}): ${res.statusText}`,
+      );
     return res.text();
   }
   return readFileSync(source, "utf-8");
@@ -204,7 +221,10 @@ async function parseCsv(source: string): Promise<Record<string, string>[]> {
   for (let i = 0; i < headers.length; i++) {
     const h = headers[i].trim().toLowerCase();
     if (!h) continue;
-    if (seen.has(h)) { colCount = i; break; }
+    if (seen.has(h)) {
+      colCount = i;
+      break;
+    }
     seen.add(h);
   }
 
@@ -250,7 +270,15 @@ function normalizeCustomerRow(raw: Record<string, string>): CustomerRow | null {
     sisaKuota: get(["sisa kuota", "sisa kuota", "quota"]),
     hargaPerKuota: get(["harga per kuota", "harga per", "sell price", "harga"]),
     total: get(["total sale", "total"]),
-    phoneNumber: get(["phone", "telpon", "telepon", "wa", "whatsapp", "no. hp", "no hp"]),
+    phoneNumber: get([
+      "phone",
+      "telpon",
+      "telepon",
+      "wa",
+      "whatsapp",
+      "no. hp",
+      "no hp",
+    ]),
   };
 }
 
@@ -348,9 +376,15 @@ const SHEET_DELIVERY_CUTOVER = "2026-06-29";
 // complete than the sheet for that customer — don't let --reconcile overwrite it.
 const ORDER_AUTHORITY_CUTOVER = "2026-06-29";
 
-async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: boolean) {
+async function runReconcile(
+  packagesSrc: string,
+  harianSrc: string,
+  dryRun: boolean,
+) {
   const today = new Date().toISOString().slice(0, 10);
-  console.log(`Reconcile (today=${today})${dryRun ? " — DRY RUN, no writes" : ""}`);
+  console.log(
+    `Reconcile (today=${today})${dryRun ? " — DRY RUN, no writes" : ""}`,
+  );
 
   // 1. name → customerId from DB (full / paren-stripped / base keys)
   const { data: dbCustomers } = await db
@@ -360,7 +394,10 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
   const custById = new Map<string, { name: string; oldRemaining: number }>();
   for (const c of dbCustomers ?? []) {
     if (!c.name) continue;
-    custById.set(c.id, { name: c.name, oldRemaining: c.portions_remaining ?? 0 });
+    custById.set(c.id, {
+      name: c.name,
+      oldRemaining: c.portions_remaining ?? 0,
+    });
     for (const k of nameKeys(c.name)) idByName.set(k, c.id);
   }
 
@@ -372,7 +409,10 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
   const unmatchedPkg = new Set<string>();
   for (const r of pkgRows) {
     const id = matchId(idByName, r.nama);
-    if (!id) { unmatchedPkg.add(r.nama); continue; }
+    if (!id) {
+      unmatchedPkg.add(r.nama);
+      continue;
+    }
     const acc = purchased.get(id) ?? { porsi: 0, total: 0 };
     acc.porsi += digits(r.porsi);
     acc.total += digits(r.totalHarga);
@@ -389,8 +429,14 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
     const date = parseDate(r.tanggal);
     if (!date || date > today) continue; // future rows don't deduct yet
     const id = matchId(idByName, r.nama);
-    if (!id) { unmatchedHar.add(r.nama); continue; }
-    delivered.set(id, (delivered.get(id) ?? 0) + (Number.parseInt(r.jumlah, 10) || 0));
+    if (!id) {
+      unmatchedHar.add(r.nama);
+      continue;
+    }
+    delivered.set(
+      id,
+      (delivered.get(id) ?? 0) + (Number.parseInt(r.jumlah, 10) || 0),
+    );
   }
 
   // 3b. daily_deliveries (app-entered) from the sheet cutover through today — the
@@ -402,14 +448,22 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
     .lte("delivery_date", today);
   for (const d of dbDeliveries ?? []) {
     if (!d.customer_id) continue;
-    delivered.set(d.customer_id, (delivered.get(d.customer_id) ?? 0) + (d.portions ?? 0));
+    delivered.set(
+      d.customer_id,
+      (delivered.get(d.customer_id) ?? 0) + (d.portions ?? 0),
+    );
   }
 
   // 4. oldest active order per customer (the row that carries the balance)
   const { data: orders } = await db
     .from("orders")
     .select("id, customer_id, status, created_at, package_size")
-    .in("status", ["active", "pending_payment", "payment_proof_received", "paused"])
+    .in("status", [
+      "active",
+      "pending_payment",
+      "payment_proof_received",
+      "paused",
+    ])
     .order("created_at", { ascending: true });
   const orderByCustomer = new Map<string, string>();
   // Customers whose balance was entered in-app post-cutover with real data —
@@ -437,7 +491,12 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
   const SUSPICIOUS_PKG = 500; // largest legit package is ~143; above this = typo
   const ids = new Set<string>([...purchased.keys(), ...delivered.keys()]);
   const report: {
-    name: string; pkg: number; deliv: number; remaining: number; old: number; written: boolean;
+    name: string;
+    pkg: number;
+    deliv: number;
+    remaining: number;
+    old: number;
+    written: boolean;
   }[] = [];
   const noPurchase: string[] = [];
   const suspicious: string[] = [];
@@ -465,25 +524,43 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
       written = true;
       if (remaining < 0) negatives.push({ name, remaining });
       if (!dryRun) {
-        await db.from("customers").update({ portions_remaining: remaining, avg_price_per_portion: price }).eq("id", id);
-        if (ordId) {
-          await db.from("orders").update({
-            package_size: pkg,
+        await db
+          .from("customers")
+          .update({
             portions_remaining: remaining,
-            price_per_portion: price,
-            total_price: total,
-          }).eq("id", ordId);
+            avg_price_per_portion: price,
+          })
+          .eq("id", id);
+        if (ordId) {
+          await db
+            .from("orders")
+            .update({
+              package_size: pkg,
+              portions_remaining: remaining,
+              price_per_portion: price,
+              total_price: total,
+            })
+            .eq("id", ordId);
         }
         updated++;
       }
     }
-    report.push({ name, pkg, deliv, remaining, old: info?.oldRemaining ?? 0, written });
+    report.push({
+      name,
+      pkg,
+      deliv,
+      remaining,
+      old: info?.oldRemaining ?? 0,
+      written,
+    });
   }
 
   // 6. print
   report.sort((a, b) => a.name.localeCompare(b.name));
   const pad = (s: string | number, n: number) => String(s).padEnd(n);
-  console.log(`\n${pad("Customer", 26)}${pad("Pkg", 6)}${pad("Deliv", 7)}${pad("Remain", 8)}${pad("(was)", 7)}`);
+  console.log(
+    `\n${pad("Customer", 26)}${pad("Pkg", 6)}${pad("Deliv", 7)}${pad("Remain", 8)}${pad("(was)", 7)}`,
+  );
   console.log("─".repeat(56));
   for (const r of report) {
     const flag = dbAuthoritativeSkipped.includes(r.name)
@@ -493,20 +570,41 @@ async function runReconcile(packagesSrc: string, harianSrc: string, dryRun: bool
         : r.remaining < 0
           ? "  ⚠ NEGATIVE"
           : "";
-    console.log(`${pad(r.name, 26)}${pad(r.pkg, 6)}${pad(r.deliv, 7)}${pad(r.remaining, 8)}${pad(r.old, 7)}${flag}`);
+    console.log(
+      `${pad(r.name, 26)}${pad(r.pkg, 6)}${pad(r.deliv, 7)}${pad(r.remaining, 8)}${pad(r.old, 7)}${flag}`,
+    );
   }
-  console.log(`\n${report.length} computed, ${report.filter((r) => r.written).length} writable${dryRun ? " (DRY RUN — nothing written)" : `, ${updated} updated`}`);
+  console.log(
+    `\n${report.length} computed, ${report.filter((r) => r.written).length} writable${dryRun ? " (DRY RUN — nothing written)" : `, ${updated} updated`}`,
+  );
 
   if (negatives.length) {
     negatives.sort((a, b) => a.remaining - b.remaining);
-    console.warn(`\n⚠ ${negatives.length} customers with NEGATIVE balance (over-drawn — likely a missing renewal in package_orders):`);
+    console.warn(
+      `\n⚠ ${negatives.length} customers with NEGATIVE balance (over-drawn — likely a missing renewal in package_orders):`,
+    );
     for (const n of negatives) console.warn(`    ${n.name}: ${n.remaining}`);
   }
-  if (dbAuthoritativeSkipped.length) console.warn(`\n· ${dbAuthoritativeSkipped.length} skipped — DB-authoritative (in-app order created after ${ORDER_AUTHORITY_CUTOVER}, sheet not written): ${dbAuthoritativeSkipped.sort().join(", ")}`);
-  if (noPurchase.length) console.warn(`\n· ${noPurchase.length} skipped — no recorded purchase (left untouched): ${noPurchase.sort().join(", ")}`);
-  if (suspicious.length) console.warn(`\n⚠ ${suspicious.length} skipped — suspicious package size (likely typo): ${suspicious.join(", ")}`);
-  if (unmatchedPkg.size) console.warn(`\n⚠ ${unmatchedPkg.size} package names matched no DB customer: ${[...unmatchedPkg].sort().join(", ")}`);
-  if (unmatchedHar.size) console.warn(`\n⚠ ${unmatchedHar.size} delivery names matched no DB customer (NOT deducted — remaining may be overstated): ${[...unmatchedHar].sort().join(", ")}`);
+  if (dbAuthoritativeSkipped.length)
+    console.warn(
+      `\n· ${dbAuthoritativeSkipped.length} skipped — DB-authoritative (in-app order created after ${ORDER_AUTHORITY_CUTOVER}, sheet not written): ${dbAuthoritativeSkipped.sort().join(", ")}`,
+    );
+  if (noPurchase.length)
+    console.warn(
+      `\n· ${noPurchase.length} skipped — no recorded purchase (left untouched): ${noPurchase.sort().join(", ")}`,
+    );
+  if (suspicious.length)
+    console.warn(
+      `\n⚠ ${suspicious.length} skipped — suspicious package size (likely typo): ${suspicious.join(", ")}`,
+    );
+  if (unmatchedPkg.size)
+    console.warn(
+      `\n⚠ ${unmatchedPkg.size} package names matched no DB customer: ${[...unmatchedPkg].sort().join(", ")}`,
+    );
+  if (unmatchedHar.size)
+    console.warn(
+      `\n⚠ ${unmatchedHar.size} delivery names matched no DB customer (NOT deducted — remaining may be overstated): ${[...unmatchedHar].sort().join(", ")}`,
+    );
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -550,12 +648,16 @@ async function main() {
       process.exit(1);
     }
   } else if (!customersCsvPath) {
-    console.error("Usage: pnpm tsx scripts/import-customers-orders.ts --customers=<path> [--orders=<path>]");
+    console.error(
+      "Usage: pnpm tsx scripts/import-customers-orders.ts --customers=<path> [--orders=<path>]",
+    );
     process.exit(1);
   }
 
   // ── Load subcontractors ──────────────────────────────────────────────────
-  const { data: subcontractors } = await db.from("subcontractors").select("id, name");
+  const { data: subcontractors } = await db
+    .from("subcontractors")
+    .select("id, name");
   const subByName = new Map<string, string>(
     (subcontractors ?? []).map((s) => [s.name.trim().toLowerCase(), s.id]),
   );
@@ -575,12 +677,18 @@ async function main() {
   // ── Parse CSVs ───────────────────────────────────────────────────────────
   const rawCustomers = skipCustomers
     ? []
-    : ((await parseCsv(customersCsvPath)).map(normalizeCustomerRow).filter(Boolean) as CustomerRow[]);
+    : ((await parseCsv(customersCsvPath))
+        .map(normalizeCustomerRow)
+        .filter(Boolean) as CustomerRow[]);
   const rawOrders = ordersCsvPath
-    ? ((await parseCsv(ordersCsvPath)).map(normalizeOrderRow).filter(Boolean) as OrderRow[])
+    ? ((await parseCsv(ordersCsvPath))
+        .map(normalizeOrderRow)
+        .filter(Boolean) as OrderRow[])
     : [];
 
-  console.log(`Parsed ${rawCustomers.length} customer rows, ${rawOrders.length} order rows`);
+  console.log(
+    `Parsed ${rawCustomers.length} customer rows, ${rawOrders.length} order rows`,
+  );
 
   // ── Group customer rows by base name ─────────────────────────────────────
   // "Devi 1" and "Devi 2" → same customer, two orders
@@ -600,7 +708,12 @@ async function main() {
   const { data: existingOrders } = await db
     .from("orders")
     .select("id, customer_id, status")
-    .in("status", ["active", "pending_payment", "payment_proof_received", "paused"]);
+    .in("status", [
+      "active",
+      "pending_payment",
+      "payment_proof_received",
+      "paused",
+    ]);
   const existingOrdersByCustomer = new Map<string, typeof existingOrders>();
   for (const ord of existingOrders ?? []) {
     if (!ord.customer_id) continue;
@@ -649,7 +762,8 @@ async function main() {
     const slug = slugify(baseName);
 
     // Phone: normalize and use first valid phone in the group, else placeholder
-    const rawPhone = rows.map((r) => r.phoneNumber ?? "").find((p) => p.trim() !== "") ?? "";
+    const rawPhone =
+      rows.map((r) => r.phoneNumber ?? "").find((p) => p.trim() !== "") ?? "";
     const phone = normalizePhone(rawPhone) || `IMPORT_${slug}`;
 
     // Calculate WAC across all rows in this group
@@ -657,11 +771,13 @@ async function main() {
     let weightedPrice = 0;
     for (const row of rows) {
       const qty = Number.parseInt(row.sisaKuota, 10) || 0;
-      const price = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, ""), 10) || 0;
+      const price =
+        Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, ""), 10) || 0;
       totalPortions += qty;
       weightedPrice += qty * price;
     }
-    const avgPrice = totalPortions > 0 ? Math.round(weightedPrice / totalPortions) : 0;
+    const avgPrice =
+      totalPortions > 0 ? Math.round(weightedPrice / totalPortions) : 0;
 
     // Resolve area: prefer separate subArea column, fall back to parseAreaSubArea on combined
     const parsedArea = parseAreaSubArea(rows[0].areaSubArea);
@@ -700,7 +816,10 @@ async function main() {
       .single();
 
     if (custErr || !cust) {
-      console.error(`  ERROR creating customer "${baseName}":`, custErr?.message);
+      console.error(
+        `  ERROR creating customer "${baseName}":`,
+        custErr?.message,
+      );
       continue;
     }
     customerCount++;
@@ -711,13 +830,18 @@ async function main() {
 
     // Ensure customer_state and customer_flags exist
     await db.from("customer_state").upsert(
-      { customer_id: cust.id, state: totalPortions > 0 ? "active_subscription" : "new" },
+      {
+        customer_id: cust.id,
+        state: totalPortions > 0 ? "active_subscription" : "new",
+      },
       { onConflict: "customer_id", ignoreDuplicates: true },
     );
-    await db.from("customer_flags").upsert(
-      { customer_id: cust.id },
-      { onConflict: "customer_id", ignoreDuplicates: true },
-    );
+    await db
+      .from("customer_flags")
+      .upsert(
+        { customer_id: cust.id },
+        { onConflict: "customer_id", ignoreDuplicates: true },
+      );
 
     // Skip order creation if customer already has active orders
     const existingCustOrders = existingOrdersByCustomer.get(cust.id) ?? [];
@@ -732,7 +856,8 @@ async function main() {
     // New customer — create one order per row
     for (const row of rows) {
       const portions = Number.parseInt(row.sisaKuota, 10) || 0;
-      const priceRaw = Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, ""), 10) || 0;
+      const priceRaw =
+        Number.parseInt(row.hargaPerKuota.replace(/[^0-9]/g, ""), 10) || 0;
       const totalPrice = portions * priceRaw;
 
       const { data: ord, error: ordErr } = await db
@@ -753,7 +878,10 @@ async function main() {
         .single();
 
       if (ordErr || !ord) {
-        console.error(`  ERROR creating order for "${row.nama}":`, ordErr?.message);
+        console.error(
+          `  ERROR creating order for "${row.nama}":`,
+          ordErr?.message,
+        );
         continue;
       }
       orderCount++;
@@ -761,10 +889,14 @@ async function main() {
       orderIdByKey.set(`${cust.id}:`, ord.id);
     }
 
-    console.log(`  ✓ ${baseName} (${rows.length} order${rows.length > 1 ? "s" : ""})`);
+    console.log(
+      `  ✓ ${baseName} (${rows.length} order${rows.length > 1 ? "s" : ""})`,
+    );
   }
 
-  console.log(`\nImported ${customerCount} customers, ${orderCount} new orders`);
+  console.log(
+    `\nImported ${customerCount} customers, ${orderCount} new orders`,
+  );
 
   // ── Upsert daily_deliveries from ORDER_HARIAN ────────────────────────────
   let deliveryCount = 0;
@@ -772,19 +904,33 @@ async function main() {
 
   for (const row of rawOrders) {
     const date = parseDate(row.tanggal);
-    if (!date) { deliverySkipped++; continue; }
-    if (afterDate && date <= afterDate) { deliverySkipped++; continue; }
-    if (untilDate && date > untilDate) { deliverySkipped++; continue; }
+    if (!date) {
+      deliverySkipped++;
+      continue;
+    }
+    if (afterDate && date <= afterDate) {
+      deliverySkipped++;
+      continue;
+    }
+    if (untilDate && date > untilDate) {
+      deliverySkipped++;
+      continue;
+    }
 
-    const mealType = row.mealType.toLowerCase().includes("dinner") ? "dinner" : "lunch";
+    const mealType = row.mealType.toLowerCase().includes("dinner")
+      ? "dinner"
+      : "lunch";
     const portions = Number.parseInt(row.jumlah, 10) || 1;
     const nameKey = row.nama.trim().toLowerCase();
 
     // Match customer: try full name first, then base name
     const { base } = parseName(row.nama);
-    const customerId = customerIdByName.get(nameKey) ?? customerIdByName.get(base.toLowerCase());
+    const customerId =
+      customerIdByName.get(nameKey) ?? customerIdByName.get(base.toLowerCase());
     if (!customerId) {
-      console.warn(`  SKIP delivery row: no customer found for "${row.nama}" on ${date}`);
+      console.warn(
+        `  SKIP delivery row: no customer found for "${row.nama}" on ${date}`,
+      );
       deliverySkipped++;
       continue;
     }
@@ -792,7 +938,9 @@ async function main() {
     const orderId = orderIdByKey.get(`${customerId}:`);
 
     if (!orderId) {
-      console.warn(`  SKIP delivery row: no order found for "${row.nama}" on ${date}`);
+      console.warn(
+        `  SKIP delivery row: no order found for "${row.nama}" on ${date}`,
+      );
       deliverySkipped++;
       continue;
     }
@@ -810,7 +958,10 @@ async function main() {
         notes: row.catatan || null,
         status: "scheduled",
       },
-      { onConflict: "delivery_date,customer_id,meal_type", ignoreDuplicates: false },
+      {
+        onConflict: "delivery_date,customer_id,meal_type",
+        ignoreDuplicates: false,
+      },
     );
 
     if (error) {
@@ -821,7 +972,9 @@ async function main() {
     }
   }
 
-  console.log(`Imported ${deliveryCount} deliveries, skipped ${deliverySkipped}`);
+  console.log(
+    `Imported ${deliveryCount} deliveries, skipped ${deliverySkipped}`,
+  );
 }
 
 main().catch((err) => {

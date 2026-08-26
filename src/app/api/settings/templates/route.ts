@@ -5,10 +5,16 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function PATCH(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as { key: string; template: string };
+  const body = (await req.json()) as { key: string; template: string };
   const db = createAdminClient();
 
   const { error } = await db
@@ -16,7 +22,11 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .update({ template: body.template })
     .eq("key", body.key);
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   await db.from("edit_log").insert({
     entity_type: "message_templates",

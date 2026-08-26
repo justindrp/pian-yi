@@ -36,4 +36,10 @@ async function main() {
   console.log(`order set to per_day_decision, rem=${10 - drawn}`);
 }
 
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

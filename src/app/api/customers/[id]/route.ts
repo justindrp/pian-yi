@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import type { Database } from "@/types/database";
 import { logEdit } from "@/lib/audit/log-edit";
 import { packageCreditDate } from "@/lib/orders/credit-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,10 @@ export async function GET(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const { id } = await params;
@@ -33,7 +36,12 @@ export async function GET(
         "id, package_size, total_price, price_per_portion, start_date, created_at, status, source, grant_reason",
       )
       .eq("customer_id", id)
-      .in("status", ["active", "paused", "completed", "payment_proof_received"]),
+      .in("status", [
+        "active",
+        "paused",
+        "completed",
+        "payment_proof_received",
+      ]),
     db
       .from("daily_deliveries")
       .select("id, delivery_date, meal_type, portions, status, notes")
@@ -41,10 +49,16 @@ export async function GET(
   ]);
 
   if (ordersRes.error) {
-    return NextResponse.json({ ok: false, error: ordersRes.error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: ordersRes.error.message },
+      { status: 500 },
+    );
   }
   if (deliveriesRes.error) {
-    return NextResponse.json({ ok: false, error: deliveriesRes.error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: deliveriesRes.error.message },
+      { status: 500 },
+    );
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -108,8 +122,12 @@ export async function GET(
     return { ...e, balance };
   });
 
-  const totalPackage = rows.filter((r) => r.kind === "package").reduce((s, r) => s + r.change, 0);
-  const totalDrawn = rows.filter((r) => r.kind === "draw").reduce((s, r) => s + r.change, 0); // negative
+  const totalPackage = rows
+    .filter((r) => r.kind === "package")
+    .reduce((s, r) => s + r.change, 0);
+  const totalDrawn = rows
+    .filter((r) => r.kind === "draw")
+    .reduce((s, r) => s + r.change, 0); // negative
 
   // Two balances, because they answer different questions and admins need both.
   //
@@ -123,7 +141,10 @@ export async function GET(
   //
   // Package credits count in both: quota is paid for and usable from the moment
   // the order exists, even when start_date is still ahead.
-  const balanceToday = rows.reduce((s, r) => (r.scheduled ? s : s + r.change), 0);
+  const balanceToday = rows.reduce(
+    (s, r) => (r.scheduled ? s : s + r.change),
+    0,
+  );
 
   return NextResponse.json({
     ok: true,
@@ -310,7 +331,10 @@ export async function DELETE(
     entityType: "customers",
     entityId: id,
     action: "delete",
-    changes: { deleted_customer_id: id, cascaded: ["orders", "daily_deliveries", "conversations"] },
+    changes: {
+      deleted_customer_id: id,
+      cascaded: ["orders", "daily_deliveries", "conversations"],
+    },
   });
 
   return NextResponse.json({ ok: true });

@@ -47,14 +47,24 @@ describe("isDeliveryDay", () => {
 
 describe("earliestDeliveryDate", () => {
   test("tomorrow, while the cutoff is still ahead", () => {
-    expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-20T08:00:00Z") })).toEqual({
+    expect(
+      earliestDeliveryDate({
+        deadlineHour: 16,
+        now: at("2026-08-20T08:00:00Z"),
+      }),
+    ).toEqual({
       date: "2026-08-21",
       deadlinePassed: false,
     });
   });
 
   test("the cutoff hour itself has already passed", () => {
-    expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-20T09:00:00Z") })).toEqual({
+    expect(
+      earliestDeliveryDate({
+        deadlineHour: 16,
+        now: at("2026-08-20T09:00:00Z"),
+      }),
+    ).toEqual({
       date: "2026-08-22",
       deadlinePassed: true,
     });
@@ -64,29 +74,43 @@ describe("earliestDeliveryDate", () => {
   // kan Jumat" three hours after the cutoff, because the prompt gave it the
   // deadline hour and never the time.
   test("the 2026-08-20 incident lands on Sabtu, not Jumat", () => {
-    expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-20T12:05:00Z") })).toEqual({
+    expect(
+      earliestDeliveryDate({
+        deadlineHour: 16,
+        now: at("2026-08-20T12:05:00Z"),
+      }),
+    ).toEqual({
       date: "2026-08-22",
       deadlinePassed: true,
     });
   });
 
   test("skips Minggu", () => {
-    expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-22T08:00:00Z") }).date).toBe(
-      "2026-08-24",
-    );
+    expect(
+      earliestDeliveryDate({
+        deadlineHour: 16,
+        now: at("2026-08-22T08:00:00Z"),
+      }).date,
+    ).toBe("2026-08-24");
   });
 
   test("skips a libur nasional", () => {
     // Minggu 16 → Senin 17 is Kemerdekaan → Selasa 18.
-    expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-16T08:00:00Z") }).date).toBe(
-      "2026-08-18",
-    );
+    expect(
+      earliestDeliveryDate({
+        deadlineHour: 16,
+        now: at("2026-08-16T08:00:00Z"),
+      }).date,
+    ).toBe("2026-08-18");
   });
 
   test("does not skip a tanggal merah the kitchen works through", () => {
-    expect(earliestDeliveryDate({ deadlineHour: 16, now: at("2026-08-24T08:00:00Z") }).date).toBe(
-      "2026-08-25",
-    );
+    expect(
+      earliestDeliveryDate({
+        deadlineHour: 16,
+        now: at("2026-08-24T08:00:00Z"),
+      }).date,
+    ).toBe("2026-08-25");
   });
 });
 

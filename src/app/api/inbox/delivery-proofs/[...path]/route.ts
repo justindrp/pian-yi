@@ -11,13 +11,19 @@ export async function GET(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const { path } = await params;
   const storagePath = path.join("/");
   if (!storagePath) {
-    return NextResponse.json({ ok: false, error: "Missing storage path" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing storage path" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -26,7 +32,10 @@ export async function GET(
     .createSignedUrl(storagePath, 3600);
 
   if (error || !data?.signedUrl) {
-    return NextResponse.json({ ok: false, error: "Image not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Image not found" },
+      { status: 404 },
+    );
   }
 
   return NextResponse.redirect(data.signedUrl);

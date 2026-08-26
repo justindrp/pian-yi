@@ -22,7 +22,7 @@ if (!APP_SECRET) {
 
 const BASE_URL = process.env.TEST_WEBHOOK_URL ?? "http://localhost:3000";
 const messageText = process.argv[2] ?? "Halo";
-const fromPhone = process.argv[3] ?? (process.env.TEST_PHONE ?? "628111222333");
+const fromPhone = process.argv[3] ?? process.env.TEST_PHONE ?? "628111222333";
 const messageId = `test_${Date.now()}`;
 const timestamp = String(Math.floor(Date.now() / 1000));
 
@@ -80,5 +80,9 @@ const res = await fetch(`${BASE_URL}/api/webhook/whatsapp`, {
 console.log(`Status: ${res.status} ${res.statusText}`);
 const text = await res.text();
 if (text) console.log(`Body:   ${text}`);
-console.log("\nBot processes the message async — watch dev server logs for output.");
-console.log("The bot reply goes via WhatsApp API (use ngrok + real number to see replies).");
+console.log(
+  "\nBot processes the message async — watch dev server logs for output.",
+);
+console.log(
+  "The bot reply goes via WhatsApp API (use ngrok + real number to see replies).",
+);

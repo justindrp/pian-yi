@@ -23,10 +23,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  useDeliveryAreas,
-  withCurrentAreas,
-} from "@/hooks/use-delivery-areas";
+import { useDeliveryAreas, withCurrentAreas } from "@/hooks/use-delivery-areas";
 import { deriveCustomerDisplayState } from "@/lib/customers/lifecycle";
 import { matchCustomerByName, parseGrantPaste } from "@/lib/grants/parse-paste";
 import { createClient } from "@/lib/supabase/client";

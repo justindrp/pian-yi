@@ -15,7 +15,10 @@ export default async function HandbookPage() {
   const [areas, deadlineHour, tiers, kitchens] = await Promise.all([
     activeDeliveryAreas(db),
     getSetting("order_deadline_hour"),
-    db.from("pricing_tiers").select("portions, price_per_portion").order("portions"),
+    db
+      .from("pricing_tiers")
+      .select("portions, price_per_portion")
+      .order("portions"),
     db
       .from("subcontractors")
       .select("customer_nickname")

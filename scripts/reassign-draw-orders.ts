@@ -46,7 +46,6 @@ import { createClient } from "@supabase/supabase-js";
 
 const APPLY = process.argv.includes("--apply");
 
-
 type Order = {
   id: string;
   customer_id: string | null;
@@ -76,10 +75,7 @@ function db() {
 }
 
 // Supabase caps a select at 1000 rows, and these tables are past that.
-async function fetchAll<T>(
-  table: string,
-  columns: string,
-): Promise<T[]> {
+async function fetchAll<T>(table: string, columns: string): Promise<T[]> {
   const client = db();
   const out: T[] = [];
   const page = 1000;
@@ -162,7 +158,12 @@ async function main() {
     deliveriesByCustomer.set(key, list);
   }
 
-  const moves: { id: string; from: string | null; to: string; label: string }[] = [];
+  const moves: {
+    id: string;
+    from: string | null;
+    to: string;
+    label: string;
+  }[] = [];
   const balanceFixes: {
     id: string;
     label: string;
@@ -202,13 +203,17 @@ async function main() {
     const realOrders = custOrders.filter((o) => (o.package_size ?? 0) > 0);
     for (const o of custOrders) {
       if ((o.package_size ?? 0) === 0) {
-        zeroPackage.push(`${name}  order ${o.id.slice(0, 8)} ${o.status} pkg=0`);
+        zeroPackage.push(
+          `${name}  order ${o.id.slice(0, 8)} ${o.status} pkg=0`,
+        );
       }
     }
     // Nothing to fill: every order this customer has is an artifact, so their
     // deliveries have no real package to draw from. Leave them alone and report.
     if (realOrders.length === 0) {
-      noRealPackage.push(`${name}  ${custDeliveries.length} deliveries, no real package`);
+      noRealPackage.push(
+        `${name}  ${custDeliveries.length} deliveries, no real package`,
+      );
       continue;
     }
 
@@ -281,7 +286,9 @@ async function main() {
   console.log(`\n=== deliveries to re-point (${moves.length}) ===`);
   for (const m of moves) console.log(`  ${m.label}`);
 
-  console.log(`\n=== portions_remaining to correct (${balanceFixes.length}) ===`);
+  console.log(
+    `\n=== portions_remaining to correct (${balanceFixes.length}) ===`,
+  );
   for (const b of balanceFixes) {
     console.log(`  ${b.label}: ${b.was} → ${b.now}`);
   }
@@ -325,7 +332,11 @@ async function main() {
   const plan: RollbackPlan = {
     created_at: new Date().toISOString(),
     deliveries: moves.map((m) => ({ id: m.id, before: m.from, after: m.to })),
-    orders: balanceFixes.map((b) => ({ id: b.id, before: b.was, after: b.now })),
+    orders: balanceFixes.map((b) => ({
+      id: b.id,
+      before: b.was,
+      after: b.now,
+    })),
   };
   writeFileSync(rollbackPath, JSON.stringify(plan, null, 2));
   console.log(`\nrollback plan written: ${rollbackPath}`);
@@ -357,8 +368,12 @@ async function main() {
     fixed++;
   }
 
-  console.log(`\nAPPLIED: ${moved} deliveries re-pointed, ${fixed} balances corrected.`);
-  console.log(`Undo with: pnpm tsx scripts/reassign-draw-orders.ts --rollback ${rollbackPath}`);
+  console.log(
+    `\nAPPLIED: ${moved} deliveries re-pointed, ${fixed} balances corrected.`,
+  );
+  console.log(
+    `Undo with: pnpm tsx scripts/reassign-draw-orders.ts --rollback ${rollbackPath}`,
+  );
 }
 
 type RollbackPlan = {
@@ -443,7 +458,8 @@ const entry =
   rollbackFlag !== -1
     ? (() => {
         const path = process.argv[rollbackFlag + 1];
-        if (!path) throw new Error("--rollback needs a path to a rollback JSON file");
+        if (!path)
+          throw new Error("--rollback needs a path to a rollback JSON file");
         return rollback(path);
       })()
     : main();

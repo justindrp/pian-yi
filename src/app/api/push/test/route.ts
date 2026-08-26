@@ -1,5 +1,5 @@
-import webpush from "web-push";
 import { type NextRequest, NextResponse } from "next/server";
+import webpush from "web-push";
 import { requiredEnv } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -72,7 +72,8 @@ export async function POST(req: NextRequest): Promise<Response> {
           endpoint: sub.endpoint,
           status,
           ok: false,
-          error: (err as { body?: string; message?: string }).body ??
+          error:
+            (err as { body?: string; message?: string }).body ??
             (err as Error).message,
         };
       }

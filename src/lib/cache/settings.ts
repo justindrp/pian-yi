@@ -15,17 +15,19 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 async function load(): Promise<CacheData> {
   const db = createAdminClient();
 
-  const [settingsRes, pricingRes, templatesRes, instructionsRes, neighborhoodsRes] =
-    await Promise.all([
-      db.from("settings").select("key, value"),
-      db.from("pricing_tiers").select("portions, price_per_portion"),
-      db.from("message_templates").select("key, template"),
-      db
-        .from("chatbot_instructions")
-        .select("instruction")
-        .eq("is_active", true),
-      db.from("area_neighborhoods").select("area, name").order("name"),
-    ]);
+  const [
+    settingsRes,
+    pricingRes,
+    templatesRes,
+    instructionsRes,
+    neighborhoodsRes,
+  ] = await Promise.all([
+    db.from("settings").select("key, value"),
+    db.from("pricing_tiers").select("portions, price_per_portion"),
+    db.from("message_templates").select("key, template"),
+    db.from("chatbot_instructions").select("instruction").eq("is_active", true),
+    db.from("area_neighborhoods").select("area, name").order("name"),
+  ]);
 
   const settings: Record<string, string> = {};
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;

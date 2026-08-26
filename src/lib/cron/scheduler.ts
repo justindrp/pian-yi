@@ -170,7 +170,10 @@ const JOBS: Job[] = [
 
 // One shared body for a scheduled firing and a catch-up firing, so a job that
 // runs late runs exactly as it would have on time.
-async function runJob(job: Job, trigger: "scheduled" | "catch-up"): Promise<void> {
+async function runJob(
+  job: Job,
+  trigger: "scheduled" | "catch-up",
+): Promise<void> {
   const startedAt = Date.now();
   const label = trigger === "catch-up" ? `${job.name} (catch-up)` : job.name;
   try {
@@ -181,7 +184,9 @@ async function runJob(job: Job, trigger: "scheduled" | "catch-up"): Promise<void
       console.log(`[scheduler] ${label} ok in ${ms}ms — ${body}`);
       await recordRun(job.name);
     } else {
-      console.error(`[scheduler] ${label} HTTP ${res.status} in ${ms}ms — ${body}`);
+      console.error(
+        `[scheduler] ${label} HTTP ${res.status} in ${ms}ms — ${body}`,
+      );
     }
   } catch (err) {
     console.error(
@@ -252,7 +257,10 @@ async function catchUpMissedJobs(): Promise<void> {
     // Without the table there is no way to tell "missed it" from "already ran",
     // and guessing would mean re-sending. Skip the sweep; the normal schedule
     // is unaffected.
-    console.error("[scheduler] catch-up skipped, could not read cron_runs:", err);
+    console.error(
+      "[scheduler] catch-up skipped, could not read cron_runs:",
+      err,
+    );
     return;
   }
 
@@ -297,7 +305,7 @@ export function startScheduler(): void {
   // so a laptop running `next dev` with this on would send real customers real
   // WhatsApp messages. Railway sets CRON_IN_APP=true; nothing else should.
   if (process.env.CRON_IN_APP !== "true") {
-    console.log("[scheduler] disabled (CRON_IN_APP is not \"true\")");
+    console.log('[scheduler] disabled (CRON_IN_APP is not "true")');
     return;
   }
 

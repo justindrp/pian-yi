@@ -234,12 +234,20 @@ interface CustomerDetail {
   } | null;
 }
 
-function parseNotes(notes: string | null): { aiContext: string | null; manualNotes: string | null } {
+function parseNotes(notes: string | null): {
+  aiContext: string | null;
+  manualNotes: string | null;
+} {
   if (!notes) return { aiContext: null, manualNotes: null };
-  const match = notes.match(/\[AI learned context\]([\s\S]*?)\[\/AI learned context\]/);
+  const match = notes.match(
+    /\[AI learned context\]([\s\S]*?)\[\/AI learned context\]/,
+  );
   if (!match) return { aiContext: null, manualNotes: notes.trim() || null };
   const aiContext = match[1].trim();
-  const manualNotes = notes.replace(/\[AI learned context\][\s\S]*?\[\/AI learned context\]/, "").trim() || null;
+  const manualNotes =
+    notes
+      .replace(/\[AI learned context\][\s\S]*?\[\/AI learned context\]/, "")
+      .trim() || null;
   return { aiContext, manualNotes };
 }
 
@@ -290,7 +298,11 @@ function GlobalContext() {
   const [newText, setNewText] = useState("");
 
   const patch = useMutation({
-    mutationFn: async (body: { id: string; instruction?: string; is_active?: boolean }) => {
+    mutationFn: async (body: {
+      id: string;
+      instruction?: string;
+      is_active?: boolean;
+    }) => {
       await fetch("/api/chatbot-instructions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -337,7 +349,9 @@ function GlobalContext() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-700">System Prompt</h2>
-          <span className="text-xs text-gray-400">Preview — konteks pelanggan dikosongkan</span>
+          <span className="text-xs text-gray-400">
+            Preview — konteks pelanggan dikosongkan
+          </span>
         </div>
         {promptLoading ? (
           <div className="text-gray-400 text-sm">Loading...</div>
@@ -350,7 +364,9 @@ function GlobalContext() {
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-gray-700">Instruksi Custom Annie</h2>
+          <h2 className="text-sm font-semibold text-gray-700">
+            Instruksi Custom Annie
+          </h2>
           {!adding && (
             <Button
               type="button"
@@ -387,7 +403,10 @@ function GlobalContext() {
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => { setAdding(false); setNewText(""); }}
+                onClick={() => {
+                  setAdding(false);
+                  setNewText("");
+                }}
               >
                 Batal
               </Button>
@@ -424,7 +443,12 @@ function GlobalContext() {
                             <Button
                               type="button"
                               size="sm"
-                              onClick={() => patch.mutate({ id: inst.id, instruction: editText })}
+                              onClick={() =>
+                                patch.mutate({
+                                  id: inst.id,
+                                  instruction: editText,
+                                })
+                              }
                               className="bg-blue-600 hover:bg-blue-700"
                             >
                               Save
@@ -440,13 +464,20 @@ function GlobalContext() {
                           </div>
                         </div>
                       ) : (
-                        <p className="text-gray-700 line-clamp-2">{inst.instruction}</p>
+                        <p className="text-gray-700 line-clamp-2">
+                          {inst.instruction}
+                        </p>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <button
                         type="button"
-                        onClick={() => patch.mutate({ id: inst.id, is_active: !inst.is_active })}
+                        onClick={() =>
+                          patch.mutate({
+                            id: inst.id,
+                            is_active: !inst.is_active,
+                          })
+                        }
                         className={`w-10 h-5 rounded-full transition-colors ${inst.is_active ? "bg-blue-600" : "bg-gray-200"} relative`}
                       >
                         <span
@@ -463,7 +494,10 @@ function GlobalContext() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => { setEditing(inst.id); setEditText(inst.instruction); }}
+                          onClick={() => {
+                            setEditing(inst.id);
+                            setEditText(inst.instruction);
+                          }}
                           className="text-blue-500 hover:text-blue-700 h-auto py-0 px-1"
                         >
                           Edit
@@ -506,8 +540,12 @@ function GlobalContext() {
                 ))}
                 {(instructions ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                      Belum ada instruksi. Gunakan tab Conversational untuk menambah.
+                    <td
+                      colSpan={4}
+                      className="px-4 py-8 text-center text-gray-400"
+                    >
+                      Belum ada instruksi. Gunakan tab Conversational untuk
+                      menambah.
                     </td>
                   </tr>
                 )}
@@ -532,7 +570,10 @@ function CustomerContext() {
     queryKey: ["customers-all"],
     queryFn: async () => {
       const res = await fetch("/api/customers?all=true");
-      const json = (await res.json()) as { ok: boolean; data: CustomerSummary[] };
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: CustomerSummary[];
+      };
       return json.data;
     },
   });
@@ -563,7 +604,9 @@ function CustomerContext() {
 
   const filtered = (customers ?? []).filter((c) => {
     const q = search.toLowerCase();
-    return (c.name ?? "").toLowerCase().includes(q) || c.phone_number.includes(q);
+    return (
+      (c.name ?? "").toLowerCase().includes(q) || c.phone_number.includes(q)
+    );
   });
 
   function selectCustomer(c: CustomerSummary) {
@@ -580,7 +623,11 @@ function CustomerContext() {
       <div className="relative">
         <Input
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setOpen(true); if (!e.target.value) setSelectedId(null); }}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setOpen(true);
+            if (!e.target.value) setSelectedId(null);
+          }}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="Cari nama atau nomor HP..."
@@ -595,7 +642,9 @@ function CustomerContext() {
                 onMouseDown={() => selectCustomer(c)}
               >
                 <span className="font-medium">{c.name ?? "(tanpa nama)"}</span>
-                <span className="text-gray-400 ml-2 text-xs">{c.phone_number}</span>
+                <span className="text-gray-400 ml-2 text-xs">
+                  {c.phone_number}
+                </span>
               </button>
             ))}
           </div>
@@ -609,7 +658,9 @@ function CustomerContext() {
       {selectedId && detail && (
         <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
           <div>
-            <p className="font-semibold text-gray-900">{detail.name ?? "(tanpa nama)"}</p>
+            <p className="font-semibold text-gray-900">
+              {detail.name ?? "(tanpa nama)"}
+            </p>
             <p className="text-xs text-gray-400">{detail.phone_number}</p>
           </div>
 
@@ -627,26 +678,38 @@ function CustomerContext() {
               <p className="text-xs text-gray-500 mb-1">Flags</p>
               <div className="flex flex-wrap gap-1">
                 {detail.customer_flags.is_blacklisted && (
-                  <span className="px-2 py-0.5 bg-red-50 text-red-700 text-xs rounded-full">Blacklisted</span>
+                  <span className="px-2 py-0.5 bg-red-50 text-red-700 text-xs rounded-full">
+                    Blacklisted
+                  </span>
                 )}
                 {detail.customer_flags.escalated_to_human && (
-                  <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs rounded-full">Escalated</span>
+                  <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs rounded-full">
+                    Escalated
+                  </span>
                 )}
                 {detail.customer_flags.pending_bot_response && (
-                  <span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 text-xs rounded-full">Waiting bot reply</span>
+                  <span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 text-xs rounded-full">
+                    Waiting bot reply
+                  </span>
                 )}
                 {detail.customer_flags.vip_status && (
-                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full">VIP</span>
+                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full">
+                    VIP
+                  </span>
                 )}
                 {detail.customer_flags.is_suspicious && (
-                  <span className="px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded-full">Suspicious</span>
+                  <span className="px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded-full">
+                    Suspicious
+                  </span>
                 )}
                 {!detail.customer_flags.is_blacklisted &&
                   !detail.customer_flags.escalated_to_human &&
                   !detail.customer_flags.pending_bot_response &&
                   !detail.customer_flags.vip_status &&
                   !detail.customer_flags.is_suspicious && (
-                    <span className="text-xs text-gray-400">Tidak ada flag aktif</span>
+                    <span className="text-xs text-gray-400">
+                      Tidak ada flag aktif
+                    </span>
                   )}
               </div>
             </div>
@@ -655,7 +718,9 @@ function CustomerContext() {
           {detail.meal_time_preference && (
             <div>
               <p className="text-xs text-gray-500 mb-1">Preferensi makan</p>
-              <p className="text-sm text-gray-700">{detail.meal_time_preference}</p>
+              <p className="text-sm text-gray-700">
+                {detail.meal_time_preference}
+              </p>
             </div>
           )}
 
@@ -666,7 +731,10 @@ function CustomerContext() {
                 {detail.ad_creative && <p>Ad creative: {detail.ad_creative}</p>}
                 {detail.promo_used && <p>Promo: {detail.promo_used}</p>}
                 {detail.converted_at && (
-                  <p>Converted: {new Date(detail.converted_at).toLocaleDateString("id-ID")}</p>
+                  <p>
+                    Converted:{" "}
+                    {new Date(detail.converted_at).toLocaleDateString("id-ID")}
+                  </p>
                 )}
               </div>
             </div>
@@ -680,7 +748,10 @@ function CustomerContext() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => { setEditingNotes(true); setEditNotes(detail.notes ?? ""); }}
+                  onClick={() => {
+                    setEditingNotes(true);
+                    setEditNotes(detail.notes ?? "");
+                  }}
                   className="text-blue-500 h-auto py-0 px-1 text-xs"
                 >
                   Edit
@@ -721,12 +792,18 @@ function CustomerContext() {
               <div className="space-y-2">
                 {aiContext && (
                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                    <p className="text-xs text-blue-500 font-medium mb-1">AI learned context</p>
-                    <p className="text-xs text-blue-800 whitespace-pre-wrap">{aiContext}</p>
+                    <p className="text-xs text-blue-500 font-medium mb-1">
+                      AI learned context
+                    </p>
+                    <p className="text-xs text-blue-800 whitespace-pre-wrap">
+                      {aiContext}
+                    </p>
                   </div>
                 )}
                 {manualNotes && (
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{manualNotes}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {manualNotes}
+                  </p>
                 )}
                 {!aiContext && !manualNotes && (
                   <p className="text-xs text-gray-400">Belum ada catatan.</p>

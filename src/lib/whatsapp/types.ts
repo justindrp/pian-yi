@@ -115,23 +115,29 @@ export function parseStatusUpdates(
 
     const rawErrors = status.errors;
     const errors = Array.isArray(rawErrors)
-      ? rawErrors.flatMap((e): Array<{ code: number; title: string; message?: string }> => {
-          if (!isObject(e)) return [];
-          // Meta puts the actionable sentence in error_data.details, not message.
-          const details = isObject(e.error_data) ? e.error_data.details : undefined;
-          return [{
-            code: Number(e.code),
-            title: String(e.title),
-            // details is the specific one ("your payment method was declined");
-            // message is usually just the title again.
-            message:
-              typeof details === "string"
-                ? details
-                : typeof e.message === "string"
-                  ? e.message
-                  : undefined,
-          }];
-        })
+      ? rawErrors.flatMap(
+          (e): Array<{ code: number; title: string; message?: string }> => {
+            if (!isObject(e)) return [];
+            // Meta puts the actionable sentence in error_data.details, not message.
+            const details = isObject(e.error_data)
+              ? e.error_data.details
+              : undefined;
+            return [
+              {
+                code: Number(e.code),
+                title: String(e.title),
+                // details is the specific one ("your payment method was declined");
+                // message is usually just the title again.
+                message:
+                  typeof details === "string"
+                    ? details
+                    : typeof e.message === "string"
+                      ? e.message
+                      : undefined,
+              },
+            ];
+          },
+        )
       : undefined;
 
     return [

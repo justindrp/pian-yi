@@ -18,8 +18,8 @@
  *   tsx --env-file=.env.local scripts/reopen-underdelivered-orders.ts --apply
  */
 import { createClient } from "@supabase/supabase-js";
-import { fetchAllRows } from "../src/lib/supabase/fetch-all";
 import { jakartaDateString } from "../src/lib/menu/week";
+import { fetchAllRows } from "../src/lib/supabase/fetch-all";
 
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
@@ -75,7 +75,8 @@ async function main() {
   const drawn = new Map<string, number>();
   const booked = new Map<string, number>();
   for (const d of dels) {
-    if (!d.order_id || d.status === "cancelled" || d.status === "skipped") continue;
+    if (!d.order_id || d.status === "cancelled" || d.status === "skipped")
+      continue;
     booked.set(d.order_id, (booked.get(d.order_id) ?? 0) + (d.portions ?? 0));
     if (d.delivery_date <= TODAY)
       drawn.set(d.order_id, (drawn.get(d.order_id) ?? 0) + (d.portions ?? 0));
@@ -102,7 +103,9 @@ async function main() {
       `${custName(o).padEnd(16)} ${o.id.slice(0, 8)} pkg=${o.package_size} owed=${owed} unbooked=${unbooked} pref=${o.meal_time_preference} closed=${o.completed_at?.slice(0, 10)}`,
     );
     if (unbooked > 0)
-      console.log(`      will generate up to ${unbooked} more row(s) — expected, that quota is unbooked`);
+      console.log(
+        `      will generate up to ${unbooked} more row(s) — expected, that quota is unbooked`,
+      );
 
     if (APPLY) {
       const { error } = await db
@@ -114,7 +117,8 @@ async function main() {
     }
   }
 
-  if (!APPLY && targets.length > 0) console.log("\nre-run with --apply to reopen these.");
+  if (!APPLY && targets.length > 0)
+    console.log("\nre-run with --apply to reopen these.");
 }
 
 main().then(

@@ -3,18 +3,25 @@ import type {
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import { NextResponse } from "next/server";
-import { NO_THINKING, SONNET_MODEL, getAnthropicClient } from "@/lib/claude/client";
+import { createConversation, saveTurn } from "@/lib/claude/assistant-history";
 import { getAssistantSystemPrompt } from "@/lib/claude/assistant-prompt";
 import {
+  describeToolCall,
+  summarizeToolResult,
+} from "@/lib/claude/assistant-steps";
+import {
   assistantTools,
-  runTool,
-  isWriteTool,
   buildPendingAction,
+  isWriteTool,
+  runTool,
 } from "@/lib/claude/assistant-tools";
-import { describeToolCall, summarizeToolResult } from "@/lib/claude/assistant-steps";
-import { getSessionWithRole } from "@/lib/supabase/get-role";
+import {
+  getAnthropicClient,
+  NO_THINKING,
+  SONNET_MODEL,
+} from "@/lib/claude/client";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createConversation, saveTurn } from "@/lib/claude/assistant-history";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
 import type { Json } from "@/types/database";
 
 // Streaming twin of POST /api/assistant. Same loop, same write-tool
@@ -37,19 +44,28 @@ type StreamEvent =
 export async function POST(request: Request) {
   const session = await getSessionWithRole();
   if (!session) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   let body: { messages?: MessageParam[]; conversationId?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid JSON" },
+      { status: 400 },
+    );
   }
 
   const { messages, conversationId: incomingId } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
-    return NextResponse.json({ ok: false, error: "messages required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "messages required" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -73,7 +89,9 @@ export async function POST(request: Request) {
 
       function send(event: StreamEvent) {
         if (closed) return;
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+        );
       }
 
       async function persist() {
@@ -119,10 +137,14 @@ export async function POST(request: Request) {
           }
 
           if (response.stop_reason === "tool_use") {
-            const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
+            const toolUseBlocks = response.content.filter(
+              (b) => b.type === "tool_use",
+            );
             if (toolUseBlocks.length === 0) break;
 
-            const writeBlocks = toolUseBlocks.filter((b) => isWriteTool(b.name));
+            const writeBlocks = toolUseBlocks.filter((b) =>
+              isWriteTool(b.name),
+            );
             if (writeBlocks.length > 0) {
               const pendingAction =
                 writeBlocks.length === 1 ||
@@ -147,7 +169,10 @@ export async function POST(request: Request) {
               return;
             }
 
-            currentMessages.push({ role: "assistant", content: response.content });
+            currentMessages.push({
+              role: "assistant",
+              content: response.content,
+            });
 
             const toolResults: ToolResultBlockParam[] = await Promise.all(
               toolUseBlocks.map(async (block) => {
@@ -280,9 +305,9 @@ function extractLastUserText(messages: MessageParam[]): string | null {
     const content = msg.content;
     if (typeof content === "string") return content;
     if (Array.isArray(content)) {
-      const text = content.find((b) => typeof b === "object" && b.type === "text") as
-        | { type: "text"; text: string }
-        | undefined;
+      const text = content.find(
+        (b) => typeof b === "object" && b.type === "text",
+      ) as { type: "text"; text: string } | undefined;
       if (text) return text.text;
     }
   }

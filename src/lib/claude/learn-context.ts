@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { HAIKU_MODEL, NO_THINKING, extractText, getAnthropicClient } from "@/lib/claude/client";
+import {
+  extractText,
+  getAnthropicClient,
+  HAIKU_MODEL,
+  NO_THINKING,
+} from "@/lib/claude/client";
 import { updateTokenCount } from "@/lib/claude/safety";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";

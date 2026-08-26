@@ -27,7 +27,7 @@
  *   pnpm tsx scripts/backfill-order-dates.ts --rollback scripts/rollback-<ts>.json
  */
 
-import { writeFileSync, readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { parse } from "csv-parse/sync";
 
@@ -61,19 +61,40 @@ function parseName(name: string): { base: string; index: number } {
 
 function nameKeys(name: string): string[] {
   const lower = name.trim().toLowerCase();
-  const noParen = lower.replace(/\(.*?\)/g, "").replace(/\s+/g, " ").trim();
+  const noParen = lower
+    .replace(/\(.*?\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   const base = parseName(noParen).base;
   return [...new Set([lower, noParen, base])].filter((k) => k.length > 0);
 }
 
 const NAME_ALIASES: Record<string, string> = {
-  defi: "defi lugito", "febby bsd": "febby", "hanna bsd": "hanna", "steven gs": "steven",
-  "vina bsd": "vina", "lani bsd": "lani diana", lani: "lani diana", nadita: "nadita putri",
-  tio: "tio jason", diva: "diva felicia", dewita: "maria dewita", farrel: "farrell suryadi",
-  katriel: "katriel scenny", "katriel m": "katriel scenny", aurellia: "aurellia hanzelita",
-  "aurellia h": "aurellia hanzelita", frikri: "fikri", kressensia: "krissensia",
-  nathaza: "nathaza caroline", "natalia s": "natalia saroso", melviina: "melvina",
-  "zhoe bez": "zhoe", "zhoe allogio": "zhoe", "devi ipeka": "devi", "devi park serpong": "devi",
+  defi: "defi lugito",
+  "febby bsd": "febby",
+  "hanna bsd": "hanna",
+  "steven gs": "steven",
+  "vina bsd": "vina",
+  "lani bsd": "lani diana",
+  lani: "lani diana",
+  nadita: "nadita putri",
+  tio: "tio jason",
+  diva: "diva felicia",
+  dewita: "maria dewita",
+  farrel: "farrell suryadi",
+  katriel: "katriel scenny",
+  "katriel m": "katriel scenny",
+  aurellia: "aurellia hanzelita",
+  "aurellia h": "aurellia hanzelita",
+  frikri: "fikri",
+  kressensia: "krissensia",
+  nathaza: "nathaza caroline",
+  "natalia s": "natalia saroso",
+  melviina: "melvina",
+  "zhoe bez": "zhoe",
+  "zhoe allogio": "zhoe",
+  "devi ipeka": "devi",
+  "devi park serpong": "devi",
   rima: "rima/herlina",
 };
 
@@ -107,7 +128,10 @@ type SheetRow = {
 };
 
 /** Sheet dates are M/D/YYYY; time is a bare HHMM string like "1944" or "0453". */
-function toIso(dateRaw: string, timeRaw: string): { date: string; iso: string } | null {
+function toIso(
+  dateRaw: string,
+  timeRaw: string,
+): { date: string; iso: string } | null {
   const m = dateRaw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
   const [, mm, dd, yyyy] = m;
@@ -167,10 +191,7 @@ type Order = {
   status: string;
 };
 
-async function fetchAll<T>(
-  table: string,
-  select: string,
-): Promise<T[]> {
+async function fetchAll<T>(table: string, select: string): Promise<T[]> {
   const out: T[] = [];
   const page = 1000;
   for (let from = 0; ; from += page) {
@@ -199,7 +220,10 @@ type Match = {
  * a confident pairing is never stolen by a weaker one; whatever is left over is
  * paired by chronological position, which is a guess and is labelled as one.
  */
-function matchCustomer(orders: Order[], rows: SheetRow[]): {
+function matchCustomer(
+  orders: Order[],
+  rows: SheetRow[],
+): {
   matches: Match[];
   unmatchedOrders: Order[];
   unmatchedRows: SheetRow[];
@@ -242,8 +266,12 @@ function matchCustomer(orders: Order[], rows: SheetRow[]): {
   // purchases this customer made, and pairing those by index would invent a
   // fact. Report instead.
   if (freeOrders.length > 0 && freeOrders.length === freeRows.length) {
-    const os = [...freeOrders].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-    const rs = [...freeRows].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+    const os = [...freeOrders].sort((a, b) =>
+      a.created_at < b.created_at ? -1 : 1,
+    );
+    const rs = [...freeRows].sort((a, b) =>
+      a.createdAt < b.createdAt ? -1 : 1,
+    );
     for (let i = 0; i < os.length; i++) {
       matches.push({ order: os[i], row: rs[i], how: "position" });
     }
@@ -282,8 +310,10 @@ async function rollback(path: string): Promise<void> {
     // Only undo what this script did. If the row moved on since, leave it and
     // say so — silently stomping a later edit is worse than an incomplete undo.
     const patch: Record<string, unknown> = {};
-    if (cur.created_at === e.after.created_at) patch.created_at = e.before.created_at;
-    if (cur.package_size === e.after.package_size) patch.package_size = e.before.package_size;
+    if (cur.created_at === e.after.created_at)
+      patch.created_at = e.before.created_at;
+    if (cur.package_size === e.after.package_size)
+      patch.package_size = e.before.package_size;
 
     if (Object.keys(patch).length === 0) {
       changedSince++;
@@ -293,7 +323,9 @@ async function rollback(path: string): Promise<void> {
     await db.from("orders").update(patch).eq("id", e.id);
     restored++;
   }
-  console.log(`\nrolled back ${restored} orders, skipped ${changedSince} changed since.`);
+  console.log(
+    `\nrolled back ${restored} orders, skipped ${changedSince} changed since.`,
+  );
 }
 
 // ── main ────────────────────────────────────────────────────────────────────
@@ -323,7 +355,8 @@ async function main() {
   const nameToId = new Map<string, string>();
   for (const c of customers) {
     if (!c.name) continue;
-    for (const k of nameKeys(c.name)) if (!nameToId.has(k)) nameToId.set(k, c.id);
+    for (const k of nameKeys(c.name))
+      if (!nameToId.has(k)) nameToId.set(k, c.id);
   }
   const idToName = new Map(customers.map((c) => [c.id, c.name ?? "(no name)"]));
 
@@ -356,7 +389,8 @@ async function main() {
     name: string;
   }[] = [];
   const sizeFills: typeof dateChanges = [];
-  const sizeConflicts: (typeof dateChanges[number] & { dbSize: number })[] = [];
+  const sizeConflicts: ((typeof dateChanges)[number] & { dbSize: number })[] =
+    [];
   const weakMatches: typeof dateChanges = [];
   const leftoverOrders: { order: Order; name: string }[] = [];
   const leftoverRows: SheetRow[] = [];
@@ -364,7 +398,10 @@ async function main() {
   for (const [cid, rows] of rowsByCustomer) {
     const custOrders = ordersByCustomer.get(cid) ?? [];
     const name = idToName.get(cid) ?? "(unknown)";
-    const { matches, unmatchedOrders, unmatchedRows } = matchCustomer(custOrders, rows);
+    const { matches, unmatchedOrders, unmatchedRows } = matchCustomer(
+      custOrders,
+      rows,
+    );
 
     for (const m of matches) {
       const entry = { order: m.order, row: m.row, how: m.how, name };
@@ -376,9 +413,11 @@ async function main() {
 
       const dbSize = m.order.package_size ?? 0;
       if (dbSize === 0) sizeFills.push(entry);
-      else if (dbSize !== m.row.portion) sizeConflicts.push({ ...entry, dbSize });
+      else if (dbSize !== m.row.portion)
+        sizeConflicts.push({ ...entry, dbSize });
 
-      if (m.order.created_at.slice(0, 10) !== m.row.date) dateChanges.push(entry);
+      if (m.order.created_at.slice(0, 10) !== m.row.date)
+        dateChanges.push(entry);
     }
     for (const o of unmatchedOrders) leftoverOrders.push({ order: o, name });
     leftoverRows.push(...unmatchedRows);
@@ -403,13 +442,17 @@ async function main() {
 
   p(`\n=== package_size disagrees, NOT changed (${sizeConflicts.length}) ===`);
   for (const c of sizeConflicts.slice(0, 30)) {
-    p(`  ${c.name.padEnd(24)} ${c.order.id.slice(0, 8)}  db=${c.dbSize} sheet=${c.row.portion}  [${c.how}]`);
+    p(
+      `  ${c.name.padEnd(24)} ${c.order.id.slice(0, 8)}  db=${c.dbSize} sheet=${c.row.portion}  [${c.how}]`,
+    );
   }
   if (sizeConflicts.length > 30) p(`  … ${sizeConflicts.length - 30} more`);
 
   p(`\n=== weak matches, review these (${weakMatches.length}) ===`);
   for (const c of weakMatches.slice(0, 30)) {
-    p(`  ${c.name.padEnd(24)} ${c.order.id.slice(0, 8)}  sheet line ${c.row.line}  [${c.how}]`);
+    p(
+      `  ${c.name.padEnd(24)} ${c.order.id.slice(0, 8)}  sheet line ${c.row.line}  [${c.how}]`,
+    );
   }
   if (weakMatches.length > 30) p(`  … ${weakMatches.length - 30} more`);
 
@@ -427,7 +470,9 @@ async function main() {
   }
   if (leftoverOrders.length > 30) p(`  … ${leftoverOrders.length - 30} more`);
 
-  p(`\n=== sheet names not resolvable to a customer (${unresolvedNames.length}) ===`);
+  p(
+    `\n=== sheet names not resolvable to a customer (${unresolvedNames.length}) ===`,
+  );
   const badNames = [...new Set(unresolvedNames.map((r) => r.name))];
   for (const n of badNames.slice(0, 30)) p(`  ${n}`);
   if (badNames.length > 30) p(`  … ${badNames.length - 30} more`);
@@ -446,7 +491,10 @@ async function main() {
 
   // Build the whole rollback plan before touching a row, so an undo exists even
   // if the run dies halfway.
-  const touched = new Map<string, { order: Order; created_at?: string; package_size?: number }>();
+  const touched = new Map<
+    string,
+    { order: Order; created_at?: string; package_size?: number }
+  >();
   for (const c of dateChanges) {
     const e = touched.get(c.order.id) ?? { order: c.order };
     e.created_at = c.row.createdAt;
@@ -463,7 +511,10 @@ async function main() {
     script: "backfill-order-dates.ts",
     orders: [...touched.values()].map((e) => ({
       id: e.order.id,
-      before: { created_at: e.order.created_at, package_size: e.order.package_size },
+      before: {
+        created_at: e.order.created_at,
+        package_size: e.order.package_size,
+      },
       after: {
         created_at: e.created_at ?? e.order.created_at,
         package_size: e.package_size ?? e.order.package_size,
@@ -480,7 +531,10 @@ async function main() {
     const patch: Record<string, unknown> = {};
     if (e.created_at) patch.created_at = e.created_at;
     if (e.package_size != null) patch.package_size = e.package_size;
-    const { error } = await db.from("orders").update(patch).eq("id", e.order.id);
+    const { error } = await db
+      .from("orders")
+      .update(patch)
+      .eq("id", e.order.id);
     if (error) {
       p(`  FAILED ${e.order.id.slice(0, 8)}: ${error.message}`);
       continue;
@@ -489,7 +543,9 @@ async function main() {
   }
 
   p(`\nAPPLIED: ${written} orders updated.`);
-  p(`Undo with: pnpm tsx scripts/backfill-order-dates.ts --rollback ${rollbackPath}`);
+  p(
+    `Undo with: pnpm tsx scripts/backfill-order-dates.ts --rollback ${rollbackPath}`,
+  );
 }
 
 main().catch((e) => {

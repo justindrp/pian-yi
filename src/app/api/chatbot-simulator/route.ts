@@ -1,14 +1,18 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest, NextResponse } from "next/server";
-import { NO_THINKING, SONNET_MODEL, getAnthropicClient } from "@/lib/claude/client";
+import { getNeighborhoods } from "@/lib/cache/settings";
+import {
+  getAnthropicClient,
+  NO_THINKING,
+  SONNET_MODEL,
+} from "@/lib/claude/client";
+import { extractOrderProperties } from "@/lib/claude/extract-order";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
-import { addDays } from "@/lib/time/jakarta";
-import { getNeighborhoods } from "@/lib/cache/settings";
+import { unionAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { extractOrderProperties } from "@/lib/claude/extract-order";
-import { unionAreas } from "@/lib/subcontractors/areas";
+import { addDays } from "@/lib/time/jakarta";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
@@ -16,7 +20,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const body = (await req.json()) as {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -52,7 +59,10 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const dapurMenuTexts = rawSubs
     .filter((s) => !!s.menu_image_url && !!s.menu_text)
-    .map((s) => ({ nickname: s.customer_nickname, menuText: s.menu_text as string }));
+    .map((s) => ({
+      nickname: s.customer_nickname,
+      menuText: s.menu_text as string,
+    }));
 
   const servedAreas = unionAreas(rawSubs);
 
@@ -75,8 +85,16 @@ export async function POST(req: NextRequest): Promise<Response> {
         remainingToday: 32,
         unbooked: 30,
         upcoming: [
-          { date: addDays(jakartaDateString(), 1), mealType: "lunch", portions: 1 },
-          { date: addDays(jakartaDateString(), 2), mealType: "dinner", portions: 1 },
+          {
+            date: addDays(jakartaDateString(), 1),
+            mealType: "lunch",
+            portions: 1,
+          },
+          {
+            date: addDays(jakartaDateString(), 2),
+            mealType: "dinner",
+            portions: 1,
+          },
         ],
       }
     : null;
@@ -148,7 +166,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     },
     {
       name: "escalate_to_human",
-      description: "Called when the conversation must be fully handed off to Annie.",
+      description:
+        "Called when the conversation must be fully handed off to Annie.",
       input_schema: {
         type: "object",
         properties: { reason: { type: "string" } },
@@ -157,7 +176,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     },
     {
       name: "mark_payment_proof_received",
-      description: "Called when customer indicates they have sent payment proof.",
+      description:
+        "Called when customer indicates they have sent payment proof.",
       input_schema: { type: "object", properties: {} },
     },
   ];
@@ -177,7 +197,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   for (const block of response.content) {
     if (block.type === "text") reply = block.text;
-    if (block.type === "tool_use") toolCalled = { name: block.name, input: block.input };
+    if (block.type === "tool_use")
+      toolCalled = { name: block.name, input: block.input };
   }
 
   return NextResponse.json({ ok: true, reply, toolCalled });

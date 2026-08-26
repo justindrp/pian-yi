@@ -13,7 +13,9 @@ jest.mock("@/lib/supabase/get-role", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = ["select", "insert", "delete", "eq", "in", "order"];
   for (const m of methods) {
@@ -21,17 +23,22 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   }
   chain.single = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   return chain;
 }
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   const rpc = jest.fn().mockResolvedValue({ data: "JV-2026-001", error: null });
@@ -61,7 +68,10 @@ const validBody = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (getSessionWithRole as jest.Mock).mockResolvedValue({ email: "drpramadyo@gmail.com", role: "owner" });
+  (getSessionWithRole as jest.Mock).mockResolvedValue({
+    email: "drpramadyo@gmail.com",
+    role: "owner",
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -76,7 +86,10 @@ describe("POST /api/accounting", () => {
   });
 
   test("T2 — non-owner returns 403", async () => {
-    (getSessionWithRole as jest.Mock).mockResolvedValue({ email: "agnes@example.com", role: "admin" });
+    (getSessionWithRole as jest.Mock).mockResolvedValue({
+      email: "agnes@example.com",
+      role: "admin",
+    });
     const res = await POST(postRequest(validBody));
     expect(res.status).toBe(403);
   });
@@ -110,7 +123,13 @@ describe("POST /api/accounting", () => {
 
   test("T5 — valid balanced entry creates journal + lines", async () => {
     const db = makeDbMock({
-      accounts: { data: [{ id: "a1", code: "6002" }, { id: "a2", code: "1002" }], error: null },
+      accounts: {
+        data: [
+          { id: "a1", code: "6002" },
+          { id: "a2", code: "1002" },
+        ],
+        error: null,
+      },
       journals: { data: { id: "j1", reference: "JV-2026-001" }, error: null },
       journal_lines: { data: null, error: null },
     });
@@ -125,7 +144,11 @@ describe("POST /api/accounting", () => {
 
     // Journal header inserted as manual
     expect(db.chains.journals.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ source_type: "manual", source_id: null, description: "Beli perlengkapan" }),
+      expect.objectContaining({
+        source_type: "manual",
+        source_id: null,
+        description: "Beli perlengkapan",
+      }),
     );
     // Two lines inserted with resolved account IDs
     expect(db.chains.journal_lines.insert).toHaveBeenCalledWith([

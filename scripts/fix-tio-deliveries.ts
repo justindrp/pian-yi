@@ -8,8 +8,13 @@ import { createAdminClient } from "../src/lib/supabase/admin";
 const CUSTOMER = "7c39b235-ecf1-46f8-aa07-6784d9684762";
 const ORDER_PREFIX = "3b89069e";
 const DATES = [
-  "2026-08-19", "2026-08-20", "2026-08-21",
-  "2026-08-24", "2026-08-26", "2026-08-27", "2026-08-28",
+  "2026-08-19",
+  "2026-08-20",
+  "2026-08-21",
+  "2026-08-24",
+  "2026-08-26",
+  "2026-08-27",
+  "2026-08-28",
 ];
 const APPLY = process.argv.includes("--apply");
 
@@ -18,7 +23,9 @@ async function main() {
 
   const { data: orders } = await db
     .from("orders")
-    .select("id, status, portions_remaining, subcontractor_id, meal_time_preference")
+    .select(
+      "id, status, portions_remaining, subcontractor_id, meal_time_preference",
+    )
     .eq("customer_id", CUSTOMER)
     .eq("status", "active");
   const order = (orders ?? []).find((o) => o.id.startsWith(ORDER_PREFIX));
@@ -40,13 +47,21 @@ async function main() {
 
   const kitchen = order.subcontractor_id ?? cust?.subcontractor_id ?? null;
 
-  console.log("order", order.id, "rem", order.portions_remaining, "kitchen", kitchen);
+  console.log(
+    "order",
+    order.id,
+    "rem",
+    order.portions_remaining,
+    "kitchen",
+    kitchen,
+  );
   console.log("already booked:", [...taken].join(", ") || "none");
   console.log("to write:", fresh.join(", "));
   console.log("rem after:", order.portions_remaining - fresh.length);
 
   if (!APPLY) return console.log("\ndry run — pass --apply");
-  if (fresh.length > order.portions_remaining) throw new Error("would overdraft");
+  if (fresh.length > order.portions_remaining)
+    throw new Error("would overdraft");
 
   const { error } = await db.from("daily_deliveries").insert(
     fresh.map((delivery_date) => ({
@@ -69,7 +84,10 @@ async function main() {
   await db
     .from("customers")
     .update({
-      portions_remaining: Math.max(0, (cust?.portions_remaining ?? 0) - fresh.length),
+      portions_remaining: Math.max(
+        0,
+        (cust?.portions_remaining ?? 0) - fresh.length,
+      ),
     })
     .eq("id", CUSTOMER);
 

@@ -1,9 +1,14 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateCache } from "@/lib/cache/settings";
-import { NO_THINKING, SONNET_MODEL, extractText, getAnthropicClient } from "@/lib/claude/client";
+import {
+  extractText,
+  getAnthropicClient,
+  NO_THINKING,
+  SONNET_MODEL,
+} from "@/lib/claude/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type Anthropic from "@anthropic-ai/sdk";
 
 const TRAINING_SYSTEM_PROMPT = `You are helping Annie, the business co-owner of Pian Yi Catering, customize the behavior of the customer-facing WhatsApp chatbot.
 
@@ -25,10 +30,16 @@ Guidelines:
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
   };
 

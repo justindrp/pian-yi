@@ -52,7 +52,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     try {
       await sendTextMessage(
         customer.phone_number,
-        "Halo kak, maaf ganggu ya 🙏 Karena keterbatasan WhatsApp Business, kami tidak bisa menghubungi kakak kalau tidak ada balasan dalam 24 jam. Mohon balas \"ok\" supaya kami tetap bisa menghubungi kakak kalau ada info penting ya!",
+        'Halo kak, maaf ganggu ya 🙏 Karena keterbatasan WhatsApp Business, kami tidak bisa menghubungi kakak kalau tidak ada balasan dalam 24 jam. Mohon balas "ok" supaya kami tetap bisa menghubungi kakak kalau ada info penting ya!',
       );
     } catch (err) {
       if (!isOutsideWindowError(err)) {

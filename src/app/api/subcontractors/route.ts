@@ -5,8 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const db = createAdminClient();
   const { data, error } = await db
@@ -14,16 +20,26 @@ export async function GET(): Promise<Response> {
     .select("*, subcontractor_off_days(off_date, reason, id)")
     .order("customer_nickname");
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
   return NextResponse.json({ ok: true, data });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     name: string;
     customer_nickname?: string;
     admin_phone?: string;
@@ -46,7 +62,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   await logEdit({
     db,

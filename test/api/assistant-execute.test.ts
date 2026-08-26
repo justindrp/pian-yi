@@ -4,10 +4,10 @@ import { createJournalEntry } from "@/lib/accounting/journal";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import {
+  isOutsideWindowError,
   sendImageMessageById,
   sendTextMessage,
   uploadMediaToMeta,
-  isOutsideWindowError,
 } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));

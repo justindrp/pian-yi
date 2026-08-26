@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateCache } from "@/lib/cache/settings";
-import { HAIKU_MODEL, NO_THINKING, extractText, getAnthropicClient } from "@/lib/claude/client";
+import {
+  extractText,
+  getAnthropicClient,
+  HAIKU_MODEL,
+  NO_THINKING,
+} from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -58,8 +63,13 @@ export async function POST(req: NextRequest): Promise<Response> {
     preview_only?: boolean;
     save_as_rule?: boolean;
   };
-  const { customer_id, admin_answer, polished_text, preview_only, save_as_rule } =
-    body;
+  const {
+    customer_id,
+    admin_answer,
+    polished_text,
+    preview_only,
+    save_as_rule,
+  } = body;
 
   if (!customer_id) {
     return NextResponse.json(

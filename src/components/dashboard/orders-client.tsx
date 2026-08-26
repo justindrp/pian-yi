@@ -51,7 +51,11 @@ interface Order {
   portions_per_delivery: number;
   lunch_address_slot: number;
   dinner_address_slot: number;
-  customers?: { name: string | null; phone_number: string; area: string | null };
+  customers?: {
+    name: string | null;
+    phone_number: string;
+    area: string | null;
+  };
 }
 
 const MEAL_PREFERENCES = [
@@ -100,7 +104,6 @@ type EditForm = {
   amount_paid: string;
   start_date: string;
 };
-
 
 export default function OrdersClient() {
   // A link can open this page on one customer's orders — /tasks points here
@@ -171,7 +174,8 @@ export default function OrdersClient() {
       lunch_address_slot: o.lunch_address_slot ?? 1,
       dinner_address_slot: o.dinner_address_slot ?? 1,
       portions_lunch: o.portions_lunch == null ? "" : String(o.portions_lunch),
-      portions_dinner: o.portions_dinner == null ? "" : String(o.portions_dinner),
+      portions_dinner:
+        o.portions_dinner == null ? "" : String(o.portions_dinner),
       portions_per_delivery:
         o.portions_per_delivery == null ? "" : String(o.portions_per_delivery),
       addon_cost_per_portion: String(o.addon_cost_per_portion ?? 0),
@@ -231,7 +235,11 @@ export default function OrdersClient() {
       await fetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selected.id, action: "update_status", status }),
+        body: JSON.stringify({
+          id: selected.id,
+          action: "update_status",
+          status,
+        }),
       });
       qc.invalidateQueries({ queryKey: ["orders"] });
       closeDetail();
@@ -273,12 +281,10 @@ export default function OrdersClient() {
     },
   });
 
-  const filteredOrders = (orders ?? [])
-    .slice()
-    .sort((a, b) => {
-      const cmp = (a[sortKey] ?? "").localeCompare(b[sortKey] ?? "");
-      return sortDir === "asc" ? cmp : -cmp;
-    });
+  const filteredOrders = (orders ?? []).slice().sort((a, b) => {
+    const cmp = (a[sortKey] ?? "").localeCompare(b[sortKey] ?? "");
+    return sortDir === "asc" ? cmp : -cmp;
+  });
 
   const sortArrow = (key: "start_date" | "created_at") =>
     sortKey === key ? (sortDir === "asc" ? "↑" : "↓") : "";
@@ -335,8 +341,11 @@ export default function OrdersClient() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list
-            <div key={`skel-${i}`} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list
+              key={`skel-${i}`}
+              className="h-16 bg-gray-100 rounded-xl animate-pulse"
+            />
           ))}
         </div>
       ) : (
@@ -416,7 +425,9 @@ export default function OrdersClient() {
                   <td className="px-4 py-3 text-gray-900">
                     Rp {o.total_price.toLocaleString("id-ID")}
                   </td>
-                  <td className="px-4 py-3 text-gray-900">{o.customers?.area}</td>
+                  <td className="px-4 py-3 text-gray-900">
+                    {o.customers?.area}
+                  </td>
                   <td className="px-4 py-3 text-gray-900">{o.start_date}</td>
                   <td className="px-4 py-3 text-gray-900">
                     {o.created_at?.slice(0, 10)}
@@ -457,7 +468,9 @@ export default function OrdersClient() {
           />
           <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">Order Detail</h2>
+              <h2 className="text-sm font-semibold text-gray-900">
+                Order Detail
+              </h2>
               <Button
                 type="button"
                 variant="ghost"
@@ -487,57 +500,98 @@ export default function OrdersClient() {
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <div>
-                    <span className="text-xs text-gray-500 block mb-1">Package (porsi)</span>
-                    <p className="text-sm text-gray-900 py-2">{selected.package_size}</p>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Package (porsi)
+                    </span>
+                    <p className="text-sm text-gray-900 py-2">
+                      {selected.package_size}
+                    </p>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500 block mb-1">Remaining</span>
-                    <p className="text-sm text-gray-900 py-2">{selected.portions_remaining}</p>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Remaining
+                    </span>
+                    <p className="text-sm text-gray-900 py-2">
+                      {selected.portions_remaining}
+                    </p>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500 block mb-1">Price/porsi (Rp)</span>
-                    <p className="text-sm text-gray-900 py-2">Rp {selected.price_per_portion.toLocaleString("id-ID")}</p>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Price/porsi (Rp)
+                    </span>
+                    <p className="text-sm text-gray-900 py-2">
+                      Rp {selected.price_per_portion.toLocaleString("id-ID")}
+                    </p>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500 block mb-1">Total (Rp)</span>
-                    <p className="text-sm text-gray-900 py-2">Rp {selected.total_price.toLocaleString("id-ID")}</p>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Total (Rp)
+                    </span>
+                    <p className="text-sm text-gray-900 py-2">
+                      Rp {selected.total_price.toLocaleString("id-ID")}
+                    </p>
                   </div>
                   <div>
-                    <Label htmlFor="order-start" className="text-xs text-gray-500 block mb-1">Start date</Label>
+                    <Label
+                      htmlFor="order-start"
+                      className="text-xs text-gray-500 block mb-1"
+                    >
+                      Start date
+                    </Label>
                     <Input
                       id="order-start"
                       type="date"
                       value={editForm.start_date}
-                      onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, start_date: e.target.value })
+                      }
                     />
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500 block mb-1">Paid date</span>
-                    <p className="text-sm text-gray-900 py-2">{selected.paid_at ? selected.paid_at.slice(0, 10) : "—"}</p>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Paid date
+                    </span>
+                    <p className="text-sm text-gray-900 py-2">
+                      {selected.paid_at ? selected.paid_at.slice(0, 10) : "—"}
+                    </p>
                   </div>
                   <div>
-                    <span className="text-xs text-gray-500 block mb-1">Created</span>
-                    <p className="text-sm text-gray-500 py-2">{selected.created_at?.slice(0, 10)}</p>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Created
+                    </span>
+                    <p className="text-sm text-gray-500 py-2">
+                      {selected.created_at?.slice(0, 10)}
+                    </p>
                   </div>
                 </div>
               </div>
 
               {/* Area/address are customer-level data — edit on the Customers page, not per order */}
               <div className="rounded-lg bg-gray-50 p-3 text-sm">
-                <span className="text-xs text-gray-500 block mb-1">Delivery area</span>
-                <p className="text-gray-900">{selected.customers?.area ?? "—"}</p>
+                <span className="text-xs text-gray-500 block mb-1">
+                  Delivery area
+                </span>
+                <p className="text-gray-900">
+                  {selected.customers?.area ?? "—"}
+                </p>
               </div>
 
               {/* Editable operational fields */}
               <div>
-                <Label htmlFor="order-sub" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="order-sub"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Assigned Subcontractor
                 </Label>
                 <select
                   id="order-sub"
                   value={editForm.subcontractor_id}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, subcontractor_id: e.target.value })
+                    setEditForm({
+                      ...editForm,
+                      subcontractor_id: e.target.value,
+                    })
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
@@ -551,14 +605,20 @@ export default function OrdersClient() {
               </div>
 
               <div>
-                <Label htmlFor="order-meal" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="order-meal"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Meal Time Preference
                 </Label>
                 <select
                   id="order-meal"
                   value={editForm.meal_time_preference}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, meal_time_preference: e.target.value })
+                    setEditForm({
+                      ...editForm,
+                      meal_time_preference: e.target.value,
+                    })
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
@@ -573,13 +633,18 @@ export default function OrdersClient() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="order-size" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-size"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     Size
                   </Label>
                   <select
                     id="order-size"
                     value={editForm.size}
-                    onChange={(e) => setEditForm({ ...editForm, size: e.target.value })}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, size: e.target.value })
+                    }
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                   >
                     <option value="s">S</option>
@@ -587,21 +652,29 @@ export default function OrdersClient() {
                   </select>
                 </div>
                 <div>
-                  <Label htmlFor="order-end" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-end"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     End Date
                   </Label>
                   <Input
                     id="order-end"
                     type="date"
                     value={editForm.end_date}
-                    onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, end_date: e.target.value })
+                    }
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <Label htmlFor="order-ppd" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-ppd"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     Porsi/kirim
                   </Label>
                   <Input
@@ -609,12 +682,18 @@ export default function OrdersClient() {
                     type="number"
                     value={editForm.portions_per_delivery}
                     onChange={(e) =>
-                      setEditForm({ ...editForm, portions_per_delivery: e.target.value })
+                      setEditForm({
+                        ...editForm,
+                        portions_per_delivery: e.target.value,
+                      })
                     }
                   />
                 </div>
                 <div>
-                  <Label htmlFor="order-pl" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-pl"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     Porsi lunch
                   </Label>
                   <Input
@@ -622,12 +701,18 @@ export default function OrdersClient() {
                     type="number"
                     value={editForm.portions_lunch}
                     onChange={(e) =>
-                      setEditForm({ ...editForm, portions_lunch: e.target.value })
+                      setEditForm({
+                        ...editForm,
+                        portions_lunch: e.target.value,
+                      })
                     }
                   />
                 </div>
                 <div>
-                  <Label htmlFor="order-pdn" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-pdn"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     Porsi dinner
                   </Label>
                   <Input
@@ -635,14 +720,20 @@ export default function OrdersClient() {
                     type="number"
                     value={editForm.portions_dinner}
                     onChange={(e) =>
-                      setEditForm({ ...editForm, portions_dinner: e.target.value })
+                      setEditForm({
+                        ...editForm,
+                        portions_dinner: e.target.value,
+                      })
                     }
                   />
                 </div>
               </div>
 
               <div>
-                <Label htmlFor="order-addon" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="order-addon"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Tambahan / porsi (Rp)
                 </Label>
                 <Input
@@ -650,17 +741,23 @@ export default function OrdersClient() {
                   type="number"
                   value={editForm.addon_cost_per_portion}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, addon_cost_per_portion: e.target.value })
+                    setEditForm({
+                      ...editForm,
+                      addon_cost_per_portion: e.target.value,
+                    })
                   }
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
-                  Biaya dapur, mis. nasi merah. Harga pelanggan sudah termasuk ini —
-                  ini hanya menaikkan COGS pengiriman berikutnya.
+                  Biaya dapur, mis. nasi merah. Harga pelanggan sudah termasuk
+                  ini — ini hanya menaikkan COGS pengiriman berikutnya.
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="order-amount-paid" className="text-xs text-gray-500 block mb-1">
+                <Label
+                  htmlFor="order-amount-paid"
+                  className="text-xs text-gray-500 block mb-1"
+                >
                   Sudah dibayar (Rp)
                 </Label>
                 <Input
@@ -680,14 +777,20 @@ export default function OrdersClient() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="order-las" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-las"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     Lunch address slot
                   </Label>
                   <select
                     id="order-las"
                     value={editForm.lunch_address_slot}
                     onChange={(e) =>
-                      setEditForm({ ...editForm, lunch_address_slot: Number(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        lunch_address_slot: Number(e.target.value),
+                      })
                     }
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                   >
@@ -696,14 +799,20 @@ export default function OrdersClient() {
                   </select>
                 </div>
                 <div>
-                  <Label htmlFor="order-das" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-das"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     Dinner address slot
                   </Label>
                   <select
                     id="order-das"
                     value={editForm.dinner_address_slot}
                     onChange={(e) =>
-                      setEditForm({ ...editForm, dinner_address_slot: Number(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        dinner_address_slot: Number(e.target.value),
+                      })
                     }
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                   >
@@ -741,7 +850,10 @@ export default function OrdersClient() {
                   </Button>
                 )}
                 <div>
-                  <Label htmlFor="order-status" className="text-xs text-gray-500 block mb-1">
+                  <Label
+                    htmlFor="order-status"
+                    className="text-xs text-gray-500 block mb-1"
+                  >
                     Change status
                   </Label>
                   <select
@@ -754,7 +866,9 @@ export default function OrdersClient() {
                     <option value="">— Select new status —</option>
                     <option value="paused">Paused</option>
                     <option value="completed">Completed</option>
-                    <option value="cancelled_by_admin">Cancelled (Admin)</option>
+                    <option value="cancelled_by_admin">
+                      Cancelled (Admin)
+                    </option>
                   </select>
                 </div>
               </div>
@@ -793,23 +907,40 @@ export default function OrdersClient() {
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 sticky top-0">
                         <tr className="text-gray-500">
-                          <th className="text-left px-2 py-1.5 font-medium">Tanggal</th>
-                          <th className="text-left px-2 py-1.5 font-medium">Keterangan</th>
-                          <th className="text-right px-2 py-1.5 font-medium">Porsi</th>
-                          <th className="text-right px-2 py-1.5 font-medium">Sisa</th>
+                          <th className="text-left px-2 py-1.5 font-medium">
+                            Tanggal
+                          </th>
+                          <th className="text-left px-2 py-1.5 font-medium">
+                            Keterangan
+                          </th>
+                          <th className="text-right px-2 py-1.5 font-medium">
+                            Porsi
+                          </th>
+                          <th className="text-right px-2 py-1.5 font-medium">
+                            Sisa
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {ledger.rows.map((r) => (
                           <tr
                             key={r.id}
-                            className={r.scheduled ? "text-gray-400" : "text-gray-700"}
+                            className={
+                              r.scheduled ? "text-gray-400" : "text-gray-700"
+                            }
                           >
-                            <td className="px-2 py-1.5 whitespace-nowrap">{r.date || "—"}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">
+                              {r.date || "—"}
+                            </td>
                             <td className="px-2 py-1.5">
                               {r.kind === "package"
                                 ? r.label
-                                : [r.meal_type === "dinner" ? "Malam" : "Siang", r.label]
+                                : [
+                                    r.meal_type === "dinner"
+                                      ? "Malam"
+                                      : "Siang",
+                                    r.label,
+                                  ]
                                     .filter(Boolean)
                                     .join(" · ")}
                             </td>
@@ -859,7 +990,9 @@ export default function OrdersClient() {
             <p className="text-xs text-gray-600 mb-4">
               This will permanently delete the order for{" "}
               <span className="font-medium text-gray-900">
-                {selected.customers?.name ?? selected.customers?.phone_number ?? "Unknown"}
+                {selected.customers?.name ??
+                  selected.customers?.phone_number ??
+                  "Unknown"}
               </span>
               , including its scheduled deliveries. This cannot be undone.
             </p>

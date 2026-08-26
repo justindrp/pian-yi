@@ -26,12 +26,28 @@ jest.mock("@/lib/whatsapp/client", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
@@ -39,8 +55,10 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -48,17 +66,30 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const storageMock = {
     upload: jest.fn().mockResolvedValue({ error: null }),
-    getPublicUrl: jest.fn().mockReturnValue({ data: { publicUrl: "https://supabase.test/public/menu-images/inbox/cust-1/img.jpg" } }),
+    getPublicUrl: jest.fn().mockReturnValue({
+      data: {
+        publicUrl:
+          "https://supabase.test/public/menu-images/inbox/cust-1/img.jpg",
+      },
+    }),
   };
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
-  return { from, chains, storage: { from: jest.fn().mockReturnValue(storageMock) }, storageMock };
+  return {
+    from,
+    chains,
+    storage: { from: jest.fn().mockReturnValue(storageMock) },
+    storageMock,
+  };
 }
 
 function makeFile(name = "photo.jpg", type = "image/jpeg"): File {
@@ -67,7 +98,9 @@ function makeFile(name = "photo.jpg", type = "image/jpeg"): File {
 
 function makeRequest(fields: Record<string, string | File | null>) {
   const formData = new Map(Object.entries(fields));
-  const req = new NextRequest("http://localhost/api/inbox/manual-image", { method: "POST" });
+  const req = new NextRequest("http://localhost/api/inbox/manual-image", {
+    method: "POST",
+  });
   (req as unknown as { formData: () => Promise<unknown> }).formData = jest
     .fn()
     .mockResolvedValue({ get: (k: string) => formData.get(k) ?? null });
@@ -99,7 +132,13 @@ describe("POST /api/inbox/manual-image", () => {
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await POST(makeRequest({ customer_id: "cust-1", file: makeFile(), caption: "Ini menunya" }));
+    const res = await POST(
+      makeRequest({
+        customer_id: "cust-1",
+        file: makeFile(),
+        caption: "Ini menunya",
+      }),
+    );
     const json = await res.json();
 
     expect(res.status).toBe(200);
@@ -112,8 +151,15 @@ describe("POST /api/inbox/manual-image", () => {
       Buffer.from("compressed-jpeg"),
       { contentType: "image/jpeg", upsert: false },
     );
-    expect(uploadMediaToMeta).toHaveBeenCalledWith(Buffer.from("compressed-jpeg"), "image/jpeg");
-    expect(sendImageMessageById).toHaveBeenCalledWith("+6281234567890", "meta-media-id-123", "Ini menunya");
+    expect(uploadMediaToMeta).toHaveBeenCalledWith(
+      Buffer.from("compressed-jpeg"),
+      "image/jpeg",
+    );
+    expect(sendImageMessageById).toHaveBeenCalledWith(
+      "+6281234567890",
+      "meta-media-id-123",
+      "Ini menunya",
+    );
 
     // Must save public URL to conversations for display
     expect(db.chains.conversations.insert).toHaveBeenCalledWith(
@@ -134,7 +180,9 @@ describe("POST /api/inbox/manual-image", () => {
     const db = makeDbMock();
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await POST(makeRequest({ customer_id: null, file: makeFile() }));
+    const res = await POST(
+      makeRequest({ customer_id: null, file: makeFile() }),
+    );
     const json = await res.json();
 
     expect(res.status).toBe(400);
@@ -161,7 +209,9 @@ describe("POST /api/inbox/manual-image", () => {
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
-    const res = await POST(makeRequest({ customer_id: "ghost", file: makeFile() }));
+    const res = await POST(
+      makeRequest({ customer_id: "ghost", file: makeFile() }),
+    );
     const json = await res.json();
 
     expect(res.status).toBe(404);
@@ -174,9 +224,13 @@ describe("POST /api/inbox/manual-image", () => {
       customers: { data: { phone_number: "+6281234567890" }, error: null },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
-    (uploadMediaToMeta as jest.Mock).mockRejectedValueOnce(new Error("Meta API 503"));
+    (uploadMediaToMeta as jest.Mock).mockRejectedValueOnce(
+      new Error("Meta API 503"),
+    );
 
-    const res = await POST(makeRequest({ customer_id: "cust-1", file: makeFile() }));
+    const res = await POST(
+      makeRequest({ customer_id: "cust-1", file: makeFile() }),
+    );
     const json = await res.json();
 
     expect(res.status).toBe(502);
@@ -188,7 +242,9 @@ describe("POST /api/inbox/manual-image", () => {
   test("T7 — unauthenticated returns 401", async () => {
     (getSessionWithRole as jest.Mock).mockResolvedValue(null);
 
-    const res = await POST(makeRequest({ customer_id: "cust-1", file: makeFile() }));
+    const res = await POST(
+      makeRequest({ customer_id: "cust-1", file: makeFile() }),
+    );
     const json = await res.json();
 
     expect(res.status).toBe(401);
@@ -202,7 +258,9 @@ describe("POST /api/inbox/manual-image", () => {
       role: "admin",
     });
 
-    const res = await POST(makeRequest({ customer_id: "cust-1", file: makeFile() }));
+    const res = await POST(
+      makeRequest({ customer_id: "cust-1", file: makeFile() }),
+    );
 
     expect(res.status).toBe(403);
     expect(sendImageMessageById).not.toHaveBeenCalled();

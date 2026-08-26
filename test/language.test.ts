@@ -3,7 +3,9 @@ import { looksEnglish } from "@/lib/claude/language";
 describe("looksEnglish", () => {
   test("catches the reply that actually shipped in English", () => {
     // Simulator run, 2026-08-15, answering "menu hari ini apa ya kak".
-    expect(looksEnglish("I'll send the menu image for you to check.")).toBe(true);
+    expect(looksEnglish("I'll send the menu image for you to check.")).toBe(
+      true,
+    );
   });
 
   test("passes real Indonesian replies through untouched", () => {

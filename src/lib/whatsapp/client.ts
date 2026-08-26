@@ -51,14 +51,20 @@ export class WhatsAppApiError extends Error {
 }
 
 export function isOutsideWindowError(err: unknown): boolean {
-  return err instanceof WhatsAppApiError && err.code !== null && WINDOW_CLOSED_CODES.has(err.code);
+  return (
+    err instanceof WhatsAppApiError &&
+    err.code !== null &&
+    WINDOW_CLOSED_CODES.has(err.code)
+  );
 }
 
 // Strips the axios config (which contains the Authorization header) before
 // re-throwing, so Next.js error logging can't leak the token.
 function sanitizeAxiosError(err: unknown): never {
   if (axios.isAxiosError(err)) {
-    const data = err.response?.data as { error?: { code?: number } } | undefined;
+    const data = err.response?.data as
+      | { error?: { code?: number } }
+      | undefined;
     console.error("[whatsapp/client] Meta API error:", JSON.stringify(data));
     throw new WhatsAppApiError(
       `WhatsApp API error ${err.response?.status}: ${JSON.stringify(data)}`,
@@ -74,17 +80,19 @@ export async function sendTextMessage(
 ): Promise<string> {
   if (isDemoPhone(to)) return demoMessageId();
 
-  const res = await axios.post<MetaSendResponse>(
-    `${BASE_URL}/messages`,
-    {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "text",
-      text: { body: text },
-    },
-    { headers: headers(), timeout: SEND_TIMEOUT_MS },
-  ).catch(sanitizeAxiosError);
+  const res = await axios
+    .post<MetaSendResponse>(
+      `${BASE_URL}/messages`,
+      {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "text",
+        text: { body: text },
+      },
+      { headers: headers(), timeout: SEND_TIMEOUT_MS },
+    )
+    .catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
@@ -95,17 +103,19 @@ export async function sendImageMessage(
 ): Promise<string> {
   if (isDemoPhone(to)) return demoMessageId();
 
-  const res = await axios.post<MetaSendResponse>(
-    `${BASE_URL}/messages`,
-    {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "image",
-      image: { link: imageUrl, caption },
-    },
-    { headers: headers(), timeout: SEND_TIMEOUT_MS },
-  ).catch(sanitizeAxiosError);
+  const res = await axios
+    .post<MetaSendResponse>(
+      `${BASE_URL}/messages`,
+      {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "image",
+        image: { link: imageUrl, caption },
+      },
+      { headers: headers(), timeout: SEND_TIMEOUT_MS },
+    )
+    .catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
@@ -121,12 +131,14 @@ export async function uploadMediaToMeta(
     contentType: mimeType,
     filename: filename ?? `image.${ext}`,
   });
-  const res = await axios.post<{ id: string }>(`${BASE_URL}/media`, form, {
-    headers: {
-      ...form.getHeaders(),
-      Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-    },
-  }).catch(sanitizeAxiosError);
+  const res = await axios
+    .post<{ id: string }>(`${BASE_URL}/media`, form, {
+      headers: {
+        ...form.getHeaders(),
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+      },
+    })
+    .catch(sanitizeAxiosError);
   return res.data.id;
 }
 
@@ -137,17 +149,19 @@ export async function sendImageMessageById(
 ): Promise<string> {
   if (isDemoPhone(to)) return demoMessageId();
 
-  const res = await axios.post<MetaSendResponse>(
-    `${BASE_URL}/messages`,
-    {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "image",
-      image: { id: mediaId, caption },
-    },
-    { headers: headers(), timeout: SEND_TIMEOUT_MS },
-  ).catch(sanitizeAxiosError);
+  const res = await axios
+    .post<MetaSendResponse>(
+      `${BASE_URL}/messages`,
+      {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "image",
+        image: { id: mediaId, caption },
+      },
+      { headers: headers(), timeout: SEND_TIMEOUT_MS },
+    )
+    .catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
@@ -159,33 +173,39 @@ export async function sendDocumentMessageById(
 ): Promise<string> {
   if (isDemoPhone(to)) return demoMessageId();
 
-  const res = await axios.post<MetaSendResponse>(
-    `${BASE_URL}/messages`,
-    {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "document",
-      document: { id: mediaId, filename, caption },
-    },
-    { headers: headers(), timeout: SEND_TIMEOUT_MS },
-  ).catch(sanitizeAxiosError);
+  const res = await axios
+    .post<MetaSendResponse>(
+      `${BASE_URL}/messages`,
+      {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "document",
+        document: { id: mediaId, filename, caption },
+      },
+      { headers: headers(), timeout: SEND_TIMEOUT_MS },
+    )
+    .catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
 export async function downloadMedia(mediaId: string): Promise<Buffer> {
   const token = process.env.WHATSAPP_TOKEN;
   const version = process.env.WHATSAPP_API_VERSION;
-  const metaRes = await axios.get(
-    `https://graph.facebook.com/${version}/${mediaId}`,
-    { headers: { Authorization: `Bearer ${token}` }, timeout: SEND_TIMEOUT_MS },
-  ).catch(sanitizeAxiosError);
+  const metaRes = await axios
+    .get(`https://graph.facebook.com/${version}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: SEND_TIMEOUT_MS,
+    })
+    .catch(sanitizeAxiosError);
   const mediaUrl = (metaRes.data as { url: string }).url;
-  const dlRes = await axios.get(mediaUrl, {
-    headers: { Authorization: `Bearer ${token}` },
-    responseType: "arraybuffer",
-    timeout: MEDIA_TIMEOUT_MS,
-  }).catch(sanitizeAxiosError);
+  const dlRes = await axios
+    .get(mediaUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: "arraybuffer",
+      timeout: MEDIA_TIMEOUT_MS,
+    })
+    .catch(sanitizeAxiosError);
   return Buffer.from(dlRes.data as ArrayBuffer);
 }
 
@@ -250,23 +270,33 @@ export async function sendTextTemplate(
 ): Promise<string> {
   if (isDemoPhone(to)) return demoMessageId();
 
-  const res = await axios.post<MetaSendResponse>(
-    `${BASE_URL}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "template",
-      template: {
-        name: templateName,
-        language: { code: languageCode },
-        components:
-          bodyParams.length > 0
-            ? [{ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) }]
-            : [],
+  const res = await axios
+    .post<MetaSendResponse>(
+      `${BASE_URL}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: languageCode },
+          components:
+            bodyParams.length > 0
+              ? [
+                  {
+                    type: "body",
+                    parameters: bodyParams.map((text) => ({
+                      type: "text",
+                      text,
+                    })),
+                  },
+                ]
+              : [],
+        },
       },
-    },
-    { headers: headers(), timeout: SEND_TIMEOUT_MS },
-  ).catch(sanitizeAxiosError);
+      { headers: headers(), timeout: SEND_TIMEOUT_MS },
+    )
+    .catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }
 
@@ -279,27 +309,37 @@ export async function sendImageTemplate(
 ): Promise<string> {
   if (isDemoPhone(to)) return demoMessageId();
 
-  const res = await axios.post<MetaSendResponse>(
-    `${BASE_URL}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "template",
-      template: {
-        name: templateName,
-        language: { code: languageCode },
-        components: [
-          {
-            type: "header",
-            parameters: [{ type: "image", image: { id: mediaId } }],
-          },
-          ...(bodyParams.length > 0
-            ? [{ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) }]
-            : []),
-        ],
+  const res = await axios
+    .post<MetaSendResponse>(
+      `${BASE_URL}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: languageCode },
+          components: [
+            {
+              type: "header",
+              parameters: [{ type: "image", image: { id: mediaId } }],
+            },
+            ...(bodyParams.length > 0
+              ? [
+                  {
+                    type: "body",
+                    parameters: bodyParams.map((text) => ({
+                      type: "text",
+                      text,
+                    })),
+                  },
+                ]
+              : []),
+          ],
+        },
       },
-    },
-    { headers: headers(), timeout: SEND_TIMEOUT_MS },
-  ).catch(sanitizeAxiosError);
+      { headers: headers(), timeout: SEND_TIMEOUT_MS },
+    )
+    .catch(sanitizeAxiosError);
   return getSentMessageId(res.data);
 }

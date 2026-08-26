@@ -9,7 +9,9 @@ export default function DataDeletionPage() {
       <p className="text-sm text-gray-500 mb-8">Last updated: August 2026</p>
 
       <section className="mb-6">
-        <h2 className="text-base font-semibold mb-2">How to request deletion</h2>
+        <h2 className="text-base font-semibold mb-2">
+          How to request deletion
+        </h2>
         <p className="text-sm leading-relaxed mb-2">
           You can ask us to delete the personal data we hold about you at any
           time, in either of two ways:
@@ -17,7 +19,8 @@ export default function DataDeletionPage() {
         <ul className="text-sm leading-relaxed list-disc pl-5 space-y-1">
           <li>
             Message <strong>&quot;hapus data saya&quot;</strong> to our WhatsApp
-            business number, +62 851-1121-4390, from the number you ordered with.
+            business number, +62 851-1121-4390, from the number you ordered
+            with.
           </li>
           <li>
             Email{" "}

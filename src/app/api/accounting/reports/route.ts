@@ -7,7 +7,12 @@ export const dynamic = "force-dynamic";
 interface RawLine {
   debit: number;
   credit: number;
-  account: { code: string; name: string; type: string; normal_balance: string } | null;
+  account: {
+    code: string;
+    name: string;
+    type: string;
+    normal_balance: string;
+  } | null;
 }
 
 interface Tally {
@@ -28,7 +33,9 @@ async function fetchTallies(
 ): Promise<Tally[] | { error: string }> {
   let query = db
     .from("journal_lines")
-    .select("debit, credit, account:accounts!inner(code, name, type, normal_balance), journals!inner(date)")
+    .select(
+      "debit, credit, account:accounts!inner(code, name, type, normal_balance), journals!inner(date)",
+    )
     .lte("journals.date", to)
     .limit(10000);
   if (from) query = query.gte("journals.date", from);
@@ -63,8 +70,16 @@ function netOnNormalSide(t: Tally): number {
 
 export async function GET(req: NextRequest): Promise<Response> {
   const session = await getSessionWithRole();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  if (!isOwner(session.role)) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  if (!session)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  if (!isOwner(session.role))
+    return NextResponse.json(
+      { ok: false, error: "Forbidden" },
+      { status: 403 },
+    );
 
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") ?? "";
@@ -75,7 +90,11 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   if (type === "trial_balance") {
     const tallies = await fetchTallies(db, from, to);
-    if ("error" in tallies) return NextResponse.json({ ok: false, error: tallies.error }, { status: 500 });
+    if ("error" in tallies)
+      return NextResponse.json(
+        { ok: false, error: tallies.error },
+        { status: 500 },
+      );
 
     const rows = tallies
       .map((t) => {
@@ -92,12 +111,19 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
     const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
-    return NextResponse.json({ ok: true, data: { rows, totalDebit, totalCredit } });
+    return NextResponse.json({
+      ok: true,
+      data: { rows, totalDebit, totalCredit },
+    });
   }
 
   if (type === "pnl") {
     const tallies = await fetchTallies(db, from, to);
-    if ("error" in tallies) return NextResponse.json({ ok: false, error: tallies.error }, { status: 500 });
+    if ("error" in tallies)
+      return NextResponse.json(
+        { ok: false, error: tallies.error },
+        { status: 500 },
+      );
 
     const revenue = tallies
       .filter((t) => t.type === "Revenue")
@@ -110,19 +136,33 @@ export async function GET(req: NextRequest): Promise<Response> {
     const totalExpense = expense.reduce((s, r) => s + r.amount, 0);
     return NextResponse.json({
       ok: true,
-      data: { revenue, expense, totalRevenue, totalExpense, netIncome: totalRevenue - totalExpense },
+      data: {
+        revenue,
+        expense,
+        totalRevenue,
+        totalExpense,
+        netIncome: totalRevenue - totalExpense,
+      },
     });
   }
 
   if (type === "balance_sheet") {
     // Cumulative through `to`; ignore `from` so figures are point-in-time balances.
     const tallies = await fetchTallies(db, null, to);
-    if ("error" in tallies) return NextResponse.json({ ok: false, error: tallies.error }, { status: 500 });
+    if ("error" in tallies)
+      return NextResponse.json(
+        { ok: false, error: tallies.error },
+        { status: 500 },
+      );
 
     const pick = (accType: string) =>
       tallies
         .filter((t) => t.type === accType)
-        .map((t) => ({ code: t.code, name: t.name, amount: netOnNormalSide(t) }))
+        .map((t) => ({
+          code: t.code,
+          name: t.name,
+          amount: netOnNormalSide(t),
+        }))
         .filter((r) => r.amount !== 0);
 
     const assets = pick("Asset");
@@ -136,7 +176,11 @@ export async function GET(req: NextRequest): Promise<Response> {
       return s;
     }, 0);
     if (netEarnings !== 0) {
-      equity.push({ code: "—", name: "Laba ditahan & berjalan", amount: netEarnings });
+      equity.push({
+        code: "—",
+        name: "Laba ditahan & berjalan",
+        amount: netEarnings,
+      });
     }
 
     const totalAssets = assets.reduce((s, r) => s + r.amount, 0);
@@ -156,5 +200,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     });
   }
 
-  return NextResponse.json({ ok: false, error: "Tipe laporan tidak valid" }, { status: 400 });
+  return NextResponse.json(
+    { ok: false, error: "Tipe laporan tidak valid" },
+    { status: 400 },
+  );
 }

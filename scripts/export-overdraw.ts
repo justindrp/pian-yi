@@ -11,18 +11,30 @@ import * as fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import * as dotenv from "dotenv";
 import { requiredEnv } from "../src/lib/env";
+
 dotenv.config({ path: ".env.local" });
 
 const db = createClient(
   requiredEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
-  requiredEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY),
+  requiredEnv(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  ),
 );
-const CANCELLED = ["cancelled_unpaid", "cancelled_by_customer", "cancelled_by_admin", "refunded"];
+const CANCELLED = [
+  "cancelled_unpaid",
+  "cancelled_by_customer",
+  "cancelled_by_admin",
+  "refunded",
+];
 
 async function all<T>(table: string, cols: string): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from(table).select(cols).range(from, from + 999);
+    const { data, error } = await db
+      .from(table)
+      .select(cols)
+      .range(from, from + 999);
     if (error) throw new Error(`${table}: ${error.message}`);
     out.push(...((data ?? []) as T[]));
     if (!data || data.length < 1000) break;
@@ -30,21 +42,48 @@ async function all<T>(table: string, cols: string): Promise<T[]> {
   return out;
 }
 
-type Cust = { id: string; name: string | null; phone_number: string | null; linked_order_id: string | null };
-type Ord = { id: string; customer_id: string | null; package_size: number | null; status: string; source: string | null };
-type Del = { id: string; customer_id: string | null; portions: number | null; delivery_date: string };
+type Cust = {
+  id: string;
+  name: string | null;
+  phone_number: string | null;
+  linked_order_id: string | null;
+};
+type Ord = {
+  id: string;
+  customer_id: string | null;
+  package_size: number | null;
+  status: string;
+  source: string | null;
+};
+type Del = {
+  id: string;
+  customer_id: string | null;
+  portions: number | null;
+  delivery_date: string;
+};
 
 async function main() {
-  const custs = await all<Cust>("customers", "id, name, phone_number, linked_order_id");
-  const orders = await all<Ord>("orders", "id, customer_id, package_size, status, source");
-  const dels = await all<Del>("daily_deliveries", "id, customer_id, portions, delivery_date");
+  const custs = await all<Cust>(
+    "customers",
+    "id, name, phone_number, linked_order_id",
+  );
+  const orders = await all<Ord>(
+    "orders",
+    "id, customer_id, package_size, status, source",
+  );
+  const dels = await all<Del>(
+    "daily_deliveries",
+    "id, customer_id, portions, delivery_date",
+  );
 
   const orderOwner = new Map(orders.map((o) => [o.id, o.customer_id]));
   // A customer with linked_order_id eats from another customer's package, so
   // both their purchases and their draws belong to that package's owner.
   const resolve = (id: string) => {
     const c = custs.find((x) => x.id === id);
-    const linked = c?.linked_order_id ? orderOwner.get(c.linked_order_id) : null;
+    const linked = c?.linked_order_id
+      ? orderOwner.get(c.linked_order_id)
+      : null;
     return linked ?? id;
   };
 
@@ -69,7 +108,8 @@ async function main() {
       sharedBy.set(key, set);
     }
     drawn.set(key, (drawn.get(key) ?? 0) + (d.portions ?? 0));
-    if (!last.get(key) || d.delivery_date > (last.get(key) ?? "")) last.set(key, d.delivery_date);
+    if (!last.get(key) || d.delivery_date > (last.get(key) ?? ""))
+      last.set(key, d.delivery_date);
   }
 
   const rows = [...drawn.keys()]
@@ -77,9 +117,17 @@ async function main() {
       const c = custs.find((x) => x.id === id);
       const b = (bought.get(id) ?? 0) + (free.get(id) ?? 0);
       const dr = drawn.get(id) ?? 0;
-      const shared = [...(sharedBy.get(id) ?? [])]
-        .map((sid) => custs.find((x) => x.id === sid)?.name ?? "?");
-      return { name: c?.name ?? "(unnamed)", bought: b, drawn: dr, balance: b - dr, last: last.get(id) ?? "", shared };
+      const shared = [...(sharedBy.get(id) ?? [])].map(
+        (sid) => custs.find((x) => x.id === sid)?.name ?? "?",
+      );
+      return {
+        name: c?.name ?? "(unnamed)",
+        bought: b,
+        drawn: dr,
+        balance: b - dr,
+        last: last.get(id) ?? "",
+        shared,
+      };
     })
     .filter((r) => r.balance < 0)
     .sort((a, b) => a.balance - b.balance);
@@ -116,7 +164,9 @@ async function main() {
     "## Reading this",
     "",
     `${noPurchase.length} customers have no purchases on file at all` +
-      (noPurchase.length ? ` (${noPurchase.map((r) => `${r.name} ${r.balance}`).join(", ")})` : "") +
+      (noPurchase.length
+        ? ` (${noPurchase.map((r) => `${r.name} ${r.balance}`).join(", ")})`
+        : "") +
       ". Verick, Kiliang and Kevin M last ate before the December package_orders backfill, so theirs are missing purchase records rather than granted quota. Gaylen is the exception: 1 portion bartered for a promo video, so hers is a genuine grant that has never been recorded as a free_quota order.",
     "",
     "No draw path checks the balance before writing, so the small 1-2 portion",
@@ -126,6 +176,8 @@ async function main() {
   ].join("\n");
 
   fs.writeFileSync("OVERDRAW.md", md);
-  console.log(`OVERDRAW.md written: ${rows.length} customers, ${Math.abs(total)} portions over`);
+  console.log(
+    `OVERDRAW.md written: ${rows.length} customers, ${Math.abs(total)} portions over`,
+  );
 }
 main();

@@ -20,7 +20,11 @@ const MOVABLE: { table: string; column: string }[] = [
   { table: "delivery_proofs", column: "matched_customer_id" },
 ];
 
-const SINGLETON: string[] = ["customer_flags", "customer_state", "customer_rate_limits"];
+const SINGLETON: string[] = [
+  "customer_flags",
+  "customer_state",
+  "customer_rate_limits",
+];
 
 async function main() {
   // Heterogeneous tables in one loop, so the generated row types do not line up.
@@ -28,7 +32,10 @@ async function main() {
   // biome-ignore lint/suspicious/noExplicitAny: one-off repair script over many tables
   const db = createAdminClient() as unknown as { from: (t: string) => any };
   for (const { table, column } of MOVABLE) {
-    const { data: rows, error } = await db.from(table).select("id").eq(column, LOSER);
+    const { data: rows, error } = await db
+      .from(table)
+      .select("id")
+      .eq(column, LOSER);
     if (error) throw new Error(`${table}: ${error.message}`);
     if (!rows?.length) continue;
     console.log(`${table}.${column}: ${rows.length}`);
@@ -41,13 +48,27 @@ async function main() {
     }
   }
   for (const table of SINGLETON) {
-    const { data: loserRow } = await db.from(table).select("customer_id").eq("customer_id", LOSER).maybeSingle();
+    const { data: loserRow } = await db
+      .from(table)
+      .select("customer_id")
+      .eq("customer_id", LOSER)
+      .maybeSingle();
     if (!loserRow) continue;
-    const { data: survivorRow } = await db.from(table).select("customer_id").eq("customer_id", SURVIVOR).maybeSingle();
-    console.log(`${table}: ${survivorRow ? "drop loser row" : "move to survivor"}`);
+    const { data: survivorRow } = await db
+      .from(table)
+      .select("customer_id")
+      .eq("customer_id", SURVIVOR)
+      .maybeSingle();
+    console.log(
+      `${table}: ${survivorRow ? "drop loser row" : "move to survivor"}`,
+    );
     if (APPLY) {
       if (survivorRow) await db.from(table).delete().eq("customer_id", LOSER);
-      else await db.from(table).update({ customer_id: SURVIVOR }).eq("customer_id", LOSER);
+      else
+        await db
+          .from(table)
+          .update({ customer_id: SURVIVOR })
+          .eq("customer_id", LOSER);
     }
   }
   if (APPLY) {
@@ -59,4 +80,10 @@ async function main() {
   }
 }
 
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

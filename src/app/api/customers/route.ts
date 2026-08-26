@@ -10,7 +10,10 @@ export async function GET(req: Request): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const db = createAdminClient();
   const all = new URL(req.url).searchParams.get("all") === "true";
@@ -29,7 +32,10 @@ export async function GET(req: Request): Promise<Response> {
       .select(columns)
       .order("name");
     if (error)
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
 
     // Attach each customer's own active order id, so the UI can offer
     // "draw from another customer's balance" without a separate lookup.
@@ -73,7 +79,10 @@ export async function GET(req: Request): Promise<Response> {
     .order("name");
 
   if (error)
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
   return NextResponse.json({ ok: true, data });
 }
 
@@ -86,7 +95,10 @@ export async function POST(req: Request): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const body = (await req.json()) as {
     name?: string;
@@ -102,11 +114,17 @@ export async function POST(req: Request): Promise<Response> {
 
   const phone = body.phone_number?.trim();
   if (!phone)
-    return NextResponse.json({ ok: false, error: "phone_number required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "phone_number required" },
+      { status: 400 },
+    );
 
   const address = body.address?.trim();
   if (!address)
-    return NextResponse.json({ ok: false, error: "address required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "address required" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
 
@@ -117,7 +135,11 @@ export async function POST(req: Request): Promise<Response> {
     .maybeSingle();
   if (existing)
     return NextResponse.json(
-      { ok: false, error: "Pelanggan dengan nomor ini sudah ada", existingId: existing.id },
+      {
+        ok: false,
+        error: "Pelanggan dengan nomor ini sudah ada",
+        existingId: existing.id,
+      },
       { status: 409 },
     );
 
@@ -144,7 +166,10 @@ export async function POST(req: Request): Promise<Response> {
     .single();
 
   if (error)
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   await logEdit({
     db,

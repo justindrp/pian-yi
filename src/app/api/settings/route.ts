@@ -5,8 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const db = createAdminClient();
   const [settingsRes, pricingRes, templatesRes, adminsRes] = await Promise.all([
@@ -29,10 +35,16 @@ export async function GET(): Promise<Response> {
 
 export async function PATCH(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as { updates: Record<string, string> };
+  const body = (await req.json()) as { updates: Record<string, string> };
   const db = createAdminClient();
 
   for (const [key, value] of Object.entries(body.updates)) {

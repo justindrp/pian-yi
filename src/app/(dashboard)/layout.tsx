@@ -1,14 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { version } from "../../../package.json";
-import MobileNav from "@/components/shared/mobile-nav";
+import { AssistantWidget } from "@/components/dashboard/assistant-widget";
 import DesktopNav from "@/components/shared/desktop-nav";
+import MobileNav from "@/components/shared/mobile-nav";
 import QueryProvider from "@/components/shared/query-provider";
 import ServiceWorkerRegistrar from "@/components/shared/service-worker-registrar";
-import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { AssistantWidget } from "@/components/dashboard/assistant-widget";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getSessionWithRole } from "@/lib/supabase/get-role";
+import { version } from "../../../package.json";
 
 const allNavItems = [
   { href: "/inbox", label: "Inbox", ownerOnly: false },
@@ -61,7 +61,11 @@ export default async function DashboardLayout({
       />
       <div className="min-h-screen bg-gray-50 flex">
         {/* Sidebar — desktop only */}
-        <DesktopNav navItems={navItems} userEmail={session.email} version={`v${version}`} />
+        <DesktopNav
+          navItems={navItems}
+          userEmail={session.email}
+          version={`v${version}`}
+        />
 
         {/* Main content */}
         <main className="flex-1 overflow-auto min-h-screen">

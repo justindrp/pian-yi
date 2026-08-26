@@ -1,6 +1,10 @@
 import { unbookedByOrder } from "@/lib/orders/customer-schedule";
 
-type Row = { order_id: string | null; portions: number | null; status: string | null };
+type Row = {
+  order_id: string | null;
+  portions: number | null;
+  status: string | null;
+};
 
 /**
  * Enough of the query builder for unbookedByOrder: it chains
@@ -33,7 +37,9 @@ function stubDb(rows: Row[]) {
 
 describe("unbookedByOrder", () => {
   test("an order with nothing booked has its whole package unbooked", async () => {
-    const m = await unbookedByOrder(stubDb([]), [{ id: "a", package_size: 20 }]);
+    const m = await unbookedByOrder(stubDb([]), [
+      { id: "a", package_size: 20 },
+    ]);
     expect(m.get("a")).toBe(20);
   });
 
@@ -57,7 +63,9 @@ describe("unbookedByOrder", () => {
       portions: 1,
       status: "scheduled",
     }));
-    const m = await unbookedByOrder(stubDb(rows), [{ id: "nadya", package_size: 20 }]);
+    const m = await unbookedByOrder(stubDb(rows), [
+      { id: "nadya", package_size: 20 },
+    ]);
     expect(m.get("nadya")).toBe(0);
   });
 
@@ -82,7 +90,9 @@ describe("unbookedByOrder", () => {
   });
 
   test("a null package_size is treated as no quota, not unlimited", async () => {
-    const m = await unbookedByOrder(stubDb([]), [{ id: "a", package_size: null }]);
+    const m = await unbookedByOrder(stubDb([]), [
+      { id: "a", package_size: null },
+    ]);
     expect(m.get("a")).toBe(0);
   });
 

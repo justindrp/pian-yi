@@ -9,8 +9,9 @@
  *  4. Delete the old placeholder record
  */
 import { createClient } from "@supabase/supabase-js";
-import { requiredEnv } from "../src/lib/env";
 import * as dotenv from "dotenv";
+import { requiredEnv } from "../src/lib/env";
+
 dotenv.config({ path: ".env.local" });
 
 function normalize(name: string) {
@@ -19,26 +20,39 @@ function normalize(name: string) {
 
 async function main() {
   const db = createClient(
-    requiredEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
-    requiredEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY),
+    requiredEnv(
+      "NEXT_PUBLIC_SUPABASE_URL",
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+    ),
+    requiredEnv(
+      "SUPABASE_SERVICE_ROLE_KEY",
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+    ),
   );
 
   // Load all customers
   const { data: all, error } = await db
     .from("customers")
     .select("id, name, phone_number, area, created_at");
-  if (error || !all) { console.error(error); process.exit(1); }
+  if (error || !all) {
+    console.error(error);
+    process.exit(1);
+  }
 
-  const placeholders = all.filter(c => c.phone_number?.startsWith("IMPORT_"));
+  const placeholders = all.filter((c) => c.phone_number?.startsWith("IMPORT_"));
   console.log(`Found ${placeholders.length} placeholder records`);
 
-  let merged = 0, skipped = 0;
+  let merged = 0,
+    skipped = 0;
 
   for (const old of placeholders) {
     const oldNorm = normalize(old.name ?? "");
     // Find a real-phone customer with the same name (excluding self)
     const match = all.find(
-      c => c.id !== old.id && !c.phone_number?.startsWith("IMPORT_") && normalize(c.name ?? "") === oldNorm
+      (c) =>
+        c.id !== old.id &&
+        !c.phone_number?.startsWith("IMPORT_") &&
+        normalize(c.name ?? "") === oldNorm,
     );
 
     if (!match) {
@@ -47,7 +61,9 @@ async function main() {
       continue;
     }
 
-    console.log(`  MERGE: "${old.name}" ${old.phone_number} → ${match.phone_number} (${match.id})`);
+    console.log(
+      `  MERGE: "${old.name}" ${old.phone_number} → ${match.phone_number} (${match.id})`,
+    );
 
     // Reassign orders from old → new
     const { data: movedOrders, error: ordErr } = await db
@@ -55,24 +71,42 @@ async function main() {
       .update({ customer_id: match.id })
       .eq("customer_id", old.id)
       .select("id");
-    if (ordErr) { console.error(`    ERROR reassigning orders:`, ordErr.message); continue; }
-    if (movedOrders?.length) console.log(`    Moved ${movedOrders.length} order(s)`);
+    if (ordErr) {
+      console.error(`    ERROR reassigning orders:`, ordErr.message);
+      continue;
+    }
+    if (movedOrders?.length)
+      console.log(`    Moved ${movedOrders.length} order(s)`);
 
     // Delete placeholder's daily_deliveries — real-phone customer already has their own rows
-    const { error: ddErr } = await db.from("daily_deliveries").delete().eq("customer_id", old.id);
-    if (ddErr) { console.error(`    ERROR deleting daily_deliveries:`, ddErr.message); continue; }
+    const { error: ddErr } = await db
+      .from("daily_deliveries")
+      .delete()
+      .eq("customer_id", old.id);
+    if (ddErr) {
+      console.error(`    ERROR deleting daily_deliveries:`, ddErr.message);
+      continue;
+    }
 
     // Delete conversation state, rate limits, processed messages for old record
     await db.from("conversation_state").delete().eq("customer_id", old.id);
     await db.from("customer_rate_limits").delete().eq("customer_id", old.id);
 
     // Delete the old placeholder customer
-    const { error: delErr } = await db.from("customers").delete().eq("id", old.id);
-    if (delErr) { console.error(`    ERROR deleting old record:`, delErr.message); continue; }
+    const { error: delErr } = await db
+      .from("customers")
+      .delete()
+      .eq("id", old.id);
+    if (delErr) {
+      console.error(`    ERROR deleting old record:`, delErr.message);
+      continue;
+    }
 
     merged++;
   }
 
-  console.log(`\nDone: ${merged} merged, ${skipped} skipped (no real-phone match found)`);
+  console.log(
+    `\nDone: ${merged} merged, ${skipped} skipped (no real-phone match found)`,
+  );
 }
 main();

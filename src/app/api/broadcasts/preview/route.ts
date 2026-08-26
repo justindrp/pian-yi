@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  extractJson,
+  getAnthropicClient,
+  HAIKU_MODEL,
+  NO_THINKING,
+} from "@/lib/claude/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { HAIKU_MODEL, NO_THINKING, extractJson, getAnthropicClient } from "@/lib/claude/client";
 
 interface BroadcastFilter {
   areas?: string[];
@@ -12,22 +17,39 @@ interface BroadcastFilter {
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const { instruction } = await req.json() as { instruction: string };
-  if (!instruction?.trim()) return NextResponse.json({ ok: false, error: "instruction required" }, { status: 400 });
+  const { instruction } = (await req.json()) as { instruction: string };
+  if (!instruction?.trim())
+    return NextResponse.json(
+      { ok: false, error: "instruction required" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
 
   // Load context for Claude: available areas and subcontractors
   const [{ data: subs }, { data: areaRows }] = await Promise.all([
-    db.from("subcontractors").select("id, name, customer_nickname").eq("is_active", true),
+    db
+      .from("subcontractors")
+      .select("id, name, customer_nickname")
+      .eq("is_active", true),
     db.from("customers").select("area").not("area", "is", null),
   ]);
 
-  const uniqueAreas = [...new Set((areaRows ?? []).map((r) => r.area).filter(Boolean))];
-  const subList = (subs ?? []).map((s) => `${s.id} (${s.name} / ${s.customer_nickname})`).join(", ");
+  const uniqueAreas = [
+    ...new Set((areaRows ?? []).map((r) => r.area).filter(Boolean)),
+  ];
+  const subList = (subs ?? [])
+    .map((s) => `${s.id} (${s.name} / ${s.customer_nickname})`)
+    .join(", ");
 
   const systemPrompt = `You are a targeting assistant for a catering business in Indonesia. Your job is to interpret an admin's broadcast instruction and return:
 1. A customer filter (JSON)
@@ -72,17 +94,25 @@ Respond ONLY with valid JSON in this exact shape:
 
   try {
     const text = extractJson(response);
-    const parsed = JSON.parse(text) as { filter: BroadcastFilter; message_template: string };
+    const parsed = JSON.parse(text) as {
+      filter: BroadcastFilter;
+      message_template: string;
+    };
     filter = parsed.filter;
     message_template = parsed.message_template;
   } catch {
-    return NextResponse.json({ ok: false, error: "AI failed to parse instruction. Please rephrase." }, { status: 422 });
+    return NextResponse.json(
+      { ok: false, error: "AI failed to parse instruction. Please rephrase." },
+      { status: 422 },
+    );
   }
 
   // Query matching customers
   let query = db
     .from("customers")
-    .select("id, name, phone_number, area, subcontractor_id, orders!inner(status, subcontractor_id)")
+    .select(
+      "id, name, phone_number, area, subcontractor_id, orders!inner(status, subcontractor_id)",
+    )
     .not("phone_number", "is", null);
 
   const statuses = filter.statuses?.length ? filter.statuses : ["active"];
@@ -101,13 +131,20 @@ Respond ONLY with valid JSON in this exact shape:
   // Deduplicate by customer id (one customer may have multiple orders)
   const seen = new Set<string>();
   const recipients = (customers ?? [])
-    .filter((c) => { if (seen.has(c.id)) return false; seen.add(c.id); return true; })
+    .filter((c) => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    })
     .map((c) => ({
       customer_id: c.id,
       name: c.name ?? "Kak",
       phone_number: c.phone_number,
       area: c.area,
-      personalized_message: message_template.replace(/\{name\}/g, c.name ?? "Kak"),
+      personalized_message: message_template.replace(
+        /\{name\}/g,
+        c.name ?? "Kak",
+      ),
     }));
 
   return NextResponse.json({

@@ -18,18 +18,15 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildCorpus, type CorpusCase } from "./replay-corpus";
 import { processWebhookAsync } from "../src/app/api/webhook/whatsapp/route";
 import {
   contractPrice,
   NASI_MERAH_SURCHARGE,
 } from "../src/lib/claude/extract-order";
 import { createAdminClient } from "../src/lib/supabase/admin";
-import {
-  DEMO_PHONE_PREFIX,
-  demoDisplayName,
-} from "../src/lib/whatsapp/demo";
+import { DEMO_PHONE_PREFIX, demoDisplayName } from "../src/lib/whatsapp/demo";
 import type { WhatsAppWebhookPayload } from "../src/lib/whatsapp/types";
+import { buildCorpus, type CorpusCase } from "./replay-corpus";
 
 // ---------------------------------------------------------------------------
 // Pinned clock
@@ -159,13 +156,16 @@ async function replayCase(c: CorpusCase): Promise<Result> {
     .select("id", { count: "exact", head: true })
     .eq("customer_id", c.customerId)
     .lt("created_at", windowStart);
-  const { data: real } = (priorOrders ?? 0) > 0
-    ? await db
-        .from("customers")
-        .select("address, address_2, area, sub_area, subcontractor_id, delivery_route")
-        .eq("id", c.customerId)
-        .maybeSingle()
-    : { data: null };
+  const { data: real } =
+    (priorOrders ?? 0) > 0
+      ? await db
+          .from("customers")
+          .select(
+            "address, address_2, area, sub_area, subcontractor_id, delivery_route",
+          )
+          .eq("id", c.customerId)
+          .maybeSingle()
+      : { data: null };
   // The negotiated rate is copied regardless of whether they had ordered before:
   // it is a property of who the customer is, not something stated in the turns
   // being scored, and without it a corporate replay prices off the tier ladder
@@ -198,9 +198,9 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   // long as the process lived. On 2026-08-19 three shards sat idle for nine minutes
   // with five cases unreported. A turn that blows the deadline is recorded as a
   // failed turn and the case carries on, which is what the verdict should reflect.
-// The bound is generous because a turn's cost grows with the history behind it —
-// Jordy ran 21s on turn 1 and 47s on turn 7 — so the deadline has to separate a
-// slow turn from a wedged one, not from an average one.
+  // The bound is generous because a turn's cost grows with the history behind it —
+  // Jordy ran 21s on turn 1 and 47s on turn 7 — so the deadline has to separate a
+  // slow turn from a wedged one, not from an average one.
   const TURN_TIMEOUT_MS = 300_000;
 
   function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -535,7 +535,9 @@ async function main() {
     `\n=== ${passed}/${scored.length} passed ===${drifted.length ? ` (${drifted.length} unscoreable: rules drifted)` : ""}`,
   );
   for (const r of drifted) {
-    console.log(`\nDRIFT ${r.name ?? "?"} ${r.orderId.slice(0, 8)}: ${r.drift}`);
+    console.log(
+      `\nDRIFT ${r.name ?? "?"} ${r.orderId.slice(0, 8)}: ${r.drift}`,
+    );
   }
   for (const r of scored.filter((x) => !x.ok)) {
     console.log(

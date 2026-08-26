@@ -6,7 +6,9 @@ const ROUTE_BY_AREA: Record<string, number> = {
   Karawaci: 2,
 };
 
-export function getDeliveryRoute(area: string | null | undefined): number | null {
+export function getDeliveryRoute(
+  area: string | null | undefined,
+): number | null {
   if (!area) return null;
   return ROUTE_BY_AREA[area] ?? null;
 }

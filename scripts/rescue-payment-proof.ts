@@ -43,8 +43,12 @@ async function main() {
     .maybeSingle();
   if (!img) throw new Error("no inbound image on this thread");
 
-  console.log(`order ${order.id.slice(0, 8)} ${order.status} Rp${order.total_price}`);
-  console.log(`image ${img.created_at} content=${String(img.content).slice(0, 40)} media_id=${img.media_id ?? "-"}`);
+  console.log(
+    `order ${order.id.slice(0, 8)} ${order.status} Rp${order.total_price}`,
+  );
+  console.log(
+    `image ${img.created_at} content=${String(img.content).slice(0, 40)} media_id=${img.media_id ?? "-"}`,
+  );
   if (!apply) return console.log("dry run — pass --apply");
 
   let url = img.media_url;
@@ -62,13 +66,21 @@ async function main() {
     }
   }
 
-  await db.from("orders")
+  await db
+    .from("orders")
     .update({ status: "payment_proof_received", payment_proof_url: url })
     .eq("id", order.id);
-  await db.from("conversations")
+  await db
+    .from("conversations")
     .update({ content: url ?? "[Bukti pembayaran dikirim]" })
     .eq("id", img.id);
   console.log("order -> payment_proof_received");
   console.log("proof:", url);
 }
-main().then(() => process.exit(0), (e) => { console.error(e.message); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e.message);
+    process.exit(1);
+  },
+);

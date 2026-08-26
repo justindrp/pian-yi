@@ -6,8 +6,9 @@
  *
  *   tsx scripts/replay-corpus.ts [count]
  */
-import { isDemoPhone } from "../src/lib/whatsapp/demo";
+
 import { createAdminClient } from "../src/lib/supabase/admin";
+import { isDemoPhone } from "../src/lib/whatsapp/demo";
 
 export interface CorpusTurn {
   /** Original timestamp — the replay pins "today" to this so relative dates hold. */
@@ -44,7 +45,10 @@ export interface CorpusExpectation {
 const BURST_GAP_MS = 90_000;
 
 /** Media rows replay as their caption; a bare URL carries nothing the model can read. */
-function replayableText(content: string, messageType: string | null): string | null {
+function replayableText(
+  content: string,
+  messageType: string | null,
+): string | null {
   const text = String(content ?? "").trim();
   if (!text) return null;
   if (messageType === "image" || messageType === "document") {
@@ -64,12 +68,18 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
 
   const { data: orders } = await db
     .from("orders")
-    .select("id, customer_id, package_size, price_per_portion, total_price, meal_time_preference, created_at, customers!orders_customer_id_fkey(name, phone_number)")
+    .select(
+      "id, customer_id, package_size, price_per_portion, total_price, meal_time_preference, created_at, customers!orders_customer_id_fkey(name, phone_number)",
+    )
     .eq("source", "purchase")
     // A cancelled order is not something the bot should reproduce. The phantom
     // order recovery built for Nadya on 2026-08-19 landed in the corpus as
     // ground truth, so the harness was asking the bot to rebuild a bug.
-    .not("status", "in", "(cancelled_unpaid,cancelled_by_customer,cancelled_by_admin,refunded)")
+    .not(
+      "status",
+      "in",
+      "(cancelled_unpaid,cancelled_by_customer,cancelled_by_admin,refunded)",
+    )
     .order("created_at", { ascending: false })
     .limit(count * 2);
 
@@ -97,7 +107,9 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
     // The ordering conversation: everything the customer said in the two weeks
     // before the order landed. Two weeks because a renewal often starts from a
     // thread that has been quiet, and anything older is a different order.
-    const since = new Date(new Date(createdAt).getTime() - 14 * 86_400_000).toISOString();
+    const since = new Date(
+      new Date(createdAt).getTime() - 14 * 86_400_000,
+    ).toISOString();
     const { data: msgs } = await db
       .from("conversations")
       .select("created_at, role, content, message_type")
@@ -113,7 +125,10 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
       if (!text) continue;
       const at = m.created_at ?? createdAt;
       const prev = turns[turns.length - 1];
-      if (prev && new Date(at).getTime() - new Date(prev.at).getTime() < BURST_GAP_MS) {
+      if (
+        prev &&
+        new Date(at).getTime() - new Date(prev.at).getTime() < BURST_GAP_MS
+      ) {
         prev.text = `${prev.text}\n${text}`;
       } else {
         turns.push({ at, text });
@@ -141,17 +156,26 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
     const windowStart = turns[0]?.at ?? since;
     const { data: siblings } = await db
       .from("orders")
-      .select("id, package_size, price_per_portion, total_price, meal_time_preference, created_at")
+      .select(
+        "id, package_size, price_per_portion, total_price, meal_time_preference, created_at",
+      )
       .eq("customer_id", order.customer_id ?? "")
       .eq("source", "purchase")
-      .not("status", "in", "(cancelled_unpaid,cancelled_by_customer,cancelled_by_admin,refunded)")
+      .not(
+        "status",
+        "in",
+        "(cancelled_unpaid,cancelled_by_customer,cancelled_by_admin,refunded)",
+      )
       .gte("created_at", windowStart)
       .neq("id", order.id);
     const alternatives: CorpusExpectation[] = [];
     for (const sib of siblings ?? []) {
       if (sib.created_at && sib.created_at > createdAt) {
         // Only fold in siblings from this window, not the customer's future.
-        if (new Date(sib.created_at).getTime() - new Date(createdAt).getTime() > 86_400_000)
+        if (
+          new Date(sib.created_at).getTime() - new Date(createdAt).getTime() >
+          86_400_000
+        )
           continue;
       }
       covered.add(sib.id);
@@ -200,5 +224,11 @@ async function main() {
 }
 
 if (process.argv[1]?.endsWith("replay-corpus.ts")) {
-  main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+  main().then(
+    () => process.exit(0),
+    (e) => {
+      console.error(e);
+      process.exit(1);
+    },
+  );
 }

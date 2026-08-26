@@ -657,7 +657,8 @@ export default function DeliveriesClient() {
         body: JSON.stringify({ delivery_route: route }),
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error ?? "Gagal simpan rute");
+      if (!res.ok || !json.ok)
+        throw new Error(json.error ?? "Gagal simpan rute");
     },
     onSuccess: (_data, { customerId, route }) => {
       setRows((prev) =>
@@ -1154,7 +1155,10 @@ export default function DeliveriesClient() {
                                     )}
                                   </div>
                                   <Select
-                                    value={r.customers?.delivery_route?.toString() ?? ""}
+                                    value={
+                                      r.customers?.delivery_route?.toString() ??
+                                      ""
+                                    }
                                     onValueChange={(v) =>
                                       assignRoute.mutate({
                                         customerId: r.customer_id,

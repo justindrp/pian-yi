@@ -61,7 +61,9 @@ describe("validateReply", () => {
 
   test("API error fails open (valid: true)", async () => {
     (getAnthropicClient as jest.Mock).mockReturnValue({
-      messages: { create: jest.fn().mockRejectedValue(new Error("network error")) },
+      messages: {
+        create: jest.fn().mockRejectedValue(new Error("network error")),
+      },
     });
 
     const result = await validateReply(baseParams);

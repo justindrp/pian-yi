@@ -11,15 +11,29 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const { id } = await params;
   const form = await req.formData();
   const file = form.get("file") as File | null;
 
-  if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
-  if (!file.type.startsWith("image/")) return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
+  if (!file)
+    return NextResponse.json(
+      { ok: false, error: "Missing file" },
+      { status: 400 },
+    );
+  if (!file.type.startsWith("image/"))
+    return NextResponse.json(
+      { ok: false, error: "File must be an image" },
+      { status: 400 },
+    );
 
   let image: UploadedImage;
   try {
@@ -34,14 +48,22 @@ export async function POST(
   const db = createAdminClient();
   const { error: uploadError } = await db.storage
     .from("menu-images")
-    .upload(path, image.buffer, { contentType: image.contentType, upsert: true });
+    .upload(path, image.buffer, {
+      contentType: image.contentType,
+      upsert: true,
+    });
 
   if (uploadError) {
     console.error("[subcontractor menu-image upload]", uploadError.message);
-    return NextResponse.json({ ok: false, error: "Upload failed" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Upload failed" },
+      { status: 500 },
+    );
   }
 
-  const { data: { publicUrl } } = db.storage.from("menu-images").getPublicUrl(path);
+  const {
+    data: { publicUrl },
+  } = db.storage.from("menu-images").getPublicUrl(path);
 
   // Which week the image covers decides whether the bot may send it as "next
   // week's menu". The uploader may state it outright; the day-of-week default is
@@ -62,7 +84,11 @@ export async function POST(
     })
     .eq("id", id);
 
-  if (updateError) return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+  if (updateError)
+    return NextResponse.json(
+      { ok: false, error: updateError.message },
+      { status: 500 },
+    );
 
   await db.from("edit_log").insert({
     entity_type: "subcontractors",
@@ -72,7 +98,11 @@ export async function POST(
     changes: { menu_image_url: publicUrl, menu_week_start: menuWeekStart },
   });
 
-  return NextResponse.json({ ok: true, url: publicUrl, menu_week_start: menuWeekStart });
+  return NextResponse.json({
+    ok: true,
+    url: publicUrl,
+    menu_week_start: menuWeekStart,
+  });
 }
 
 export const dynamic = "force-dynamic";

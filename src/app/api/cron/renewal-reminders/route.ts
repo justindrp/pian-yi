@@ -42,7 +42,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (!customer) continue;
     const msg = `${firstTemplate
       .replace("{name}", customer.name ?? "kak")
-      .replace("{remaining}", String(firstThreshold))}\n\n${WINDOW_NOTICE_SHORT}`;
+      .replace(
+        "{remaining}",
+        String(firstThreshold),
+      )}\n\n${WINDOW_NOTICE_SHORT}`;
     await sendTextMessage(customer.phone_number, msg);
     await db
       .from("orders")
@@ -67,7 +70,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (!customer) continue;
     const msg = `${finalTemplate
       .replace("{name}", customer.name ?? "kak")
-      .replace("{remaining}", String(finalThreshold))}\n\n${WINDOW_NOTICE_SHORT}`;
+      .replace(
+        "{remaining}",
+        String(finalThreshold),
+      )}\n\n${WINDOW_NOTICE_SHORT}`;
     await sendTextMessage(customer.phone_number, msg);
     await db
       .from("orders")

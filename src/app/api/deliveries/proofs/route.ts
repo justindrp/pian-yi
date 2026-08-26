@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { sendDeliveryPhotoToCustomer } from "@/lib/claude/photo-matcher";
 import { logEdit } from "@/lib/audit/log-edit";
+import { sendDeliveryPhotoToCustomer } from "@/lib/claude/photo-matcher";
 import { compressUploadedImage } from "@/lib/images/compress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -9,21 +9,34 @@ type UploadedImage = Awaited<ReturnType<typeof compressUploadedImage>>;
 
 export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const { searchParams } = new URL(req.url);
-  const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
+  const date =
+    searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
 
   const db = createAdminClient();
   const { data, error } = await db
     .from("delivery_proofs")
-    .select("*, subcontractors(name), customers:matched_customer_id(name, phone_number)")
+    .select(
+      "*, subcontractors(name), customers:matched_customer_id(name, phone_number)",
+    )
     .gte("received_at", `${date}T00:00:00Z`)
     .lt("received_at", `${date}T23:59:59Z`)
     .order("received_at", { ascending: false });
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   // Generate signed URLs for images
   const withSignedUrls = await Promise.all(
@@ -43,10 +56,16 @@ export async function GET(req: NextRequest): Promise<Response> {
 
 export async function PATCH(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     id: string;
     action: "send" | "unmatch";
     customer_id?: string;
@@ -55,16 +74,27 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
 
   if (body.action === "send" && body.customer_id) {
-    await sendDeliveryPhotoToCustomer(body.id, body.customer_id, undefined, user.email);
-    await db.from("delivery_proofs").update({
-      matched_customer_id: body.customer_id,
-      match_method: "manual",
-      status: "manually_sent",
-      sent_to_customer_at: new Date().toISOString(),
-      sent_by: user.email,
-    }).eq("id", body.id);
+    await sendDeliveryPhotoToCustomer(
+      body.id,
+      body.customer_id,
+      undefined,
+      user.email,
+    );
+    await db
+      .from("delivery_proofs")
+      .update({
+        matched_customer_id: body.customer_id,
+        match_method: "manual",
+        status: "manually_sent",
+        sent_to_customer_at: new Date().toISOString(),
+        sent_by: user.email,
+      })
+      .eq("id", body.id);
   } else if (body.action === "unmatch") {
-    await db.from("delivery_proofs").update({ status: "unmatched" }).eq("id", body.id);
+    await db
+      .from("delivery_proofs")
+      .update({ status: "unmatched" })
+      .eq("id", body.id);
   }
 
   await logEdit({
@@ -81,20 +111,34 @@ export async function PATCH(req: NextRequest): Promise<Response> {
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const customerId = formData.get("customer_id") as string | null;
   const subcontractorId = formData.get("subcontractor_id") as string | null;
-  const date = (formData.get("date") as string | null) ?? new Date().toISOString().slice(0, 10);
+  const date =
+    (formData.get("date") as string | null) ??
+    new Date().toISOString().slice(0, 10);
 
   if (!file || !customerId) {
-    return NextResponse.json({ ok: false, error: "file and customer_id required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "file and customer_id required" },
+      { status: 400 },
+    );
   }
   if (!file.type.startsWith("image/")) {
-    return NextResponse.json({ ok: false, error: "File must be an image" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "File must be an image" },
+      { status: 400 },
+    );
   }
 
   const db = createAdminClient();
@@ -110,11 +154,20 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const { error: uploadErr } = await db.storage
     .from("delivery-proofs")
-    .upload(storagePath, image.buffer, { contentType: image.contentType, upsert: false });
+    .upload(storagePath, image.buffer, {
+      contentType: image.contentType,
+      upsert: false,
+    });
 
-  if (uploadErr) return NextResponse.json({ ok: false, error: uploadErr.message }, { status: 500 });
+  if (uploadErr)
+    return NextResponse.json(
+      { ok: false, error: uploadErr.message },
+      { status: 500 },
+    );
 
-  const { data: urlData } = db.storage.from("delivery-proofs").getPublicUrl(storagePath);
+  const { data: urlData } = db.storage
+    .from("delivery-proofs")
+    .getPublicUrl(storagePath);
 
   const { data: proof, error: insertErr } = await db
     .from("delivery_proofs")
@@ -130,21 +183,39 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select("id")
     .single();
 
-  if (insertErr) return NextResponse.json({ ok: false, error: insertErr.message }, { status: 500 });
+  if (insertErr)
+    return NextResponse.json(
+      { ok: false, error: insertErr.message },
+      { status: 500 },
+    );
 
   return NextResponse.json({ ok: true, data: proof });
 }
 
 export async function DELETE(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
 
-  const { id } = await req.json() as { id: string };
-  if (!id) return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
+  const { id } = (await req.json()) as { id: string };
+  if (!id)
+    return NextResponse.json(
+      { ok: false, error: "id required" },
+      { status: 400 },
+    );
 
   const db = createAdminClient();
-  const { data: proof } = await db.from("delivery_proofs").select("image_url").eq("id", id).single();
+  const { data: proof } = await db
+    .from("delivery_proofs")
+    .select("image_url")
+    .eq("id", id)
+    .single();
 
   if (proof?.image_url) {
     const path = proof.image_url.split("/delivery-proofs/")[1];
@@ -152,7 +223,11 @@ export async function DELETE(req: NextRequest): Promise<Response> {
   }
 
   const { error } = await db.from("delivery_proofs").delete().eq("id", id);
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
 
   // The proof row and its image are both gone; this is what is left of it.
   await logEdit({

@@ -1,4 +1,9 @@
-import { HAIKU_MODEL, NO_THINKING, extractText, getAnthropicClient } from "@/lib/claude/client";
+import {
+  extractText,
+  getAnthropicClient,
+  HAIKU_MODEL,
+  NO_THINKING,
+} from "@/lib/claude/client";
 
 export type MessageIntent =
   | "faq"

@@ -62,7 +62,9 @@ export async function PATCH(
     );
   }
 
-  const update: TablesUpdate<"tasks"> = { updated_at: new Date().toISOString() };
+  const update: TablesUpdate<"tasks"> = {
+    updated_at: new Date().toISOString(),
+  };
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const field of EDITABLE) {
     if (!(field in input)) continue;

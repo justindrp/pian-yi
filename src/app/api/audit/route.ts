@@ -30,9 +30,12 @@ export async function GET(req: NextRequest): Promise<Response> {
   const db = createAdminClient();
   let query = db
     .from("edit_log")
-    .select("id, entity_type, entity_id, action, changed_by, changes, created_at", {
-      count: "exact",
-    })
+    .select(
+      "id, entity_type, entity_id, action, changed_by, changes, created_at",
+      {
+        count: "exact",
+      },
+    )
     .order("created_at", { ascending: false })
     .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 

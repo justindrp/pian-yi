@@ -24,7 +24,12 @@ const forcedPhone = process.argv[3] ?? null;
 
 const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-type Target = { id: string | null; name: string | null; phone: string; hoursSilent: number };
+type Target = {
+  id: string | null;
+  name: string | null;
+  phone: string;
+  hoursSilent: number;
+};
 
 async function pickTarget(): Promise<Target> {
   if (forcedPhone) {
@@ -35,14 +40,28 @@ async function pickTarget(): Promise<Target> {
       .maybeSingle();
     // A forced phone need not be a customer — testing against one of our own
     // numbers is the cleanest probe. The receipt row then carries no customer.
-    if (!data) return { id: null, name: "(not a customer)", phone: forcedPhone, hoursSilent: -1 };
-    return { id: data.id, name: data.name, phone: data.phone_number, hoursSilent: -1 };
+    if (!data)
+      return {
+        id: null,
+        name: "(not a customer)",
+        phone: forcedPhone,
+        hoursSilent: -1,
+      };
+    return {
+      id: data.id,
+      name: data.name,
+      phone: data.phone_number,
+      hoursSilent: -1,
+    };
   }
 
   // Newest inbound message per customer. Paginated in full: a single
   // newest-first slice silently excludes exactly the customers we want, since
   // the longest-silent ones fall off the end of it.
-  const newest = new Map<string, { at: number; c: { id: string; name: string | null; phone_number: string } }>();
+  const newest = new Map<
+    string,
+    { at: number; c: { id: string; name: string | null; phone_number: string } }
+  >();
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data: rows, error } = await db
@@ -53,7 +72,11 @@ async function pickTarget(): Promise<Target> {
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     for (const r of rows ?? []) {
-      const c = r.customers as unknown as { id: string; name: string | null; phone_number: string };
+      const c = r.customers as unknown as {
+        id: string;
+        name: string | null;
+        phone_number: string;
+      };
       if (!c?.phone_number?.startsWith("+62")) continue;
       newest.set(c.id, { at: Date.parse(r.created_at as string), c });
     }
@@ -66,9 +89,16 @@ async function pickTarget(): Promise<Target> {
     .filter((v) => v.hours > 24 * 30) // silent over a month
     .sort((a, b) => b.hours - a.hours);
 
-  if (candidates.length === 0) throw new Error("No customer silent for more than 30 days");
-  const pick = candidates[Math.floor(Math.random() * Math.min(20, candidates.length))];
-  return { id: pick.c.id, name: pick.c.name, phone: pick.c.phone_number, hoursSilent: pick.hours };
+  if (candidates.length === 0)
+    throw new Error("No customer silent for more than 30 days");
+  const pick =
+    candidates[Math.floor(Math.random() * Math.min(20, candidates.length))];
+  return {
+    id: pick.c.id,
+    name: pick.c.name,
+    phone: pick.c.phone_number,
+    hoursSilent: pick.hours,
+  };
 }
 
 async function uploadHeaderImage(): Promise<string> {
@@ -83,47 +113,65 @@ async function uploadHeaderImage(): Promise<string> {
     .single();
   if (!proof?.image_url) throw new Error("no delivery proof image to reuse");
   const path = proof.image_url.split("/delivery-proofs/")[1];
-  const { data: signed } = await db.storage.from("delivery-proofs").createSignedUrl(path, 600);
+  const { data: signed } = await db.storage
+    .from("delivery-proofs")
+    .createSignedUrl(path, 600);
   if (!signed?.signedUrl) throw new Error("could not sign proof image url");
 
-  const bytes = Buffer.from(await (await fetch(signed.signedUrl)).arrayBuffer());
+  const bytes = Buffer.from(
+    await (await fetch(signed.signedUrl)).arrayBuffer(),
+  );
   const form = new FormData();
   form.append("messaging_product", "whatsapp");
   form.append("file", new Blob([bytes], { type: "image/jpeg" }), "proof.jpg");
-  const res = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_ID}/media`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${TOKEN}` },
-    body: form,
-  });
+  const res = await fetch(
+    `https://graph.facebook.com/${VERSION}/${PHONE_ID}/media`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN}` },
+      body: form,
+    },
+  );
   const json = (await res.json()) as { id?: string };
   if (!json.id) throw new Error(`media upload failed: ${JSON.stringify(json)}`);
   return json.id;
 }
 
 async function sendTemplate(to: string, name: string): Promise<string> {
-  const res = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_ID}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to,
-      type: "template",
-      template: {
-        name,
-        language: { code: name === "hello_world" ? "en_US" : "id" },
-        ...(name === "delivery_proof"
-          ? {
-              components: [
-                {
-                  type: "header",
-                  parameters: [{ type: "image", image: { id: await uploadHeaderImage() } }],
-                },
-              ],
-            }
-          : {}),
+  const res = await fetch(
+    `https://graph.facebook.com/${VERSION}/${PHONE_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        "Content-Type": "application/json",
       },
-    }),
-  });
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+          name,
+          language: { code: name === "hello_world" ? "en_US" : "id" },
+          ...(name === "delivery_proof"
+            ? {
+                components: [
+                  {
+                    type: "header",
+                    parameters: [
+                      {
+                        type: "image",
+                        image: { id: await uploadHeaderImage() },
+                      },
+                    ],
+                  },
+                ],
+              }
+            : {}),
+        },
+      }),
+    },
+  );
   const json = (await res.json()) as {
     messages?: Array<{ id: string; message_status?: string }>;
     error?: unknown;
@@ -131,7 +179,10 @@ async function sendTemplate(to: string, name: string): Promise<string> {
   if (!res.ok || !json.messages?.[0]?.id) {
     throw new Error(`send rejected at API time: ${JSON.stringify(json)}`);
   }
-  console.log("  accepted, message_status:", json.messages[0].message_status ?? "(none)");
+  console.log(
+    "  accepted, message_status:",
+    json.messages[0].message_status ?? "(none)",
+  );
   return json.messages[0].id;
 }
 
@@ -139,7 +190,9 @@ async function main(): Promise<void> {
   const target = await pickTarget();
   console.log(
     `Target: ${target.name ?? "(no name)"} ${target.phone}` +
-      (target.hoursSilent > 0 ? ` — silent ${Math.round(target.hoursSilent / 24)} days` : ""),
+      (target.hoursSilent > 0
+        ? ` — silent ${Math.round(target.hoursSilent / 24)} days`
+        : ""),
   );
   console.log(`Template: ${templateName}`);
 
@@ -154,7 +207,8 @@ async function main(): Promise<void> {
     })
     .select("id")
     .single();
-  if (insErr || !row) throw new Error(`probe row insert failed: ${insErr?.message}`);
+  if (insErr || !row)
+    throw new Error(`probe row insert failed: ${insErr?.message}`);
 
   let wamid: string;
   try {
@@ -173,7 +227,10 @@ async function main(): Promise<void> {
   // Meta posts sent → delivered/failed within seconds. Poll until a terminal
   // state or two minutes, whichever comes first.
   const deadline = Date.now() + 120_000;
-  let final: { whatsapp_status: string | null; whatsapp_error: unknown } | null = null;
+  let final: {
+    whatsapp_status: string | null;
+    whatsapp_error: unknown;
+  } | null = null;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 3000));
     const { data } = await db
@@ -183,7 +240,11 @@ async function main(): Promise<void> {
       .single();
     if (!data) continue;
     process.stdout.write(`  status: ${data.whatsapp_status}\r`);
-    if (data.whatsapp_status === "failed" || data.whatsapp_status === "delivered" || data.whatsapp_status === "read") {
+    if (
+      data.whatsapp_status === "failed" ||
+      data.whatsapp_status === "delivered" ||
+      data.whatsapp_status === "read"
+    ) {
       final = data;
       break;
     }
@@ -191,7 +252,9 @@ async function main(): Promise<void> {
 
   console.log("\n--- RESULT ---");
   if (!final) {
-    console.log("No terminal receipt within 120s (still 'sent'). Meta never resolved it.");
+    console.log(
+      "No terminal receipt within 120s (still 'sent'). Meta never resolved it.",
+    );
   } else {
     console.log("status:", final.whatsapp_status);
     console.log("error:", JSON.stringify(final.whatsapp_error, null, 1));

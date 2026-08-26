@@ -1,4 +1,9 @@
-import { NO_THINKING, SONNET_MODEL, extractText, getAnthropicClient } from "./client";
+import {
+  extractText,
+  getAnthropicClient,
+  NO_THINKING,
+  SONNET_MODEL,
+} from "./client";
 
 export type AddressType = "house" | "apartment" | "office";
 
@@ -18,6 +23,7 @@ export async function classifyAddress(address: string): Promise<AddressType> {
 
   const text = extractText(response).toLowerCase();
 
-  if (text === "house" || text === "apartment" || text === "office") return text;
+  if (text === "house" || text === "apartment" || text === "office")
+    return text;
   return "house";
 }

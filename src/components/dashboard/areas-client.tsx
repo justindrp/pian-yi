@@ -55,7 +55,8 @@ export default function AreasClient() {
     <div className="max-w-2xl space-y-4">
       <h1 className="text-xl font-semibold text-gray-900">Delivery Areas</h1>
       <p className="text-sm text-gray-500">
-        Neighborhood names the chatbot uses to identify which area a customer is in.
+        Neighborhood names the chatbot uses to identify which area a customer is
+        in.
       </p>
 
       {isLoading ? (
@@ -100,12 +101,16 @@ function AreaPanel({
     <div className="bg-white border border-gray-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-medium text-gray-900 text-sm">{area}</h2>
-        <span className="text-xs text-gray-400">{neighborhoods.length} neighborhoods</span>
+        <span className="text-xs text-gray-400">
+          {neighborhoods.length} neighborhoods
+        </span>
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-3 min-h-[28px]">
         {neighborhoods.length === 0 && (
-          <span className="text-xs text-gray-400 italic">No neighborhoods yet</span>
+          <span className="text-xs text-gray-400 italic">
+            No neighborhoods yet
+          </span>
         )}
         {neighborhoods.map((n) => (
           <span

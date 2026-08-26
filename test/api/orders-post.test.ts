@@ -5,20 +5,42 @@ import { createClient } from "@/lib/supabase/server";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
-jest.mock("@/lib/claude/conversation", () => ({ saveMessage: jest.fn().mockResolvedValue(undefined) }));
-jest.mock("@/lib/whatsapp/client", () => ({ sendTextMessage: jest.fn().mockResolvedValue(undefined) }));
-jest.mock("@/lib/accounting/journal", () => ({ createJournalEntry: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("@/lib/claude/conversation", () => ({
+  saveMessage: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("@/lib/whatsapp/client", () => ({
+  sendTextMessage: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("@/lib/accounting/journal", () => ({
+  createJournalEntry: jest.fn().mockResolvedValue(undefined),
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeChain(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+function makeChain(
+  result: { data: unknown; error: unknown } = { data: null, error: null },
+) {
   const chain: Record<string, unknown> = {};
   const methods = [
-    "select", "insert", "upsert", "update", "delete",
-    "eq", "neq", "or", "not", "lt", "gt", "gte", "lte", "in",
-    "limit", "order", "is",
+    "select",
+    "insert",
+    "upsert",
+    "update",
+    "delete",
+    "eq",
+    "neq",
+    "or",
+    "not",
+    "lt",
+    "gt",
+    "gte",
+    "lte",
+    "in",
+    "limit",
+    "order",
+    "is",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
@@ -26,8 +48,10 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
-  chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown,
+  ) => Promise.resolve(result).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
     Promise.resolve(result).catch(reject);
   return chain;
@@ -35,10 +59,13 @@ function makeChain(result: { data: unknown; error: unknown } = { data: null, err
 
 type Chain = ReturnType<typeof makeChain>;
 
-function makeDbMock(config: Record<string, { data: unknown; error: unknown }> = {}) {
+function makeDbMock(
+  config: Record<string, { data: unknown; error: unknown }> = {},
+) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
-    if (!chains[table]) chains[table] = makeChain(config[table] ?? { data: null, error: null });
+    if (!chains[table])
+      chains[table] = makeChain(config[table] ?? { data: null, error: null });
     return chains[table];
   });
   return { from, chains };
@@ -78,7 +105,12 @@ describe("POST /api/orders — recurring", () => {
   test("T1 — total_price = package_size × price_per_portion", async () => {
     const db = makeDbMock({
       orders: {
-        data: { id: "order-1", order_type: "recurring", status: "pending_payment", total_price: 840000 },
+        data: {
+          id: "order-1",
+          order_type: "recurring",
+          status: "pending_payment",
+          total_price: 840000,
+        },
         error: null,
       },
     });
@@ -107,13 +139,24 @@ describe("POST /api/orders — recurring", () => {
     );
     // address slots default to 1 when not provided
     expect(db.chains.orders.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ lunch_address_slot: 1, dinner_address_slot: 1 }),
+      expect.objectContaining({
+        lunch_address_slot: 1,
+        dinner_address_slot: 1,
+      }),
     );
   });
 
   test("T1b — per-meal address slots persisted (lunch 1, dinner 2)", async () => {
     const db = makeDbMock({
-      orders: { data: { id: "order-1b", order_type: "recurring", status: "active", total_price: 280000 }, error: null },
+      orders: {
+        data: {
+          id: "order-1b",
+          order_type: "recurring",
+          status: "active",
+          total_price: 280000,
+        },
+        error: null,
+      },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
@@ -134,13 +177,24 @@ describe("POST /api/orders — recurring", () => {
     );
 
     expect(db.chains.orders.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ lunch_address_slot: 1, dinner_address_slot: 2 }),
+      expect.objectContaining({
+        lunch_address_slot: 1,
+        dinner_address_slot: 2,
+      }),
     );
   });
 
   test("T2 — size defaults to 's' when not provided", async () => {
     const db = makeDbMock({
-      orders: { data: { id: "order-2", order_type: "recurring", status: "pending_payment", total_price: 280000 }, error: null },
+      orders: {
+        data: {
+          id: "order-2",
+          order_type: "recurring",
+          status: "pending_payment",
+          total_price: 280000,
+        },
+        error: null,
+      },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
@@ -193,7 +247,12 @@ describe("POST /api/orders — scheduled", () => {
   test("T4 — package_size derived from schedule sum, total_price computed correctly", async () => {
     const db = makeDbMock({
       orders: {
-        data: { id: "order-3", order_type: "scheduled", status: "pending_payment", total_price: 84000 },
+        data: {
+          id: "order-3",
+          order_type: "scheduled",
+          status: "pending_payment",
+          total_price: 84000,
+        },
         error: null,
       },
       daily_deliveries: { data: [], error: null },
@@ -228,7 +287,15 @@ describe("POST /api/orders — scheduled", () => {
 
   test("T5 — scheduled delivery rows stamped with per-meal address slot", async () => {
     const db = makeDbMock({
-      orders: { data: { id: "order-5", order_type: "scheduled", status: "active", total_price: 84000 }, error: null },
+      orders: {
+        data: {
+          id: "order-5",
+          order_type: "scheduled",
+          status: "active",
+          total_price: 84000,
+        },
+        error: null,
+      },
       daily_deliveries: { data: [], error: null },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
@@ -252,8 +319,13 @@ describe("POST /api/orders — scheduled", () => {
       }),
     );
 
-    const upsertRows = (db.chains.daily_deliveries.upsert as jest.Mock).mock.calls[0][0] as Array<{ meal_type: string; address_slot: number }>;
-    expect(upsertRows.find((r) => r.meal_type === "lunch")?.address_slot).toBe(1);
-    expect(upsertRows.find((r) => r.meal_type === "dinner")?.address_slot).toBe(2);
+    const upsertRows = (db.chains.daily_deliveries.upsert as jest.Mock).mock
+      .calls[0][0] as Array<{ meal_type: string; address_slot: number }>;
+    expect(upsertRows.find((r) => r.meal_type === "lunch")?.address_slot).toBe(
+      1,
+    );
+    expect(upsertRows.find((r) => r.meal_type === "dinner")?.address_slot).toBe(
+      2,
+    );
   });
 });

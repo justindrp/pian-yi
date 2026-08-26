@@ -56,7 +56,9 @@ function PendingCard({
     });
     update({ sending: false });
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       alert(`Failed to preview: ${body?.error ?? res.statusText}`);
       return;
     }
@@ -79,7 +81,9 @@ function PendingCard({
     });
     update({ confirming: false });
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       alert(`Failed to send: ${body?.error ?? res.statusText}`);
       return;
     }
@@ -92,7 +96,8 @@ function PendingCard({
         <span className="text-amber-600 text-sm mt-0.5">⏳</span>
         <div>
           <p className="text-sm font-medium text-amber-800">
-            {chat.customer_name ?? "Unknown customer"} — bot is waiting for your answer
+            {chat.customer_name ?? "Unknown customer"} — bot is waiting for your
+            answer
           </p>
           {chat.pending_bot_question && (
             <p className="text-xs text-amber-700 mt-0.5 italic">
@@ -104,7 +109,9 @@ function PendingCard({
 
       {state.botReplyPreview ? (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-amber-800">AI will send this:</p>
+          <p className="text-xs font-medium text-amber-800">
+            AI will send this:
+          </p>
           <p className="text-sm text-amber-900 bg-white border border-amber-200 rounded-lg px-3 py-2 whitespace-pre-wrap">
             {state.botReplyPreview}
           </p>
@@ -128,7 +135,9 @@ function PendingCard({
             <Button
               type="button"
               variant="outline"
-              onClick={() => update({ botReplyPreview: null, saveBotReplyAsRule: false })}
+              onClick={() =>
+                update({ botReplyPreview: null, saveBotReplyAsRule: false })
+              }
               disabled={state.confirming}
               className="border-amber-200 text-amber-700 hover:bg-amber-100"
             >
@@ -202,7 +211,11 @@ export function PendingBotResponses() {
           <PendingCard
             key={chat.customer_id}
             chat={chat}
-            onDone={() => setChats((prev) => prev.filter((c) => c.customer_id !== chat.customer_id))}
+            onDone={() =>
+              setChats((prev) =>
+                prev.filter((c) => c.customer_id !== chat.customer_id),
+              )
+            }
           />
         ))}
       </div>

@@ -17,7 +17,8 @@ async function main() {
     .eq("customer_id", customerId)
     .eq("status", "active")
     .maybeSingle();
-  if (!order?.id.startsWith(ORDER)) throw new Error("active order is not eb3179b7");
+  if (!order?.id.startsWith(ORDER))
+    throw new Error("active order is not eb3179b7");
 
   const { data: template } = await db
     .from("daily_deliveries")
@@ -30,15 +31,28 @@ async function main() {
     return;
   }
   await db.from("daily_deliveries").delete().eq("id", template.id);
-  const { id: _id, created_at: _c, updated_at: _u, ...rest } = template as Record<string, unknown> & { id: string };
-  const { error } = await db
-    .from("daily_deliveries")
-    .insert({
-      ...rest,
-      delivery_date: "2026-08-26",
-      status: "scheduled",
-    } as never);
-  console.log(error ? `insert failed: ${error.message}` : "21 Aug skipped, portion moved to 26 Aug");
+  const {
+    id: _id,
+    created_at: _c,
+    updated_at: _u,
+    ...rest
+  } = template as Record<string, unknown> & { id: string };
+  const { error } = await db.from("daily_deliveries").insert({
+    ...rest,
+    delivery_date: "2026-08-26",
+    status: "scheduled",
+  } as never);
+  console.log(
+    error
+      ? `insert failed: ${error.message}`
+      : "21 Aug skipped, portion moved to 26 Aug",
+  );
 }
 
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

@@ -89,7 +89,8 @@ async function main() {
 
     const byCustomer = new Map<string, number>();
     for (const r of rows ?? []) {
-      const key = r.customer_id === customer.id ? customer.name : (owner?.name ?? "?");
+      const key =
+        r.customer_id === customer.id ? customer.name : (owner?.name ?? "?");
       byCustomer.set(key, (byCustomer.get(key) ?? 0) + (r.portions ?? 0));
     }
     for (const [who, n] of byCustomer) console.log(`    ${who}: ${n} portions`);
@@ -106,9 +107,12 @@ async function main() {
         .from("daily_deliveries")
         .select("id", { count: "exact", head: true })
         .eq("order_id", id);
-      const stillUsed = (count ?? 0) - toMove.filter((r) => r.order_id === id).length;
+      const stillUsed =
+        (count ?? 0) - toMove.filter((r) => r.order_id === id).length;
       if (stillUsed === 0) {
-        console.log(`    order ${id.slice(0, 8)} left with no deliveries (ghost artifact, not deleted)`);
+        console.log(
+          `    order ${id.slice(0, 8)} left with no deliveries (ghost artifact, not deleted)`,
+        );
       }
     }
 
@@ -138,7 +142,9 @@ async function main() {
   }
 
   console.log(
-    APPLY ? `\nApplied. Rollback written to ${file}` : "\nDry run. Re-run with --apply to write.",
+    APPLY
+      ? `\nApplied. Rollback written to ${file}`
+      : "\nDry run. Re-run with --apply to write.",
   );
 }
 

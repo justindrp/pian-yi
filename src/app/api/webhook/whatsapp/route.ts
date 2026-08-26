@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
+import { logEdit } from "@/lib/audit/log-edit";
 import {
   getNeighborhoods,
   getSetting,
@@ -20,16 +21,15 @@ import {
   type WhatsAppMessageStatus,
 } from "@/lib/claude/conversation";
 import {
-  createOrderFromExtraction,
-  extractOrderProperties,
-  type ExtractedOrderInput,
   applyLatestCustomerSize,
   contractPrice,
+  createOrderFromExtraction,
+  type ExtractedOrderInput,
   extractOrderFromConversation,
+  extractOrderProperties,
   resizePendingOrderFromMessage,
   shouldRecordName,
 } from "@/lib/claude/extract-order";
-import { logEdit } from "@/lib/audit/log-edit";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
@@ -52,6 +52,7 @@ import {
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
 import { shouldAutoResume } from "@/lib/customers/takeover";
+import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import {
   loadCustomerSchedule,
@@ -59,10 +60,9 @@ import {
 } from "@/lib/orders/customer-schedule";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { sendPushToAllAdmins } from "@/lib/push/send";
-import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
-import { jakartaTimeString } from "@/lib/time/jakarta";
+import { unionAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Json } from "@/types/database";
+import { jakartaTimeString } from "@/lib/time/jakarta";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
 import {
   downloadMedia,
@@ -79,7 +79,7 @@ import {
 } from "@/lib/whatsapp/types";
 import { verifySignature } from "@/lib/whatsapp/webhook";
 import { WINDOW_NOTICE_WELCOME } from "@/lib/whatsapp/window-notice";
-import { unionAreas } from "@/lib/subcontractors/areas";
+import type { Json } from "@/types/database";
 
 // Phrases the model uses to say it is creating the order right now. Matched only
 // to catch a turn where it said this and called no tool.
@@ -1898,8 +1898,7 @@ export async function processSavedCustomerMessage(params: {
   if (
     replyText &&
     !toolUses.some(
-      (t) =>
-        t.name === "ask_admin_for_help" || t.name === "escalate_to_human",
+      (t) => t.name === "ask_admin_for_help" || t.name === "escalate_to_human",
     ) &&
     ESCALATION_CLAIM.test(replyText) &&
     !(await hasPendingAdminQuestion(customerId))
@@ -2398,13 +2397,17 @@ async function handleToolUse(
     // requested meal are preferred; when none does, every active order is a
     // candidate, because quota belongs to the customer and not to one package.
     const asCandidates = (rows: typeof candidates) =>
-      rows.map((o) => ({ ...o, portions_remaining: unbookedPerOrder.get(o.id) ?? 0 }));
+      rows.map((o) => ({
+        ...o,
+        portions_remaining: unbookedPerOrder.get(o.id) ?? 0,
+      }));
     const mealMatched = candidates.filter((o) =>
       mealPrefs[input.meal_type].includes(o.meal_time_preference ?? ""),
     );
     const order =
-      pickDrawOrder(asCandidates(mealMatched.length > 0 ? mealMatched : candidates)) ??
-      pickDrawOrder(asCandidates(candidates));
+      pickDrawOrder(
+        asCandidates(mealMatched.length > 0 ? mealMatched : candidates),
+      ) ?? pickDrawOrder(asCandidates(candidates));
 
     if (!order) {
       console.error(
@@ -2416,7 +2419,8 @@ async function handleToolUse(
 
     // The gate is customer-wide: a customer with two packages can draw across
     // both, and pickDrawOrder above decides which one the row is charged to.
-    const custUnbooked = (await loadCustomerSchedule(db, customerId))?.unbooked ?? 0;
+    const custUnbooked =
+      (await loadCustomerSchedule(db, customerId))?.unbooked ?? 0;
 
     if (custUnbooked <= 0) {
       console.warn(
@@ -2521,8 +2525,8 @@ async function handleToolUse(
       .update({
         portions_remaining: Math.max(
           0,
-          (activeOrders?.find((o) => o.id === order.id)?.portions_remaining ?? 0) -
-            deducted,
+          (activeOrders?.find((o) => o.id === order.id)?.portions_remaining ??
+            0) - deducted,
         ),
       })
       .eq("id", order.id);

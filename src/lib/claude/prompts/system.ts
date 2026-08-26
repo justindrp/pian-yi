@@ -1,17 +1,11 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
-import {
-  describeUpcomingHolidays,
-  formatHolidayDate,
-} from "@/lib/holidays/id";
+import { describeUpcomingHolidays, formatHolidayDate } from "@/lib/holidays/id";
 import {
   formatMenuWeekRange,
   jakartaDateString,
   weekAfter,
 } from "@/lib/menu/week";
-import {
-  earliestDeliveryDate,
-  jakartaTimeString,
-} from "@/lib/time/jakarta";
+import { earliestDeliveryDate, jakartaTimeString } from "@/lib/time/jakarta";
 
 const PRICE_LIST_LINES = [
   "- 5 hari siang/malam saja: Rp 145.000 (Rp 29.000/meal)",
@@ -152,15 +146,15 @@ Ini catatan resmi kami, bukan tebakan dari percakapan di atas. **Kalau customer 
 - Sisa porsi sudah dibayar dan belum dikirim: **${params.schedule.remainingToday} porsi**. Ini angka yang customer maksud kalau bertanya "sisa kuota saya berapa".
 - Porsi yang belum punya tanggal: **${params.schedule.unbooked} porsi**. Hanya sebanyak ini yang tanggalnya masih bisa dipesan baru. Kalau 0, semua porsi sudah ada tanggalnya — jangan bilang kuotanya habis, karena makanannya masih akan dikirim.
 ${
-        params.schedule.upcoming.length > 0
-          ? `\nSudah terjadwal:\n${params.schedule.upcoming
-              .map(
-                (d) =>
-                  `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam (16.00-18.00)" : "siang (10.00-12.00)"}, ${d.portions} porsi`,
-              )
-              .join("\n")}`
-          : "\nBelum ada pengiriman terjadwal ke depan."
-      }
+  params.schedule.upcoming.length > 0
+    ? `\nSudah terjadwal:\n${params.schedule.upcoming
+        .map(
+          (d) =>
+            `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam (16.00-18.00)" : "siang (10.00-12.00)"}, ${d.portions} porsi`,
+        )
+        .join("\n")}`
+    : "\nBelum ada pengiriman terjadwal ke depan."
+}
 
 Kalau customer minta ubah atau skip salah satu tanggal di atas, konfirmasi hanya kalau deadline untuk tanggal itu belum lewat — dan sebutkan tanggal serta meal-nya persis seperti di daftar, supaya kalau catatan kami sudah sesuai permintaannya, kakaknya tahu tidak perlu diubah apa-apa.`
     : "";
