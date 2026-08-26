@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { logEdit } from "@/lib/audit/log-edit";
 import { packageCreditDate } from "@/lib/orders/credit-date";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { withDeliveryRoute } from "@/lib/utils/format";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 
@@ -240,7 +241,11 @@ export async function PATCH(
   const db = createAdminClient();
   const { error } = await db
     .from("customers")
-    .update(update as Database["public"]["Tables"]["customers"]["Update"])
+    .update(
+      withDeliveryRoute(
+        update,
+      ) as Database["public"]["Tables"]["customers"]["Update"],
+    )
     .eq("id", id);
   if (error) {
     return NextResponse.json(

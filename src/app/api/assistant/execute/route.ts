@@ -8,7 +8,7 @@ import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliver
 import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
-import { getDeliveryRoute } from "@/lib/utils/format";
+import { getDeliveryRoute, withDeliveryRoute } from "@/lib/utils/format";
 import {
   isOutsideWindowError,
   sendImageMessageById,
@@ -505,7 +505,9 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
-      const patch = { [field]: value } as Partial<
+      // withDeliveryRoute so that editing `area` here restamps the route the
+      // same way creating the customer would have.
+      const patch = withDeliveryRoute({ [field]: value }) as Partial<
         Pick<CustomersUpdate, CustomerField>
       >;
 
