@@ -59,6 +59,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.1",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/form-data": "^2.5.2",
     "@types/jest": "^30.0.0",
