@@ -11,6 +11,7 @@ INSERT INTO settings (key, value, description) VALUES
   ('photo_match_confidence_threshold', '0.95', 'Auto-send threshold for delivery photos'),
   ('unpaid_reminder_hours', '2', 'Hours before first payment reminder'),
   ('unpaid_cancel_hours', '24', 'Hours before auto-cancel unpaid order'),
+  ('stalled_lead_hours', '3', 'Hours a lead may wait on an unanswered message before it is flagged for an admin'),
   ('low_quota_first_warning', '3', 'Portions remaining for first renewal warning'),
   ('low_quota_final_warning', '1', 'Portions remaining for final renewal warning'),
   ('order_deadline_hour', '20', 'Cutoff hour for next-day orders (24h format)'),

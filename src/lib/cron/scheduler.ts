@@ -78,6 +78,18 @@ const JOBS: Job[] = [
       (await import("@/app/api/cron/abandoned-recovery/route")).GET(req),
   },
   {
+    // Deliberately not on the hour. abandoned-recovery, cancel-unpaid and
+    // renewal-reminders all fire at :00, and this one walks every order row to
+    // decide who is still a lead — no reason to stack it on top of them.
+    name: "stalled-leads",
+    schedule: "20 */4 * * *",
+    when: "every 4 hours at :20",
+    method: "GET",
+    path: "/api/cron/stalled-leads",
+    run: async (req) =>
+      (await import("@/app/api/cron/stalled-leads/route")).GET(req),
+  },
+  {
     name: "cancel-unpaid",
     schedule: "0 * * * *",
     when: "hourly",
