@@ -54,6 +54,7 @@ export interface ExtractedOrderInput {
   subcontractor_id?: string;
   size?: string;
   nasi_merah?: boolean;
+  catatan?: string;
 }
 
 export interface ExtractedOrderPricing {
@@ -64,6 +65,44 @@ export interface ExtractedOrderPricing {
 export type ExtractedOrderReview = ExtractedOrderInput & ExtractedOrderPricing;
 const LEARNED_CONTEXT_START = "[AI learned context]";
 const LEARNED_CONTEXT_END = "[/AI learned context]";
+
+/**
+ * Merge an accepted custom request into `customers.notes` as a manual note.
+ *
+ * The kitchen sheet (`/dapur/[id]`) prints `manualNotesOnly()` — everything
+ * before the [AI learned context] block — and only falls back to that block's
+ * `Preferensi:` bullets when there is no manual note at all. Writing here is
+ * therefore the one path that does not depend on the summarizer having noticed
+ * the request in the chat: on 2026-08-25 Surya's "tanpa nasi" reached the
+ * kitchen only because someone typed it into this column by hand.
+ *
+ * The note goes above any existing manual text and always above the AI block,
+ * because that block must stay last for `manualNotesOnly()` to keep cutting it
+ * off — the sheet is unauthenticated and the block carries prices.
+ *
+ * Returns null when there is nothing to change, so the caller leaves the column
+ * alone instead of rewriting it on every amendment.
+ */
+export function mergeKitchenNote(
+  existing: string | null,
+  note: string,
+): string | null {
+  const clean = note.trim();
+  if (!clean) return null;
+
+  const notes = existing ?? "";
+  const aiAt = notes.indexOf(LEARNED_CONTEXT_START);
+  const manual = (aiAt === -1 ? notes : notes.slice(0, aiAt)).trim();
+  const aiBlock = aiAt === -1 ? "" : notes.slice(aiAt).trim();
+
+  // extract_order runs again on every amendment and every renewal, so an
+  // unconditional prepend would stack the same line up the sheet until it
+  // pushed the drop-off instructions out of sight.
+  if (manual.toLowerCase().includes(clean.toLowerCase())) return null;
+
+  const merged = manual ? `${clean}\n${manual}` : clean;
+  return aiBlock ? `${merged}\n\n${aiBlock}` : merged;
+}
 
 // One shared property schema. The webhook used to carry its own copy and it had
 // drifted: `delivery_schedule` was missing there entirely, so the live bot could
@@ -166,6 +205,11 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
     type: "boolean",
     description:
       "True when the customer asked for nasi merah. Adds Rp 5.000 per portion to the price and records the same amount as what the kitchen charges us.",
+  },
+  catatan: {
+    type: "string",
+    description:
+      "The accepted custom requests for this order, written the way the kitchen needs to read them: 'tanpa nasi', 'tidak pedas', 'tidak ada daging sapi', 'tidak ada seafood'. Comma-separate more than one. This text is printed on the kitchen's delivery sheet, so leave it empty unless the customer actually asked for something, and never put prices, totals, addresses or internal notes in it. Do not use it for nasi merah — that has its own field because it changes the price.",
   },
 } as const;
 
@@ -1332,7 +1376,7 @@ export async function createOrderFromExtraction(
 
   const { data: existingCustomer } = await db
     .from("customers")
-    .select("name, portions_remaining, avg_price_per_portion")
+    .select("name, notes, portions_remaining, avg_price_per_portion")
     .eq("id", customerId)
     .single();
   const oldRemaining = existingCustomer?.portions_remaining ?? 0;
@@ -1362,6 +1406,14 @@ export async function createOrderFromExtraction(
   const addressType = input.address?.trim()
     ? await classifyAddress(input.address)
     : null;
+
+  // The kitchen has no other way to learn about an accepted custom request:
+  // `buildRecurringDeliveryRows` writes no per-row notes, and the AI summary is
+  // written later and only sometimes mentions it.
+  const kitchenNote = mergeKitchenNote(
+    existingCustomer?.notes ?? null,
+    input.catatan ?? "",
+  );
   await db
     .from("customers")
     .update({
@@ -1384,6 +1436,7 @@ export async function createOrderFromExtraction(
         : {}),
       portions_remaining: newRemaining,
       avg_price_per_portion: newAvg,
+      ...(kitchenNote ? { notes: kitchenNote } : {}),
       ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
       // Same rule as the primary address: only written when this order carried
       // one, so a renewal extracted from chat alone cannot blank it.

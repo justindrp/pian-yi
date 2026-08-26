@@ -183,6 +183,16 @@ That is the customer-facing half. The other half is that the image drifts, becau
 
 **Still open: an accepted custom request has nowhere to live.** The section is headed "Catatan field" and tells the model to "note it in the order", but `extract_order` has no notes parameter and `orders` has no notes column — only `daily_deliveries.notes` (per-row, admin-typed) and `customers.notes` (internal, holds learned context). So tidak pedas, tidak ada daging sapi and tidak ada nasi are confirmed to the customer and then dropped; the kitchen sees them only if an admin retypes them onto each delivery row by hand.
 
+## An accepted custom request now reaches the kitchen, in `catatan`
+
+Agreeing to "tanpa nasi" in the chat used to be the whole of it. `extract_order` had eighteen fields and the only rice one was `nasi_merah`, a *paid* upsell — so the prompt told the model to accept the request and never stall, then gave it nowhere to record what it had promised. `buildRecurringDeliveryRows` writes no per-row `notes`, so every delivery row landed `notes: null`. On 2026-08-25 Surya ordered 15 porsi tanpa nasi and all five rows were blank; the kitchen would have cooked rice for the lot if an admin had not typed the note into `customers.notes` by hand.
+
+`extract_order` now takes `catatan`, and the prompt requires the accepted requests (items 1–4 — tanpa nasi, tidak pedas, tidak ada daging sapi, tidak ada seafood) to be passed in it. Nasi merah stays in its own field because it moves the price.
+
+It is written to `customers.notes` by `mergeKitchenNote()`, not to the delivery rows, because these are standing preferences — they apply to every delivery of the package, and a per-row copy would have to be rewritten on every amendment. The kitchen sheet prints `manualNotesOnly()`, everything *before* the `[AI learned context]` block, so the merge always puts the note above that block: the sheet is unauthenticated and the block carries prices, so anything that pushed the block up would leak them. The merge is a no-op when the request is already in the manual text, because `extract_order` re-runs on every amendment and renewal and an unconditional prepend would stack the same line until it pushed the drop-off instructions off the sheet.
+
+**This does not replace the summarizer's `Preferensi:` bullet, and neither covers the other.** `aiPreferences()` is only consulted when there is no manual note at all, so a customer with any manual note falls back on `catatan` alone — and customers whose context was summarised before 2026-08-25 have no labelled bullet anyway. Both paths write; the sheet reads whichever it finds first.
+
 ## Nasi merah asked for after the order exists amends it too
 
 `resizePendingOrderFromMessage` only ever read a size. Cindy Angelia's 5-porsi order was created at the moment she confirmed, *before* she sent the order form naming nasi merah, so it stayed at Rp 145.000 against a real Rp 170.000 and nothing anywhere reconciled it. The function now also matches `nasi\s*merah` on the inbound message and, on a `pending_payment` order whose `addon_cost_per_portion` is still 0, re-prices through `getExtractedOrderPricing(size, true)` and writes `NASI_MERAH_SURCHARGE`. Size and add-on are independent — either one alone is enough to amend, and neither touches an order once a proof is in, because by then the money has moved.
