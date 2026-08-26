@@ -6,7 +6,8 @@ import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
-// Leads whose last word was theirs, and nobody answered.
+// Leads left waiting: either their own last message went unanswered, or the
+// bot ended the thread promising to come back and never did.
 //
 // `abandoned-recovery` claims in its own comment to find "customers in
 // 'ordering' state with no order placed", but it then does
@@ -26,7 +27,19 @@ import { fetchAllRows } from "@/lib/supabase/fetch-all";
 // `131042` while the WABA payment restriction stands, and a lead who has been
 // waiting days is owed a human, not a second robot.
 
-/** Only flag a thread whose last message is the customer's — a real question nobody answered. */
+/**
+ * A reply that ends the thread by promising to come back — "aku cek dulu ya
+ * kak", "mohon tunggu sebentar", "saya arahkan ke admin". Nothing schedules
+ * that follow-up, so the promise is the last thing the customer ever hears.
+ * +6281902067248 asked on 2026-08-13 whether Jl. Palem Merah counted as
+ * Karawaci, was told "aku pastikan sama admin, sebentar ya kak", and has been
+ * waiting since. Kept deliberately narrow: over 30 days it matches 2 threads,
+ * not the 61 that merely stopped talking.
+ */
+const BOT_PROMISED_TO_RETURN =
+  /cek dulu|saya cek|aku cek|tunggu sebentar|mohon tunggu|segera (saya|kami)|akan (saya|kami) (cek|tanya|konfirmasi)|arahkan ke admin|hubungi admin/i;
+
+/** The newest message in a thread, which decides whether it counts as stalled. */
 type Msg = {
   customer_id: string | null;
   role: string;
@@ -141,14 +154,22 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     for (const id of chunk) {
       const last = lastByCustomer.get(id);
-      // The bot spoke last: an ordinary drop-off, not a dropped thread. Flagging
-      // those would put all 61 browsing leads in front of an admin at once.
-      if (!last?.created_at || last.role !== "user") continue;
+      if (!last?.created_at) continue;
       if (last.created_at > cutoff) continue;
+
+      const text = (last.content ?? "").replace(/\s+/g, " ");
+      const promised =
+        last.role !== "user" && BOT_PROMISED_TO_RETURN.test(text);
+      // A thread the bot merely spoke last in is an ordinary drop-off, and
+      // flagging those would put every browsing lead in front of an admin at
+      // once. A thread where the bot said it would come back is not: it is a
+      // promise with nothing behind it, and the customer is still waiting on a
+      // human by the bot's own account.
+      if (last.role !== "user" && !promised) continue;
 
       const c = byId.get(id);
       const label = c?.name?.trim() || c?.phone_number || id;
-      const asked = (last.content ?? "").replace(/\s+/g, " ").slice(0, 120);
+      const asked = text.slice(0, 120);
       const waited = Math.floor(
         (Date.now() - new Date(last.created_at).getTime()) / 3600_000,
       );
@@ -157,7 +178,9 @@ export async function GET(req: NextRequest): Promise<Response> {
         {
           customer_id: id,
           needs_human_review: true,
-          escalation_reason: `Lead menunggu balasan ${waited} jam, belum ada order: "${asked}"`,
+          escalation_reason: promised
+            ? `Bot janji cek dulu ${waited} jam lalu dan tidak pernah kembali: "${asked}"`
+            : `Lead menunggu balasan ${waited} jam, belum ada order: "${asked}"`,
         },
         { onConflict: "customer_id" },
       );

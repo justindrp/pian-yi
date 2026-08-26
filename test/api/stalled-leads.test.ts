@@ -276,6 +276,109 @@ describe("stalled-leads selection", () => {
   });
 });
 
+describe("stalled-leads catches unkept bot promises", () => {
+  it("flags a thread the bot ended by promising to check", async () => {
+    (createAdminClient as jest.Mock).mockReturnValue(
+      makeDb({
+        orders: [],
+        customer_state: [{ customer_id: "palem" }],
+        customer_flags: [],
+        conversations: [
+          {
+            customer_id: "palem",
+            role: "user",
+            content: "ini di daerah karawaci kak",
+            created_at: HOURS_AGO(309),
+          },
+          {
+            customer_id: "palem",
+            role: "assistant",
+            content:
+              "Hmm aku cek dulu ya kak, aku pastikan sama admin. Sebentar ya kak",
+            created_at: HOURS_AGO(308),
+          },
+        ],
+        customers: [
+          { id: "palem", name: null, phone_number: "+6281902067248" },
+        ],
+      }),
+    );
+
+    const body = await (await GET(req())).json();
+    expect(body.flagged).toBe(1);
+    expect(upserted[0].escalation_reason).toContain("Bot janji cek dulu");
+    expect(upserted[0].escalation_reason).toContain("308 jam");
+  });
+
+  it("still ignores an ordinary bot-last thread with no promise in it", async () => {
+    (createAdminClient as jest.Mock).mockReturnValue(
+      makeDb({
+        orders: [],
+        customer_state: [{ customer_id: "quiet" }],
+        customer_flags: [],
+        conversations: [
+          {
+            customer_id: "quiet",
+            role: "assistant",
+            content: "Baik kak, kalau ada yang mau ditanya boleh banget 😊",
+            created_at: HOURS_AGO(200),
+          },
+        ],
+        customers: [{ id: "quiet", name: null, phone_number: "+62810" }],
+      }),
+    );
+
+    expect(await (await GET(req())).json()).toEqual({ ok: true, flagged: 0 });
+    expect(sendPushToAllAdmins).not.toHaveBeenCalled();
+  });
+
+  it("does not flag a promise that is still inside the cutoff", async () => {
+    (createAdminClient as jest.Mock).mockReturnValue(
+      makeDb({
+        orders: [],
+        customer_state: [{ customer_id: "recent" }],
+        customer_flags: [],
+        conversations: [
+          {
+            customer_id: "recent",
+            role: "assistant",
+            content: "saya cek dulu ya kak",
+            created_at: HOURS_AGO(1),
+          },
+        ],
+        customers: [{ id: "recent", name: null, phone_number: "+62811" }],
+      }),
+    );
+
+    expect(await (await GET(req())).json()).toEqual({ ok: true, flagged: 0 });
+  });
+
+  it("does not treat a customer saying 'cek dulu' as a bot promise", async () => {
+    (createAdminClient as jest.Mock).mockReturnValue(
+      makeDb({
+        orders: [],
+        customer_state: [{ customer_id: "cust" }],
+        customer_flags: [],
+        conversations: [
+          {
+            customer_id: "cust",
+            role: "user",
+            content: "saya cek dulu ya kak, nanti kabari",
+            created_at: HOURS_AGO(50),
+          },
+        ],
+        customers: [{ id: "cust", name: null, phone_number: "+62812" }],
+      }),
+    );
+
+    const body = await (await GET(req())).json();
+    // Still flagged — but as a customer waiting, not as an unkept bot promise.
+    expect(body.flagged).toBe(1);
+    expect(upserted[0].escalation_reason).toContain("Lead menunggu balasan");
+    expect(upserted[0].escalation_reason).not.toContain("Bot janji");
+  });
+});
+
 describe("stalled-leads does not re-nag", () => {
   it("skips a lead already marked needs_human_review", async () => {
     (createAdminClient as jest.Mock).mockReturnValue(
