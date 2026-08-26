@@ -27,7 +27,9 @@ import {
   contractPrice,
   extractOrderFromConversation,
   resizePendingOrderFromMessage,
+  shouldRecordName,
 } from "@/lib/claude/extract-order";
+import { logEdit } from "@/lib/audit/log-edit";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
@@ -1669,6 +1671,22 @@ export async function processSavedCustomerMessage(params: {
       input_schema: { type: "object", properties: {} },
     },
     {
+      name: "record_customer_name",
+      description:
+        'Saves the customer\'s name to their record. Call this the moment they tell you their name — answering "boleh tahu nama kakak?", or signing off with it — and never claim you have noted a name without calling this in the same message. Only fills a name that is missing; it never renames anyone. The name is what an admin sees in the inbox and what the courier reads off the delivery label.',
+      input_schema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description:
+              'The name the customer gave, exactly as they wrote it. Never an honorific ("kak", "kakak") or a stand-in ("unknown", "customer") — if they have not given a name, do not call this tool.',
+          },
+        },
+        required: ["name"],
+      },
+    },
+    {
       name: "send_menu_image",
       description:
         "Sends the menu image(s) currently on file. Which week those cover is stated in your system prompt — check it before you describe what you are sending, and do not claim a week the prompt does not say you have. Safe to call even if the menu was previously sent.",
@@ -2607,6 +2625,29 @@ async function handleToolUse(
       "/payments",
       "medium",
     );
+  } else if (tool.name === "record_customer_name") {
+    // Before this tool existed the bot had no way to write a name outside of
+    // extract_order, so when +6285692715738 answered "keira" on 2026-08-26 it
+    // replied "nama kakak sudah saya catat sebagai Keira" and wrote nothing —
+    // the same empty claim BOT_RULES.md forbids for orders.
+    const input = tool.input as { name?: string };
+    const given = (input.name ?? "").trim();
+    const { data: current } = await db
+      .from("customers")
+      .select("name")
+      .eq("id", customerId)
+      .single();
+    if (shouldRecordName(given, current?.name)) {
+      await db.from("customers").update({ name: given }).eq("id", customerId);
+      await logEdit({
+        db,
+        actor: "system:webhook:record_customer_name",
+        entityType: "customers",
+        entityId: customerId,
+        action: "update",
+        changes: { name: { from: current?.name ?? null, to: given } },
+      });
+    }
   } else if (tool.name === "send_menu_image") {
     const { data: menuSubsRaw } = await db
       .from("subcontractors")

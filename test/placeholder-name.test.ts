@@ -1,4 +1,4 @@
-import { isPlaceholderName } from "@/lib/claude/extract-order";
+import { isPlaceholderName, shouldRecordName } from "@/lib/claude/extract-order";
 
 describe("isPlaceholderName", () => {
   // The literal the old system prompt told the model to send when the customer
@@ -28,5 +28,27 @@ describe("isPlaceholderName", () => {
     // "Kakang" is a real Javanese name; only an exact match is a placeholder.
     expect(isPlaceholderName("Kakang")).toBe(false);
     expect(isPlaceholderName("Kartika")).toBe(false);
+  });
+});
+
+describe("shouldRecordName", () => {
+  it("records a real name for a customer who has none", () => {
+    expect(shouldRecordName("Keira", null)).toBe(true);
+    expect(shouldRecordName("Keira", "")).toBe(true);
+    expect(shouldRecordName("Keira", "   ")).toBe(true);
+  });
+
+  // Julian S was renamed to "Julian" by an order he never placed.
+  it("never renames a customer who already has a name", () => {
+    expect(shouldRecordName("Julian", "Julian S")).toBe(false);
+    expect(shouldRecordName("Keira", "Kurniadi Tan")).toBe(false);
+  });
+
+  it("never records an honorific or a stand-in", () => {
+    expect(shouldRecordName("Kak", null)).toBe(false);
+    expect(shouldRecordName("unknown", null)).toBe(false);
+    expect(shouldRecordName("", null)).toBe(false);
+    expect(shouldRecordName(null, null)).toBe(false);
+    expect(shouldRecordName(undefined, null)).toBe(false);
   });
 });

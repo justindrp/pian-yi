@@ -213,6 +213,21 @@ export function isPlaceholderName(name: string): boolean {
   return PLACEHOLDER_NAMES.has(name.trim().toLowerCase().replace(/[.,!]+$/, ""));
 }
 
+/**
+ * Whether a name the customer just gave should be written to their record.
+ * Only ever fills a name that is missing: the model's is whatever signature it
+ * read off the chat, and Julian S was renamed to "Julian" by an order he never
+ * placed. Shared by extract_order and the webhook's record_customer_name so the
+ * two cannot drift.
+ */
+export function shouldRecordName(
+  given: string | null | undefined,
+  existing: string | null | undefined,
+): boolean {
+  const name = (given ?? "").trim();
+  return !!name && !isPlaceholderName(name) && !(existing ?? "").trim();
+}
+
 export function extractOrderTool(areas: string[]): Anthropic.Messages.Tool {
   return {
     name: "extract_order",
