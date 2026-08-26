@@ -12,6 +12,7 @@ import {
   updateMessageReceipt,
 } from "@/lib/claude/conversation";
 import { isClosedHoliday } from "@/lib/holidays/id";
+import { stripCompensation } from "@/lib/kitchen/compensation";
 import {
   buildRecurringDeliveryRows,
   FIXED_SCHEDULE_PREFS,
@@ -87,7 +88,10 @@ export function mergeKitchenNote(
   existing: string | null,
   note: string,
 ): string | null {
-  const clean = note.trim();
+  // The model carries "(protein +25%)" across from the sentence it says to the
+  // customer. That is our arrangement with the kitchen, not the customer's
+  // request — see `stripCompensation`.
+  const clean = stripCompensation(note.trim());
   if (!clean) return null;
 
   const notes = existing ?? "";
@@ -209,7 +213,7 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
   catatan: {
     type: "string",
     description:
-      "The accepted custom requests for this order, written the way the kitchen needs to read them: 'tanpa nasi', 'tidak pedas', 'tidak ada daging sapi', 'tidak ada seafood'. Comma-separate more than one. This text is printed on the kitchen's delivery sheet, so leave it empty unless the customer actually asked for something, and never put prices, totals, addresses or internal notes in it. Do not use it for nasi merah — that has its own field because it changes the price.",
+      "The accepted custom requests for this order, written the way the kitchen needs to read them: 'tanpa nasi', 'tidak pedas', 'tidak ada daging sapi', 'tidak ada seafood'. Comma-separate more than one. Write only what the customer asked for, never what we do about it internally — 'tanpa nasi', never 'tanpa nasi (protein +25%)'. The protein increase is our arrangement with the kitchen and must not appear here. This text is printed on the kitchen's delivery sheet, so leave it empty unless the customer actually asked for something, and never put prices, totals, addresses or internal notes in it. Do not use it for nasi merah — that has its own field because it changes the price.",
   },
 } as const;
 

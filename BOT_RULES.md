@@ -193,6 +193,16 @@ It is written to `customers.notes` by `mergeKitchenNote()`, not to the delivery 
 
 **This does not replace the summarizer's `Preferensi:` bullet, and neither covers the other.** `aiPreferences()` is only consulted when there is no manual note at all, so a customer with any manual note falls back on `catatan` alone — and customers whose context was summarised before 2026-08-25 have no labelled bullet anyway. Both paths write; the sheet reads whichever it finds first.
 
+## The kitchen note carries the customer's request, never our answer to it
+
+**"Protein +25%" must never appear in a kitchen note, in any wording.** Tanpa nasi bumps the protein portion by 25%; that is our arrangement with the kitchen — an operational and commercial term — and it reaches them through their rate and their brief, not through a customer's record. Written on the sheet it states an internal term as if the customer had asked for it, on a page that is unauthenticated and shared with the subcontractor. The sheet already refuses to print prices for the same reason.
+
+It got there because the sentence the bot is told to say to the customer contains it ("porsi protein kami tambah 25% sebagai gantinya"), so both writers copied it across: `learnCustomerContext` put "tanpa nasi (protein +25%)" into six customers' `Preferensi:` bullets, and `catatan` would have carried the same phrasing into every new order.
+
+Both writers are now told not to, and `stripCompensation()` (`src/lib/kitchen/compensation.ts`) enforces it at both ends — on write in `mergeKitchenNote()`, and on render in `kitchenPreferences()`, which covers the summaries already in the database. It **strips, never drops**: the compensation is usually a parenthetical hanging off the request itself, so removing the clause would take "tanpa nasi" off the sheet with it. A customer's own request for extra protein has no percentage in it and is left alone.
+
+The same strip-don't-drop rule now applies to prices: `usefulClauses()` used to discard the whole clause when `MONEY` matched, so "tanpa nasi (harga tetap sama)" cost that customer their dietary request. The parenthetical is removed and what remains is judged on its own; a parenthetical that is not about money ("(diganti ayam)") is untouched.
+
 ## Nasi merah asked for after the order exists amends it too
 
 `resizePendingOrderFromMessage` only ever read a size. Cindy Angelia's 5-porsi order was created at the moment she confirmed, *before* she sent the order form naming nasi merah, so it stayed at Rp 145.000 against a real Rp 170.000 and nothing anywhere reconciled it. The function now also matches `nasi\s*merah` on the inbound message and, on a `pending_payment` order whose `addon_cost_per_portion` is still 0, re-prices through `getExtractedOrderPricing(size, true)` and writes `NASI_MERAH_SURCHARGE`. Size and add-on are independent — either one alone is enough to amend, and neither touches an order once a proof is in, because by then the money has moved.

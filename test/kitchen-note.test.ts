@@ -55,4 +55,17 @@ describe("mergeKitchenNote", () => {
       "tanpa nasi, tidak pedas",
     );
   });
+
+  // The protein increase is our arrangement with the kitchen, not something the
+  // customer asked for, and the sheet is unauthenticated.
+  test("never writes the protein compensation to the sheet", () => {
+    expect(mergeKitchenNote(null, "tanpa nasi (protein +25%)")).toBe(
+      "tanpa nasi",
+    );
+    expect(mergeKitchenNote(null, "protein +25%")).toBeNull();
+  });
+
+  test("does not stack when the stored note was written without it", () => {
+    expect(mergeKitchenNote("tanpa nasi", "tanpa nasi (protein +25%)")).toBeNull();
+  });
 });

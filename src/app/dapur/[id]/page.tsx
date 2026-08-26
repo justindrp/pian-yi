@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { stripCompensation } from "@/lib/kitchen/compensation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatIDR } from "@/lib/utils/format";
 import { DatePicker } from "./date-picker";
@@ -91,6 +92,16 @@ function usefulClauses(value: string): string[] {
   return value
     .split(/[;,]/)
     .map((clause) => clause.trim())
+    // "tanpa nasi (harga tetap sama)" is a single clause, and dropping it whole
+    // for the price inside took the dietary request off the sheet with it.
+    // Drop just the parenthetical, then judge what is left — the price never
+    // prints either way, and a parenthetical that is not about money
+    // ("(diganti ayam)") is untouched.
+    .map((clause) =>
+      clause.replace(/\s*\(([^)]*)\)/g, (whole, inner: string) =>
+        MONEY.test(inner) ? "" : whole,
+      ),
+    )
     .filter(
       (clause) =>
         clause &&
@@ -107,7 +118,12 @@ function aiPreferences(notes: string): string | null {
     for (const line of block.split("\n")) {
       const match = line.trim().match(PREF_BULLET);
       if (!match) continue;
-      const kept = usefulClauses(match[2].replace(/\*\*/g, ""));
+      // Stripped before splitting: the compensation is a parenthetical hanging
+      // off the request ("tanpa nasi (protein +25%)"), so a clause-level filter
+      // would drop the request with it.
+      const kept = usefulClauses(
+        stripCompensation(match[2].replace(/\*\*/g, "")),
+      );
       // Splitting can strand an opening paren whose closing half was in a
       // dropped clause; balance it rather than printing "porsi kecil (".
       const joined = kept.join(", ").replace(/\s*\($/, "");
@@ -131,7 +147,10 @@ function balanceParens(text: string): string {
 
 function kitchenPreferences(notes: string | null): string | null {
   if (!notes) return null;
-  return manualNotesOnly(notes) ?? aiPreferences(notes);
+  // Manual notes get the same strip: an admin who typed the note in by hand
+  // copied it from the same sentence the model reads.
+  const manual = manualNotesOnly(notes);
+  return (manual && stripCompensation(manual)) || aiPreferences(notes);
 }
 
 type Customer = {

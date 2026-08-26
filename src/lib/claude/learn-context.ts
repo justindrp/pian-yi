@@ -76,7 +76,10 @@ Rules:
   requests and restrictions (tanpa nasi, tidak pedas, tanpa seafood, alergi),
   portion notes, and drop-off instructions — MUST go in a bullet that begins
   with the exact label "Preferensi:". Put every such fact in that bullet, and
-  never put a price, a total, a discount or a bank detail in it. Only bullets
+  never put a price, a total, a discount or a bank detail in it. Record only
+  what the customer asked for, never what we do about it internally: write
+  "tanpa nasi", never "tanpa nasi (protein +25%)" — the protein increase is our
+  arrangement with the kitchen, not the customer's request. Only bullets
   carrying this exact label are shown to the kitchen; the same fact written
   under any other label is invisible to them.
 - Do not invent facts.
