@@ -1,0 +1,15 @@
+-- Step one of two, so no order insert ever fails during the rollout.
+--
+-- `orders.portions_remaining` has been NOT NULL with no default since
+-- migration 003. That makes dropping it a coordinated change rather than a
+-- single statement: code that omits the column fails against a database that
+-- still has it, and code that supplies it fails against a database that has
+-- dropped it. Either ordering leaves a window — however long a Railway build
+-- takes — in which every order insert is rejected, including the bot's, which
+-- is how a customer gets quoted a package and never receives the bank details.
+--
+-- So the constraint goes first. With the column nullable, both the old code
+-- (which still writes it) and the new code (which does not) insert
+-- successfully, and the deploy can happen at any time. Migration 075 drops the
+-- column itself and must not run until that deploy has landed.
+alter table orders alter column portions_remaining drop not null;

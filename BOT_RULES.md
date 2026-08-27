@@ -137,7 +137,7 @@ Nothing in the prompt ever said what a customer actually had booked, so the mode
 
 `loadCustomerSchedule()` (`src/lib/orders/customer-schedule.ts`) now supplies a **Jadwal pengiriman customer ini** block: every booked delivery from today forward with its date and meal, plus both quota numbers, and an instruction to answer schedule questions from that list and not from the chat history. It also tells the model to name the exact date and meal back when confirming a change, so a customer whose record already matches their request learns nothing needs changing.
 
-The two quota numbers are stated separately and deliberately — `remainingToday` (paid for, not yet delivered) and `unbooked` (not yet on the calendar). Both are counted from the delivery rows; `orders.portions_remaining` cached the second one and was dropped in migration 074. Quoting `unbooked` as the balance tells a customer with twelve meals coming that they have none; see the "Sisa kuota" rule in `OPERATIONS.md`.
+The two quota numbers are stated separately and deliberately — `remainingToday` (paid for, not yet delivered) and `unbooked` (not yet on the calendar). Both are counted from the delivery rows; `orders.portions_remaining` cached the second one and was dropped in migration 075. Quoting `unbooked` as the balance tells a customer with twelve meals coming that they have none; see the "Sisa kuota" rule in `OPERATIONS.md`.
 
 ## An event order is gathered, not priced — and never billed early
 
@@ -261,7 +261,7 @@ The guards that went with the write: the min-package-size floor, the photo-addre
 
 `ORDER_PROMISE` stays broad on purpose. Narrowing it to exclude "sudah kami catat" would re-open the failure it exists for.
 
-Phantoms already on file are cancelled by `scripts/cancel-phantom-orders.ts`, which also deletes their delivery rows. Note it decrements `customers.portions_remaining`, a dead column — do not follow that precedent. It no longer touches `orders.portions_remaining`, which migration 074 dropped.
+Phantoms already on file are cancelled by `scripts/cancel-phantom-orders.ts`, which also deletes their delivery rows. Note it decrements `customers.portions_remaining`, a dead column — do not follow that precedent. It no longer touches `orders.portions_remaining`, which migration 075 dropped.
 
 ## One order per purchase: `extract_order` amends the open one
 

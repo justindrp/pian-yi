@@ -251,7 +251,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | meal_time_preference | text | Default meal preference (e.g. "lunch_only", "both_fixed") |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen serves this customer |
-| portions_remaining | integer | Dead column — never read it. See the `customers.portions_remaining` rule in `CLAUDE.md`. `orders.portions_remaining` was the same idea one table over and was dropped in migration 074; this one survives only because 27 customers hold a cached balance with no order behind it. Was meant as the total quota balance across all active orders |
+| portions_remaining | integer | Dead column — never read it. See the `customers.portions_remaining` rule in `CLAUDE.md`. `orders.portions_remaining` was the same idea one table over and was dropped in migration 075; this one survives only because 27 customers hold a cached balance with no order behind it. Was meant as the total quota balance across all active orders |
 | avg_price_per_portion | integer | Weighted average cost per portion across all active orders (WAC method) |
 | delivery_route | smallint | Route number (1 = Alam Sutera/BSD Lama, 2 = Gading Serpong/BSD Baru) |
 | delivery_position | integer | Zero-based sort order within the route for the daily delivery sheet |
@@ -279,7 +279,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 
 One row per delivery event. Created when a customer requests a delivery for a specific day.
 
-**The row is the state.** Present means this food will be cooked and delivered; absent means it will not. There is no `status` column — it was dropped in migration 074 after holding `'scheduled'` on all 2937 rows it ever had, while seven read paths each carved out values nothing ever wrote. A skip is a `DELETE` through `deleteDelivery()` (`src/lib/orders/delivery-state.ts`), which copies the row into `edit_log` first; deleting it is also what returns the portion, since every balance is `package_size` minus the rows that exist. Delivered-vs-scheduled is derived from the date (`date <= today`), and whether the booking is still cancellable from `isLocked()` (D-1 16:00 WIB).
+**The row is the state.** Present means this food will be cooked and delivered; absent means it will not. There is no `status` column — it was dropped in migration 075 after holding `'scheduled'` on all 2937 rows it ever had, while seven read paths each carved out values nothing ever wrote. A skip is a `DELETE` through `deleteDelivery()` (`src/lib/orders/delivery-state.ts`), which copies the row into `edit_log` first; deleting it is also what returns the portion, since every balance is `package_size` minus the rows that exist. Delivered-vs-scheduled is derived from the date (`date <= today`), and whether the booking is still cancellable from `isLocked()` (D-1 16:00 WIB).
 
 | Column | Type | Notes |
 |--------|------|-------|
