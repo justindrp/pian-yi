@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { jakartaDateString } from "@/lib/menu/week";
 import { sendPushToAllAdmins } from "@/lib/push/send";
@@ -48,7 +49,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   // the whole request with PGRST201 and returns no rows at all.
   const { data: orders, error } = await db
     .from("orders")
-    .select("id, customer_id, customers!orders_customer_id_fkey(phone_number)")
+    .select(
+      "id, customer_id, package_size, total_price, start_date, confirmed_at, customers!orders_customer_id_fkey(phone_number)",
+    )
     .eq("status", "pending_payment")
     .lt("confirmed_at", cutoff)
     .lte("start_date", latestOverdueStart);
@@ -77,6 +80,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     const phone = (order.customers as { phone_number: string } | null)
       ?.phone_number;
 
+    const reason = `Payment not received by the ${deadlineHour}:00 deadline the day before delivery`;
+
     try {
       // Same reason as the query above: an unchecked error here would count a
       // cancellation that never landed, and the count is what the admin push
@@ -86,10 +91,33 @@ export async function POST(req: NextRequest): Promise<Response> {
         .update({
           status: "cancelled_unpaid",
           cancelled_at: new Date().toISOString(),
-          cancellation_reason: `Payment not received by the ${deadlineHour}:00 deadline the day before delivery`,
+          cancellation_reason: reason,
         })
         .eq("id", order.id);
       if (updateError) throw new Error(updateError.message);
+
+      // An order cancelled by a person is traceable to them; this one used to
+      // be traceable to nobody. On 2026-08-27 the first working run cancelled
+      // three orders and `edit_log` recorded none of them, so reconstructing
+      // what had happened meant reading the cron's source and inferring. After
+      // the business write, never before — `logEdit` does not throw, and a
+      // cancellation that landed must not be undone by a bookkeeping failure.
+      await logEdit({
+        db,
+        actor: systemActor("cancel-unpaid"),
+        entityType: "order",
+        entityId: order.id,
+        action: "cancel",
+        changes: {
+          reason,
+          status: { from: "pending_payment", to: "cancelled_unpaid" },
+          package_size: order.package_size,
+          total_price: order.total_price,
+          start_date: order.start_date,
+          confirmed_at: order.confirmed_at,
+          deadline_hour: deadlineHour,
+        },
+      });
 
       if (phone)
         await sendTextMessage(phone, `${template}\n\n${WINDOW_NOTICE_SHORT}`);

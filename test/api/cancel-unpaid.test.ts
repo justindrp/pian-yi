@@ -1,10 +1,15 @@
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/cron/cancel-unpaid/route";
+import { logEdit } from "@/lib/audit/log-edit";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
+jest.mock("@/lib/audit/log-edit", () => ({
+  logEdit: jest.fn(),
+  systemActor: (job: string) => `system:${job}`,
+}));
 jest.mock("@/lib/push/send", () => ({ sendPushToAllAdmins: jest.fn() }));
 jest.mock("@/lib/whatsapp/client", () => ({ sendTextMessage: jest.fn() }));
 jest.mock("@/lib/cache/settings", () => ({
@@ -59,6 +64,10 @@ function req(): NextRequest {
 const order = (id: string, phone: string): Row => ({
   id,
   customer_id: `cust-${id}`,
+  package_size: 20,
+  total_price: 540000,
+  start_date: "2026-08-31",
+  confirmed_at: "2026-08-24T05:12:35Z",
   customers: { phone_number: phone },
 });
 
@@ -143,6 +152,44 @@ describe("cancel-unpaid", () => {
   // confirmed on 24 Aug for a 31 Aug start and Cindi on 21 Aug for a 2 Sep
   // start; both had been told "boleh bayar H-1 atau hari H", and the old
   // age-only sweep cancelled them anyway, a week before they owed anything.
+  // The first working run cancelled three orders and `edit_log` recorded none
+  // of them, so what the cron had done was reconstructable only from its source.
+  it("records every cancellation it makes in edit_log", async () => {
+    const { db } = makeDb({
+      select: { data: [order("a", "+628111")], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await POST(req());
+
+    expect(logEdit).toHaveBeenCalledTimes(1);
+    expect(logEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: "system:cancel-unpaid",
+        entityType: "order",
+        entityId: "a",
+        action: "cancel",
+        changes: expect.objectContaining({
+          status: { from: "pending_payment", to: "cancelled_unpaid" },
+        }),
+      }),
+    );
+  });
+
+  // The audit row follows the business write, so an order that never moved must
+  // not leave a trail saying it did.
+  it("does not log a cancellation whose update failed", async () => {
+    const { db } = makeDb({
+      select: { data: [order("a", "+628111")], error: null },
+      update: { error: { message: "row locked" } },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await POST(req());
+
+    expect(logEdit).not.toHaveBeenCalled();
+  });
+
   it("only sweeps orders whose start date has reached the H-1 deadline", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-08-27T10:00:00Z")); // 17:00 WIB
     const { db, filters } = makeDb({ select: { data: [], error: null } });
