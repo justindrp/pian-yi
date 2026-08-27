@@ -18,17 +18,24 @@ type Result = { data?: Row[] | null; error: { message: string } | null };
 
 /**
  * The route awaits two different chains off the same table: the order query
- * (`select → eq → lt`) and the cancellation (`update → eq`). Each chain's last
- * call is the one that resolves — `.lt()` for the query, and `.eq()` for the
- * update, which is why `.eq()` only returns a promise once `.update()` has run.
+ * (`select → eq → lt → lte`) and the cancellation (`update → eq`). Each chain's
+ * last call is the one that resolves — `.lte()` for the query, and `.eq()` for
+ * the update, which is why `.eq()` only returns a promise once `.update()` has
+ * run. `filters` records the query's `.lte()` arguments so a test can assert
+ * which `start_date` ceiling the route asked for.
  */
 function makeDb(spec: { select: Result; update?: Result }) {
   const updates: Row[] = [];
+  const filters: { column: string; value: unknown }[] = [];
   const from = jest.fn(() => {
     let updating = false;
     const chain: Record<string, unknown> = {};
     chain.select = jest.fn().mockReturnValue(chain);
-    chain.lt = jest.fn(() => Promise.resolve(spec.select));
+    chain.lt = jest.fn().mockReturnValue(chain);
+    chain.lte = jest.fn((column: string, value: unknown) => {
+      filters.push({ column, value });
+      return Promise.resolve(spec.select);
+    });
     chain.update = jest.fn((row: Row) => {
       updates.push(row);
       updating = true;
@@ -39,7 +46,7 @@ function makeDb(spec: { select: Result; update?: Result }) {
     );
     return chain;
   });
-  return { db: { from }, updates };
+  return { db: { from }, updates, filters };
 }
 
 function req(): NextRequest {
@@ -58,7 +65,9 @@ const order = (id: string, phone: string): Row => ({
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.CRON_SECRET = SECRET;
-  (getSetting as jest.Mock).mockResolvedValue("24");
+  (getSetting as jest.Mock).mockImplementation((key: string) =>
+    Promise.resolve(key === "order_deadline_hour" ? "16" : "24"),
+  );
   (getTemplate as jest.Mock).mockResolvedValue("pembayaran belum kami terima");
 });
 
@@ -128,6 +137,34 @@ describe("cancel-unpaid", () => {
     const res = await POST(req());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, cancelled: 0 });
+  });
+
+  // Payment is due against the first delivery, not against the chat. Naya
+  // confirmed on 24 Aug for a 31 Aug start and Cindi on 21 Aug for a 2 Sep
+  // start; both had been told "boleh bayar H-1 atau hari H", and the old
+  // age-only sweep cancelled them anyway, a week before they owed anything.
+  it("only sweeps orders whose start date has reached the H-1 deadline", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-27T10:00:00Z")); // 17:00 WIB
+    const { db, filters } = makeDb({ select: { data: [], error: null } });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await POST(req());
+
+    expect(filters).toEqual([{ column: "start_date", value: "2026-08-28" }]);
+    jest.useRealTimers();
+  });
+
+  // Before the deadline an H-1 payer still has the rest of the day, so the
+  // hourly runs before 16:00 WIB must not reach tomorrow's starters.
+  it("leaves tomorrow's starters alone until the deadline passes", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-27T02:00:00Z")); // 09:00 WIB
+    const { db, filters } = makeDb({ select: { data: [], error: null } });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await POST(req());
+
+    expect(filters).toEqual([{ column: "start_date", value: "2026-08-27" }]);
+    jest.useRealTimers();
   });
 
   it("rejects a request without the cron secret", async () => {

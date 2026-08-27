@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
+import { jakartaDateString } from "@/lib/menu/week";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { addDays, jakartaHour } from "@/lib/time/jakarta";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
@@ -22,6 +24,23 @@ export async function POST(req: NextRequest): Promise<Response> {
     Date.now() - cancelHours * 60 * 60 * 1000,
   ).toISOString();
 
+  // Payment is due against the first delivery, not against the chat. This route
+  // used to sweep on order age alone, and on 2026-08-27 that cancelled two
+  // perfectly good orders: Naya confirmed 24 Aug for a 31 Aug start and Cindi
+  // confirmed 21 Aug for a 2 Sep start, both of whom the bot had explicitly
+  // told "boleh bayar H-1 atau hari H". Twenty-four hours after confirmation
+  // they owed nothing yet. So an order only becomes overdue once the 16:00 H-1
+  // deadline for its own `start_date` has passed — the same cutoff that governs
+  // ordering, changes and skips.
+  const deadlineHour =
+    Number.parseInt(await getSetting("order_deadline_hour"), 10) || 16;
+  // Once today's deadline has passed, tomorrow's starters are overdue too;
+  // before it, they still have the rest of the day to transfer, so the hourly
+  // runs before 16:00 WIB only reach orders whose start date has already come.
+  const today = jakartaDateString();
+  const latestOverdueStart =
+    jakartaHour() >= deadlineHour ? addDays(today, 1) : today;
+
   // The FK hint is mandatory: `orders` reaches `customers` two ways —
   // `orders_customer_id_fkey` (orders.customer_id → customers.id, the one we
   // want) and `customers_linked_order_id_fkey` (customers.linked_order_id →
@@ -31,7 +50,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("orders")
     .select("id, customer_id, customers!orders_customer_id_fkey(phone_number)")
     .eq("status", "pending_payment")
-    .lt("confirmed_at", cutoff);
+    .lt("confirmed_at", cutoff)
+    .lte("start_date", latestOverdueStart);
 
   // A failed query must not read as "nothing to cancel". This route ran hourly
   // for months on the ambiguous embed above: the error was discarded, `orders`
@@ -66,7 +86,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         .update({
           status: "cancelled_unpaid",
           cancelled_at: new Date().toISOString(),
-          cancellation_reason: "Payment not received within 24 hours",
+          cancellation_reason: `Payment not received by the ${deadlineHour}:00 deadline the day before delivery`,
         })
         .eq("id", order.id);
       if (updateError) throw new Error(updateError.message);
