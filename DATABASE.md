@@ -2,6 +2,30 @@
 
 26 tables and 1 view in the `public` schema.
 
+## Migrations apply themselves on push to main
+
+The Supabase project's GitHub integration is on: production branch `main` is wired
+to git branch `main` (`supabase branches list --experimental`). **Every push to
+`main` runs the pending migrations against production**, without anyone typing
+`supabase db push`. The push, not the migration command, is the deploy.
+
+Two consequences, both learned the hard way on migrations 074/075:
+
+- A migration lands **before** Railway finishes building the code that goes with
+  it. The gap is the length of a build — a couple of minutes — and during it the
+  *old* code is running against the *new* schema.
+- Therefore a change that needs a migration and a code deploy in a fixed order is
+  **two pushes, not two migrations in one push**. 074 (drop the `NOT NULL`) and
+  075 (drop the column) were written as a two-phase rollout and then committed
+  together, so 075 applied at push time while the old code — which still wrote
+  `orders.portions_remaining` — was live for another two minutes. Nothing broke
+  only because no order was inserted in that window; the plan was correct and the
+  push undid it.
+
+`supabase db push` by hand is still useful for applying a migration *ahead* of a
+push, which is how 074 went out on its own. Run `supabase migration list --linked`
+to see what production actually has.
+
 ---
 
 ## accounts

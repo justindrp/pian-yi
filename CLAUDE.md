@@ -41,6 +41,7 @@ Two end users:
 - **Linter / formatter**: **Biome exclusively**. Do not use ESLint or Prettier.
 - **Hosting**: Railway (always-on Node.js, `output: 'standalone'` mode, NOT serverless)
 - **Database**: Supabase (PostgreSQL) with Row Level Security
+  - **A push to `main` applies pending migrations to production on its own** (Supabase GitHub integration). A migration that must land before or after a code deploy therefore needs its own push — see "Migrations apply themselves on push to main" in `DATABASE.md`.
 - **Auth**: Supabase Auth (magic link email login for admins only)
 - **AI**: the Anthropic SDK pointed at DeepSeek via `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`. Both `CLAUDE_SONNET_MODEL` and `CLAUDE_HAIKU_MODEL` are `deepseek-v4-flash` in production — the code's "Sonnet" (customer chat, order conversations, training mode) and "Haiku" (photo matching, classification, sentiment, FAQ routing) names describe the *role*, not the model. Check the env before consulting any provider's docs. DeepSeek reasons by default, which broke replies three separate ways, so every call spreads `NO_THINKING` — see "Reading model responses" in `DEV_REFERENCE.md`.
 - **Messaging**: Meta WhatsApp Business Cloud API v25.0
