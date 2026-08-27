@@ -39,7 +39,8 @@ interface DeliveryRow {
   portions: number;
   subcontractor_id: string | null;
   notes: string | null;
-  status: string;
+  // Local to this screen: unticking the checkbox marks the row for removal on
+  // save. It is not a column — a delivery row is present or it is not.
   skip: boolean;
   address_slot: number;
   customers?: {
@@ -572,7 +573,7 @@ export default function DeliveriesClient() {
       setRows(
         sheetData.map((r) => ({
           ...r,
-          skip: r.status === "skipped",
+          skip: false,
           address_slot: r.address_slot ?? 1,
         })),
       );
@@ -788,7 +789,6 @@ export default function DeliveriesClient() {
         portions: addPortions,
         subcontractor_id: addSubId,
         notes: null,
-        status: "scheduled",
         skip: false,
         address_slot: 1,
         customers: cust,

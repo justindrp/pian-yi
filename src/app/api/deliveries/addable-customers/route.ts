@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { unbookedByOrder } from "@/lib/orders/customer-schedule";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -25,7 +26,7 @@ export async function GET(): Promise<Response> {
   const { data: orders } = await db
     .from("orders")
     .select(
-      "id, customer_id, portions_per_delivery, portions_lunch, portions_dinner, meal_time_preference, size, portions_remaining, start_date, created_at",
+      "id, customer_id, portions_per_delivery, portions_lunch, portions_dinner, meal_time_preference, size, package_size, start_date, created_at",
     )
     .eq("status", "active");
 
@@ -42,9 +43,15 @@ export async function GET(): Promise<Response> {
     else ordersByCustomer.set(o.customer_id, [o]);
   }
 
+  // Balance comes from the delivery rows. It used to come from the stored
+  // orders.portions_remaining, which disagreed with them for 132 of 303 active
+  // orders — an order the counter called drained still won the pick here.
+  const unbooked = await unbookedByOrder(db, orders ?? []);
   const orderByCustomer = new Map<string, NonNullable<typeof orders>[number]>();
   for (const [customerId, list] of ordersByCustomer) {
-    const picked = pickDrawOrder(list);
+    const picked = pickDrawOrder(
+      list.map((o) => ({ ...o, unbooked: unbooked.get(o.id) ?? 0 })),
+    );
     if (picked) orderByCustomer.set(customerId, picked);
   }
 

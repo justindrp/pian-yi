@@ -640,7 +640,6 @@ export type Database = {
           order_id: string | null;
           portions: number;
           quota_deducted: boolean;
-          status: string | null;
           subcontractor_id: string | null;
           updated_at: string | null;
         };
@@ -658,7 +657,6 @@ export type Database = {
           order_id?: string | null;
           portions: number;
           quota_deducted?: boolean;
-          status?: string | null;
           subcontractor_id?: string | null;
           updated_at?: string | null;
         };
@@ -676,7 +674,6 @@ export type Database = {
           order_id?: string | null;
           portions?: number;
           quota_deducted?: boolean;
-          status?: string | null;
           subcontractor_id?: string | null;
           updated_at?: string | null;
         };
@@ -950,7 +947,6 @@ export type Database = {
           portions_dinner: number | null;
           portions_lunch: number | null;
           portions_per_delivery: number;
-          portions_remaining: number;
           price_per_portion: number;
           reminder_sent_at: string | null;
           size: string;
@@ -988,7 +984,6 @@ export type Database = {
           portions_dinner?: number | null;
           portions_lunch?: number | null;
           portions_per_delivery: number;
-          portions_remaining: number;
           price_per_portion: number;
           reminder_sent_at?: string | null;
           size?: string;
@@ -1026,7 +1021,6 @@ export type Database = {
           portions_dinner?: number | null;
           portions_lunch?: number | null;
           portions_per_delivery?: number;
-          portions_remaining?: number;
           price_per_portion?: number;
           reminder_sent_at?: string | null;
           size?: string;

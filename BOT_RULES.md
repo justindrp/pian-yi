@@ -137,7 +137,7 @@ Nothing in the prompt ever said what a customer actually had booked, so the mode
 
 `loadCustomerSchedule()` (`src/lib/orders/customer-schedule.ts`) now supplies a **Jadwal pengiriman customer ini** block: every booked delivery from today forward with its date and meal, plus both quota numbers, and an instruction to answer schedule questions from that list and not from the chat history. It also tells the model to name the exact date and meal back when confirming a change, so a customer whose record already matches their request learns nothing needs changing.
 
-The two quota numbers are stated separately and deliberately — `remainingToday` (paid for, not yet delivered) and `unbooked` (not yet on the calendar). `orders.portions_remaining` is the second one. Quoting it as the first tells a customer with twelve meals coming that they have none; see the "Sisa kuota" rule in `OPERATIONS.md`.
+The two quota numbers are stated separately and deliberately — `remainingToday` (paid for, not yet delivered) and `unbooked` (not yet on the calendar). Both are counted from the delivery rows; `orders.portions_remaining` cached the second one and was dropped in migration 074. Quoting `unbooked` as the balance tells a customer with twelve meals coming that they have none; see the "Sisa kuota" rule in `OPERATIONS.md`.
 
 ## An event order is gathered, not priced — and never billed early
 
@@ -221,7 +221,7 @@ The refusal is scoped to `sendPaymentInfo: true`. The payment-proof path (`sendP
 
 An order created the moment the customer confirms has no delivery rows if their days come in the *next* message, and nothing else ever writes them — auto-generation deliberately skips a `per_day_decision` order, and non-contiguous days cannot be derived from a range anyway. Cindy Angelia's 5-porsi order was created at turn 3; she named 11, 12, 13, 14 and 18 Agustus afterwards, and her order sat with an empty schedule.
 
-`fillMissingSchedule()` (`src/lib/claude/extract-order.ts`) re-runs the forced-tool extraction and writes the `delivery_schedule` it returns, capped at `portions_remaining` so a package can never be over-booked, then sets `start_date`, `end_date` and the meal preference the days imply. It only ever touches an order with **zero** delivery rows, so it cannot duplicate a schedule already written.
+`fillMissingSchedule()` (`src/lib/claude/extract-order.ts`) re-runs the forced-tool extraction and writes the `delivery_schedule` it returns, capped at the order's unbooked balance (`unbookedByOrder()`) so a package can never be over-booked, then sets `start_date`, `end_date` and the meal preference the days imply. It only ever touches an order with **zero** delivery rows, so it cannot duplicate a schedule already written.
 
 It runs from `resizePendingOrderFromMessage`, on any amendment and on a message that merely lists dates — `DATE_LIST` is the cheap gate, since the extraction is a model call and must not fire on every inbound message. A dates-only message amends nothing about the money, so it never re-prices and never sends the customer a second nominal.
 
@@ -229,7 +229,7 @@ It runs from `resizePendingOrderFromMessage`, on any amendment and on a message 
 
 "Boleh 6 porsi dulu kak" after the transfer details have gone out is an amendment, not a second order and not a question — and nothing acted on it. Tiwi asked for "Total 8 porsi" on 2026-08-03, was quoted and billed for 8, then reduced to 6 in the next message; the order stayed at 8 and she was left holding a bill for a package she had just cut.
 
-`resizePendingOrderFromMessage()` (`src/lib/claude/extract-order.ts`) runs on every inbound message before the model call, so the reply is generated against the amended order. It only touches an order in `pending_payment`: once a proof is in, the money has moved and a size change is an admin decision. It rewrites `package_size`, `portions_remaining`, `price_per_portion` and `total_price` — nothing has been drawn against an unpaid order, so the balance moves with the size — re-prices through `getExtractedOrderPricing` (keeping the nasi merah surcharge when `addon_cost_per_portion > 0`), and sends the corrected nominal with the bank details.
+`resizePendingOrderFromMessage()` (`src/lib/claude/extract-order.ts`) runs on every inbound message before the model call, so the reply is generated against the amended order. It only touches an order in `pending_payment`: once a proof is in, the money has moved and a size change is an admin decision. It rewrites `package_size`, `price_per_portion` and `total_price` — nothing has been drawn against an unpaid order, so the balance moves with the size — re-prices through `getExtractedOrderPricing` (keeping the nasi merah surcharge when `addon_cost_per_portion > 0`), and sends the corrected nominal with the bank details.
 
 The size is read by `statedBareTotal()`, the same parser `applyLatestCustomerSize` uses: exactly one bare total in the message, never a per-delivery figure ("1 porsi per pengiriman"), never a number carrying a thousands separator or preceded by a digit. That last guard exists because a replay pulled `15330` out of a message and would have priced a Rp 400 juta order; sizes past 500 are refused as a misread for the same reason. **The number and the word must also sit on the same line, and "Porsi:" as a form label never counts.** The gap used to be `\s*`, which crosses newlines: PT Bintang's filled order form ends one line in a maps link (`…WhZA3f6`) and starts the next with `Porsi: 22 box`, so the parser read the URL's trailing 6 and amended their correctly-created 110-porsi order down to 6. This was never corporate-specific — any customer whose maps link ends in a digit could shrink their own order the same way.
 
@@ -261,7 +261,7 @@ The guards that went with the write: the min-package-size floor, the photo-addre
 
 `ORDER_PROMISE` stays broad on purpose. Narrowing it to exclude "sudah kami catat" would re-open the failure it exists for.
 
-Phantoms already on file are cancelled by `scripts/cancel-phantom-orders.ts`, which also deletes their delivery rows. Note it decrements `customers.portions_remaining`, a dead column — do not follow that precedent.
+Phantoms already on file are cancelled by `scripts/cancel-phantom-orders.ts`, which also deletes their delivery rows. Note it decrements `customers.portions_remaining`, a dead column — do not follow that precedent. It no longer touches `orders.portions_remaining`, which migration 074 dropped.
 
 ## One order per purchase: `extract_order` amends the open one
 

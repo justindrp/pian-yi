@@ -22,29 +22,20 @@ describe("buildRecurringDeliveryRows", () => {
     // Fidela asked for lunch + dinner across 27-31 Juli (5 delivery days, 10
     // portions) against an 8-porsi package. The range used to win and the order
     // was over-drawn the moment it was created.
-    const rows = buildRecurringDeliveryRows(
-      { ...base, package_size: 8 },
-      "2026-08-19",
-    );
+    const rows = buildRecurringDeliveryRows({ ...base, package_size: 8 });
     const portions = rows.reduce((sum, r) => sum + r.portions, 0);
     expect(portions).toBe(8);
   });
 
   it("stops at the end date when the package is larger than the range", () => {
-    const rows = buildRecurringDeliveryRows(
-      { ...base, package_size: 40 },
-      "2026-08-19",
-    );
+    const rows = buildRecurringDeliveryRows({ ...base, package_size: 40 });
     const portions = rows.reduce((sum, r) => sum + r.portions, 0);
     expect(portions).toBe(10);
     expect(rows.every((r) => r.delivery_date <= "2026-07-31")).toBe(true);
   });
 
   it("caps nothing for the package_size 0 import artifact", () => {
-    const rows = buildRecurringDeliveryRows(
-      { ...base, package_size: 0 },
-      "2026-08-19",
-    );
+    const rows = buildRecurringDeliveryRows({ ...base, package_size: 0 });
     expect(rows.reduce((sum, r) => sum + r.portions, 0)).toBe(10);
   });
 });

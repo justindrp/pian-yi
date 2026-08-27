@@ -22,7 +22,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("daily_deliveries")
     .select("id, customer_id, order_id, portions")
     .eq("delivery_date", tomorrowStr)
-    .eq("status", "scheduled")
     .eq("quota_deducted", false);
 
   if (error) {
@@ -61,26 +60,12 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   let deducted = 0;
 
-  // Deduct orders.portions_remaining per row first. This has to happen before
-  // the completion check below, which reads the balance this loop writes.
-  const touchedOrders = new Set<string>();
-  for (const d of rows) {
-    const { data: ord } = await db
-      .from("orders")
-      .select("portions_remaining")
-      .eq("id", d.order_id)
-      .single();
-
-    if (ord && ord.portions_remaining !== null) {
-      await db
-        .from("orders")
-        .update({
-          portions_remaining: Math.max(0, ord.portions_remaining - d.portions),
-        })
-        .eq("id", d.order_id);
-      touchedOrders.add(d.order_id);
-    }
-  }
+  // The orders these rows draw from. There is nothing to deduct on them: an
+  // order's balance is its package_size minus its delivery rows, and the rows
+  // are already there. This loop used to decrement orders.portions_remaining,
+  // which is why that column disagreed with the rows — it deducted here on
+  // *delivery* while record_daily_order deducted on *booking*.
+  const touchedOrders = new Set(rows.map((d) => d.order_id));
 
   // Complete an order when that order's own food has actually been delivered.
   //
@@ -100,13 +85,12 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     if (ord?.status !== "active") continue;
 
-    // Finish on what has actually been delivered, never on the stored counter.
-    // This loop deducts *tomorrow's* rows, and the daily-sheet PUT deducts on
-    // save, so portions_remaining hits 0 when the calendar fills — not when the
-    // food has gone out. Keying completion on it closed four orders still
-    // owing 35 portions between them, Nadya's on 2026-08-13 with twelve meals
-    // left to deliver. She then had no active order, so the bot lost her quota
-    // context entirely.
+    // Finish on what has actually been delivered, not on what is booked. The
+    // retired orders.portions_remaining counted bookings, so it hit 0 when the
+    // calendar filled rather than when the food had gone out. Keying completion
+    // on it closed four orders still owing 35 portions between them, Nadya's on
+    // 2026-08-13 with twelve meals left to deliver. She then had no active
+    // order, so the bot lost her quota context entirely.
     const left = await orderRemainingToday(db, orderId, ord.package_size ?? 0);
     if (left <= 0) {
       await db

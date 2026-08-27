@@ -1,0 +1,47 @@
+-- A delivery row is present or absent. Nothing in between.
+--
+-- `daily_deliveries.status` was written on every insert and read by seven
+-- different filters, and in the whole life of the table it never once held a
+-- value other than 'scheduled': 2937 of 2937 rows on 2026-08-27. It described
+-- a lifecycle nothing ever advanced, so every "is this delivery real" question
+-- was answered by a column that always said yes.
+--
+-- Skipping is a DELETE now. That removes the class of bug the status invited:
+-- seven read paths each had to remember to exclude 'skipped', and two of them
+-- already disagreed — orderRemainingToday() filtered it in JS after excluding
+-- 'cancelled' in the query, unbookedByOrder() excluded both in the query.
+-- Forget one and the kitchen cooks food nobody ordered. A row that does not
+-- exist cannot be forgotten. The delete path already existed and already
+-- worked (the daily sheet's own delete button); this makes it the only path.
+--
+-- 'delivered' vs 'scheduled' is not stored because it is not information: a
+-- delivery is locked once the H-1 cutoff for its date has passed, and after
+-- that the kitchen is booked and the portion is drawn whatever happens. That
+-- is a function of the date and the clock, so it is computed
+-- (src/lib/orders/delivery-state.ts) rather than remembered. 'not_delivered'
+-- goes with them: nothing has ever written it, one line read it, and a meal
+-- the customer did not receive is a complaint to handle, not a row state.
+alter table daily_deliveries drop column if exists status;
+
+-- The same argument, one table over.
+--
+-- `orders.portions_remaining` was a cache of `package_size` minus the delivery
+-- rows, and it had two writers that meant different things: record_daily_order
+-- decremented it when a delivery was *booked*, cron/deduct-daily-quota when a
+-- delivery was *delivered*. A single number cannot be both, so it drifted —
+-- on 2026-08-24 it disagreed with the rows for 63 of 195 customers holding an
+-- active order, and on 2026-08-27 for 132 of 303 active orders.
+--
+-- Nothing customer-facing had trusted it for a while. record_daily_order
+-- already derived the real figure with unbookedByOrder() and passed it to
+-- pickDrawOrder() under this column's name. Dropping it just retires the name.
+--
+-- Note this changes the has-quota verdict for 51 active orders that the
+-- remaining stored readers (renewal reminders, the dashboard, the addable
+-- lists) were still reading: 42 that the counter called exhausted while the
+-- rows say they have quota left, and 9 the other way. The bot has been on the
+-- derived figure for those all along; this brings the rest into line with it.
+-- It does not reconcile the underlying rows — deliveries that happened before
+-- the system recorded them are still missing, and that is the open half of the
+-- daily_deliveries reconciliation.
+alter table orders drop column if exists portions_remaining;

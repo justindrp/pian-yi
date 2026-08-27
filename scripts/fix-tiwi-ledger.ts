@@ -21,7 +21,7 @@ async function main() {
   const db = createAdminClient();
   const { data: orders } = await db
     .from("orders")
-    .select("id, package_size, portions_remaining, status")
+    .select("id, package_size, status")
     .eq("customer_id", CUSTOMER);
   const real = (orders ?? []).find((o) => o.id.startsWith(REAL_ORDER));
   const phantom = (orders ?? []).find((o) => o.id.startsWith(PHANTOM));
@@ -66,7 +66,7 @@ async function main() {
     .eq("order_id", real.id)
     .order("delivery_date");
   console.log(
-    `${REAL_ORDER}: pkg ${real.package_size}, rem ${real.portions_remaining}, ${left?.length} deliveries ${(left ?? []).map((d) => d.delivery_date.slice(5)).join(" ")}`,
+    `${REAL_ORDER}: pkg ${real.package_size}, ${left?.length} deliveries ${(left ?? []).map((d) => d.delivery_date.slice(5)).join(" ")}`,
   );
 }
 

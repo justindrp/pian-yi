@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { logEdit } from "@/lib/audit/log-edit";
+import { unbookedByOrder } from "@/lib/orders/customer-schedule";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -51,14 +52,18 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // Every active order, then pick — `.limit(1)` with no ORDER BY took whichever
   // row came back first, which for a customer holding two packages was the one
-  // created earliest, drained or not.
+  // created earliest, drained or not. The balance each one is picked on is
+  // counted from its delivery rows; the stored counter it used to read is gone.
   const { data: activeOrders } = await db
     .from("orders")
-    .select("id, portions_remaining, start_date, created_at")
+    .select("id, package_size, start_date, created_at")
     .eq("customer_id", customer_id)
     .eq("status", "active");
 
-  const order = pickDrawOrder(activeOrders ?? []);
+  const unbooked = await unbookedByOrder(db, activeOrders ?? []);
+  const order = pickDrawOrder(
+    (activeOrders ?? []).map((o) => ({ ...o, unbooked: unbooked.get(o.id) ?? 0 })),
+  );
 
   if (!order) {
     return NextResponse.json(
@@ -78,7 +83,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     meal_type: d.meal_type,
     portions: d.portions,
     subcontractor_id: customer.subcontractor_id,
-    status: "scheduled",
   }));
 
   const { error } = await db.from("daily_deliveries").upsert(rows, {

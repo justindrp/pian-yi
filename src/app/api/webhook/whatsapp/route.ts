@@ -1583,7 +1583,7 @@ export async function processSavedCustomerMessage(params: {
     db
       .from("orders")
       .select(
-        "id, portions_remaining, package_size, portions_per_delivery, meal_time_preference",
+        "id, package_size, portions_per_delivery, meal_time_preference",
       )
       .eq("customer_id", customerId)
       .eq("status", "active")
@@ -1637,8 +1637,8 @@ export async function processSavedCustomerMessage(params: {
 
   // What is actually booked, so the model stops reconstructing the schedule
   // from the chat scrollback and quoting the wrong "sisa kuota". Both numbers
-  // on it are counted from the delivery rows; nothing here trusts
-  // orders.portions_remaining.
+  // on it are counted from the delivery rows — the only place either has ever
+  // been.
   const schedule = await loadCustomerSchedule(db, customerId);
 
   // Build system prompt
@@ -1688,7 +1688,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "record_daily_order",
       description:
-        "Called when a customer with an active quota-based order requests one or more deliveries. Inserts a daily delivery row per date and decrements their quota. Pass EVERY date the customer agreed to in one call — a Senin–Jumat run is one call with five dates, never five calls. Only call this for customers who already have an active order with portions_remaining > 0.",
+        "Called when a customer with an active quota-based order requests one or more deliveries. Inserts a daily delivery row per date and decrements their quota. Pass EVERY date the customer agreed to in one call — a Senin–Jumat run is one call with five dates, never five calls. Only call this for customers who already have an active order with quota left.",
       input_schema: {
         type: "object",
         properties: {
@@ -2461,16 +2461,16 @@ async function handleToolUse(
       ],
     };
     // Every active order, with its undated portions counted from the delivery
-    // rows. `orders.portions_remaining` is a stored counter nothing keeps
-    // honest — the daily sheet's delete button removes a row and leaves it
-    // where it was — and on 2026-08-24 it disagreed with the rows for 63 of
-    // the 195 customers holding an active order. Vania's read 0 with ten
+    // rows. This used to read the stored `orders.portions_remaining`, a counter
+    // nothing kept honest — the daily sheet's delete button removed a row and
+    // left it where it was — and on 2026-08-24 it disagreed with the rows for
+    // 63 of the 195 customers holding an active order. Vania's read 0 with ten
     // portions genuinely left, so this bailed and three dinners the bot had
-    // already confirmed to her were never written.
+    // already confirmed to her were never written. The column is gone now.
     const { data: activeOrders } = await db
       .from("orders")
       .select(
-        "id, package_size, portions_remaining, start_date, created_at, subcontractor_id, meal_time_preference",
+        "id, package_size, start_date, created_at, subcontractor_id, meal_time_preference",
       )
       .eq("customer_id", customerId)
       .eq("status", "active");
@@ -2490,15 +2490,13 @@ async function handleToolUse(
     );
 
     // Which package the rows bill to: the oldest one that still has undated
-    // portions, per pickDrawOrder. It reads `portions_remaining` off its
-    // candidates, so it is handed the derived count under that name rather
-    // than the stored one. Orders whose meal_time_preference covers the
+    // portions, per pickDrawOrder. Orders whose meal_time_preference covers the
     // requested meal are preferred; when none does, every active order is a
     // candidate, because quota belongs to the customer and not to one package.
     const asCandidates = (rows: typeof candidates) =>
       rows.map((o) => ({
         ...o,
-        portions_remaining: unbookedPerOrder.get(o.id) ?? 0,
+        unbooked: unbookedPerOrder.get(o.id) ?? 0,
       }));
     const mealMatched = candidates.filter((o) =>
       mealPrefs[input.meal_type].includes(o.meal_time_preference ?? ""),
@@ -2597,7 +2595,6 @@ async function handleToolUse(
         meal_type: input.meal_type,
         portions: perDate,
         subcontractor_id: order.subcontractor_id,
-        status: "scheduled",
         notes: input.notes ?? null,
       })),
     );
@@ -2617,19 +2614,7 @@ async function handleToolUse(
 
     const deducted = booking.length * perDate;
 
-    // The stored counter no longer steers anything here, but it is still what
-    // the dashboard and the crons read, so keep it moving with the rows.
-    await db
-      .from("orders")
-      .update({
-        portions_remaining: Math.max(
-          0,
-          (activeOrders?.find((o) => o.id === order.id)?.portions_remaining ??
-            0) - deducted,
-        ),
-      })
-      .eq("id", order.id);
-
+    // Nothing to deduct on the order: the rows just inserted are the deduction.
     const { data: custQuota } = await db
       .from("customers")
       .select("portions_remaining")

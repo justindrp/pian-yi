@@ -33,7 +33,7 @@ async function main() {
     await db.from("daily_deliveries").delete().eq("order_id", id);
     await db
       .from("orders")
-      .update({ status: "cancelled_by_admin", portions_remaining: 0 })
+      .update({ status: "cancelled_by_admin" })
       .eq("id", id);
     // Order creation credits the customer counter; take the phantom back off it.
     const { data: cust } = await db

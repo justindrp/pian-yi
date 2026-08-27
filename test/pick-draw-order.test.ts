@@ -2,10 +2,10 @@ import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
 
 const order = (
   id: string,
-  portions_remaining: number | null,
+  unbooked: number | null,
   start_date: string | null,
   created_at?: string,
-) => ({ id, portions_remaining, start_date, created_at });
+) => ({ id, unbooked, start_date, created_at });
 
 describe("pickDrawOrder", () => {
   test("returns null when the customer has no active order", () => {
@@ -39,9 +39,10 @@ describe("pickDrawOrder", () => {
   });
 
   test("falls back to the newest order when none has balance", () => {
-    // portions_remaining is unreliable on the June import, so returning null
-    // here would drop a real customer off the daily sheet. Charging the newest
-    // package is the least wrong answer.
+    // The June import's delivery rows are incomplete, so an order can read 0
+    // unbooked while the customer is still owed food. Returning null here would
+    // drop a real customer off the daily sheet; charging the newest package is
+    // the least wrong answer.
     const picked = pickDrawOrder([
       order("june", 0, "2026-06-08", "2026-06-08T00:00:00Z"),
       order("july", 0, "2026-07-24", "2026-07-24T00:00:00Z"),

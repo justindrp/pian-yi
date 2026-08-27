@@ -18,7 +18,13 @@
 
 export type DrawCandidate = {
   id: string;
-  portions_remaining: number | null;
+  /**
+   * Portions of this order not yet on the calendar, from `unbookedByOrder()`.
+   * Never a stored column: `orders.portions_remaining` used to be passed here
+   * and it disagreed with the rows for 132 of 303 active orders before it was
+   * dropped.
+   */
+  unbooked: number | null;
   start_date: string | null;
   created_at?: string | null;
 };
@@ -36,20 +42,19 @@ function byStartDate(a: DrawCandidate, b: DrawCandidate): number {
  * The order a new draw for this customer should be charged to.
  *
  * Prefers the oldest active order that still has portions left. When none does,
- * falls back to the most recently created one rather than returning null —
- * `portions_remaining` is unreliable on the June import (89 active orders read
- * zero or below, many of them stale counters rather than genuinely used up), so
- * refusing here would drop real customers out of the daily sheet. The fallback
- * at least charges the draw to the newest package instead of a June leftover.
- * Callers that need to know which happened should compare `portions_remaining`
- * on the result.
+ * falls back to the most recently created one rather than returning null — the
+ * June import left 89 active orders reading zero or below because their
+ * deliveries were recorded before the system was, so refusing here would drop
+ * real customers out of the daily sheet. The fallback at least charges the draw
+ * to the newest package instead of a June leftover. Callers that need to know
+ * which happened should check `unbooked` on the result.
  */
 export function pickDrawOrder<T extends DrawCandidate>(
   orders: readonly T[],
 ): T | null {
   if (orders.length === 0) return null;
 
-  const withBalance = orders.filter((o) => (o.portions_remaining ?? 0) > 0);
+  const withBalance = orders.filter((o) => (o.unbooked ?? 0) > 0);
   if (withBalance.length > 0) {
     return [...withBalance].sort(byStartDate)[0];
   }

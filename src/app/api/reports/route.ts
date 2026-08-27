@@ -51,7 +51,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     db.from("customers").select("id").gte("created_at", since),
     db
       .from("daily_deliveries")
-      .select("delivery_date, subcontractor_id, status, meal_type, portions")
+      .select("delivery_date, subcontractor_id, meal_type, portions")
       .gte("delivery_date", sinceDate),
     db
       .from("subcontractors")
@@ -111,10 +111,13 @@ export async function GET(req: NextRequest): Promise<Response> {
   const cogs = (cogsRes.data ?? []).reduce((sum, r) => sum + (r.debit ?? 0), 0);
   const grossProfit = revenue - cogs;
 
-  // Portions
-  const totalPortions = deliveries
-    .filter((d) => d.status !== "skipped" && d.status !== "not_delivered")
-    .reduce((sum, d) => sum + (d.portions ?? 0), 0);
+  // Portions. Every row counts: a skipped delivery is a deleted row, and a
+  // delivery that did not happen is not a row state — the sheet went to the
+  // kitchen the afternoon before and we owe them the portion either way.
+  const totalPortions = deliveries.reduce(
+    (sum, d) => sum + (d.portions ?? 0),
+    0,
+  );
 
   // Customers
   const activeCustomers = customers.filter(() =>
@@ -130,12 +133,13 @@ export async function GET(req: NextRequest): Promise<Response> {
     const sub_deliveries = deliveries.filter(
       (d) => d.subcontractor_id === s.id,
     );
-    const late = sub_deliveries.filter(
-      (d) => d.status === "delivered_late",
-    ).length;
-    const total = sub_deliveries.filter(
-      (d) => d.status !== "scheduled" && d.status !== "skipped",
-    ).length;
+    // Lateness has never been recorded per row — the 'delivered_late' status
+    // this counted was never written by anything, so this figure has always
+    // been 0. The real count is `subcontractors.late_delivery_count`, kept by
+    // hand. Left at 0 here rather than quietly swapped in, because that column
+    // is a running total and this report is for one period.
+    const late = 0;
+    const total = sub_deliveries.length;
     return {
       id: s.id,
       name: s.name,

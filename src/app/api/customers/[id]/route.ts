@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { logEdit } from "@/lib/audit/log-edit";
 import { packageCreditDate } from "@/lib/orders/credit-date";
+import { deliveryStatus } from "@/lib/orders/delivery-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withDeliveryRoute } from "@/lib/utils/format";
 import { createClient } from "@/lib/supabase/server";
@@ -45,7 +46,7 @@ export async function GET(
       ]),
     db
       .from("daily_deliveries")
-      .select("id, delivery_date, meal_type, portions, status, notes")
+      .select("id, delivery_date, meal_type, portions, notes")
       .eq("customer_id", id),
   ]);
 
@@ -103,7 +104,9 @@ export async function GET(
       label: d.notes ? String(d.notes) : "",
       meal_type: d.meal_type,
       change: -(d.portions ?? 0),
-      status: d.status,
+      // Derived: a delivery row holds no state. Past the H-1 cutoff for its
+      // date the kitchen is booked and the portion is drawn.
+      status: deliveryStatus(date),
       scheduled: date > today,
     });
   }

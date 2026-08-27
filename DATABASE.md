@@ -251,7 +251,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | meal_time_preference | text | Default meal preference (e.g. "lunch_only", "both_fixed") |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen serves this customer |
-| portions_remaining | integer | Dead column — never read it. See the `customers.portions_remaining` rule in `CLAUDE.md`. Was meant as the total quota balance across all active orders |
+| portions_remaining | integer | Dead column — never read it. See the `customers.portions_remaining` rule in `CLAUDE.md`. `orders.portions_remaining` was the same idea one table over and was dropped in migration 074; this one survives only because 27 customers hold a cached balance with no order behind it. Was meant as the total quota balance across all active orders |
 | avg_price_per_portion | integer | Weighted average cost per portion across all active orders (WAC method) |
 | delivery_route | smallint | Route number (1 = Alam Sutera/BSD Lama, 2 = Gading Serpong/BSD Baru) |
 | delivery_position | integer | Zero-based sort order within the route for the daily delivery sheet |
@@ -279,6 +279,8 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 
 One row per delivery event. Created when a customer requests a delivery for a specific day.
 
+**The row is the state.** Present means this food will be cooked and delivered; absent means it will not. There is no `status` column — it was dropped in migration 074 after holding `'scheduled'` on all 2937 rows it ever had, while seven read paths each carved out values nothing ever wrote. A skip is a `DELETE` through `deleteDelivery()` (`src/lib/orders/delivery-state.ts`), which copies the row into `edit_log` first; deleting it is also what returns the portion, since every balance is `package_size` minus the rows that exist. Delivered-vs-scheduled is derived from the date (`date <= today`), and whether the booking is still cancellable from `isLocked()` (D-1 16:00 WIB).
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
@@ -289,7 +291,6 @@ One row per delivery event. Created when a customer requests a delivery for a sp
 | meal_type | text | "lunch", "dinner", "both", or "breakfast". No CHECK constraint — the value is free text, and `UNIQUE (delivery_date, customer_id, meal_type)` is what limits a customer to one row per slot per day. "breakfast" exists for event bookings with a morning run (ICE BSD, 21–23 Agustus 2026); no standing package produces one. Anything reading this column must handle it — `/dapur/[id]` filtered on lunch/dinner only and rendered the morning rows nowhere |
 | portions | integer | Number of portions for this delivery |
 | address_slot | smallint | Which customer address to deliver to: 1 = primary, 2 = secondary (default 1) |
-| status | text | "scheduled", "delivered", "cancelled" |
 | notes | text | Special instructions |
 | delivery_proof_id | uuid | FK → delivery_proofs — photo proof from subcontractor |
 | feedback_message | text | Customer's post-delivery feedback text |
@@ -419,7 +420,6 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | portions_per_delivery | integer | Portions per meal per delivery (e.g. 1 or 2) |
 | portions_lunch | integer | Portions at lunch (for fixed both_fixed orders) |
 | portions_dinner | integer | Portions at dinner (for fixed both_fixed orders) |
-| portions_remaining | integer | Quota balance **not yet booked onto the calendar** — not the number of meals the customer still has coming. Two write paths disagree: `book_delivery_dates` decrements when the dates are booked (`src/app/api/webhook/whatsapp/route.ts`), the `deduct-daily-quota` cron decrements when the food goes out. A customer whose whole package is already dated therefore reads 0 while still owed every meal — Nadya on 2026-08-20 read 0 with 12 portions undelivered. For "how much do I have left", use the ledger's `remainingToday` (`GET /api/orders/[id]/ledger`) or `loadCustomerSchedule()`, never this column |
 | size | text | Portion size: "s" (standard) or "m" (medium, +Rp 2,000/portion) — default "s" |
 | price_per_portion | integer | Locked-in price in IDR at order time (includes size surcharge if "m") |
 | total_price | integer | Total amount due in IDR |

@@ -365,8 +365,7 @@ export default async function DapurPage({
         "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion), customers(name, notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
-      .eq("delivery_date", date)
-      .in("status", ["scheduled", "delivered"]),
+      .eq("delivery_date", date),
   ]);
 
   if (!sub) notFound();

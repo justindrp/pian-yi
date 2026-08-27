@@ -5,6 +5,11 @@ import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
+import {
+  deleteDelivery,
+  isLocked,
+  loadDeadlineHour,
+} from "@/lib/orders/delivery-state";
 import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
@@ -530,17 +535,59 @@ export async function POST(request: Request) {
       const action = input.action as string;
 
       if (action === "skip") {
-        const { error } = await db
+        // A skip removes the row. There is no 'skipped' state to mark: the
+        // customer's balance is their package minus the rows that exist, so
+        // deleting the row is what gives the portion back, and the kitchen
+        // sheet is built from the rows, so a row left behind is food cooked
+        // for a meal the customer already told us to cancel.
+        const { data: existing } = await db
           .from("daily_deliveries")
-          .update({ status: "skipped" })
-          .eq("id", deliveryId);
-        if (error) {
+          .select("delivery_date")
+          .eq("id", deliveryId)
+          .maybeSingle();
+        if (!existing) {
           return NextResponse.json(
-            { ok: false, error: error.message },
+            { ok: false, error: "Pengiriman tidak ditemukan." },
+            { status: 404 },
+          );
+        }
+
+        // Past the H-1 cutoff the sheet has gone to the kitchen and we owe
+        // them the portion either way, so removing the row would hand back
+        // quota we have already paid for.
+        const deadlineHour = await loadDeadlineHour();
+        if (isLocked(existing.delivery_date, { deadlineHour })) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `Sudah lewat batas ${deadlineHour}:00 H-1 — pengiriman ${existing.delivery_date} sudah masuk ke dapur dan tidak bisa dibatalkan.`,
+            },
+            { status: 409 },
+          );
+        }
+
+        try {
+          const removed = await deleteDelivery({
+            db,
+            id: deliveryId,
+            actor,
+            reason: "assistant update_delivery skip",
+          });
+          if (!removed) {
+            return NextResponse.json(
+              { ok: false, error: "Pengiriman tidak ditemukan." },
+              { status: 404 },
+            );
+          }
+        } catch (err) {
+          return NextResponse.json(
+            { ok: false, error: (err as Error).message },
             { status: 500 },
           );
         }
-        return reply("Pengiriman sudah ditandai skip.");
+        return reply(
+          `Pengiriman ${existing.delivery_date} sudah dihapus dan porsinya kembali ke kuota.`,
+        );
       }
 
       if (action === "reschedule") {
@@ -871,7 +918,6 @@ export async function POST(request: Request) {
           portions_per_delivery: portionsPerDelivery,
           price_per_portion: pricePerPortion,
           total_price: totalPrice,
-          portions_remaining: packageSize,
           meal_time_preference: mealTimePreference,
           start_date: startDate,
           end_date: endDate,

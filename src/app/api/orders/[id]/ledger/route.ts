@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { packageCreditDate } from "@/lib/orders/credit-date";
+import { deliveryStatus } from "@/lib/orders/delivery-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -35,7 +36,7 @@ export async function GET(
   const { data: order, error: orderErr } = await db
     .from("orders")
     .select(
-      "id, customer_id, package_size, portions_remaining, start_date, created_at, status, source, grant_reason",
+      "id, customer_id, package_size, start_date, created_at, status, source, grant_reason",
     )
     .eq("id", id)
     .maybeSingle();
@@ -55,7 +56,7 @@ export async function GET(
 
   const { data: deliveries, error: delErr } = await db
     .from("daily_deliveries")
-    .select("id, delivery_date, meal_type, portions, status, notes")
+    .select("id, delivery_date, meal_type, portions, notes")
     .eq("order_id", id);
 
   if (delErr) {
@@ -103,7 +104,10 @@ export async function GET(
       label: d.notes ? String(d.notes) : "",
       meal_type: d.meal_type,
       change: -(d.portions ?? 0),
-      status: d.status,
+      // A delivery row has no stored state. Past the H-1 cutoff its portion is
+      // drawn and the kitchen is booked; before it, the row is still cancellable
+      // by deleting it.
+      status: deliveryStatus(date),
       scheduled: date > today,
     });
   }
@@ -130,10 +134,8 @@ export async function GET(
     .reduce((s, r) => s + r.change, 0);
   const packageSize = order.package_size ?? 0;
 
-  // remaining is computed from this order's own draws, so it is the number to
-  // compare against the stored orders.portions_remaining. A gap between them
-  // means either a delivery is charged to the wrong order or the stored counter
-  // drifted — both worth seeing, neither visible from the customer ledger.
+  // This order's own draws. It is the whole answer now — there is no stored
+  // counter left to disagree with it.
   const remaining = packageSize - totalDrawn;
 
   return NextResponse.json({
@@ -143,7 +145,6 @@ export async function GET(
       packageSize,
       totalDrawn,
       remaining,
-      storedRemaining: order.portions_remaining,
       // Draws dated on or before today only — what has actually been eaten out
       // of this package, ignoring deliveries already booked ahead.
       remainingToday: rows.reduce(

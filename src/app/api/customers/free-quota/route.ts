@@ -78,7 +78,6 @@ export async function POST(req: Request): Promise<Response> {
       price_per_portion: 0,
       total_price: 0,
       package_size: g.portions as number,
-      portions_remaining: g.portions as number,
       portions_per_delivery: g.portions as number,
       start_date: g.date as string,
       source: "free_quota" as const,

@@ -25,7 +25,6 @@ type LedgerData = {
   packageSize: number;
   totalDrawn: number;
   remaining: number;
-  storedRemaining: number | null;
   remainingToday: number;
 };
 
@@ -33,7 +32,11 @@ interface Order {
   id: string;
   customer_id: string;
   package_size: number;
-  portions_remaining: number;
+  // Both counted from the delivery rows by GET /api/orders. `remaining_today`
+  // is what the customer means by sisa kuota (bought, not yet eaten);
+  // `unbooked` is how many more dates they can still ask for.
+  remaining_today: number;
+  unbooked: number;
   total_price: number;
   status: string;
   start_date: string;
@@ -420,7 +423,7 @@ export default function OrdersClient() {
                     </select>
                   </td>
                   <td className="px-4 py-3 text-gray-900">
-                    {o.portions_remaining}
+                    {o.remaining_today}
                   </td>
                   <td className="px-4 py-3 text-gray-900">
                     Rp {o.total_price.toLocaleString("id-ID")}
@@ -512,7 +515,10 @@ export default function OrdersClient() {
                       Remaining
                     </span>
                     <p className="text-sm text-gray-900 py-2">
-                      {selected.portions_remaining}
+                      {selected.remaining_today}
+                      <span className="ml-2 text-xs text-gray-500">
+                        ({selected.unbooked} belum dijadwalkan)
+                      </span>
                     </p>
                   </div>
                   <div>
@@ -889,12 +895,6 @@ export default function OrdersClient() {
                       >
                         {ledger.remaining}
                       </span>
-                      {ledger.storedRemaining != null &&
-                        ledger.storedRemaining !== ledger.remaining && (
-                          <span className="ml-2 text-amber-600">
-                            (tersimpan: {ledger.storedRemaining})
-                          </span>
-                        )}
                     </p>
                   )}
                 </div>

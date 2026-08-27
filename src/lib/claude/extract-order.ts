@@ -895,11 +895,13 @@ async function fillMissingSchedule(
   const { data: order } = await db
     .from("orders")
     .select(
-      "subcontractor_id, portions_remaining, lunch_address_slot, dinner_address_slot",
+      "subcontractor_id, package_size, lunch_address_slot, dinner_address_slot",
     )
     .eq("id", orderId)
     .maybeSingle();
-  const budget = order?.portions_remaining ?? 0;
+  // This only runs when the order has no rows at all (checked above), so the
+  // whole package is the budget.
+  const budget = order?.package_size ?? 0;
 
   const rows: {
     delivery_date: string;
@@ -909,7 +911,6 @@ async function fillMissingSchedule(
     portions: number;
     subcontractor_id: string | null;
     address_slot: number;
-    status: string;
   }[] = [];
   let used = 0;
   for (const slot of schedule) {
@@ -927,7 +928,6 @@ async function fillMissingSchedule(
         slot.meal_type === "dinner"
           ? (order?.dinner_address_slot ?? 1)
           : (order?.lunch_address_slot ?? 1),
-      status: "scheduled",
     });
   }
   if (!rows.length) return;
@@ -972,7 +972,7 @@ export async function resizePendingOrderFromMessage(
   const db = createAdminClient();
   const { data: order } = await db
     .from("orders")
-    .select("id, package_size, portions_remaining, addon_cost_per_portion")
+    .select("id, package_size, addon_cost_per_portion")
     .eq("customer_id", customerId)
     .eq("status", "pending_payment")
     .order("created_at", { ascending: false })
@@ -1001,13 +1001,10 @@ export async function resizePendingOrderFromMessage(
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
     await getExtractedOrderPricing(size, nasiMerah, customerId);
 
-  // Nothing has been drawn against an unpaid order, so the balance moves with
-  // the size.
   const { error } = await db
     .from("orders")
     .update({
       package_size: size,
-      portions_remaining: size,
       price_per_portion: pricePerPortion,
       total_price: totalPrice,
       ...(nasiMerah ? { addon_cost_per_portion: NASI_MERAH_SURCHARGE } : {}),
@@ -1577,7 +1574,6 @@ export async function createOrderFromExtraction(
     portions_per_delivery: input.portions_per_delivery ?? 1,
     portions_lunch: input.portions_lunch ?? 0,
     portions_dinner: input.portions_dinner ?? 0,
-    portions_remaining: packageSize,
     // The computed preference, not the raw extraction: the inference below it
     // decides which deliveries get written, and storing the model's value
     // instead left the order row disagreeing with its own schedule.
@@ -1628,7 +1624,6 @@ export async function createOrderFromExtraction(
   }
 
   {
-    const today = new Date().toISOString().slice(0, 10);
     // The model supplies delivery_schedule when it has spelled the days out.
     // When it has not, a fixed-schedule order used to get an order row and no
     // deliveries at all — nothing else fills them in, so the customer had paid
@@ -1637,23 +1632,20 @@ export async function createOrderFromExtraction(
     // instead of depending on the model to emit an array of dates.
     const derived =
       !sortedSchedule && FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
-        ? buildRecurringDeliveryRows(
-            {
-              customer_id: orderCustomerId,
-              order_id: insertedOrder.id,
-              start_date: startDate,
-              end_date: endDate,
-              package_size: packageSize,
-              meal_time_preference: mealTimePreference,
-              portions_per_delivery: input.portions_per_delivery ?? 1,
-              portions_lunch: input.portions_lunch ?? null,
-              portions_dinner: input.portions_dinner ?? null,
-              lunch_address_slot: lunchSlot,
-              dinner_address_slot: dinnerSlot,
-              subcontractor_id: subcontractorId,
-            },
-            today,
-          )
+        ? buildRecurringDeliveryRows({
+            customer_id: orderCustomerId,
+            order_id: insertedOrder.id,
+            start_date: startDate,
+            end_date: endDate,
+            package_size: packageSize,
+            meal_time_preference: mealTimePreference,
+            portions_per_delivery: input.portions_per_delivery ?? 1,
+            portions_lunch: input.portions_lunch ?? null,
+            portions_dinner: input.portions_dinner ?? null,
+            lunch_address_slot: lunchSlot,
+            dinner_address_slot: dinnerSlot,
+            subcontractor_id: subcontractorId,
+          })
         : [];
 
     const rows = sortedSchedule
@@ -1665,7 +1657,6 @@ export async function createOrderFromExtraction(
           portions: s.portions,
           subcontractor_id: subcontractorId,
           address_slot: s.meal_type === "dinner" ? dinnerSlot : lunchSlot,
-          status: s.date < today ? "delivered" : "scheduled",
         }))
       : derived.map((r) => ({
           delivery_date: r.delivery_date,
@@ -1675,7 +1666,6 @@ export async function createOrderFromExtraction(
           portions: r.portions,
           subcontractor_id: r.subcontractor_id,
           address_slot: r.address_slot,
-          status: r.status as string,
         }));
 
     // The kitchens are shut on libur nasional, so a row on one is a delivery

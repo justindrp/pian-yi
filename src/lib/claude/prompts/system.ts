@@ -50,13 +50,13 @@ export async function buildSystemPrompt(params: {
    * both are customer-level: quota belongs to the customer, not to one package,
    * and which order a delivery bills to is `pickDrawOrder()`'s business.
    *
-   * The booking rules below read `unbooked` from here rather than
-   * `orders.portions_remaining`, a stored counter nothing keeps honest — the
-   * daily sheet's delete button removes a row and leaves it where it was. On
+   * The booking rules below read `unbooked` from here. They used to read the
+   * stored `orders.portions_remaining`, a counter nothing kept honest — the
+   * daily sheet's delete button removed a row and left it where it was. On
    * 2026-08-24 the counter and the rows disagreed for 63 of the 195 customers
    * holding an active order. Vania's read 0 with ten portions genuinely left,
    * so `record_daily_order` bailed and three dinners the bot had already
-   * confirmed to her were never written.
+   * confirmed to her were never written. The column has since been dropped.
    *
    * The prompt used to carry neither, so the model rebuilt a customer's
    * schedule out of the chat scrollback. On 2026-08-20 it told Nadya her next
@@ -69,8 +69,8 @@ export async function buildSystemPrompt(params: {
    * customer means when they ask how much they have left. `unbooked` is what is
    * left after the deliveries already on the calendar, i.e. how many more dates
    * they can still ask for. They are far apart: Nadya's were 12 and 0 on the
-   * same day, and `orders.portions_remaining` is the second one. Quoting it as
-   * the first tells a customer with 12 meals coming that they have none.
+   * same day, and the dropped `orders.portions_remaining` was the second one.
+   * Quoting it as the first told a customer with 12 meals coming she had none.
    */
   schedule: {
     upcoming: { date: string; mealType: string; portions: number }[];
@@ -523,7 +523,7 @@ Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for saf
 
 **Payment**: upfront. Order only confirmed after payment received before ${deadlineTime}.
 
-**Skip delivery**: customer can skip any day; quota is preserved (not deducted). Request must arrive before ${deadlineTime} the day before the skipped delivery.
+**Skip delivery**: customer can skip any day and the portion stays in their balance — a skipped day is removed from the schedule, not spent. Request must arrive before ${deadlineTime} the day before the skipped delivery; after that the kitchen is already cooking it and the day cannot be skipped.
 
 **Late delivery compensation** (handle autonomously — never escalate for this):
 - Siang arrives after 12:30 WIB → apologize and offer 50% discount

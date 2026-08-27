@@ -31,8 +31,7 @@ async function getTodayDeliveries(
     .from("daily_deliveries")
     .select("id, customer_id, meal_type, customers(name, phone_number, area)")
     .eq("subcontractor_id", subcontractorId)
-    .eq("delivery_date", today)
-    .in("status", ["scheduled", "delivered_on_time", "delivered_late"]);
+    .eq("delivery_date", today);
   return (data ?? []) as unknown as DeliveryRow[];
 }
 

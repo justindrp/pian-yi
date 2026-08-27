@@ -1,33 +1,24 @@
 import { unbookedByOrder } from "@/lib/orders/customer-schedule";
 
-type Row = {
-  order_id: string | null;
-  portions: number | null;
-  status: string | null;
-};
+type Row = { order_id: string | null; portions: number | null };
 
 /**
  * Enough of the query builder for unbookedByOrder: it chains
- * .select().in().not().range() and awaits the result.
+ * .select().in().range() and awaits the result. No status carve-out any more —
+ * a skipped delivery is a deleted row, so it is simply not in `rows`.
  */
 function stubDb(rows: Row[]) {
   return {
     from: () => ({
       select: () => ({
         in: (_col: string, ids: string[]) => ({
-          not: () => ({
-            range: () =>
-              Promise.resolve({
-                data: rows.filter(
-                  (r) =>
-                    r.order_id !== null &&
-                    ids.includes(r.order_id) &&
-                    r.status !== "cancelled" &&
-                    r.status !== "skipped",
-                ),
-                error: null,
-              }),
-          }),
+          range: () =>
+            Promise.resolve({
+              data: rows.filter(
+                (r) => r.order_id !== null && ids.includes(r.order_id),
+              ),
+              error: null,
+            }),
         }),
       }),
     }),
@@ -46,8 +37,8 @@ describe("unbookedByOrder", () => {
   test("booked rows come off the package, future dates included", async () => {
     const m = await unbookedByOrder(
       stubDb([
-        { order_id: "a", portions: 1, status: "delivered" },
-        { order_id: "a", portions: 1, status: "scheduled" },
+        { order_id: "a", portions: 1 },
+        { order_id: "a", portions: 1 },
       ]),
       [{ id: "a", package_size: 20 }],
     );
@@ -61,7 +52,6 @@ describe("unbookedByOrder", () => {
     const rows: Row[] = Array.from({ length: 20 }, () => ({
       order_id: "nadya",
       portions: 1,
-      status: "scheduled",
     }));
     const m = await unbookedByOrder(stubDb(rows), [
       { id: "nadya", package_size: 20 },
@@ -69,21 +59,29 @@ describe("unbookedByOrder", () => {
     expect(m.get("nadya")).toBe(0);
   });
 
-  test("cancelled and skipped rows do not count as booked", async () => {
-    const m = await unbookedByOrder(
-      stubDb([
-        { order_id: "a", portions: 5, status: "cancelled" },
-        { order_id: "a", portions: 5, status: "skipped" },
-        { order_id: "a", portions: 5, status: "scheduled" },
-      ]),
-      [{ id: "a", package_size: 20 }],
-    );
-    expect(m.get("a")).toBe(15);
+  // Every row that exists is food that will be cooked, so every row counts.
+  // Deleting the row is what gives the portion back — there is no status to
+  // exclude and nothing to write back to a counter.
+  test("a deleted row frees its portions again", async () => {
+    const booked: Row[] = [
+      { order_id: "a", portions: 5 },
+      { order_id: "a", portions: 5 },
+    ];
+    expect(
+      (await unbookedByOrder(stubDb(booked), [{ id: "a", package_size: 20 }])).get("a"),
+    ).toBe(10);
+    expect(
+      (
+        await unbookedByOrder(stubDb(booked.slice(1)), [
+          { id: "a", package_size: 20 },
+        ])
+      ).get("a"),
+    ).toBe(15);
   });
 
   test("over-drawn orders go negative rather than clamping", async () => {
     const m = await unbookedByOrder(
-      stubDb([{ order_id: "a", portions: 32, status: "delivered" }]),
+      stubDb([{ order_id: "a", portions: 32 }]),
       [{ id: "a", package_size: 30 }],
     );
     expect(m.get("a")).toBe(-2);

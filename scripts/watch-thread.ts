@@ -42,24 +42,24 @@ async function main() {
   const { data: ords } = await db
     .from("orders")
     .select(
-      "id, status, package_size, portions_remaining, meal_time_preference, total_price, created_at",
+      "id, status, package_size, meal_time_preference, total_price, created_at",
     )
     .eq("customer_id", cust.id)
     .order("created_at", { ascending: false });
   console.log("\n--- orders ---");
   for (const o of ords ?? [])
     console.log(
-      `${o.id.slice(0, 8)} ${o.status} pkg=${o.package_size} rem=${o.portions_remaining} ${o.meal_time_preference} Rp${o.total_price} ${(o.created_at ?? "").slice(0, 16)}`,
+      `${o.id.slice(0, 8)} ${o.status} pkg=${o.package_size} ${o.meal_time_preference} Rp${o.total_price} ${(o.created_at ?? "").slice(0, 16)}`,
     );
 
   const { data: dels } = await db
     .from("daily_deliveries")
-    .select("delivery_date, meal_type, portions, status")
+    .select("delivery_date, meal_type, portions")
     .eq("customer_id", cust.id)
     .order("delivery_date", { ascending: false })
     .limit(12);
   console.log("\n--- deliveries ---");
   for (const d of dels ?? [])
-    console.log(`${d.delivery_date} ${d.meal_type} ${d.portions}p ${d.status}`);
+    console.log(`${d.delivery_date} ${d.meal_type} ${d.portions}p`);
 }
 main().then(() => process.exit(0));

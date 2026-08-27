@@ -363,9 +363,9 @@ function parseDate(raw: string): string | null {
 // Recompute every customer's remaining quota from source-of-truth sheets:
 //   package_size      = Σ package_orders.Porsi   (all purchases for that customer)
 //   delivered_to_date = Σ ORDER_HARIAN.Jumlah    (rows dated <= today)
-//   portions_remaining = max(0, package_size − delivered_to_date)
+//   remaining = max(0, package_size − delivered_to_date)
 // Writes customers.portions_remaining/avg_price + the customer's primary order
-// (package_size/portions_remaining/price_per_portion/total_price). Never touches
+// (package_size/price_per_portion/total_price). Never touches
 // status, customers themselves, or accounting journals. --dry-run writes nothing.
 // Last date the team filled ORDER_HARIAN by hand; daily_deliveries (entered via
 // the app) is authoritative from this date onward, so delivered-portion totals
@@ -536,7 +536,6 @@ async function runReconcile(
             .from("orders")
             .update({
               package_size: pkg,
-              portions_remaining: remaining,
               price_per_portion: price,
               total_price: total,
             })
@@ -868,7 +867,6 @@ async function main() {
           status: "active",
           package_size: portions,
           portions_per_delivery: 1,
-          portions_remaining: portions,
           price_per_portion: priceRaw,
           total_price: totalPrice,
           meal_time_preference: "per_day_decision",
@@ -956,7 +954,6 @@ async function main() {
         portions,
         subcontractor_id: subcontractorId,
         notes: row.catatan || null,
-        status: "scheduled",
       },
       {
         onConflict: "delivery_date,customer_id,meal_type",

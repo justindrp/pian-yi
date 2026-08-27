@@ -167,7 +167,6 @@ async function main() {
           delivery_date: date,
           meal_type: meal,
           portions: tpl.portions,
-          status: "scheduled",
           subcontractor_id: thenie,
         })),
       );

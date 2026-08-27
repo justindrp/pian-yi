@@ -24,7 +24,7 @@ async function main() {
   const { data: orders } = await db
     .from("orders")
     .select(
-      "id, status, portions_remaining, subcontractor_id, meal_time_preference",
+      "id, status, package_size, subcontractor_id, meal_time_preference",
     )
     .eq("customer_id", CUSTOMER)
     .eq("status", "active");
@@ -47,20 +47,30 @@ async function main() {
 
   const kitchen = order.subcontractor_id ?? cust?.subcontractor_id ?? null;
 
+  // The balance is package_size minus the rows that exist. The counter this
+  // used to read (orders.portions_remaining) is gone — migration 074.
+  const { data: booked } = await db
+    .from("daily_deliveries")
+    .select("portions")
+    .eq("order_id", order.id);
+  const rem =
+    (order.package_size ?? 0) -
+    (booked ?? []).reduce((n, r) => n + (r.portions ?? 0), 0);
+
   console.log(
     "order",
     order.id,
     "rem",
-    order.portions_remaining,
+    rem,
     "kitchen",
     kitchen,
   );
   console.log("already booked:", [...taken].join(", ") || "none");
   console.log("to write:", fresh.join(", "));
-  console.log("rem after:", order.portions_remaining - fresh.length);
+  console.log("rem after:", rem - fresh.length);
 
   if (!APPLY) return console.log("\ndry run — pass --apply");
-  if (fresh.length > order.portions_remaining)
+  if (fresh.length > rem)
     throw new Error("would overdraft");
 
   const { error } = await db.from("daily_deliveries").insert(
@@ -71,16 +81,11 @@ async function main() {
       meal_type: "lunch",
       portions: 1,
       subcontractor_id: kitchen,
-      status: "scheduled",
       notes: "Dijadwalkan manual — bot gagal mencatat 18 Agustus 2026",
     })),
   );
   if (error) throw new Error(error.message);
 
-  await db
-    .from("orders")
-    .update({ portions_remaining: order.portions_remaining - fresh.length })
-    .eq("id", order.id);
   await db
     .from("customers")
     .update({

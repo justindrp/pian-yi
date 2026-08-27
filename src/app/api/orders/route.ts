@@ -3,6 +3,10 @@ import { createJournalEntry } from "@/lib/accounting/journal";
 import { logEdit } from "@/lib/audit/log-edit";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
+import {
+  remainingTodayByOrder,
+  unbookedByOrder,
+} from "@/lib/orders/customer-schedule";
 import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -64,7 +68,23 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (data.length < PAGE) break;
   }
 
-  return NextResponse.json({ ok: true, data: rows });
+  // Both "sisa" figures, counted from the delivery rows. The dropped
+  // orders.portions_remaining column used to stand in for this and was neither
+  // number reliably: it was decremented on booking, so it read 0 for a customer
+  // whose whole package was already dated and still owed every meal.
+  const [remainingToday, unbooked] = await Promise.all([
+    remainingTodayByOrder(db, rows),
+    unbookedByOrder(db, rows),
+  ]);
+
+  return NextResponse.json({
+    ok: true,
+    data: rows.map((o) => ({
+      ...o,
+      remaining_today: remainingToday.get(o.id) ?? 0,
+      unbooked: unbooked.get(o.id) ?? 0,
+    })),
+  });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -169,7 +189,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       price_per_portion: body.price_per_portion,
       portions_per_delivery: body.portions_per_delivery,
       package_size: packageSize,
-      portions_remaining: packageSize,
       total_price: totalPrice,
       subcontractor_id: body.subcontractor_id,
       start_date: startDate,
@@ -246,7 +265,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     portions: slot.portions,
     subcontractor_id: body.subcontractor_id,
     address_slot: slot.meal_type === "dinner" ? dinnerSlot : lunchSlot,
-    status: slot.date < today ? "delivered" : "scheduled",
   }));
 
   await db.from("daily_deliveries").upsert(deliveryRows, {
@@ -298,14 +316,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       }
     }
 
-    // Deduct portions_remaining for past delivered slots
+    // The order needs no deduction: the past slots were just written as
+    // delivery rows, and the order's balance is package_size minus its rows.
     const deliveredPortions = pastSlots.reduce((sum, s) => sum + s.portions, 0);
-    await db
-      .from("orders")
-      .update({ portions_remaining: packageSize - deliveredPortions })
-      .eq("id", order.id);
 
-    // Mirror the same deduction on the customer counter credited above, or a
+    // Mirror the deduction on the customer counter credited above, or a
     // backfilled order would leave the customer reading more quota than it has.
     const { data: c } = await db
       .from("customers")
@@ -632,29 +647,26 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   // regenerating it can only pad it back out to the default pattern.
   const alreadyScheduled = await orderHasDeliveries(body.id);
 
-  const deliveryRows = buildRecurringDeliveryRows(
-    {
-      customer_id: order.customer_id,
-      dinner_address_slot: order.dinner_address_slot ?? null,
-      end_date: order.end_date ?? null,
-      lunch_address_slot: order.lunch_address_slot ?? null,
-      meal_time_preference: order.meal_time_preference ?? null,
-      order_id: body.id,
-      package_size: order.package_size ?? null,
-      portions_dinner: order.portions_dinner ?? null,
-      portions_lunch: order.portions_lunch ?? null,
-      portions_per_delivery: order.portions_per_delivery ?? null,
-      start_date: order.start_date ?? null,
-      // The order's own kitchen is an override; the customer's is the default.
-      // Without the fallback a delivery row carries a null subcontractor_id, and
-      // /dapur/[id] filters strictly on it — so the kitchen never sees the
-      // delivery. Julian S's whole renewal was invisible that way. Same rule as
-      // POST /api/deliveries/daily-sheet.
-      subcontractor_id:
-        order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
-    },
-    today,
-  );
+  const deliveryRows = buildRecurringDeliveryRows({
+    customer_id: order.customer_id,
+    dinner_address_slot: order.dinner_address_slot ?? null,
+    end_date: order.end_date ?? null,
+    lunch_address_slot: order.lunch_address_slot ?? null,
+    meal_time_preference: order.meal_time_preference ?? null,
+    order_id: body.id,
+    package_size: order.package_size ?? null,
+    portions_dinner: order.portions_dinner ?? null,
+    portions_lunch: order.portions_lunch ?? null,
+    portions_per_delivery: order.portions_per_delivery ?? null,
+    start_date: order.start_date ?? null,
+    // The order's own kitchen is an override; the customer's is the default.
+    // Without the fallback a delivery row carries a null subcontractor_id, and
+    // /dapur/[id] filters strictly on it — so the kitchen never sees the
+    // delivery. Julian S's whole renewal was invisible that way. Same rule as
+    // POST /api/deliveries/daily-sheet.
+    subcontractor_id:
+      order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
+  });
   if (deliveryRows.length > 0 && !alreadyScheduled) {
     const { error: deliveryErr } = await db
       .from("daily_deliveries")

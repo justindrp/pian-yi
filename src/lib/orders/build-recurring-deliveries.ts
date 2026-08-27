@@ -24,7 +24,6 @@ type DeliveryRow = {
   meal_type: MealType;
   order_id: string;
   portions: number;
-  status: "delivered" | "scheduled";
   subcontractor_id: string | null;
 };
 
@@ -148,9 +147,12 @@ export function portionsInRange(
   return days > 0 ? days * portionsPerDay : null;
 }
 
+// No clock argument: the rows this builds are the same whenever it is called.
+// It used to take `today` so it could stamp a row 'delivered' or 'scheduled',
+// and that column is gone — a delivery's state is read off its own date now
+// (src/lib/orders/delivery-state.ts), by whoever is asking.
 export function buildRecurringDeliveryRows(
   order: RecurringDeliveryOrder,
-  today = new Date().toISOString().slice(0, 10),
 ): DeliveryRow[] {
   if (!order.customer_id || !order.start_date) return [];
 
@@ -188,7 +190,6 @@ export function buildRecurringDeliveryRows(
           meal_type: meal.meal_type,
           order_id: order.order_id,
           portions: meal.portions,
-          status: deliveryDate < today ? "delivered" : "scheduled",
           subcontractor_id: order.subcontractor_id,
         });
       }
@@ -212,7 +213,6 @@ export function buildRecurringDeliveryRows(
         meal_type: meal.meal_type,
         order_id: order.order_id,
         portions: meal.portions,
-        status: deliveryDate < today ? "delivered" : "scheduled",
         subcontractor_id: order.subcontractor_id,
       });
     }

@@ -19,15 +19,34 @@ export async function GET(req: NextRequest): Promise<Response> {
     );
   }
 
+  // Inert, on purpose. This job selected rows with status in
+  // ('delivered_on_time','delivered_late') — two values nothing has ever
+  // written — so it has sent nobody a followup since it was built, and
+  // `daily_deliveries.status` is now gone entirely. Dropping the filter would
+  // silently start messaging every customer who ate today, which is a business
+  // decision and not a side effect of removing a column.
+  //
+  // It also cannot be switched on as it stands: it marks a customer done by
+  // stamping `orders.followup_sent_at`, which is the same column
+  // cron/renewal-reminders reads as "final low-quota reminder sent". Turning
+  // this on suppresses every renewal reminder. Give it its own column first.
+  //
+  // Set POST_DELIVERY_FOLLOWUP=on once both of those are settled.
+  if (process.env.POST_DELIVERY_FOLLOWUP !== "on") {
+    return NextResponse.json({ ok: true, sent: 0, disabled: true });
+  }
+
   const db = createAdminClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  // Find delivered customers today without followup
+  // Today's deliveries. Every row dated today has gone out — the H-1 cutoff
+  // passed yesterday afternoon and a row nobody wanted was deleted then, so a
+  // row still here is food that was cooked and sent.
+  //
   const { data: deliveries } = await db
     .from("daily_deliveries")
     .select("customer_id, order_id, customers(phone_number, name)")
-    .eq("delivery_date", today)
-    .in("status", ["delivered_on_time", "delivered_late"]);
+    .eq("delivery_date", today);
 
   if (!deliveries) return NextResponse.json({ ok: true, sent: 0 });
 

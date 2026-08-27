@@ -54,8 +54,7 @@ export async function GET(): Promise<Response> {
       db
         .from("daily_deliveries")
         .select("id", { count: "exact", head: true })
-        .eq("delivery_date", today)
-        .neq("status", "skipped"),
+        .eq("delivery_date", today),
     ),
     timed(
       "pending",

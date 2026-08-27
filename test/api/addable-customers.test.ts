@@ -9,7 +9,7 @@ function makeChain(
   result: { data: unknown; error: unknown } = { data: null, error: null },
 ) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "order"]) {
+  for (const m of ["select", "eq", "order", "in", "range"]) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
@@ -64,10 +64,14 @@ describe("GET /api/deliveries/addable-customers", () => {
             portions_dinner: 0,
             meal_time_preference: "lunch_only",
             size: "s",
+            package_size: 20,
           },
         ],
         error: null,
       },
+      // The balance is derived from these rows now, so the query has to be
+      // stubbed even when the answer is "nothing booked yet".
+      daily_deliveries: { data: [], error: null },
       customers: {
         data: [
           {

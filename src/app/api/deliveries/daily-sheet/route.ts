@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
-import { getSetting } from "@/lib/cache/settings";
+import { deleteDelivery } from "@/lib/orders/delivery-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -36,7 +36,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   return NextResponse.json({ ok: true, data: rows ?? [] });
 }
 
-// Save: upsert rows and deduct portions_remaining
+// Save: upsert the day's rows. Skipped and cancelled rows are deleted, not
+// marked — a delivery row means the food is being cooked, so the only way to
+// say "not this one" is for the row not to be there.
 export async function PUT(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
   const {
@@ -119,17 +121,24 @@ export async function PUT(req: NextRequest): Promise<Response> {
   const journalAccum = new Map<string, JournalAccum[]>(); // key: meal_type
 
   for (const row of body.rows) {
-    // Cancellation path: reverse quota deduction if already processed
-    if (row.cancel) {
+    // Skip and cancel are the same act: take the row off the sheet. Both used
+    // to write a status ('skipped' / 'cancelled') and leave the row in place,
+    // which meant every reader downstream had to remember to exclude it — and
+    // two of them already disagreed about which values to exclude.
+    if (row.cancel || row.skip) {
       const { data: existing } = await db
         .from("daily_deliveries")
-        .select("id, quota_deducted, portions, order_id")
+        .select("id, quota_deducted, portions")
         .eq("delivery_date", body.date)
         .eq("customer_id", row.customer_id)
         .eq("meal_type", row.meal_type)
-        .single();
+        .maybeSingle();
+      if (!existing) continue;
 
-      if (existing?.quota_deducted) {
+      // The order needs nothing back: its balance is package_size minus its
+      // rows, so removing the row is the refund. The customer-level counter is
+      // a different, still-stored number and does have to be put back.
+      if (existing.quota_deducted) {
         const { data: cust } = await db
           .from("customers")
           .select("portions_remaining")
@@ -143,41 +152,17 @@ export async function PUT(req: NextRequest): Promise<Response> {
             })
             .eq("id", row.customer_id);
         }
-
-        if (existing.order_id) {
-          const { data: ord } = await db
-            .from("orders")
-            .select("portions_remaining")
-            .eq("id", existing.order_id)
-            .single();
-          if (ord && ord.portions_remaining !== null) {
-            await db
-              .from("orders")
-              .update({
-                portions_remaining: ord.portions_remaining + existing.portions,
-              })
-              .eq("id", existing.order_id);
-          }
-        }
-
-        await db
-          .from("daily_deliveries")
-          .update({
-            status: "cancelled",
-            quota_deducted: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id);
-      } else if (existing) {
-        await db
-          .from("daily_deliveries")
-          .update({ status: "cancelled", updated_at: new Date().toISOString() })
-          .eq("id", existing.id);
       }
+
+      await deleteDelivery({
+        db,
+        id: existing.id,
+        actor: user.email ?? "",
+        reason: row.cancel ? "daily sheet cancel" : "daily sheet skip",
+      });
       continue;
     }
 
-    const status = row.skip ? "skipped" : "scheduled";
     const { data: upserted } = await db
       .from("daily_deliveries")
       .upsert(
@@ -190,7 +175,6 @@ export async function PUT(req: NextRequest): Promise<Response> {
           subcontractor_id: row.subcontractor_id,
           notes: row.notes,
           address_slot: row.address_slot ?? 1,
-          status,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "delivery_date,customer_id,meal_type" },
@@ -198,8 +182,8 @@ export async function PUT(req: NextRequest): Promise<Response> {
       .select("id")
       .single();
 
-    // Accumulate journal data for non-skipped rows; journals created after loop
-    if (!row.skip && upserted?.id && row.order_id) {
+    // Journals created after the loop, one per meal_type per day.
+    if (upserted?.id && row.order_id) {
       const { data: ord } = await db
         .from("orders")
         .select("price_per_portion, addon_cost_per_portion")
@@ -342,40 +326,34 @@ export async function DELETE(req: NextRequest): Promise<Response> {
     );
 
   const db = createAdminClient();
-  // Detach delivery proofs (FK has no cascade) before removing the row.
-  const detach = await db
-    .from("delivery_proofs")
-    .update({ matched_delivery_id: null })
-    .eq("matched_delivery_id", id);
-  if (detach.error) {
+  // deleteDelivery snapshots the whole row into edit_log first. This used to
+  // log `changes: {}`, so a row deleted by mistake was gone with no record of
+  // what it had been — and now that a skip is a delete, that is the only copy.
+  try {
+    const removed = await deleteDelivery({
+      db,
+      id,
+      actor: user.email ?? "",
+      reason: "daily sheet delete",
+    });
+    if (!removed)
+      return NextResponse.json(
+        { ok: false, error: "Not found" },
+        { status: 404 },
+      );
+  } catch (err) {
     return NextResponse.json(
-      { ok: false, error: detach.error.message },
+      { ok: false, error: (err as Error).message },
       { status: 500 },
     );
   }
-
-  const { error } = await db.from("daily_deliveries").delete().eq("id", id);
-  if (error)
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 },
-    );
-
-  await db.from("edit_log").insert({
-    entity_type: "daily_deliveries",
-    entity_id: id,
-    action: "delete_delivery",
-    changed_by: user.email ?? "",
-    changes: {},
-  });
 
   return NextResponse.json({ ok: true });
 }
 
 export const dynamic = "force-dynamic";
 
-// Helper: load deadline hour
-export async function getDeadlineHour(): Promise<number> {
-  const raw = await getSetting("order_deadline_hour");
-  return Number.parseInt(raw ?? "20", 10) || 20;
-}
+// Helper: load deadline hour. Re-exported from the delivery module so there is
+// one reader and one fallback; the copy that lived here defaulted to 20:00
+// while cron/cancel-unpaid defaulted to 16:00.
+export { loadDeadlineHour as getDeadlineHour } from "@/lib/orders/delivery-state";

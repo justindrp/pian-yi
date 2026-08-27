@@ -29,11 +29,10 @@ async function main() {
       // Per-day decision: auto-generation deliberately skips these, so nothing
       // will refill the week he never asked for.
       meal_time_preference: "per_day_decision",
-      portions_remaining: 10 - drawn,
       end_date: null,
     })
     .eq("id", ORDER);
-  console.log(`order set to per_day_decision, rem=${10 - drawn}`);
+  console.log(`order set to per_day_decision, ${10 - drawn} porsi left`);
 }
 
 main().then(

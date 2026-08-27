@@ -1,6 +1,12 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
+import { remainingTodayByOrder } from "@/lib/orders/customer-schedule";
+import {
+  deliveryStatus,
+  isLocked,
+  loadDeadlineHour,
+} from "@/lib/orders/delivery-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
@@ -108,10 +114,6 @@ export const assistantTools: Tool[] = [
         end_date: {
           type: "string",
           description: "End of date range (YYYY-MM-DD)",
-        },
-        status: {
-          type: "string",
-          description: "Delivery status (e.g. pending, delivered, skipped)",
         },
         subcontractor_id: {
           type: "string",
@@ -253,7 +255,7 @@ export const assistantTools: Tool[] = [
   {
     name: "update_delivery",
     description:
-      "Skip or reschedule a single daily_deliveries row. Use 'skip' to mark it skipped, 'reschedule' to move it to a new date. Admin must confirm before this executes.",
+      "Skip or reschedule a single daily_deliveries row. 'skip' deletes the row — the food is not cooked and the portion goes back to the customer's balance; it is refused once the H-1 cutoff for that date has passed. 'reschedule' moves it to a new date. Admin must confirm before this executes.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -265,7 +267,7 @@ export const assistantTools: Tool[] = [
           type: "string",
           enum: ["skip", "reschedule"],
           description:
-            "skip: set status to skipped. reschedule: move to new_date.",
+            "skip: delete the row. reschedule: move to new_date.",
         },
         new_date: {
           type: "string",
@@ -556,24 +558,24 @@ export async function runTool(
       // "Sisa kuota berapa?" is the most common question asked of the assistant
       // and used to need a second tool call the model rarely made — Nicholas
       // Satria's balance could not be produced at all on 2026-08-19. It is
-      // derived from open orders, never from customers.portions_remaining,
-      // which is a dead column (see CLAUDE.md).
+      // derived from the open orders' delivery rows, never from a stored
+      // counter — customers.portions_remaining is a dead column and
+      // orders.portions_remaining has been dropped (see CLAUDE.md).
       const ids = (data ?? []).map((c) => c.id);
       const { data: openOrders } = ids.length
         ? await db
             .from("orders")
-            .select("customer_id, portions_remaining")
+            .select("id, customer_id, package_size")
             .in("customer_id", ids)
             .in("status", ["active", "paused", "payment_proof_received"])
-            .gt("portions_remaining", 0)
         : { data: [] };
+      const remaining = await remainingTodayByOrder(db, openOrders ?? []);
       const quota = new Map<string, number>();
       for (const o of openOrders ?? []) {
         if (!o.customer_id) continue;
-        quota.set(
-          o.customer_id,
-          (quota.get(o.customer_id) ?? 0) + (o.portions_remaining ?? 0),
-        );
+        const left = remaining.get(o.id) ?? 0;
+        if (left <= 0) continue;
+        quota.set(o.customer_id, (quota.get(o.customer_id) ?? 0) + left);
       }
       return {
         customers: (data ?? []).map((c) => ({
@@ -588,7 +590,7 @@ export async function runTool(
       let q = db
         .from("orders")
         .select(
-          "id, status, package_size, portions_remaining, meal_time_preference, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+          "id, status, package_size, meal_time_preference, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
         );
       if (input.status) q = q.eq("status", input.status as string);
       // Phone or name. An exact phone match was the only way in, and an admin
@@ -627,20 +629,28 @@ export async function runTool(
       let q = db
         .from("daily_deliveries")
         .select(
-          "id, delivery_date, status, portions, subcontractor_id, address_slot, customer:customers(name, phone_number, area)",
+          "id, delivery_date, portions, subcontractor_id, address_slot, customer:customers(name, phone_number, area)",
         );
       if (input.date) q = q.eq("delivery_date", input.date as string);
       if (input.start_date)
         q = q.gte("delivery_date", input.start_date as string);
       if (input.end_date) q = q.lte("delivery_date", input.end_date as string);
-      if (input.status) q = q.eq("status", input.status as string);
       if (input.subcontractor_id)
         q = q.eq("subcontractor_id", input.subcontractor_id as string);
       const { data, error } = await q
         .order("delivery_date", { ascending: false })
         .limit(limit);
       if (error) return { error: error.message };
-      return { deliveries: data ?? [], count: data?.length ?? 0 };
+      // Every row here is a delivery that is happening; there is no status to
+      // filter on. What it is waiting for is a function of its own date.
+      const deadlineHour = await loadDeadlineHour();
+      return {
+        deliveries: (data ?? []).map((d) => ({
+          ...d,
+          status: deliveryStatus(d.delivery_date, { deadlineHour }),
+        })),
+        count: data?.length ?? 0,
+      };
     }
 
     case "query_financials": {
@@ -696,8 +706,7 @@ export async function runTool(
         db
           .from("daily_deliveries")
           .select("id", { count: "exact", head: true })
-          .eq("delivery_date", today)
-          .neq("status", "skipped"),
+          .eq("delivery_date", today),
         db
           .from("orders")
           .select("id", { count: "exact", head: true })
@@ -826,11 +835,15 @@ export async function runTool(
       futureDate.setDate(futureDate.getDate() + days);
       const futureDateStr = futureDate.toISOString().split("T")[0];
 
-      const [scheduledRes, quotaRes] = await Promise.all([
+      // Two ways an order runs out: its end_date arrives, or its portions do.
+      // The low-quota half used to filter on the stored portions_remaining
+      // column; it is counted from the delivery rows now, which means the
+      // whole active set has to be fetched and filtered here.
+      const [scheduledRes, activeRes] = await Promise.all([
         db
           .from("orders")
           .select(
-            "id, end_date, portions_remaining, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+            "id, end_date, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
           )
           .eq("status", "active")
           .not("end_date", "is", null)
@@ -840,19 +853,20 @@ export async function runTool(
         db
           .from("orders")
           .select(
-            "id, end_date, portions_remaining, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+            "id, end_date, package_size, start_date, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
           )
-          .eq("status", "active")
-          .lt("portions_remaining", 5)
-          .order("portions_remaining", { ascending: true }),
+          .eq("status", "active"),
       ]);
+
+      const remaining = await remainingTodayByOrder(db, activeRes.data ?? []);
+      const lowQuota = (activeRes.data ?? [])
+        .map((o) => ({ ...o, portions_remaining: remaining.get(o.id) ?? 0 }))
+        .filter((o) => o.portions_remaining < 5)
+        .sort((a, b) => a.portions_remaining - b.portions_remaining);
 
       const seen = new Set<string>();
       const expiring: unknown[] = [];
-      for (const row of [
-        ...(scheduledRes.data ?? []),
-        ...(quotaRes.data ?? []),
-      ]) {
+      for (const row of [...(scheduledRes.data ?? []), ...lowQuota]) {
         if (!seen.has(row.id)) {
           seen.add(row.id);
           expiring.push(row);
@@ -926,7 +940,8 @@ export async function runTool(
     case "query_lapsed_customers": {
       // Lapsed = had a delivery in the past but no active/pending order today.
       // Use daily_deliveries as the source of truth for last delivery date —
-      // orders.status is unreliable (stays 'active' until portions_remaining hits 0).
+      // orders.status is unreliable (an order stays 'active' until its rows
+      // account for the whole package).
       const ACTIVE_STATUSES = [
         "active",
         "paused",
@@ -1350,9 +1365,7 @@ export async function buildPendingAction(
     case "update_delivery": {
       const { data: delivery } = await db
         .from("daily_deliveries")
-        .select(
-          "delivery_date, meal_type, portions, status, customer:customers(name)",
-        )
+        .select("delivery_date, meal_type, portions, customer:customers(name)")
         .eq("id", input.delivery_id as string)
         .single();
       const customerName =
@@ -1361,24 +1374,32 @@ export async function buildPendingAction(
         delivery_date?: string;
         meal_type?: string;
         portions?: number;
-        status?: string;
       } | null;
       const action = input.action as string;
+      const locked =
+        !!deliveryData?.delivery_date &&
+        isLocked(deliveryData.delivery_date, {
+          deadlineHour: await loadDeadlineHour(),
+        });
       return {
         tool,
         input,
         label:
           action === "skip"
-            ? "Skip delivery"
+            ? "Delete delivery (skip)"
             : `Reschedule delivery to ${input.new_date as string}`,
         details: [
           `Customer: ${customerName}`,
           `Date: ${deliveryData?.delivery_date ?? "?"}`,
           `Meal: ${deliveryData?.meal_type ?? "?"}, ${deliveryData?.portions ?? "?"} porsi`,
-          `Current status: ${deliveryData?.status ?? "?"}`,
-          ...(action === "reschedule"
-            ? [`New date: ${input.new_date as string}`]
-            : []),
+          // The admin needs to see this before approving: a skip deletes the
+          // row, and past the cutoff the kitchen is already cooking it.
+          locked
+            ? "Sudah lewat batas H-1 — dapur sudah dapat sheet-nya"
+            : "Masih bisa dibatalkan (belum lewat batas H-1)",
+          ...(action === "skip"
+            ? ["Baris pengiriman dihapus; porsinya kembali ke kuota"]
+            : [`New date: ${input.new_date as string}`]),
         ],
         dangerous: action === "skip",
       };
@@ -1388,7 +1409,7 @@ export async function buildPendingAction(
       const { data: order } = await db
         .from("orders")
         .select(
-          "id, status, portions_remaining, start_date, customers!orders_customer_id_fkey(name)",
+          "id, status, package_size, start_date, customers!orders_customer_id_fkey(name)",
         )
         .eq("id", input.order_id as string)
         .single();
@@ -1397,8 +1418,9 @@ export async function buildPendingAction(
         ? (rawCustomer[0]?.name ?? "Unknown")
         : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
       const orderData = order as {
+        id?: string;
         status?: string;
-        portions_remaining?: number;
+        package_size?: number;
       } | null;
       return {
         tool,
@@ -1407,7 +1429,18 @@ export async function buildPendingAction(
         details: [
           `Customer: ${customerName}`,
           `Current status: ${orderData?.status ?? "unknown"}`,
-          `Portions remaining: ${orderData?.portions_remaining ?? "?"}`,
+          `Portions remaining: ${
+            orderData?.id
+              ? ((
+                  await remainingTodayByOrder(db, [
+                    {
+                      id: orderData.id,
+                      package_size: orderData.package_size ?? 0,
+                    },
+                  ])
+                ).get(orderData.id) ?? "?")
+              : "?"
+          }`,
           ...(input.pause_until
             ? [`Resume date: ${input.pause_until as string}`]
             : ["No auto-resume date"]),
@@ -1420,7 +1453,7 @@ export async function buildPendingAction(
       const { data: order } = await db
         .from("orders")
         .select(
-          "id, status, portions_remaining, customers!orders_customer_id_fkey(name)",
+          "id, status, package_size, customers!orders_customer_id_fkey(name)",
         )
         .eq("id", input.order_id as string)
         .single();
@@ -1429,8 +1462,9 @@ export async function buildPendingAction(
         ? (rawCustomer[0]?.name ?? "Unknown")
         : ((rawCustomer as { name: string | null } | null)?.name ?? "Unknown");
       const orderData = order as {
+        id?: string;
         status?: string;
-        portions_remaining?: number;
+        package_size?: number;
       } | null;
       return {
         tool,
@@ -1439,7 +1473,18 @@ export async function buildPendingAction(
         details: [
           `Customer: ${customerName}`,
           `Current status: ${orderData?.status ?? "unknown"}`,
-          `Portions remaining: ${orderData?.portions_remaining ?? "?"}`,
+          `Portions remaining: ${
+            orderData?.id
+              ? ((
+                  await remainingTodayByOrder(db, [
+                    {
+                      id: orderData.id,
+                      package_size: orderData.package_size ?? 0,
+                    },
+                  ])
+                ).get(orderData.id) ?? "?")
+              : "?"
+          }`,
         ],
         dangerous: false,
       };

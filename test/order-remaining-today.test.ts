@@ -1,34 +1,26 @@
 import { orderRemainingToday } from "@/lib/orders/customer-schedule";
 
-type Row = { portions: number; status: string; delivery_date: string };
+type Row = { portions: number; delivery_date: string };
 
 /**
  * Minimal stand-in for the chained Supabase select the helper builds:
- * .from().select().eq().lte().neq(), awaited on the final call.
+ * .from().select().eq().lte(), awaited on the final call.
  */
 function stubDb(rows: Row[]) {
-  let cutoff = "9999-12-31";
   const q = {
     select: () => q,
     eq: () => q,
-    lte: (_col: string, val: string) => {
-      cutoff = val;
-      return q;
-    },
-    neq: (_col: string, excluded: string) =>
+    lte: (_col: string, cutoff: string) =>
       Promise.resolve({
-        data: rows.filter(
-          (r) => r.delivery_date <= cutoff && r.status !== excluded,
-        ),
+        data: rows.filter((r) => r.delivery_date <= cutoff),
       }),
   };
   // biome-ignore lint/suspicious/noExplicitAny: test stub, not the real client
   return { from: () => q } as any;
 }
 
-const row = (delivery_date: string, status = "scheduled", portions = 1) => ({
+const row = (delivery_date: string, portions = 1) => ({
   delivery_date,
-  status,
   portions,
 });
 
@@ -61,15 +53,12 @@ describe("orderRemainingToday", () => {
     );
   });
 
-  test("a cancelled row is not a draw", async () => {
-    const rows = [row("2026-08-19"), row("2026-08-20", "cancelled")];
-    expect(await orderRemainingToday(stubDb(rows), "o", 3, "2026-08-20")).toBe(
-      2,
-    );
-  });
-
-  test("a skipped row is not a draw — quota is preserved", async () => {
-    const rows = [row("2026-08-19"), row("2026-08-20", "skipped")];
+  // A skip is a DELETE. The row for the skipped day is not there to count, so
+  // the portion is back in the balance without anything being written back.
+  // This used to be two tests asserting that 'cancelled' and 'skipped' rows
+  // were carved out of the sum; the status column that held them is gone.
+  test("a deleted row is not a draw — the balance comes back on its own", async () => {
+    const rows = [row("2026-08-19")];
     expect(await orderRemainingToday(stubDb(rows), "o", 3, "2026-08-20")).toBe(
       2,
     );
@@ -77,12 +66,7 @@ describe("orderRemainingToday", () => {
 
   test("counts portions, not rows", async () => {
     expect(
-      await orderRemainingToday(
-        stubDb([row("2026-08-20", "scheduled", 4)]),
-        "o",
-        10,
-        "2026-08-20",
-      ),
+      await orderRemainingToday(stubDb([row("2026-08-20", 4)]), "o", 10, "2026-08-20"),
     ).toBe(6);
   });
 });

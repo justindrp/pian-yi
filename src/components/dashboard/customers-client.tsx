@@ -531,7 +531,8 @@ export default function CustomersClient() {
   const { data, isLoading } = useQuery({
     queryKey: ["customers-list"],
     queryFn: async () => {
-      const [customerPages, orderPages] = await Promise.all([
+      const today = new Date().toISOString().slice(0, 10);
+      const [customerPages, orderPages, deliveryPages] = await Promise.all([
         fetchAllRows<
           Customer & {
             customer_state: CustomerState | null;
@@ -549,27 +550,47 @@ export default function CustomersClient() {
         fetchAllRows<
           Pick<
             Order,
+            | "id"
             | "customer_id"
             | "status"
             | "created_at"
-            | "portions_remaining"
+            | "package_size"
             | "price_per_portion"
           >
         >((from, to) =>
           supabase
             .from("orders")
             .select(
-              "customer_id, status, created_at, portions_remaining, price_per_portion",
+              "id, customer_id, status, created_at, package_size, price_per_portion",
             )
             .order("created_at", { ascending: false })
             .range(from, to),
         ),
+        // Every delivery dated on or before today, which is what each order has
+        // actually drawn. There is no stored balance to read instead — the
+        // dropped orders.portions_remaining counted bookings, so a customer
+        // whose package was fully dated read 0 with every meal still to come.
+        fetchAllRows<{ order_id: string | null; portions: number | null }>(
+          (from, to) =>
+            supabase
+              .from("daily_deliveries")
+              .select("order_id, portions")
+              .lte("delivery_date", today)
+              .range(from, to),
+        ),
       ]);
       if (customerPages.error) throw new Error(customerPages.error);
       if (orderPages.error) throw new Error(orderPages.error);
+      if (deliveryPages.error) throw new Error(deliveryPages.error);
 
       const customers = customerPages.rows;
       const orders = orderPages.rows;
+
+      const drawn = new Map<string, number>();
+      for (const row of deliveryPages.rows) {
+        if (!row.order_id) continue;
+        drawn.set(row.order_id, (drawn.get(row.order_id) ?? 0) + (row.portions ?? 0));
+      }
 
       // Quota the customer can actually draw on today. Same statuses the
       // customer ledger counts as real credit, minus `completed` — a completed
@@ -580,7 +601,8 @@ export default function CustomersClient() {
       for (const order of orders) {
         if (!order.customer_id) continue;
         if (!OPEN_STATUSES.includes(order.status)) continue;
-        const remaining = order.portions_remaining ?? 0;
+        const remaining =
+          (order.package_size ?? 0) - (drawn.get(order.id) ?? 0);
         if (remaining <= 0) continue;
         const entry = quota.get(order.customer_id) ?? { portions: 0, value: 0 };
         entry.portions += remaining;

@@ -11,12 +11,12 @@ type Db = SupabaseClient<Database>;
  * `remainingToday` — bought but not yet delivered. What a customer is asking
  * for when they ask how much they have left.
  * `unbooked` — bought and not yet on the calendar. How many more dates they can
- * still ask for, and what `orders.portions_remaining` stores.
+ * still ask for.
  *
  * Nadya's were 12 and 0 on 2026-08-20: twelve meals still coming, every one of
- * them already dated. Reading the stored counter as the first number says she
- * has nothing left, which is how a fully-paid customer gets told her package is
- * finished.
+ * them already dated. `orders.portions_remaining` cached the second number and
+ * was read as the first, which is how a fully-paid customer gets told her
+ * package is finished. Both are counted from the rows now; the column is gone.
  */
 export type CustomerSchedule = {
   upcoming: { date: string; mealType: string; portions: number }[];
@@ -42,9 +42,8 @@ export async function loadCustomerSchedule(
       .in("status", PAID_STATUSES),
     db
       .from("daily_deliveries")
-      .select("delivery_date, meal_type, portions, status")
+      .select("delivery_date, meal_type, portions")
       .eq("customer_id", customerId)
-      .neq("status", "cancelled")
       .order("delivery_date"),
   ]);
 
@@ -77,13 +76,14 @@ export async function loadCustomerSchedule(
 /**
  * Portions of one order bought but not yet delivered, as of `today`.
  *
- * This is the number an order is finished on. `orders.portions_remaining` is
- * not: this cron deducts *tomorrow's* rows, and the daily-sheet PUT deducts on
- * save, so the counter reaches 0 when the calendar fills rather than when the
- * food has gone out. Four orders were closed that way while still owing 35
- * portions between them — Nadya's on 2026-08-13 with twelve meals to come,
- * which left her with no active order at all and the bot with no quota context
- * for her.
+ * This is the number an order is finished on, and it is not the same as
+ * `unbookedByOrder` below: this one stops at today, that one counts the whole
+ * calendar. The retired `orders.portions_remaining` column blurred the two —
+ * it was decremented when a row was booked, so it reached 0 when the calendar
+ * filled rather than when the food had gone out. Four orders were completed on
+ * it while still owing 35 portions between them, Nadya's on 2026-08-13 with
+ * twelve meals to come, which left her with no active order at all and the bot
+ * with no quota context for her.
  */
 export async function orderRemainingToday(
   db: Db,
@@ -93,24 +93,39 @@ export async function orderRemainingToday(
 ): Promise<number> {
   const { data: rows } = await db
     .from("daily_deliveries")
-    .select("portions, status")
+    .select("portions")
     .eq("order_id", orderId)
-    .lte("delivery_date", today)
-    .neq("status", "cancelled");
+    .lte("delivery_date", today);
 
-  const drawn = (rows ?? [])
-    .filter((r) => r.status !== "skipped")
-    .reduce((s, r) => s + (r.portions ?? 0), 0);
+  const drawn = (rows ?? []).reduce((s, r) => s + (r.portions ?? 0), 0);
   return packageSize - drawn;
+}
+
+/**
+ * Portions each order has bought but not yet had delivered, keyed by order id —
+ * the batch form of `orderRemainingToday`. This is "sisa makanan", the number a
+ * customer means by sisa kuota, and it is not `unbookedByOrder` below: a
+ * customer whose whole package is already dated has 0 unbooked and a full
+ * balance still to eat.
+ *
+ * Batched because the renewal cron asks it of every active order at once, and
+ * one round trip per order was 300 of them.
+ */
+export async function remainingTodayByOrder(
+  db: Db,
+  orders: { id: string; package_size: number | null }[],
+  today: string = jakartaDateString(),
+): Promise<Map<string, number>> {
+  return sumRowsByOrder(db, orders, today);
 }
 
 /**
  * Portions each order has bought but not yet put on the calendar, keyed by
  * order id. The guard the sheet generators use before writing another row.
  *
- * Cancelled rows are excluded because the daily-sheet PUT hands their portions
- * back to the order when it cancels them; skipped rows are excluded because
- * they never deducted anything. What is left is exactly what has been booked.
+ * Every row on the order counts, because every row on the order is a delivery
+ * that will happen — a skipped one was deleted, not marked. This used to carve
+ * out 'cancelled' and 'skipped' statuses; the column that held them is gone.
  *
  * The generators had no balance check at all, which is why reactivating a
  * wrongly-completed order was unsafe: `status = 'active'` plus a standing
@@ -122,32 +137,46 @@ export async function unbookedByOrder(
   db: Db,
   orders: { id: string; package_size: number | null }[],
 ): Promise<Map<string, number>> {
-  const unbooked = new Map<string, number>(
+  return sumRowsByOrder(db, orders, null);
+}
+
+/**
+ * package_size minus the order's delivery rows — up to `upTo` when given, and
+ * across the whole calendar when null.
+ *
+ * Paginated with fetchAllRows: a fixed window would silently stop subtracting
+ * once the table outgrew it, and every order past the cut would read as having
+ * more balance than it has.
+ */
+async function sumRowsByOrder(
+  db: Db,
+  orders: { id: string; package_size: number | null }[],
+  upTo: string | null,
+): Promise<Map<string, number>> {
+  const left = new Map<string, number>(
     orders.map((o) => [o.id, o.package_size ?? 0]),
   );
-  if (orders.length === 0) return unbooked;
+  if (orders.length === 0) return left;
 
   const { rows } = await fetchAllRows<{
     order_id: string | null;
     portions: number | null;
-    status: string | null;
-  }>((from, to) =>
-    db
+  }>((from, to) => {
+    const q = db
       .from("daily_deliveries")
-      .select("order_id, portions, status")
+      .select("order_id, portions")
       .in(
         "order_id",
         orders.map((o) => o.id),
-      )
-      .not("status", "in", '("cancelled","skipped")')
-      .range(from, to),
-  );
+      );
+    return (upTo ? q.lte("delivery_date", upTo) : q).range(from, to);
+  });
 
   for (const row of rows) {
     if (!row.order_id) continue;
-    const left = unbooked.get(row.order_id);
-    if (left === undefined) continue;
-    unbooked.set(row.order_id, left - (row.portions ?? 0));
+    const rest = left.get(row.order_id);
+    if (rest === undefined) continue;
+    left.set(row.order_id, rest - (row.portions ?? 0));
   }
-  return unbooked;
+  return left;
 }
