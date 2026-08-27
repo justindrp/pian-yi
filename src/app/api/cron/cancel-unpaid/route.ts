@@ -50,7 +50,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const { data: orders, error } = await db
     .from("orders")
     .select(
-      "id, customer_id, package_size, total_price, start_date, confirmed_at, customers!orders_customer_id_fkey(phone_number)",
+      "id, customer_id, paid_by_customer_id, package_size, total_price, start_date, confirmed_at, customers!orders_customer_id_fkey(phone_number), payer:customers!orders_paid_by_customer_id_fkey(phone_number)",
     )
     .eq("status", "pending_payment")
     .lt("confirmed_at", cutoff)
@@ -77,8 +77,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   let cancelled = 0;
 
   for (const order of orders) {
-    const phone = (order.customers as { phone_number: string } | null)
-      ?.phone_number;
+    // The notice goes to whoever owes the money. On a package bought for
+    // someone else that is not the customer the order sits on: Cila never
+    // spoke to us and has no open window, while Naya is the one who was given
+    // the bank details and would be the one to re-order.
+    const phone =
+      (order.payer as { phone_number: string } | null)?.phone_number ??
+      (order.customers as { phone_number: string } | null)?.phone_number;
 
     const reason = `Payment not received by the ${deadlineHour}:00 deadline the day before delivery`;
 
@@ -116,6 +121,9 @@ export async function POST(req: NextRequest): Promise<Response> {
           start_date: order.start_date,
           confirmed_at: order.confirmed_at,
           deadline_hour: deadlineHour,
+          ...(order.paid_by_customer_id
+            ? { paid_by_customer_id: order.paid_by_customer_id }
+            : {}),
         },
       });
 

@@ -180,6 +180,8 @@ Cancellations: `cancelled_unpaid`, `cancelled_by_customer`, `cancelled_by_admin`
 
 **Every cancellation it makes is written to `edit_log` as `system:cancel-unpaid`.** The first working run cancelled three orders and the audit trail recorded none of them, so reconstructing what had happened meant reading `cancelled_at` timestamps and guessing. The entry carries the order's `package_size`, `total_price`, `start_date`, `confirmed_at` and the `deadline_hour` in force, which is what you need to tell a wrongly-swept order from a correctly-swept one after the fact. It is written only after the checked `.update()` succeeds — a log line for a cancellation that never landed is worse than no line.
 
+**The same missing FK hint had silenced both payment-reminder crons.** `send-reminders` (the H-1 nudge and the abandoned-cart recovery) and `renewal-reminders` (the near-empty-quota nudge) embedded `customers(...)` unhinted, so every run returned `PGRST201` and reported nothing to send. Across the whole `orders` table `reminder_sent_at` and `followup_sent_at` are non-null on **zero** rows: neither cron has ever sent a message. Both now use `customers!orders_customer_id_fkey(...)`, which means they will start firing — though while the WABA carries the `131042` payment restriction the sends themselves still fail. Adding `orders.paid_by_customer_id` (migration 073) made `orders`→`customers` a **three**-way ambiguity, so any query anywhere that embeds `customers` from `orders` without a hint is broken, not merely at risk.
+
 Two things the PGRST201 bug was hiding, both still open: the kitchen sheet (`GET /api/subcontractors/[id]/daily-sheet`) filters only on `daily_deliveries.status` and never joins `orders.status`, so an unpaid order's rows print for the kitchen and get cooked; and `cancel-unpaid` does not delete `daily_deliveries` rows, so cancelling an order leaves its meals on the calendar. Of the 33 orphaned future rows found on 2026-08-27, the one belonging to the invalid `****5162` order (40 porsi, 22 Sep) was deleted by hand; the other 32 belong to Naya and Cindi and are correct, since their orders were restored to `pending_payment`.
 
 `orders.status` is the source of truth for payment/subscription/order lifecycle as soon as an order row exists. `customer_state` is customer-level only (`new`, `ordering`, `lapsed`, `churned`) and should not mirror payment stages.
@@ -189,6 +191,25 @@ Payments page owns the payment queue: Awaiting payment lists `pending_payment`, 
 Orders page status dropdown defaults to "Active" and has no unfiltered view by default — an explicit "All" option (empty status, no `.eq` filter applied) was added alongside the per-status options so admins can see orders in any stage.
 
 Orders table sorts on two columns: "Start date" and "Created" (`created_at`). Clicking a header sorts by that column; clicking the active header flips direction. Only the active column shows an arrow. Default is Start date descending. The "Created" column exists to line orders up against the `package_orders` Google Sheet during data reconciliation. The leading "No." column is the row's position in the current filtered+sorted view (`index + 1`), not a stored per-order number — it always restarts at 1 and renumbers whenever the sort or filter changes.
+
+## A package bought for someone else is that person's order
+
+A customer buying for a friend is a real and repeated case: Maria for Fiana on 2026-07-07, Naya for Cila on 2026-08-24. Both went wrong, in opposite directions — Maria's conversation produced a duplicate phantom order on her own row, Naya's produced nothing at all for Cila. The rule is now one thing:
+
+**The order sits on the person who eats the food. `orders.paid_by_customer_id` names the person who pays.**
+
+The bot gathers the beneficiary's name *and* WhatsApp number and calls `extract_order` a second time with `beneficiary_name` / `beneficiary_phone`. `resolveBeneficiary()` normalises the number (`src/lib/utils/phone.ts`), finds that customer or creates one, and the order and all its delivery rows are written against them. If the number is missing or unreadable the bot asks for it and writes nothing — an order for a person we cannot identify by phone is an `IMPORT_` placeholder that will never match their next one. "Nggak tahu nomornya" is an escalation to an admin, not a reason to guess.
+
+Operational consequences:
+
+- **The quote goes to the buyer**, labelled `📦 Ini untuk pesanan atas nama <name>`. The beneficiary is never messaged — they never wrote to us, so there is no open 24-hour window, and they agreed to nothing.
+- **The buyer's record is the only one ever updated.** Address, area and preferences from a chat belong to whoever is typing.
+- **The package size on a beneficiary's order comes only from the model's extraction.** The transfer-amount match and the "20 porsi"/"sebulan" readings all describe a conversation covering two packages; applied to the friend's order they inflate it.
+- **`/payments` shows a "Dibayar oleh" line** on any order with a payer, so a transfer under a name that does not match the order reads correctly instead of as a mismatch.
+- **`cancel-unpaid` chases the payer.** Its notice goes to `paid_by_customer_id` when set.
+- Two orders out of one conversation is now the correct outcome, not a duplicate. Before treating a `pending_payment` order as money owed, check `paid_by_customer_id` — the debt is the payer's, once.
+
+`linked_order_id` is a different thing entirely: use it when a person *draws from* someone else's package, never when they have their own order.
 
 ## Meal time preference types
 

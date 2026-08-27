@@ -29,7 +29,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   // First reminder
   const { data: firstOrders } = await db
     .from("orders")
-    .select("id, customer_id, customers(phone_number, name)")
+    .select(
+      "id, customer_id, customers!orders_customer_id_fkey(phone_number, name)",
+    )
     .eq("status", "active")
     .eq("portions_remaining", firstThreshold)
     .is("reminder_sent_at", null);
@@ -56,7 +58,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Final reminder — portions_remaining equals final threshold AND reminder was already sent (for first) but not followup
   const { data: finalOrders } = await db
     .from("orders")
-    .select("id, customer_id, customers(phone_number, name)")
+    .select(
+      "id, customer_id, customers!orders_customer_id_fkey(phone_number, name)",
+    )
     .eq("status", "active")
     .eq("portions_remaining", finalThreshold)
     .not("reminder_sent_at", "is", null)

@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import { getSetting } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
 import {
@@ -22,6 +23,7 @@ import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDeliveryRoute } from "@/lib/utils/format";
+import { normalizePhone, samePhone } from "@/lib/utils/phone";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import { demoDisplayName, isDemoPhone } from "@/lib/whatsapp/demo";
 import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
@@ -34,6 +36,8 @@ export interface DeliveryScheduleSlot {
 
 export interface ExtractedOrderInput {
   customer_name: string;
+  beneficiary_name?: string;
+  beneficiary_phone?: string;
   package_size: number;
   portions_per_delivery: number;
   portions_lunch?: number;
@@ -115,6 +119,16 @@ export function mergeKitchenNote(
 // exactly the shape that loses (11–18 by weekday is a different set of days).
 const EXTRACT_ORDER_PROPERTIES_BASE = {
   customer_name: { type: "string" },
+  beneficiary_name: {
+    type: "string",
+    description:
+      "Only when this package is for someone other than the person chatting — a friend, a partner, a child, a colleague — and is delivered to them, not to the buyer. The name of the person who will eat the food. Leave both beneficiary fields out for an ordinary order, including one the customer sends to their own second address.",
+  },
+  beneficiary_phone: {
+    type: "string",
+    description:
+      "The WhatsApp number of the person named in beneficiary_name, as they wrote it (08xx, 62xx or +62xx all fine). Required whenever beneficiary_name is given: it is what tells their package apart from the buyer's. Ask for it before calling this tool, and if the buyer does not have it, do not call this tool for the second package at all — escalate instead.",
+  },
   package_size: {
     type: "number",
     description:
@@ -1033,6 +1047,200 @@ export async function resizePendingOrderFromMessage(
   return true;
 }
 
+/**
+ * Who the package being extracted actually belongs to.
+ *
+ * `self` is nearly every order. `third_party` is a customer buying for someone
+ * else who eats somewhere else — Naya's friend Cila, Maria Marcella extending
+ * Fiana's package. `ask` is the same case with nobody identifiable at the other
+ * end, which is a question for the buyer, not a guess for us to make.
+ */
+type BeneficiaryTarget =
+  | { kind: "self" }
+  | { kind: "ask"; missing: "phone" | "name"; message: string }
+  | {
+      kind: "third_party";
+      customerId: string;
+      name: string;
+      phone: string;
+      created: boolean;
+    };
+
+/**
+ * Resolve `beneficiary_phone` to the customer record the order belongs on.
+ *
+ * A package bought for a third party had nowhere to land. The order could only
+ * go on the buyer, so the food was scheduled against the buyer's address and
+ * drawn from the buyer's quota — and worse, the *amend* lookup below keys on
+ * `customer_id`, so a second `extract_order` call in the same conversation
+ * found the friend's fresh order and overwrote it. On 2026-08-24, inside one
+ * minute, Cila's 5-porsi package became Naya's 20-porsi package: one order row
+ * survived, carrying Cila's `created_at` and Naya's contents, and Cila's order
+ * had to be rebuilt by hand from the transcript.
+ *
+ * The number is what makes this safe. Matching on the name is guesswork —
+ * "Nayla bukan Naya" is a correction, not a second customer — while a phone
+ * number that differs from the sender's is a fact, and `customers.phone_number`
+ * is unique (migration 065), so Postgres enforces the idempotency instead of a
+ * heuristic. It also settles the case a name never could: when Cila writes in
+ * herself, her message lands on the record that already holds her order.
+ *
+ * Without a usable number we identify nobody, so we write nothing and ask. The
+ * one exception is the payment-proof recovery path (`sendPaymentInfo: false`),
+ * where money has already arrived: blocking there would throw away the order
+ * behind a real transfer, so it falls back to an ordinary order on the buyer.
+ */
+async function resolveBeneficiary(
+  input: ExtractedOrderInput,
+  buyerPhone: string,
+  askable: boolean,
+): Promise<BeneficiaryTarget> {
+  const name = (input.beneficiary_name ?? "").trim();
+  const rawPhone = (input.beneficiary_phone ?? "").trim();
+  if (!name && !rawPhone) return { kind: "self" };
+
+  const phone = normalizePhone(rawPhone);
+  // The buyer answering with their own number is ordering for themselves. The
+  // model reaches for these fields whenever a name it does not recognise turns
+  // up in the chat, and a customer giving their own number back is common.
+  if (phone && samePhone(phone, buyerPhone)) return { kind: "self" };
+
+  const who = name || "temannya";
+  if (!phone) {
+    if (!askable) return { kind: "self" };
+    return {
+      kind: "ask",
+      missing: "phone",
+      message: `Boleh minta nomor WhatsApp ${who} dulu kak? 🙏 Pesanan untuk beliau kami catat atas namanya sendiri, biar kuota dan alamat pengirimannya tidak tertukar dengan pesanan kakak. Kalau nomornya belum ada, saya bantu proses lewat tim kami ya kak.`,
+    };
+  }
+
+  const db = createAdminClient();
+  const { data: existing } = await db
+    .from("customers")
+    .select("id, name")
+    .eq("phone_number", phone)
+    .maybeSingle();
+  if (existing) {
+    const onRecord = (existing.name ?? "").trim();
+    // The record is theirs and everything on it — address, area, kitchen — was
+    // put there by their own orders. Nothing here writes to it; see the
+    // customer update at the end of `createOrderFromExtraction`.
+    if (!onRecord && (!name || isPlaceholderName(name))) {
+      if (!askable) return { kind: "self" };
+      return { kind: "ask", missing: "name", message: askBeneficiaryName() };
+    }
+    return {
+      kind: "third_party",
+      customerId: existing.id,
+      name: onRecord || name,
+      phone,
+      created: false,
+    };
+  }
+
+  // A new record for someone we have never spoken to. The kitchen sheet prints
+  // this name on every delivery row, so it is not optional — the dash it prints
+  // instead had to be chased down by hand on 2026-08-26.
+  if (!name || isPlaceholderName(name)) {
+    if (!askable) return { kind: "self" };
+    return { kind: "ask", missing: "name", message: askBeneficiaryName() };
+  }
+
+  const { data: created, error } = await db
+    .from("customers")
+    .insert({
+      phone_number: phone,
+      name,
+      // The address on this call is the beneficiary's: the model was told to
+      // extract the package being discussed, and this package is delivered to
+      // them.
+      address: input.address?.trim() || null,
+      area: input.area?.trim() || null,
+      sub_area: input.sub_area?.trim() || null,
+      google_maps_link: input.maps_link?.trim() || null,
+      delivery_route: getDeliveryRoute(input.area ?? null),
+    })
+    .select("id")
+    .single();
+
+  if (error || !created) {
+    // The unique index is the arbiter, so a duplicate here means the row was
+    // written between the lookup and the insert. Take theirs.
+    const { data: raced } = await db
+      .from("customers")
+      .select("id, name")
+      .eq("phone_number", phone)
+      .maybeSingle();
+    if (raced) {
+      return {
+        kind: "third_party",
+        customerId: raced.id,
+        name: (raced.name ?? name).trim(),
+        phone,
+        created: false,
+      };
+    }
+    console.error(
+      "[extract-order] could not create beneficiary record:",
+      error?.message,
+    );
+    await sendPushToAllAdmins(
+      "Pesanan untuk orang lain gagal dibuat",
+      `${who} (${phone}): ${error?.message ?? "insert returned no row"}`,
+      "/inbox",
+      "high",
+    );
+    throw new Error(
+      `resolveBeneficiary: could not create ${phone} — ${error?.message ?? "no row returned"}`,
+    );
+  }
+
+  // Mirrors the webhook's first-contact setup. Both tables are keyed on the
+  // customer and read with `.update()` elsewhere, which silently does nothing
+  // when the row is missing.
+  await Promise.all([
+    db
+      .from("customer_flags")
+      .upsert(
+        { customer_id: created.id },
+        { onConflict: "customer_id", ignoreDuplicates: true },
+      ),
+    db
+      .from("customer_state")
+      .upsert(
+        { customer_id: created.id },
+        { onConflict: "customer_id", ignoreDuplicates: true },
+      ),
+  ]);
+
+  await logEdit({
+    db,
+    actor: systemActor("extract-order"),
+    entityType: "customers",
+    entityId: created.id,
+    action: "create",
+    changes: {
+      reason: "package bought for them by another customer",
+      name,
+      phone_number: phone,
+      bought_by: buyerPhone,
+    },
+  });
+
+  return {
+    kind: "third_party",
+    customerId: created.id,
+    name,
+    phone,
+    created: true,
+  };
+}
+
+function askBeneficiaryName(): string {
+  return "Boleh tahu nama lengkap penerima pesanan keduanya kak? 🙏 Nama itu yang kami tulis di paket dan di catatan pengiriman, biar tidak tertukar dengan pesanan kakak sendiri ya.";
+}
+
 export async function createOrderFromExtraction(
   customerId: string,
   phone: string,
@@ -1041,6 +1249,45 @@ export async function createOrderFromExtraction(
 ): Promise<void> {
   const db = createAdminClient();
   const sendPaymentInfo = options?.sendPaymentInfo ?? true;
+
+  // Whose package this is. Everything below writes against `orderCustomerId`:
+  // the order, its delivery rows and its quota belong to the person who eats
+  // the food. Everything *said* goes to `phone`/`customerId`, the buyer — they
+  // are the one in the conversation, and the beneficiary may never have written
+  // to us at all.
+  const beneficiary = await resolveBeneficiary(input, phone, sendPaymentInfo);
+  if (beneficiary.kind === "ask") {
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: beneficiary.message,
+      modelUsed: "system",
+    });
+    const askMessageId = await sendTextMessage(phone, beneficiary.message);
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId: askMessageId,
+      status: "sent",
+    });
+    // The buyer may simply not know the number, and pushing them for a third
+    // party's contact details is a bad trade against the sale. The prompt tells
+    // the model to escalate at that point; this makes sure an admin sees it
+    // even when the model does not.
+    await sendPushToAllAdmins(
+      "Pesanan untuk orang lain — data penerima belum lengkap",
+      `${input.customer_name || phone} memesan untuk orang lain; ${beneficiary.missing === "phone" ? "nomor" : "nama"} penerimanya belum ada`,
+      "/inbox",
+      "medium",
+    );
+    console.log(
+      `[extract-order] third-party order withheld for ${customerId}: no beneficiary ${beneficiary.missing}`,
+    );
+    return;
+  }
+  const orderCustomerId =
+    beneficiary.kind === "third_party" ? beneficiary.customerId : customerId;
+  const payerCustomerId =
+    beneficiary.kind === "third_party" ? customerId : null;
 
   // Never ask a customer for money before we know their name.
   //
@@ -1063,7 +1310,7 @@ export async function createOrderFromExtraction(
   // Only when we are the ones asking for money. The payment-proof path
   // (`sendPaymentInfo: false`) is a customer who has *already* transferred —
   // blocking there would throw away the order behind a real payment.
-  if (sendPaymentInfo) {
+  if (sendPaymentInfo && beneficiary.kind === "self") {
     const { data: named } = await db
       .from("customers")
       .select("name")
@@ -1133,7 +1380,7 @@ export async function createOrderFromExtraction(
   // deliveries for every bebas customer who never asked for a fixed schedule.
   const extractedPreference =
     input.meal_time_preference ??
-    (await previousMealTimePreference(customerId)) ??
+    (await previousMealTimePreference(orderCustomerId)) ??
     "per_day_decision";
 
   // The customer's own words are the only evidence that they asked for dinner.
@@ -1215,17 +1462,29 @@ export async function createOrderFromExtraction(
 
   const nasiMerah = input.nasi_merah === true;
   // Money that has moved outranks every number in the conversation.
-  const paidSize = await packageSizeMatchingPayment(customerId, nasiMerah);
+  const paidSize =
+    beneficiary.kind === "self"
+      ? await packageSizeMatchingPayment(customerId, nasiMerah)
+      : null;
 
-  const packageSize =
-    paidSize ?? statedTotal ?? weeksSize ?? rangeSize ?? flooredPackageSize;
+  // Every one of these overrides is read out of the buyer's chat, and in a
+  // conversation holding two packages the numbers in it belong to whichever
+  // one was being discussed at the time. Applied to a friend's package they
+  // are worse than useless: Naya's "20 porsi" and her Rp 540.000 are precisely
+  // what turned Cila's 5-porsi order into a copy of Naya's. For someone else's
+  // package, the size the model extracted for that package is all we have.
+  const chatSize =
+    beneficiary.kind === "self"
+      ? (paidSize ?? statedTotal ?? weeksSize ?? rangeSize)
+      : null;
+  const packageSize = chatSize ?? flooredPackageSize;
   if (packageSize !== flooredPackageSize) {
     console.log(
       `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} stated=${statedTotal} weeks=${weeksSize} range=${rangeSize})`,
     );
   }
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(packageSize, nasiMerah, customerId);
+    await getExtractedOrderPricing(packageSize, nasiMerah, orderCustomerId);
 
   if (mealTimePreference !== extractedPreference) {
     console.log(
@@ -1242,7 +1501,7 @@ export async function createOrderFromExtraction(
   const { data: openOrder } = await db
     .from("orders")
     .select("id")
-    .eq("customer_id", customerId)
+    .eq("customer_id", orderCustomerId)
     .eq("status", "pending_payment")
     .gt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     .order("created_at", { ascending: false })
@@ -1262,7 +1521,7 @@ export async function createOrderFromExtraction(
   const { data: addressRow } = await db
     .from("customers")
     .select("address_2, area, subcontractor_id")
-    .eq("id", customerId)
+    .eq("id", orderCustomerId)
     .maybeSingle();
   const secondMeal =
     input.address_2?.trim() || addressRow?.address_2?.trim()
@@ -1303,7 +1562,11 @@ export async function createOrderFromExtraction(
   }
 
   const orderFields = {
-    customer_id: customerId,
+    customer_id: orderCustomerId,
+    // Null on an ordinary order. Set only when someone else is paying, which
+    // is what tells the unpaid sweep and the payment page whose thread the
+    // money is coming from.
+    paid_by_customer_id: payerCustomerId,
     package_size: packageSize,
     price_per_portion: pricePerPortion,
     total_price: totalPrice,
@@ -1376,7 +1639,7 @@ export async function createOrderFromExtraction(
       !sortedSchedule && FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
         ? buildRecurringDeliveryRows(
             {
-              customer_id: customerId,
+              customer_id: orderCustomerId,
               order_id: insertedOrder.id,
               start_date: startDate,
               end_date: endDate,
@@ -1396,7 +1659,7 @@ export async function createOrderFromExtraction(
     const rows = sortedSchedule
       ? sortedSchedule.map((s) => ({
           delivery_date: s.date,
-          customer_id: customerId,
+          customer_id: orderCustomerId,
           order_id: insertedOrder.id,
           meal_type: s.meal_type,
           portions: s.portions,
@@ -1431,7 +1694,7 @@ export async function createOrderFromExtraction(
   const { data: existingCustomer } = await db
     .from("customers")
     .select("name, notes, portions_remaining, avg_price_per_portion")
-    .eq("id", customerId)
+    .eq("id", orderCustomerId)
     .single();
   const oldRemaining = existingCustomer?.portions_remaining ?? 0;
   const oldAvg = existingCustomer?.avg_price_per_portion ?? 0;
@@ -1468,42 +1731,52 @@ export async function createOrderFromExtraction(
     existingCustomer?.notes ?? null,
     input.catatan ?? "",
   );
-  await db
-    .from("customers")
-    .update({
-      ...(rawNameForRecord ? { name: nameForRecord } : {}),
-      // Only overwrite the address when this order actually carried one. A
-      // renewal extracted from chat alone has none, and writing it through blanked
-      // the address of a customer we have been delivering to for months.
-      ...(input.address?.trim()
-        ? {
-            address: input.address,
-            address_type: addressType,
-          }
-        : {}),
-      ...(input.area?.trim()
-        ? {
-            area: input.area,
-            sub_area: input.sub_area ?? null,
-            delivery_route: getDeliveryRoute(input.area),
-          }
-        : {}),
-      portions_remaining: newRemaining,
-      avg_price_per_portion: newAvg,
-      ...(kitchenNote ? { notes: kitchenNote } : {}),
-      ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
-      // Same rule as the primary address: only written when this order carried
-      // one, so a renewal extracted from chat alone cannot blank it.
-      ...(input.address_2?.trim() ? { address_2: input.address_2 } : {}),
-      ...(input.area_2?.trim()
-        ? { area_2: input.area_2, sub_area_2: input.sub_area_2 ?? null }
-        : {}),
-      ...(input.maps_link_2 ? { google_maps_link_2: input.maps_link_2 } : {}),
-      ...(input.subcontractor_id
-        ? { subcontractor_id: input.subcontractor_id }
-        : {}),
-    })
-    .eq("id", customerId);
+  // Someone else's record is not ours to rewrite. Every field below is taken
+  // from the order being placed, and on a third-party order that order was
+  // placed by the buyer — so writing it through would move Cila's address, area
+  // and kitchen to Naya's. The guards on each field only protect against a
+  // *blank* value, never against a value belonging to the wrong person. A
+  // beneficiary record we just created already carries this order's address;
+  // one that already existed carries their own, put there by their own orders.
+  if (beneficiary.kind === "self") {
+    await db
+      .from("customers")
+      .update({
+        ...(rawNameForRecord ? { name: nameForRecord } : {}),
+        // Only overwrite the address when this order actually carried one. A
+        // renewal extracted from chat alone has none, and writing it through
+        // blanked the address of a customer we have been delivering to for
+        // months.
+        ...(input.address?.trim()
+          ? {
+              address: input.address,
+              address_type: addressType,
+            }
+          : {}),
+        ...(input.area?.trim()
+          ? {
+              area: input.area,
+              sub_area: input.sub_area ?? null,
+              delivery_route: getDeliveryRoute(input.area),
+            }
+          : {}),
+        portions_remaining: newRemaining,
+        avg_price_per_portion: newAvg,
+        ...(kitchenNote ? { notes: kitchenNote } : {}),
+        ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
+        // Same rule as the primary address: only written when this order
+        // carried one, so a renewal extracted from chat alone cannot blank it.
+        ...(input.address_2?.trim() ? { address_2: input.address_2 } : {}),
+        ...(input.area_2?.trim()
+          ? { area_2: input.area_2, sub_area_2: input.sub_area_2 ?? null }
+          : {}),
+        ...(input.maps_link_2 ? { google_maps_link_2: input.maps_link_2 } : {}),
+        ...(input.subcontractor_id
+          ? { subcontractor_id: input.subcontractor_id }
+          : {}),
+      })
+      .eq("id", orderCustomerId);
+  }
 
   await db
     .from("customer_state")
@@ -1511,7 +1784,7 @@ export async function createOrderFromExtraction(
       state: "ordering",
       updated_at: new Date().toISOString(),
     })
-    .eq("customer_id", customerId);
+    .eq("customer_id", orderCustomerId);
 
   if (!sendPaymentInfo) return;
 
@@ -1533,10 +1806,31 @@ export async function createOrderFromExtraction(
   // 2026-08-19 and 2026-08-25, to four customers, Kurniadi Tan's Rp 540.000
   // renewal among them. The honorific now lives in `greeting`, so a customer we
   // have no name for gets a clean "Terima kasih kak!" instead of a doubled one.
-  const knownName = (existingName || rawNameForRecord || "").trim();
-  const displayName = knownName.split(" ")[0];
+  // On a third-party order `existingCustomer` is the beneficiary's row, so
+  // greeting from it would address the buyer by their friend's name. Greet the
+  // person we are actually talking to.
+  const buyerName =
+    beneficiary.kind === "third_party"
+      ? (
+          (
+            await db
+              .from("customers")
+              .select("name")
+              .eq("id", customerId)
+              .maybeSingle()
+          ).data?.name ?? ""
+        ).trim()
+      : (existingName || rawNameForRecord || "").trim();
+  const displayName = buyerName.split(" ")[0];
   const greeting = displayName ? `kak ${displayName}` : "kak";
-  const paymentMsg = `Terima kasih ${greeting}! 🎉 Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
+  // Two packages in one conversation means two transfer messages to the same
+  // person, and an unlabelled pair is unpayable: the buyer cannot tell which
+  // amount is which. Say whose package this one is.
+  const forWhom =
+    beneficiary.kind === "third_party"
+      ? `\n\n📦 Ini untuk pesanan atas nama ${beneficiary.name}.`
+      : "";
+  const paymentMsg = `Terima kasih ${greeting}! 🎉${forWhom} Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",

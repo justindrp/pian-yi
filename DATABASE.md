@@ -411,7 +411,8 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
-| customer_id | uuid | FK → customers |
+| customer_id | uuid | FK → customers — **who eats the food**. On a package bought for someone else this is the beneficiary, not the buyer |
+| paid_by_customer_id | uuid | Nullable FK → customers (migration 073). Set only when someone other than `customer_id` bought and pays for the package. `cancel-unpaid` and the payment quote go to this person; `/payments` renders them as "Dibayar oleh". Null on an ordinary order. It is a third FK from `orders` to `customers`, so **every embed of `customers` from an `orders`-rooted query needs an explicit hint** — `customers!orders_customer_id_fkey(...)` or `payer:customers!orders_paid_by_customer_id_fkey(...)` — or PostgREST answers `PGRST201`. Adding it broke `send-reminders` and `renewal-reminders`, which had never carried a hint |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen fulfills this order |
 | status | text | "pending_payment", "payment_proof_received", "active", "paused", "completed", "cancelled_unpaid", "cancelled_by_customer", "cancelled_by_admin", "refunded" |
 | package_size | integer | Total portions bought (e.g. 20) |

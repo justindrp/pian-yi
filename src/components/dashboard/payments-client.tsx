@@ -11,7 +11,13 @@ import type { Database } from "@/types/database";
 type Order = Database["public"]["Tables"]["orders"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 
-type OrderWithCustomer = Order & { customers: Customer | null };
+type OrderWithCustomer = Order & {
+  customers: Customer | null;
+  // Set only when someone else paid for this package. The order sits on the
+  // person who eats the food; the transfer comes from whoever is named here,
+  // so a payment landing under an unfamiliar name is not a mismatch.
+  payer: Pick<Customer, "name" | "phone_number"> | null;
+};
 
 type Tab = "pending_verification" | "awaiting_payment" | "paid_today";
 
@@ -27,7 +33,9 @@ export default function PaymentsClient() {
     queryFn: async () => {
       const { data } = await supabase
         .from("orders")
-        .select("*, customers!orders_customer_id_fkey(*)")
+        .select(
+          "*, customers!orders_customer_id_fkey(*), payer:customers!orders_paid_by_customer_id_fkey(name, phone_number)",
+        )
         .eq("status", "payment_proof_received")
         .order("confirmed_at", { ascending: true });
       return (data ?? []) as OrderWithCustomer[];
@@ -39,7 +47,9 @@ export default function PaymentsClient() {
     queryFn: async () => {
       const { data } = await supabase
         .from("orders")
-        .select("*, customers!orders_customer_id_fkey(*)")
+        .select(
+          "*, customers!orders_customer_id_fkey(*), payer:customers!orders_paid_by_customer_id_fkey(name, phone_number)",
+        )
         .eq("status", "pending_payment")
         .order("confirmed_at", { ascending: true });
       return (data ?? []) as OrderWithCustomer[];
@@ -53,7 +63,9 @@ export default function PaymentsClient() {
       today.setHours(0, 0, 0, 0);
       const { data } = await supabase
         .from("orders")
-        .select("*, customers!orders_customer_id_fkey(*)")
+        .select(
+          "*, customers!orders_customer_id_fkey(*), payer:customers!orders_paid_by_customer_id_fkey(name, phone_number)",
+        )
         .gte("paid_at", today.toISOString())
         .order("paid_at", { ascending: false });
       return (data ?? []) as OrderWithCustomer[];
@@ -189,6 +201,12 @@ export default function PaymentsClient() {
                         {order.package_size} porsi ·{" "}
                         {formatIDR(order.total_price)}
                       </p>
+                      {order.payer && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Dibayar oleh{" "}
+                          {order.payer.name ?? order.payer.phone_number}
+                        </p>
+                      )}
                       {order.confirmed_at && (
                         <p className="text-xs text-gray-900 mt-1">
                           Proof received {formatDateTime(order.confirmed_at)}
@@ -299,6 +317,12 @@ export default function PaymentsClient() {
                           {order.package_size} porsi ·{" "}
                           {formatIDR(order.total_price)}
                         </p>
+                        {order.payer && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Dibayar oleh{" "}
+                            {order.payer.name ?? order.payer.phone_number}
+                          </p>
+                        )}
                       </div>
                       {order.confirmed_at && (
                         <p className="text-xs text-gray-900">
@@ -354,6 +378,12 @@ export default function PaymentsClient() {
                         {order.package_size} porsi ·{" "}
                         {formatIDR(order.total_price)}
                       </p>
+                      {order.payer && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Dibayar oleh{" "}
+                          {order.payer.name ?? order.payer.phone_number}
+                        </p>
+                      )}
                     </div>
                     {order.paid_at && (
                       <p className="text-xs text-gray-900">

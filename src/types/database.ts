@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5";
+    PostgrestVersion: "14.17";
   };
   graphql_public: {
     Tables: {
@@ -944,6 +944,7 @@ export type Database = {
           meal_time_preference: string | null;
           package_size: number;
           paid_at: string | null;
+          paid_by_customer_id: string | null;
           pause_until: string | null;
           payment_proof_url: string | null;
           portions_dinner: number | null;
@@ -981,6 +982,7 @@ export type Database = {
           meal_time_preference?: string | null;
           package_size: number;
           paid_at?: string | null;
+          paid_by_customer_id?: string | null;
           pause_until?: string | null;
           payment_proof_url?: string | null;
           portions_dinner?: number | null;
@@ -1018,6 +1020,7 @@ export type Database = {
           meal_time_preference?: string | null;
           package_size?: number;
           paid_at?: string | null;
+          paid_by_customer_id?: string | null;
           pause_until?: string | null;
           payment_proof_url?: string | null;
           portions_dinner?: number | null;
@@ -1038,6 +1041,13 @@ export type Database = {
           {
             foreignKeyName: "orders_customer_id_fkey";
             columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_paid_by_customer_id_fkey";
+            columns: ["paid_by_customer_id"];
             isOneToOne: false;
             referencedRelation: "customers";
             referencedColumns: ["id"];

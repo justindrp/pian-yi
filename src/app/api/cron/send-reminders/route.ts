@@ -23,7 +23,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const { data: orders } = await db
     .from("orders")
-    .select("id, customer_id, customers(phone_number)")
+    .select("id, customer_id, customers!orders_customer_id_fkey(phone_number)")
     .eq("status", "pending_payment")
     .lt("confirmed_at", cutoff)
     .is("reminder_sent_at", null);
