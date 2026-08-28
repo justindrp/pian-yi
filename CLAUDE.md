@@ -74,7 +74,7 @@ When performing infrastructure work, prefer CLI calls over manual UI clicks so t
 ## Architectural principles
 
 1. **Land it, then 200, then process** — the webhook writes the raw payload to `webhook_events`, returns 200 to Meta, and processes async. Acknowledging before the payload is durable turns a database outage into silent message loss, since Meta never retries a 200 (see "Idempotency strategy" in `WHATSAPP.md`)
-2. **Idempotency everywhere** — every webhook event has a `message_id`, check against `processed_messages` table before processing
+2. **Idempotency everywhere** — every webhook event has a `message_id`, check against `processed_messages` table before processing. The `insert` is the atomic claim, and **only error `23505` may be swallowed** — any other insert failure must throw, or the message is destroyed rather than retried. The kill switch, likewise, silences the model without skipping the writes that put the thread in the inbox (see "Idempotency strategy" in `WHATSAPP.md`)
 3. **Defense in depth** — 10 layers of cost protection (see "AI cost controls" in `DEV_REFERENCE.md`)
 4. **Settings over hardcoding** — anything that might change goes in the `settings` table, edited via UI
 5. **Server-controlled fields** — `id`, `created_at`, `updated_at`, `status`, `total_price` are always set by server, never accepted from client input

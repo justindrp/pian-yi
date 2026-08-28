@@ -545,4 +545,72 @@ describe("processWebhookAsync", () => {
     expect(getAnthropicClient).not.toHaveBeenCalled();
     expect(sendTextMessage).not.toHaveBeenCalled();
   });
+  // The kill switch used to return before the customer upsert, so a message
+  // that arrived while the bot was off left no customer row, nothing in
+  // `conversations` and no record of the template we sent back — while
+  // `processed_messages` had already claimed it, making the message
+  // unreprocessable and invisible to every admin.
+  test("T16 — kill switch off: saves both halves of the exchange and closes the message out", async () => {
+    const db = makeDefaultDb();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+    (getSetting as jest.Mock).mockResolvedValue("false");
+
+    await processWebhookAsync(makePayload("Halo kak, mau pesan"));
+
+    expect(saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: "cust-1",
+        role: "user",
+        content: "Halo kak, mau pesan",
+      }),
+    );
+    expect(saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: "cust-1",
+        role: "assistant",
+        content: "[chatbot_unavailable]",
+      }),
+    );
+    expect(sendPushToAllAdmins).toHaveBeenCalled();
+    expect(db.chains.processed_messages.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processed_at: expect.any(String) }),
+    );
+    expect(getAnthropicClient).not.toHaveBeenCalled();
+  });
+
+  // Only a unique violation means someone else owns the message. Any other
+  // insert failure has to throw: processWebhookAsync resolving normally is
+  // what marks the `webhook_events` row processed, and Meta never retries a
+  // 200, so swallowing a connection error destroyed the message outright.
+  test("T17 — a non-unique-violation error on the idempotency claim throws", async () => {
+    const db = makeDefaultDb({
+      processed_messages: {
+        data: null,
+        error: { code: "08006", message: "connection failure" },
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await expect(processWebhookAsync(makePayload())).rejects.toMatchObject({
+      code: "08006",
+    });
+
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(getAnthropicClient).not.toHaveBeenCalled();
+  });
+
+  test("T18 — a unique violation on the idempotency claim returns quietly", async () => {
+    const db = makeDefaultDb({
+      processed_messages: {
+        data: null,
+        error: { code: "23505", message: "duplicate key value" },
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await expect(processWebhookAsync(makePayload())).resolves.toBeUndefined();
+
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(getAnthropicClient).not.toHaveBeenCalled();
+  });
 });

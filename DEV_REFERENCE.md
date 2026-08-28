@@ -13,7 +13,7 @@ On-demand reference — read when working on the relevant area, not loaded every
 7. **Prompt injection defense** — system prompt forbids long/repetitive responses, hard `max_tokens` cap, pattern detection before calling Claude
 8. **Model routing** — the "Sonnet" role (full conversational responses) and the "Haiku" role (photo matching, classification, sentiment, any preprocessing step) are separate constants, so they can point at different models. In production both are `deepseek-v4-flash`; see the AI line in `CLAUDE.md`.
 9. **Monitoring** — dashboard widgets for spend/tokens, push notifications on anomalies, daily 9am digest email
-10. **Kill switch** — toggle in Settings to disable AI chatbot entirely
+10. **Kill switch** — toggle in Settings to disable AI chatbot entirely. It silences the model, not the inbox: the inbound message, the `chatbot_unavailable` reply and the admin push are all still recorded, because a human answering by hand is the only channel left while it is off (see "Idempotency strategy" in `WHATSAPP.md`)
 
 ## Reading model responses
 

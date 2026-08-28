@@ -78,6 +78,7 @@ import { storeInboundMedia } from "@/lib/whatsapp/media-store";
 import {
   parseMessage,
   parseStatusUpdates,
+  type WhatsAppMessage,
   type WhatsAppWebhookPayload,
 } from "@/lib/whatsapp/types";
 import { verifySignature } from "@/lib/whatsapp/webhook";
@@ -579,6 +580,26 @@ function mediaMessageType(type: string): string {
   return type === "image" || type === "document" ? type : "text";
 }
 
+/**
+ * The inbound message rendered as inbox text. Images, documents and locations
+ * carry no text of their own, so they get a placeholder; the media itself is
+ * saved alongside via `mediaId` / `mediaUrl`.
+ */
+function inboundText(message: WhatsAppMessage): string {
+  switch (message.type) {
+    case "text":
+      return message.text ?? "";
+    case "image":
+      return message.imageCaption ?? "[Image]";
+    case "document":
+      return formatDocumentMessage(message);
+    case "location":
+      return formatLocationMessage(message);
+    default:
+      return `[${message.type}]`;
+  }
+}
+
 function mediaIdOf(message: {
   type: string;
   imageId?: string;
@@ -741,7 +762,19 @@ export async function processWebhookAsync(
   const { error: insertError } = await db
     .from("processed_messages")
     .insert({ message_id: message.messageId });
-  if (insertError) return; // unique violation — another concurrent request already claimed this message_id
+  if (insertError) {
+    // 23505 is the unique violation, and the only failure that means someone
+    // else already owns this message. Every other cause — a dropped
+    // connection, a statement timeout, a permission error — means the claim
+    // never landed, and returning here destroyed the message: POST marks the
+    // `webhook_events` row processed as soon as this function resolves, Meta
+    // already has its 200 and never retries, and nothing was written to
+    // `conversations` for a human to find. Throwing routes it to
+    // markWebhookEvent(eventId, err) instead, which is what leaves the stored
+    // payload replayable.
+    if (insertError.code === "23505") return;
+    throw insertError;
+  }
 
   // Check if sender is a subcontractor admin
   const { data: subcontractor } = await db
@@ -761,14 +794,6 @@ export async function processWebhookAsync(
       .from("processed_messages")
       .update({ processed_at: new Date().toISOString() })
       .eq("message_id", message.messageId);
-    return;
-  }
-
-  // Kill switch
-  const chatbotEnabled = await getSetting("chatbot_enabled");
-  if (chatbotEnabled !== "true") {
-    const tmpl = await getTemplate("chatbot_unavailable");
-    await sendTextMessage(message.from, tmpl);
     return;
   }
 
@@ -853,6 +878,56 @@ export async function processWebhookAsync(
     });
     return (await storedMediaUrl) ?? undefined;
   };
+
+  // Kill switch. It sits below the customer upsert, and saves both halves of
+  // the exchange on the way out, because "the AI must not answer" is not "stop
+  // ingesting WhatsApp" — with the bot off, the human inbox is the only thing
+  // left to answer with. It used to return above the upsert, which left no
+  // customer row, nothing in `conversations`, and no record of the template we
+  // sent back. `processed_messages` had already claimed the message by then,
+  // so re-enabling the bot could never reprocess it and no admin could see it:
+  // every message received while the bot was off was destroyed, not delayed.
+  const chatbotEnabled = await getSetting("chatbot_enabled");
+  if (chatbotEnabled !== "true") {
+    const offText = inboundText(message);
+    await saveMessage({
+      customerId,
+      role: "user",
+      content: offText,
+      messageId: message.messageId,
+      intent: "other",
+      messageType: mediaMessageType(message.type),
+      mediaId: mediaIdOf(message),
+      mediaUrl: await inboundMediaUrl(),
+    });
+    const tmpl = await getTemplate("chatbot_unavailable");
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: tmpl,
+      modelUsed: "system",
+    });
+    const whatsappMessageId = await sendTextMessage(message.from, tmpl);
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId,
+      status: "sent",
+    });
+    // The same push the normal path sends for every inbound message. Without
+    // it the message lands in an inbox nobody has been told to look at, which
+    // is the state the kill switch is supposed to make safe.
+    await sendPushToAllAdmins(
+      "New message — bot is off",
+      `${customer.name ?? message.from}: ${offText.slice(0, 80)}`,
+      "/inbox",
+      "high",
+    );
+    await db
+      .from("processed_messages")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("message_id", message.messageId);
+    return;
+  }
 
   const { data: stateRow } = await db
     .from("customer_state")
