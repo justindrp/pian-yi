@@ -1,0 +1,40 @@
+-- Drop orders.meal_time_preference.
+--
+-- It was a single-value summary of a schedule, and a summary of a schedule goes
+-- stale against the schedule. The enum could not express Veronica Catherine's
+-- "Senin-Kamis dinner; Jumat & Sabtu lunch & dinner" -- her order read
+-- dinner_only while carrying correct lunch rows, and reading a row against the
+-- column produced a bug report on food that was right. It is the same disease
+-- orders.order_type had (migration 063) and orders.portions_remaining had
+-- (migration 075): a column caching what the rows already say, which then
+-- outranks the rows in every reader that trusts it.
+--
+-- orders.requested_schedule (migration 076) replaces it with the days
+-- themselves. That column is written once at order creation and read once by
+-- mark_paid; from then on the delivery rows are the truth.
+--
+-- Two readers were deleted outright rather than converted:
+--
+--   * record_daily_order preferred orders whose preference covered the
+--     requested meal before pickDrawOrder ran. Measured against production on
+--     2026-08-28 the filter changed the outcome for 3 of the 89 customers
+--     holding two or more active orders, and all 3 were wrong -- it skipped the
+--     older package and charged the newer one, the exact misattribution
+--     pickDrawOrder was written to stop.
+--
+--   * previousMealTimePreference() filled a renewal's blank schedule from the
+--     customer's last standing order. A renewal that names no days is a renewal
+--     with no days; the bot asks instead. A guess that lands on the kitchen
+--     sheet is food somebody has to eat.
+--
+-- FIXED_SCHEDULE_PREFS survives in code as an *input*: the Assistant's
+-- create_order takes a standing pattern and buildRecurringDeliveryRows turns it
+-- into dates. Nothing stores it.
+--
+-- Data check before this ran: the three unpaid orders that still held delivery
+-- rows had those rows backfilled into requested_schedule and deleted, with all
+-- 37 snapshotted into edit_log first. No order depends on the column.
+--
+-- customers.meal_time_preference is a different column and is NOT touched here.
+
+alter table orders drop column if exists meal_time_preference;
