@@ -1,5 +1,5 @@
 /**
- * Writes OVERDRAW.md — every customer whose deliveries exceed the portions they
+ * Writes docs/OVERDRAW.md — every customer whose deliveries exceed the portions they
  * bought. Run after any reconciliation that moves orders or deliveries.
  *
  * `bought` sums package_size over non-cancelled orders; `drawn` sums portions
@@ -175,9 +175,9 @@ async function main() {
     "",
   ].join("\n");
 
-  fs.writeFileSync("OVERDRAW.md", md);
+  fs.writeFileSync("docs/OVERDRAW.md", md);
   console.log(
-    `OVERDRAW.md written: ${rows.length} customers, ${Math.abs(total)} portions over`,
+    `docs/OVERDRAW.md written: ${rows.length} customers, ${Math.abs(total)} portions over`,
   );
 }
 main();

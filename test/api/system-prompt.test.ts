@@ -48,7 +48,7 @@ describe("customer chatbot system prompt", () => {
     // 5 and 6 days are the commonest weekly shapes, never the permitted set.
     // Phrased as an availability list, the model read it as a closed menu and
     // refused a 7-day run outright — see "5 and 6 days are the common weeks"
-    // in BOT_RULES.md. The ladder prices total portions, not days.
+    // in docs/BOT_RULES.md. The ladder prices total portions, not days.
     expect(prompt).toContain("NOT the only ones we sell");
     expect(prompt).toContain(
       "Never tell a customer we only offer 5- or 6-day packages",

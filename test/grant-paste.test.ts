@@ -22,7 +22,7 @@ describe("parseGrantPaste", () => {
   });
 
   test("a negative cell is the size of the shortfall, not an error", () => {
-    // OVERDRAW.md lists balances as "-3"; that is 3 portions to grant.
+    // docs/OVERDRAW.md lists balances as "-3"; that is 3 portions to grant.
     expect(parseGrantPaste("Darren\t-3")[0].portions).toBe(3);
   });
 

@@ -3,7 +3,7 @@
 // The backfill this exists for is ~100 historical grants that live in a Google
 // Sheet, and typing them one at a time is not a real option. Google Sheets and
 // Excel both put tab-separated text on the clipboard, so that is the format
-// this reads; comma-separated is accepted too, since OVERDRAW.md-style lists
+// this reads; comma-separated is accepted too, since docs/OVERDRAW.md-style lists
 // get hand-edited before pasting.
 //
 // Columns, in order: name, portions, date (optional), reason (optional).
@@ -26,7 +26,7 @@ function splitCells(line: string): string[] {
 
 /**
  * A grant is always a positive number of portions, so a negative cell is read
- * as the magnitude of a shortfall rather than rejected — OVERDRAW.md lists
+ * as the magnitude of a shortfall rather than rejected — docs/OVERDRAW.md lists
  * balances as "-3", and that is the number of portions to grant. The UI says
  * so next to the paste box; it is not a silent correction.
  */

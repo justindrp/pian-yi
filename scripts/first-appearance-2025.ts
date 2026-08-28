@@ -1,5 +1,5 @@
 /**
- * Writes FIRST_APPEARANCE_2025.md — the first date every name appears in the
+ * Writes docs/FIRST_APPEARANCE_2025.md — the first date every name appears in the
  * Sep–Dec 2025 delivery sheet.
  *
  * Why: the package_orders sheet does not exist for that period, and the only
@@ -239,9 +239,9 @@ async function main() {
     out.push("");
   }
 
-  writeFileSync("FIRST_APPEARANCE_2025.md", out.join("\n"));
+  writeFileSync("docs/FIRST_APPEARANCE_2025.md", out.join("\n"));
   console.log(
-    `FIRST_APPEARANCE_2025.md written: ${all.length} customers, ${rows.length} rows, ${dates[0]}..${dates[dates.length - 1]}`,
+    `docs/FIRST_APPEARANCE_2025.md written: ${all.length} customers, ${rows.length} rows, ${dates[0]}..${dates[dates.length - 1]}`,
   );
   if (undated || unnamed)
     console.log(`excluded: ${undated} undated, ${unnamed} unnamed`);

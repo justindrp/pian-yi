@@ -2902,7 +2902,7 @@ async function handleToolUse(
     // Before this tool existed the bot had no way to write a name outside of
     // extract_order, so when +6285692715738 answered "keira" on 2026-08-26 it
     // replied "nama kakak sudah saya catat sebagai Keira" and wrote nothing —
-    // the same empty claim BOT_RULES.md forbids for orders.
+    // the same empty claim docs/BOT_RULES.md forbids for orders.
     const input = tool.input as { name?: string };
     const given = (input.name ?? "").trim();
     const { data: current } = await db
