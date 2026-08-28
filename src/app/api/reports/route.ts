@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { modelRole } from "@/lib/claude/model-tag";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -152,10 +153,10 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   // AI cost
   const sonnetMessages = conversations.filter(
-    (c) => c.model_used === "sonnet-4-6",
+    (c) => modelRole(c.model_used) === "sonnet",
   );
-  const haikuMessages = conversations.filter((c) =>
-    c.model_used?.includes("haiku"),
+  const haikuMessages = conversations.filter(
+    (c) => modelRole(c.model_used) === "haiku",
   );
   const sonnetInputTokens = sonnetMessages.reduce(
     (s, c) => s + (c.input_tokens ?? 0),

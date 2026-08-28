@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Message } from "@anthropic-ai/sdk/resources/messages";
+import type { ModelRole } from "./model-tag";
 
 let _client: Anthropic | null = null;
 
@@ -13,6 +14,15 @@ export function getAnthropicClient(): Anthropic {
 export const SONNET_MODEL =
   process.env.CLAUDE_SONNET_MODEL ?? "claude-sonnet-5";
 export const HAIKU_MODEL = process.env.CLAUDE_HAIKU_MODEL ?? "claude-haiku-4-5";
+
+/**
+ * The `conversations.model_used` value for a model-written message. See
+ * `model-tag.ts` for why it carries the role and the model rather than either
+ * one alone.
+ */
+export function modelTag(role: ModelRole): string {
+  return `${role}:${role === "sonnet" ? SONNET_MODEL : HAIKU_MODEL}`;
+}
 
 // DeepSeek reasons by default (effort "high"), and its chain of thought is paid
 // for out of the same max_tokens budget as the answer. Long reasoning therefore

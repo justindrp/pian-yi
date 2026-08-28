@@ -4,6 +4,7 @@ import { getSetting } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
 import {
   getAnthropicClient,
+  modelTag,
   NO_THINKING,
   SONNET_MODEL,
 } from "@/lib/claude/client";
@@ -959,7 +960,7 @@ export async function resizePendingOrderFromMessage(
     customerId,
     role: "assistant",
     content: msg,
-    modelUsed: "sonnet-5",
+    modelUsed: modelTag("sonnet"),
   });
   const whatsappMessageId = await sendTextMessage(phone, msg);
   await updateMessageReceipt({
@@ -1690,7 +1691,7 @@ export async function createOrderFromExtraction(
     customerId,
     role: "assistant",
     content: paymentMsg,
-    modelUsed: "sonnet-5",
+    modelUsed: modelTag("sonnet"),
   });
   const whatsappMessageId = await sendTextMessage(phone, paymentMsg);
   await updateMessageReceipt({

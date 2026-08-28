@@ -18,6 +18,12 @@ import {
 // and nothing throws, so `webhook_events.error` stays null. The message is
 // simply gone, with the customer left staring at a read receipt.
 //
+// The sleep moved earlier in processWebhookAsync on 2026-08-29, so a death
+// inside it now also skips the welcome sequence for a first-time customer.
+// Replaying the saved message answers them but does not send the menu, price
+// list and T&C; `customer_state.menu_shown` is still false in that case, so the
+// next message they send sends it.
+//
 // It is not theoretical: on 2026-08-22 a lead asked "Atau ada tambahan ongkir."
 // six seconds after "Lippo karawaci Tangerang Tercover free ongkir?". The first
 // was correctly suppressed as superseded; the second died mid-sleep, and the

@@ -12,6 +12,7 @@ import type {
   DeliveryScheduleSlot,
   ExtractedOrderReview,
 } from "@/lib/claude/extract-order";
+import { modelRole } from "@/lib/claude/model-tag";
 import { normalizeCustomerState } from "@/lib/customers/lifecycle";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, maskPhone } from "@/lib/utils/format";
@@ -1479,9 +1480,9 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                       </span>
                       {msg.model_used && (
                         <span className="text-[10px] px-1 bg-black/10 rounded">
-                          {msg.model_used === "sonnet-4-6"
+                          {modelRole(msg.model_used) === "sonnet"
                             ? "S"
-                            : msg.model_used === "haiku-4-5"
+                            : modelRole(msg.model_used) === "haiku"
                               ? "H"
                               : "👤"}
                         </span>

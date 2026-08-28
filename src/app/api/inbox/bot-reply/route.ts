@@ -4,6 +4,7 @@ import {
   extractText,
   getAnthropicClient,
   HAIKU_MODEL,
+  modelTag,
   NO_THINKING,
 } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       customerId: customer_id,
       role: "assistant",
       content: polished_text.trim(),
-      modelUsed: HAIKU_MODEL,
+      modelUsed: modelTag("haiku"),
       // The model wrote the words, an admin chose to send them. Both matter,
       // so both are recorded.
       sentBy: user.email,
@@ -208,7 +209,7 @@ Rewrite ONLY the admin's note as the bot's reply:`,
     customerId: customer_id,
     role: "assistant",
     content: result,
-    modelUsed: HAIKU_MODEL,
+    modelUsed: modelTag("haiku"),
     sentBy: user.email,
   });
   const messageId = await sendTextMessage(customer.phone_number, result);

@@ -11,6 +11,7 @@ import {
   extractText,
   getAnthropicClient,
   HAIKU_MODEL,
+  modelTag,
   NO_THINKING,
   SONNET_MODEL,
 } from "@/lib/claude/client";
@@ -55,13 +56,12 @@ import {
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
 import { shouldAutoResume } from "@/lib/customers/takeover";
-import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { describeMenuWeeks } from "@/lib/menu/week";
+import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
-  loadCustomerSchedule,
-  unbookedByOrder,
-} from "@/lib/orders/customer-schedule";
-import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
+  type RecordDailyOrderInput,
+  recordDailyOrder,
+} from "@/lib/orders/record-daily-order";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { unionAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -521,7 +521,7 @@ async function consecutiveUnansweredQuestions(
 }
 
 // How long an inbound message waits to see whether the customer is still
-// typing. See the burst-coalescing block in processSavedCustomerMessage.
+// typing. See the burst-coalescing block in processWebhookAsync.
 const BURST_WINDOW_MS = 15_000;
 
 function normalizeWhatsAppStatus(status: string): WhatsAppMessageStatus | null {
@@ -1196,6 +1196,55 @@ export async function processWebhookAsync(
     if (stateRow) stateRow.state = "ordering";
   }
 
+  // Customers type the way they talk: four messages in twenty seconds, one
+  // thought each. The webhook treats every inbound message as its own turn, so
+  // Cindy's four-message complaint on 13 Aug drew four separate apologies, each
+  // its own model call. The echo guard could not catch it — it compares reply
+  // text exactly, and four differently-worded apologies are not equal strings.
+  //
+  // So hold the message briefly and drop it if a newer one arrives: the last
+  // message of a burst is the one that answers, and because history loads
+  // further down (after this wait) that surviving call sees the whole burst and
+  // writes one reply covering all of it. Costs every reply this much latency,
+  // which reads as human on WhatsApp.
+  //
+  // The wait sits here, directly after the inbound row is saved, rather than
+  // inside processSavedCustomerMessage where it used to. Down there it only
+  // coalesced the reply itself: a burst still paid for one learn-context call,
+  // one message analysis, one admin push and one welcome-sequence check per
+  // message, several of which are model calls. Everything above this point is
+  // either free or has to happen per message — classifyIntent fills the row we
+  // just wrote, and the payment-proof, escalation and media branches all
+  // returned long before here. Everything below happens once per burst.
+  //
+  // Demo (replay) customers skip the wait: their bursts are pre-merged by the
+  // replay harness, so the 15s would only multiply a 20-conversation run by an
+  // hour without changing what the model sees.
+  if (!isDemoPhone(message.from)) {
+    await sleep(BURST_WINDOW_MS);
+    const { data: newest } = await db
+      .from("conversations")
+      .select("message_id")
+      .eq("customer_id", customerId)
+      .eq("role", "user")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (newest?.message_id && newest.message_id !== message.messageId) {
+      console.log(
+        `[webhook] ${message.messageId} superseded by ${newest.message_id}, no reply`,
+      );
+      // Still stamp it. The message was handled — the decision was to let the
+      // next one answer for it — and an unstamped row is what webhook-recovery
+      // reads as work that died mid-flight.
+      await db
+        .from("processed_messages")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("message_id", message.messageId);
+      return;
+    }
+  }
+
   const learnedNotes = await tryLearnCustomerContext(customerId, db);
 
   // No rate limit check here. checkRateLimit() increments the counter as a side
@@ -1229,35 +1278,6 @@ export async function processWebhookAsync(
     const tmpl = await getTemplate("chatbot_unavailable");
     await sendTextMessage(message.from, tmpl);
     return;
-  }
-
-  // Load history
-  const history = await loadHistory(customerId);
-
-  // Customer state
-  // Casual mode coin flip
-  const casualProbRaw = await getSetting("casual_mode_probability");
-  const casualProb = Number.parseFloat(casualProbRaw) || 0.5;
-  const _casual = Math.random() < casualProb;
-
-  // Detect Maps link in current message or history so we can inject it explicitly
-  const mapsLinkRegex =
-    /https?:\/\/(?:maps\.app\.goo\.gl|maps\.google\.com\/maps|goo\.gl\/maps)\S*/;
-  let detectedMapsLink: string | null = text.match(mapsLinkRegex)?.[0] ?? null;
-  if (!detectedMapsLink) {
-    for (const msg of history) {
-      if (msg.role !== "user") continue;
-      const msgText = Array.isArray(msg.content)
-        ? msg.content
-            .map((b) => (typeof b === "object" && "text" in b ? b.text : ""))
-            .join(" ")
-        : String(msg.content);
-      const found = msgText.match(mapsLinkRegex)?.[0];
-      if (found) {
-        detectedMapsLink = found;
-        break;
-      }
-    }
   }
 
   // Send welcome sequence on first contact — atomic claim prevents duplicate sends
@@ -1478,7 +1498,6 @@ export async function processWebhookAsync(
     stateRow,
     text,
     messageId: message.messageId,
-    coalesceBurst: true,
   });
 
   // Mark processed
@@ -1504,15 +1523,16 @@ export async function processSavedCustomerMessage(params: {
   text: string;
   messageId?: string | null;
   // Draft mode: generate the reply, send nothing, save nothing, run no tools,
-  // and hand the text back so an admin can edit it before it goes out. Every
-  // side effect on this path is irreversible from the customer's side, so the
-  // rule is simple — in draft mode the only thing that happens is the model
-  // call. Returns the draft text; normal mode always returns null.
+  // write nothing about the customer, and hand the text back so an admin can
+  // edit it before it goes out. Every side effect on this path is irreversible
+  // from the customer's side, so the rule is: drafting reads the customer and
+  // calls the model, and touches nothing else about them. The one thing that
+  // does still happen is the circuit breaker recording whether that call
+  // succeeded, plus its admin push on an API error — those describe our own
+  // infrastructure, not the customer, and a draft that fails on an outage
+  // should count like any other failed call. Returns the draft text; normal
+  // mode always returns null.
   draft?: boolean;
-  // Hold this message for BURST_WINDOW_MS and drop it if the customer sends
-  // another one meanwhile. Only the live webhook sets this; an admin asking for
-  // a replay or a draft wants an answer to the message they picked, now.
-  coalesceBurst?: boolean;
 }): Promise<string | null> {
   const {
     customerId,
@@ -1524,41 +1544,8 @@ export async function processSavedCustomerMessage(params: {
     text,
     messageId,
     draft = false,
-    coalesceBurst = false,
   } = params;
   const db = createAdminClient();
-
-  // Customers type the way they talk: four messages in twenty seconds, one
-  // thought each. The webhook treats every inbound message as its own turn, so
-  // Cindy's four-message complaint on 13 Aug drew four separate apologies, each
-  // its own model call. The echo guard could not catch it — it compares reply
-  // text exactly, and four differently-worded apologies are not equal strings.
-  //
-  // So hold the message briefly and drop it if a newer one arrives: the last
-  // message of a burst is the one that answers, and because history loads
-  // further down (after this wait) that surviving call sees the whole burst and
-  // writes one reply covering all of it. Costs every reply this much latency,
-  // which reads as human on WhatsApp, and cuts a burst's model spend to one call.
-  // Demo (replay) customers skip the wait: their bursts are pre-merged by the
-  // replay harness, so the 15s would only multiply a 20-conversation run by an
-  // hour without changing what the model sees.
-  if (coalesceBurst && messageId && !isDemoPhone(phone)) {
-    await sleep(BURST_WINDOW_MS);
-    const { data: newest } = await db
-      .from("conversations")
-      .select("message_id")
-      .eq("customer_id", customerId)
-      .eq("role", "user")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (newest?.message_id && newest.message_id !== messageId) {
-      console.log(
-        `[webhook] ${messageId} superseded by ${newest.message_id}, no reply`,
-      );
-      return null;
-    }
-  }
 
   // Rate limit check. Must stay above analyzeCustomerMessage: that is a Haiku
   // call, and a rate-limited customer should not cost a model call at all.
@@ -1596,11 +1583,11 @@ export async function processSavedCustomerMessage(params: {
     if (!draft) {
       const tmpl = await getTemplate("chatbot_unavailable");
       await sendTextMessage(phone, tmpl);
+      await db
+        .from("customer_flags")
+        .update({ is_suspicious: true })
+        .eq("customer_id", customerId);
     }
-    await db
-      .from("customer_flags")
-      .update({ is_suspicious: true })
-      .eq("customer_id", customerId);
     return null;
   }
 
@@ -1855,7 +1842,7 @@ export async function processSavedCustomerMessage(params: {
     },
   ];
 
-  // Call Sonnet 4.6 (with one retry on overload)
+  // Call the conversational model (with one retry on overload)
   let claudeResponse: Anthropic.Messages.Message;
   try {
     const client = getAnthropicClient();
@@ -2170,7 +2157,7 @@ export async function processSavedCustomerMessage(params: {
     }
   }
 
-  let replyModelUsed = "sonnet-4-6";
+  let replyModelUsed = modelTag("sonnet");
 
   if (replyText) {
     const validationParams = {
@@ -2558,285 +2545,13 @@ async function handleToolUse(
         "extract_order dijalankan. Kalau datanya lengkap, sistem sudah mengirim detail transfer ke customer — jangan ulangi nominal atau nomor rekening. Kalau ada yang kurang, sistem yang menanyakannya sendiri.",
     };
   } else if (tool.name === "record_daily_order") {
-    const input = tool.input as {
-      delivery_dates?: string[];
-      delivery_date?: string;
-      meal_type: "lunch" | "dinner" | "both";
-      portions: number;
-      notes?: string;
-    };
-
-    // One call books the whole run. delivery_date is still read because older
-    // conversation histories carry it, and the model copies what it sees.
-    const dates = Array.from(
-      new Set(
-        (
-          input.delivery_dates ??
-          (input.delivery_date ? [input.delivery_date] : [])
-        ).filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)),
-      ),
-    ).sort();
-
-    if (dates.length === 0) {
-      console.error(
-        "[webhook] record_daily_order: no valid delivery date",
-        JSON.stringify(tool.input),
-      );
-      return {
-        ok: false,
-        error:
-          "Tidak ada tanggal yang valid di panggilan ini. Tidak ada yang tercatat — tanyakan tanggalnya ke customer, lalu panggil lagi.",
-      };
-    }
-
-    // Every active order, with its undated portions counted from the delivery
-    // rows. This used to read the stored `orders.portions_remaining`, a counter
-    // nothing kept honest — the daily sheet's delete button removed a row and
-    // left it where it was — and on 2026-08-24 it disagreed with the rows for
-    // 63 of the 195 customers holding an active order. Vania's read 0 with ten
-    // portions genuinely left, so this bailed and three dinners the bot had
-    // already confirmed to her were never written. The column is gone now.
-    const { data: activeOrders } = await db
-      .from("orders")
-      .select("id, package_size, start_date, created_at, subcontractor_id")
-      .eq("customer_id", customerId)
-      .eq("status", "active");
-
-    const candidates = activeOrders ?? [];
-    if (candidates.length === 0) {
-      console.error(
-        "[webhook] record_daily_order: no active order for customer",
-        customerId,
-      );
-      return {
-        ok: false,
-        error:
-          "Customer tidak punya order aktif, jadi tidak ada yang tercatat. Jangan bilang jadwalnya sudah masuk.",
-      };
-    }
-
-    const unbookedPerOrder = await unbookedByOrder(
+    return recordDailyOrder({
       db,
-      candidates.map((o) => ({ id: o.id, package_size: o.package_size })),
-    );
-
-    // Which package the rows bill to: the oldest one that still has undated
-    // portions, per pickDrawOrder. Nothing else narrows the field. Quota
-    // belongs to the customer, not to one package — an order records that they
-    // topped up their balance, and two orders held by the same customer are the
-    // same money.
-    //
-    // A meal filter used to run first, preferring orders whose
-    // meal_time_preference covered the requested meal. Measured against
-    // production on 2026-08-28 it changed the outcome for 3 of the 89 customers
-    // holding two or more active orders, and all 3 were wrong: it skipped the
-    // older package and charged the newer one, which is the exact
-    // misattribution pickDrawOrder was written to stop.
-    const order = pickDrawOrder(
-      candidates.map((o) => ({
-        ...o,
-        unbooked: unbookedPerOrder.get(o.id) ?? 0,
-      })),
-    );
-
-    if (!order) {
-      console.error(
-        "[webhook] record_daily_order: no draw order for customer",
-        customerId,
-      );
-      return {
-        ok: false,
-        error:
-          "Tidak ada paket yang bisa dipakai untuk mencatat hari ini. Tidak ada yang tercatat.",
-      };
-    }
-
-    // The gate is customer-wide: a customer with two packages can draw across
-    // both, and pickDrawOrder above decides which one the row is charged to.
-    const custUnbooked =
-      (await loadCustomerSchedule(db, customerId))?.unbooked ?? 0;
-
-    if (custUnbooked <= 0) {
-      console.warn(
-        "[webhook] record_daily_order: every portion this customer bought already has a date",
-        customerId,
-      );
-      // Never a silent drop: the bot has already told the customer the dates
-      // are booked by the time this runs, so somebody has to know it did not
-      // happen.
-      await sendPushToAllAdmins(
-        `Order harian tidak tercatat — ${customerName ?? phone}`,
-        `Bot menyanggupi ${dates.length} tanggal, tapi semua porsi customer sudah punya tanggal`,
-        "/deliveries",
-        "high",
-      );
-      return {
-        ok: false,
-        error:
-          "Semua porsi yang customer beli sudah punya tanggal, jadi tidak ada yang tercatat. Sisa kuota yang belum dijadwalkan: 0.",
-      };
-    }
-
-    // A libur nasional is a day we are definitely shut, and the model schedules
-    // straight through one — it put 25 Agustus (Maulid Nabi) in an eight-day run
-    // in the simulator even with the holiday list in its prompt. Dropping the
-    // date here is the guarantee; the prompt rule is the first layer.
-    const closedDates = dates.filter((d) => isClosedHoliday(d));
-    const openDates = dates.filter((d) => !isClosedHoliday(d));
-
-    if (openDates.length === 0) {
-      console.warn(
-        "[webhook] record_daily_order: every requested date is a holiday",
-        JSON.stringify(closedDates),
-      );
-      await sendPushToAllAdmins(
-        `Order harian jatuh di tanggal merah — ${customerName ?? phone}`,
-        `${closedDates.map((d) => holidayOn(d)?.name ?? d).join(", ")} — tidak ada yang tercatat`,
-        "/deliveries",
-        "high",
-      );
-      return {
-        ok: false,
-        error: `Semua tanggal yang diminta jatuh di hari libur nasional (${closedDates.map((d) => `${d} ${holidayOn(d)?.name ?? "libur"}`).join(", ")}). Tidak ada yang tercatat — tawarkan tanggal lain.`,
-      };
-    }
-
-    // The model re-states a schedule while confirming it, so the same dates can
-    // arrive twice. Skip whatever is already on the sheet rather than double-book.
-    const { data: existingRows } = await db
-      .from("daily_deliveries")
-      .select("delivery_date")
-      .eq("customer_id", customerId)
-      .in("delivery_date", openDates);
-    const alreadyBooked = new Set(
-      (existingRows ?? []).map((r) => r.delivery_date),
-    );
-    const fresh = openDates.filter((d) => !alreadyBooked.has(d));
-
-    // portions is per date. Book only as many dates as the quota covers — a
-    // multi-day request must not be the thing that pushes an order negative.
-    const perDate = Math.max(1, input.portions);
-    const affordable = Math.floor(custUnbooked / perDate);
-    const booking = fresh.slice(0, affordable);
-
-    if (booking.length === 0) {
-      console.warn(
-        "[webhook] record_daily_order: nothing to book",
-        JSON.stringify({
-          dates,
-          alreadyBooked: [...alreadyBooked],
-          affordable,
-        }),
-      );
-      return {
-        ok: false,
-        error:
-          alreadyBooked.size > 0 && fresh.length === 0
-            ? `Tanggal itu sudah ada di jadwal customer sebelumnya (${[...alreadyBooked].join(", ")}), jadi tidak ada yang baru dicatat. Beri tahu customer jadwalnya memang sudah ada.`
-            : "Kuota yang belum dijadwalkan tidak cukup untuk satu hari pun. Tidak ada yang tercatat.",
-      };
-    }
-
-    const { error: insertError } = await db.from("daily_deliveries").insert(
-      booking.map((delivery_date) => ({
-        order_id: order.id,
-        customer_id: customerId,
-        delivery_date,
-        meal_type: input.meal_type,
-        portions: perDate,
-        subcontractor_id: order.subcontractor_id,
-        notes: input.notes ?? null,
-      })),
-    );
-    if (insertError) {
-      console.error(
-        "[webhook] record_daily_order: insert failed:",
-        insertError.message,
-      );
-      await sendPushToAllAdmins(
-        `Order harian GAGAL — ${customerName ?? phone}`,
-        `${booking.length} hari tidak tersimpan: ${insertError.message}`,
-        "/deliveries",
-        "high",
-      );
-      return {
-        ok: false,
-        error:
-          "Gagal menyimpan ke database. Tidak ada yang tercatat — jangan bilang jadwalnya sudah masuk, bilang saja sedang dicek admin.",
-      };
-    }
-
-    const deducted = booking.length * perDate;
-
-    // Nothing to deduct on the order: the rows just inserted are the deduction.
-    const { data: custQuota } = await db
-      .from("customers")
-      .select("portions_remaining")
-      .eq("id", customerId)
-      .single();
-    if (custQuota) {
-      await db
-        .from("customers")
-        .update({
-          portions_remaining: Math.max(
-            0,
-            custQuota.portions_remaining - deducted,
-          ),
-        })
-        .eq("id", customerId);
-    }
-
-    const span =
-      booking.length === 1
-        ? booking[0]
-        : `${booking[0]} – ${booking[booking.length - 1]} (${booking.length} hari)`;
-    await sendPushToAllAdmins(
-      `Order harian — ${customerName ?? phone}`,
-      `${span} ${input.meal_type} × ${perDate} porsi/hari`,
-      "/deliveries",
-      "low",
-    );
-
-    // The customer was told a schedule that runs through a day we are shut. The
-    // bot may or may not have said so, so a human has to check.
-    if (closedDates.length > 0) {
-      await sendPushToAllAdmins(
-        `Tanggal merah dilewati — ${customerName ?? phone}`,
-        closedDates
-          .map((d) => `${d} ${holidayOn(d)?.name ?? "libur"}`)
-          .join(", "),
-        "/deliveries",
-        "high",
-      );
-    }
-
-    // The customer was told a schedule the quota could not cover. A human has to
-    // tell them, so this is not a low-priority note.
-    if (booking.length < fresh.length) {
-      await sendPushToAllAdmins(
-        `Kuota kurang — ${customerName ?? phone}`,
-        `Diminta ${fresh.length} hari, hanya ${booking.length} tercatat (${custUnbooked} porsi belum punya tanggal)`,
-        "/deliveries",
-        "high",
-      );
-    }
-
-    // Partial success is still success, but it has to say which dates. The
-    // model was told "done" for a booking that dropped half the run and
-    // confirmed the whole run to the customer.
-    const notBooked = [
-      ...closedDates.map((d) => `${d} (libur nasional)`),
-      ...[...alreadyBooked].map((d) => `${d} (sudah ada di jadwal)`),
-      ...fresh.slice(booking.length).map((d) => `${d} (kuota tidak cukup)`),
-    ];
-    return {
-      ok: true,
-      message: `Tercatat: ${booking.join(", ")} — ${input.meal_type}, ${perDate} porsi/hari.${
-        notBooked.length > 0
-          ? ` TIDAK tercatat: ${notBooked.join(", ")}. Sebutkan ini ke customer, jangan konfirmasi tanggal yang tidak masuk.`
-          : ""
-      } Sisa porsi yang belum dijadwalkan setelah ini: ${custUnbooked - deducted}.`,
-    };
+      customerId,
+      phone,
+      customerName,
+      input: tool.input as RecordDailyOrderInput,
+    });
   } else if (tool.name === "ask_admin_for_help") {
     const input = tool.input as { question: string };
     await db

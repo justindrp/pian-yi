@@ -547,6 +547,37 @@ describe("processWebhookAsync", () => {
     expect(getAnthropicClient).not.toHaveBeenCalled();
     expect(sendTextMessage).not.toHaveBeenCalled();
   });
+  // The burst wait used to sit inside processSavedCustomerMessage, which is the
+  // last thing processWebhookAsync calls — so a superseded message had already
+  // paid for a learn-context call, an admin push and a welcome-sequence check
+  // before anything noticed it was superseded. Four rapid messages meant four
+  // of each. The wait now sits directly after the inbound row is saved, so this
+  // pins that: nothing below it runs, and the message is still closed out.
+  test("T22 — a superseded message costs nothing below the burst wait", async () => {
+    const db = makeDefaultDb({
+      conversations: { data: { message_id: "wamid.NEWER" }, error: null },
+      // A customer who has never been welcomed. The welcome sequence sits below
+      // the wait too, so being superseded must not consume the claim — the
+      // message that answers is the one that sends the menu.
+      customer_state: {
+        data: { state: "idle", menu_shown: false },
+        error: null,
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await processWebhookAsync(makePayload("Ka"));
+
+    expect(sendPushToAllAdmins).not.toHaveBeenCalled();
+    expect(db.chains.customer_state.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ menu_shown: true }),
+    );
+    // Closed out all the same: an unstamped row is what webhook-recovery reads
+    // as a message that died mid-flight, and would answer it a second time.
+    expect(db.chains.processed_messages.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processed_at: expect.any(String) }),
+    );
+  });
   // The kill switch used to return before the customer upsert, so a message
   // that arrived while the bot was off left no customer row, nothing in
   // `conversations` and no record of the template we sent back — while
