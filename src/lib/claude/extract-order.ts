@@ -1168,14 +1168,34 @@ function askBeneficiaryName(): string {
   return "Boleh tahu nama lengkap penerima pesanan keduanya kak? 🙏 Nama itu yang kami tulis di paket dan di catatan pengiriman, biar tidak tertukar dengan pesanan kakak sendiri ya.";
 }
 
+/**
+ * What the caller has left to do once the order is written.
+ *
+ * `sendPayment` is non-null only under `deferPaymentMessage`, and only when a
+ * payment message is actually owed. Calling it saves the message, sends it and
+ * records the receipt — everything the non-deferred path does inline.
+ */
+export type CreateOrderResult = {
+  sendPayment: (() => Promise<void>) | null;
+};
+
+const NOTHING_TO_SEND: CreateOrderResult = { sendPayment: null };
+
 export async function createOrderFromExtraction(
   customerId: string,
   phone: string,
   input: ExtractedOrderInput,
-  options?: { sendPaymentInfo?: boolean },
-): Promise<void> {
+  options?: { sendPaymentInfo?: boolean; deferPaymentMessage?: boolean },
+): Promise<CreateOrderResult> {
   const db = createAdminClient();
   const sendPaymentInfo = options?.sendPaymentInfo ?? true;
+  // The bank details are the last thing the customer should read, not the
+  // first. The model answers and calls extract_order in the same turn, and the
+  // reply is sent from the webhook long after the tool runs — behind the
+  // validator, the language guard and a typing delay — so sending from here put
+  // the transfer instructions in front of the sentence that introduces them.
+  // The webhook passes this and sends the returned message after its reply.
+  const deferPaymentMessage = options?.deferPaymentMessage ?? false;
 
   // Whose package this is. Everything below writes against `orderCustomerId`:
   // the order, its delivery rows and its quota belong to the person who eats
@@ -1209,7 +1229,7 @@ export async function createOrderFromExtraction(
     console.log(
       `[extract-order] third-party order withheld for ${customerId}: no beneficiary ${beneficiary.missing}`,
     );
-    return;
+    return NOTHING_TO_SEND;
   }
   const orderCustomerId =
     beneficiary.kind === "third_party" ? beneficiary.customerId : customerId;
@@ -1262,7 +1282,7 @@ export async function createOrderFromExtraction(
       console.log(
         `[extract-order] order withheld for ${customerId}: no name on record and none given`,
       );
-      return;
+      return NOTHING_TO_SEND;
     }
   }
 
@@ -1300,7 +1320,7 @@ export async function createOrderFromExtraction(
     console.log(
       `[extract-order] order withheld for ${customerId}: no delivery_schedule`,
     );
-    return;
+    return NOTHING_TO_SEND;
   }
 
   const schedule = input.delivery_schedule?.length
@@ -1391,7 +1411,7 @@ export async function createOrderFromExtraction(
   // so size, price and balance all move with it.
   const { data: openOrder } = await db
     .from("orders")
-    .select("id")
+    .select("id, created_at")
     .eq("customer_id", orderCustomerId)
     .eq("status", "pending_payment")
     .gt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
@@ -1642,7 +1662,7 @@ export async function createOrderFromExtraction(
     })
     .eq("customer_id", orderCustomerId);
 
-  if (!sendPaymentInfo) return;
+  if (!sendPaymentInfo) return NOTHING_TO_SEND;
 
   const [bankName, bankAccountNumber, bankAccountName] = await Promise.all([
     getSetting("bank_name"),
@@ -1686,17 +1706,61 @@ export async function createOrderFromExtraction(
     beneficiary.kind === "third_party"
       ? `\n\n📦 Ini untuk pesanan atas nama ${beneficiary.name}.`
       : "";
-  const paymentMsg = `Terima kasih ${greeting}! 🎉${forWhom} Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: Rp ${totalPrice.toLocaleString("id-ID")}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
-  const conversationId = await saveMessage({
-    customerId,
-    role: "assistant",
-    content: paymentMsg,
-    modelUsed: modelTag("sonnet"),
-  });
-  const whatsappMessageId = await sendTextMessage(phone, paymentMsg);
-  await updateMessageReceipt({
-    conversationId,
-    whatsappMessageId,
-    status: "sent",
-  });
+  const nominal = `Rp ${totalPrice.toLocaleString("id-ID")}`;
+  const paymentMsg = `Terima kasih ${greeting}! 🎉${forWhom} Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: ${nominal}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
+
+  // One purchase, one request for money.
+  //
+  // The model re-calls extract_order every time it restates the summary, and
+  // the amend above is what stops that becoming a second order — but the
+  // payment message was composed and sent on the amend path too. Rian's demo
+  // run on 2026-08-29 got the whole transfer block twice, bank number, amount
+  // and 24h notice, once when he said the schedule was open and again when he
+  // confirmed. A customer asked to transfer twice cannot tell whether it is two
+  // bills.
+  //
+  // Keyed on what was actually sent, not on the order: an amend that changes
+  // the amount composes a different message and goes out, and an order whose
+  // payment message never reached the customer — the process died, or it was
+  // created from a payment proof — is asked normally, because nothing matching
+  // is on record. That matters more since the send moved after the reply: the
+  // gap where a death loses the message is wider now, and the next turn has to
+  // be able to recover it.
+  if (openOrder) {
+    const { data: alreadyAsked } = await db
+      .from("conversations")
+      .select("id")
+      .eq("customer_id", customerId)
+      .eq("role", "assistant")
+      .gte("created_at", openOrder.created_at)
+      .ilike("content", `%${bankAccountNumber}%`)
+      .ilike("content", `%${nominal}%`)
+      .limit(1)
+      .maybeSingle();
+    if (alreadyAsked) {
+      console.log(
+        `[extract-order] payment message for order ${openOrder.id} already sent (${nominal}) — not repeating it`,
+      );
+      return NOTHING_TO_SEND;
+    }
+  }
+
+  const send = async () => {
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: paymentMsg,
+      modelUsed: modelTag("sonnet"),
+    });
+    const whatsappMessageId = await sendTextMessage(phone, paymentMsg);
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId,
+      status: "sent",
+    });
+  };
+
+  if (deferPaymentMessage) return { sendPayment: send };
+  await send();
+  return NOTHING_TO_SEND;
 }

@@ -55,6 +55,8 @@ function mockDb(customerName: string | null) {
       "lte",
       "gt",
       "lt",
+      "like",
+      "ilike",
       "order",
       "limit",
       "range",

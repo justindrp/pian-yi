@@ -7,7 +7,8 @@
  * Same safety rails as scripts/replay-orders.ts: every customer is a DEMO_
  * phone, which `src/lib/whatsapp/client.ts` refuses to hand to Meta, the clock
  * is pinned so "Senin depan" means something stable, and everything created is
- * deleted at the end.
+ * deleted at the end. The phone carries a per-run nonce, so two runs of the
+ * same case never share a customer row — see `phoneFor`.
  *
  * What it asserts:
  *  - a customer who never names days gets an order with no schedule and no
@@ -84,6 +85,35 @@ function payloadFor(
   } as WhatsAppWebhookPayload;
 }
 
+/**
+ * The demo phone this run uses for a case.
+ *
+ * The nonce is the point. It used to be the case key alone, so every run of a
+ * case shared one customer row and `cleanupDemo` deleted it unconditionally: on
+ * 2026-08-29 a bebas run slept through turn 3 (the Mac suspended, 7225s) while
+ * a second run finished and cleaned up, which deleted the customer out from
+ * under it. The first run then logged a foreign-key failure on saveMessage,
+ * printed an empty transcript and reported "FAIL — no order created", with
+ * nothing in the output naming the real cause. A run must not be able to blame
+ * the bot for a row another run deleted.
+ */
+function phoneFor(key: string): string {
+  return `+${DEMO_PHONE_PREFIX}SCHED${key.toUpperCase()}${NONCE}`;
+}
+
+const DEMO_PHONE_LIKE = `+${DEMO_PHONE_PREFIX}SCHED%`;
+
+async function cleanupCustomer(id: string): Promise<void> {
+  const db = createAdminClient();
+  await db.from("daily_deliveries").delete().eq("customer_id", id);
+  await db.from("orders").delete().eq("customer_id", id);
+  await db.from("conversations").delete().eq("customer_id", id);
+  await db.from("customer_flags").delete().eq("customer_id", id);
+  await db.from("customer_state").delete().eq("customer_id", id);
+  await db.from("customer_rate_limits").delete().eq("customer_id", id);
+  await db.from("customers").delete().eq("id", id);
+}
+
 async function cleanupDemo(phone: string): Promise<void> {
   const db = createAdminClient();
   const { data: existing } = await db
@@ -92,14 +122,28 @@ async function cleanupDemo(phone: string): Promise<void> {
     .eq("phone_number", phone)
     .maybeSingle();
   if (!existing) return;
-  const id = existing.id;
-  await db.from("daily_deliveries").delete().eq("customer_id", id);
-  await db.from("orders").delete().eq("customer_id", id);
-  await db.from("conversations").delete().eq("customer_id", id);
-  await db.from("customer_flags").delete().eq("customer_id", id);
-  await db.from("customer_state").delete().eq("customer_id", id);
-  await db.from("customer_rate_limits").delete().eq("customer_id", id);
-  await db.from("customers").delete().eq("id", id);
+  await cleanupCustomer(existing.id);
+}
+
+/**
+ * Rows a crashed or --keep run left behind. Per-run phones mean nothing else
+ * ever reclaims them, so they would pile up in the inbox beside real customers.
+ * Age-gated rather than blanket: an hour is longer than any run of this script
+ * and shorter than the gap between sessions, so a run happening right now is
+ * never touched.
+ */
+async function sweepStaleDemos(): Promise<void> {
+  const db = createAdminClient();
+  const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: stale } = await db
+    .from("customers")
+    .select("id, phone_number")
+    .like("phone_number", DEMO_PHONE_LIKE)
+    .lt("created_at", cutoff);
+  for (const row of stale ?? []) {
+    console.log(`  (sweeping stale demo ${row.phone_number})`);
+    await cleanupCustomer(row.id);
+  }
 }
 
 /** The clock every turn runs under: a Jumat morning, well before the cutoff. */
@@ -147,7 +191,7 @@ const CASES: Case[] = [
 
 async function runCase(c: Case): Promise<boolean> {
   const db = createAdminClient();
-  const phone = `+${DEMO_PHONE_PREFIX}SCHED${c.key.toUpperCase()}`;
+  const phone = phoneFor(c.key);
   await cleanupDemo(phone);
   const { data: demo, error } = await db
     .from("customers")
@@ -224,6 +268,7 @@ async function runCase(c: Case): Promise<boolean> {
 
 async function main() {
   const keep = process.argv.includes("--keep");
+  await sweepStaleDemos();
   const only = process.argv.find((a) => a.startsWith("--only="))?.split("=")[1];
   const cases = only ? CASES.filter((c) => c.key === only) : CASES;
   let allOk = true;
@@ -234,9 +279,7 @@ async function main() {
     });
     allOk &&= ok;
   }
-  if (!keep)
-    for (const c of cases)
-      await cleanupDemo(`+${DEMO_PHONE_PREFIX}SCHED${c.key.toUpperCase()}`);
+  if (!keep) for (const c of cases) await cleanupDemo(phoneFor(c.key));
   console.log(`\n${allOk ? "ALL PASS" : "FAILURES"}`);
   process.exit(allOk ? 0 : 1);
 }

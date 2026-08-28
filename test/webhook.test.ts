@@ -2,6 +2,7 @@ import { processWebhookAsync } from "@/app/api/webhook/whatsapp/route";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { getAnthropicClient } from "@/lib/claude/client";
 import { loadHistory, saveMessage } from "@/lib/claude/conversation";
+import { createOrderFromExtraction } from "@/lib/claude/extract-order";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import {
@@ -34,6 +35,13 @@ jest.mock("@/lib/claude/prompts/classifier", () => ({
 }));
 jest.mock("@/lib/claude/classify-address", () => ({
   classifyAddress: jest.fn().mockResolvedValue(null),
+}));
+// Only createOrderFromExtraction is stubbed; the rest of the module is real,
+// because processSavedCustomerMessage reads several of its helpers on paths
+// these tests exercise.
+jest.mock("@/lib/claude/extract-order", () => ({
+  ...jest.requireActual("@/lib/claude/extract-order"),
+  createOrderFromExtraction: jest.fn(),
 }));
 jest.mock("@/lib/claude/photo-matcher", () => ({
   matchDeliveryPhoto: jest.fn().mockResolvedValue(null),
@@ -228,6 +236,9 @@ beforeEach(() => {
   (recordSuccess as jest.Mock).mockReturnValue(undefined);
   (recordFailure as jest.Mock).mockResolvedValue(undefined);
   (updateTokenCount as jest.Mock).mockResolvedValue(undefined);
+  (createOrderFromExtraction as jest.Mock).mockResolvedValue({
+    sendPayment: null,
+  });
   (validateReply as jest.Mock).mockResolvedValue({
     valid: true,
     unsupportedClaims: [],
@@ -734,5 +745,92 @@ describe("processWebhookAsync", () => {
     expect(buildSystemPrompt).toHaveBeenCalledWith(
       expect.objectContaining({ customerState: "ordering" }),
     );
+  });
+  // The model answers and calls extract_order in the same turn, but the tool
+  // ran first and sent the bank details straight away, while the reply waited
+  // behind the validator, the language guard and a typing delay. Rian's demo run
+  // on 2026-08-29 got "Silakan transfer ke..." before "Saya lanjutkan
+  // pesanannya ya kak. Sebentar." — asked for money before being told what for.
+  test("T23 — the payment message goes out after the reply, not before it", async () => {
+    (createAdminClient as jest.Mock).mockReturnValue(makeDefaultDb());
+
+    const sendPayment = jest.fn(async () => {
+      await sendTextMessage("+6281234567890", "Silakan transfer ke BCA 123");
+    });
+    (createOrderFromExtraction as jest.Mock).mockResolvedValue({ sendPayment });
+
+    const create = jest.fn().mockResolvedValue({
+      content: [
+        { type: "text", text: "Saya lanjutkan pesanannya ya kak. Sebentar." },
+        {
+          type: "tool_use",
+          id: "tool-1",
+          name: "extract_order",
+          input: {
+            customer_name: "Rian",
+            package_size: 5,
+            delivery_schedule: [],
+          },
+        },
+      ],
+      stop_reason: "tool_use",
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    (getAnthropicClient as jest.Mock).mockReturnValue({ messages: { create } });
+
+    await processWebhookAsync(makePayload("iya betul kak"));
+
+    expect(sendPayment).toHaveBeenCalledTimes(1);
+    const sent = (sendTextMessage as jest.Mock).mock.calls.map(
+      ([, text]: [string, string]) => text,
+    );
+    const reply = sent.findIndex((t) =>
+      t.includes("Saya lanjutkan pesanannya"),
+    );
+    const payment = sent.findIndex((t) => t.includes("transfer"));
+    expect(reply).toBeGreaterThanOrEqual(0);
+    expect(payment).toBeGreaterThan(reply);
+  });
+
+  // A turn that produces no text at all still owes the customer the bank
+  // details — nothing else in the conversation will ever mention them.
+  test("T24 — the payment message is still sent when the reply is dropped as an echo", async () => {
+    const db = makeDefaultDb({
+      conversations: {
+        data: [
+          { role: "assistant", content: "Halo kak, ada yang bisa dibantu?" },
+        ],
+        error: null,
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const sendPayment = jest.fn(async () => {
+      await sendTextMessage("+6281234567890", "Silakan transfer ke BCA 123");
+    });
+    (createOrderFromExtraction as jest.Mock).mockResolvedValue({ sendPayment });
+
+    const create = jest.fn().mockResolvedValue({
+      content: [
+        { type: "text", text: "Halo kak, ada yang bisa dibantu?" },
+        {
+          type: "tool_use",
+          id: "tool-1",
+          name: "extract_order",
+          input: {
+            customer_name: "Rian",
+            package_size: 5,
+            delivery_schedule: [],
+          },
+        },
+      ],
+      stop_reason: "tool_use",
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    (getAnthropicClient as jest.Mock).mockReturnValue({ messages: { create } });
+
+    await processWebhookAsync(makePayload("iya betul kak"));
+
+    expect(sendPayment).toHaveBeenCalledTimes(1);
   });
 });

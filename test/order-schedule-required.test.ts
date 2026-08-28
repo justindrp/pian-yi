@@ -48,6 +48,8 @@ function mockDb() {
       "lte",
       "gt",
       "lt",
+      "like",
+      "ilike",
       "order",
       "limit",
       "range",

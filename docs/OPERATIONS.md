@@ -54,7 +54,7 @@ An event order — one date, a large box count, no subscription — is not a pac
 4. **Confirm the whole brief back to the customer** and get their agreement to it.
 5. **Only then tender it to the subcontractors** and price the customer from the bids that come back.
 
-**No payment request may be sent before step 4.** The bank details are composed by `createOrderFromExtraction`, so any path that creates an order also asks for money — which means creating the order early *is* asking for money early.
+**No payment request may be sent before step 4.** The bank details are composed by `createOrderFromExtraction`, so any path that creates an order also asks for money — which means creating the order early *is* asking for money early. Since 2026-08-29 the webhook passes `deferPaymentMessage: true` and sends that message after its own reply rather than from inside the tool, so the bank details land after the sentence introducing them — the composition and the rule above are unchanged, only the moment it goes out.
 
 The rule is written from the failure. On 2026-08-25 at 08:08 a lead asked for 40 porsi makan siang in Gading Serpong for 22 September with a budget under Rp 30.000. By 08:10 — two minutes, before any price existed, before anyone had asked what should be in the box — the bot had created an order and sent BCA details with a total on it. The customer never asked for a total; they asked "minta menu nya", twice, and then "18 rb itu dapat apa saja". The bot could not answer, because Rp 18.000 was a number it had produced rather than received, and it stalled at 08:18. The thread went cold with a payment request sitting in it for a job nobody had costed.
 

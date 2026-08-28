@@ -1933,6 +1933,16 @@ export async function processSavedCustomerMessage(params: {
   // Run the tool before asking for the accompanying text, so the follow-up call
   // below can report the real result back to the model.
   const toolResults = new Map<string, ToolResult>();
+  // The payment message, held back until this turn's reply has been sent. Every
+  // path out of this function from here down has to flush it, or the customer
+  // is told their order is being placed and never learns where to transfer.
+  const deferredSends: (() => Promise<void>)[] = [];
+  const flushDeferred = async () => {
+    while (deferredSends.length > 0) {
+      const send = deferredSends.shift();
+      if (send) await send();
+    }
+  };
   for (const toolUse of toolUses) {
     const result = await handleToolUse(
       toolUse,
@@ -1941,6 +1951,7 @@ export async function processSavedCustomerMessage(params: {
       customerName,
     );
     toolResults.set(toolUse.id, result);
+    if (result.ok && result.sendPayment) deferredSends.push(result.sendPayment);
     if (!result.ok) {
       console.warn(
         `[webhook] tool ${toolUse.name} did nothing for ${customerId}: ${result.error}`,
@@ -2153,6 +2164,9 @@ export async function processSavedCustomerMessage(params: {
         "/inbox",
         "medium",
       );
+      // The reply is dropped, but the order behind it was written and the
+      // customer still has to be told where to pay.
+      await flushDeferred();
       return null;
     }
   }
@@ -2342,6 +2356,11 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
     });
   }
 
+  // Last, so the bank details are the last thing the customer reads. Also
+  // covers the turn that produced no text at all — the order still has to be
+  // payable.
+  await flushDeferred();
+
   return null;
 }
 
@@ -2515,7 +2534,19 @@ async function handlePaymentProofImage(
  * tercatat kak" over an empty calendar. The messages are Indonesian because
  * the model paraphrases them straight into its reply.
  */
-type ToolResult = { ok: true; message: string } | { ok: false; error: string };
+type ToolResult =
+  | {
+      ok: true;
+      message: string;
+      /**
+       * Work the caller must run after it has sent its own reply. Only
+       * `extract_order` sets it, and only to hold the payment message back
+       * until the sentence introducing it has gone out — see
+       * `deferPaymentMessage` in `createOrderFromExtraction`.
+       */
+      sendPayment?: (() => Promise<void>) | null;
+    }
+  | { ok: false; error: string };
 
 async function handleToolUse(
   tool: Anthropic.Messages.ToolUseBlock,
@@ -2526,13 +2557,14 @@ async function handleToolUse(
   const db = createAdminClient();
 
   if (tool.name === "extract_order") {
-    await createOrderFromExtraction(
+    const { sendPayment } = await createOrderFromExtraction(
       customerId,
       phone,
       await applyLatestCustomerSize(
         customerId,
         tool.input as ExtractedOrderInput,
       ),
+      { deferPaymentMessage: true },
     );
     // createOrderFromExtraction returns void, so this cannot say whether the
     // order was written — it withholds one when the delivery days or a
@@ -2542,7 +2574,8 @@ async function handleToolUse(
     return {
       ok: true,
       message:
-        "extract_order dijalankan. Kalau datanya lengkap, sistem sudah mengirim detail transfer ke customer — jangan ulangi nominal atau nomor rekening. Kalau ada yang kurang, sistem yang menanyakannya sendiri.",
+        "extract_order dijalankan. Kalau datanya lengkap, sistem yang mengirim detail transfer ke customer setelah balasan ini — jangan ulangi nominal atau nomor rekening. Kalau ada yang kurang, sistem yang menanyakannya sendiri.",
+      sendPayment,
     };
   } else if (tool.name === "record_daily_order") {
     return recordDailyOrder({

@@ -26,6 +26,7 @@ jest.mock("@/lib/claude/conversation", () => ({
   loadHistory: jest.fn().mockResolvedValue([]),
 }));
 
+const NOW = "2026-08-29T00:00:00.000Z";
 const BUYER_ID = "c0000000-0000-4000-8000-000000000001";
 const BUYER_PHONE = "+6285155005162";
 const CILA_ID = "c0000000-0000-4000-8000-0000000000c1";
@@ -66,6 +67,8 @@ function mockDb(byPhone: Record<string, { id: string; name: string | null }>) {
       "lte",
       "gt",
       "lt",
+      "like",
+      "ilike",
       "order",
       "limit",
       "range",
@@ -100,7 +103,12 @@ function mockDb(byPhone: Record<string, { id: string; name: string | null }>) {
         return created;
       }
       if (table === "orders") {
-        return { id: "0d000000-0000-4000-8000-000000000001" };
+        return { id: "0d000000-0000-4000-8000-000000000001", created_at: NOW };
+      }
+      // Nothing has been said to this customer yet, so no payment message is on
+      // record and the guard against repeating one must not fire.
+      if (table === "conversations" && filters.role === "assistant") {
+        return null;
       }
       if (table === "pricing_tiers") {
         return { portions: 5, price_per_portion: 29000 };
