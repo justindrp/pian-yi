@@ -89,27 +89,29 @@ const MEAL_ONLY =
 // kecil, sistem fleksibel …"), and dropping the whole line loses the useful
 // half.
 function usefulClauses(value: string): string[] {
-  return value
-    .split(/[;,]/)
-    .map((clause) => clause.trim())
-    // "tanpa nasi (harga tetap sama)" is a single clause, and dropping it whole
-    // for the price inside took the dietary request off the sheet with it.
-    // Drop just the parenthetical, then judge what is left — the price never
-    // prints either way, and a parenthetical that is not about money
-    // ("(diganti ayam)") is untouched.
-    .map((clause) =>
-      clause.replace(/\s*\(([^)]*)\)/g, (whole, inner: string) =>
-        MONEY.test(inner) ? "" : whole,
-      ),
-    )
-    .filter(
-      (clause) =>
-        clause &&
-        !MONEY.test(clause) &&
-        !COMPARISON.test(clause) &&
-        !ORDERING_MODEL.test(clause) &&
-        !MEAL_ONLY.test(clause),
-    );
+  return (
+    value
+      .split(/[;,]/)
+      .map((clause) => clause.trim())
+      // "tanpa nasi (harga tetap sama)" is a single clause, and dropping it whole
+      // for the price inside took the dietary request off the sheet with it.
+      // Drop just the parenthetical, then judge what is left — the price never
+      // prints either way, and a parenthetical that is not about money
+      // ("(diganti ayam)") is untouched.
+      .map((clause) =>
+        clause.replace(/\s*\(([^)]*)\)/g, (whole, inner: string) =>
+          MONEY.test(inner) ? "" : whole,
+        ),
+      )
+      .filter(
+        (clause) =>
+          clause &&
+          !MONEY.test(clause) &&
+          !COMPARISON.test(clause) &&
+          !ORDERING_MODEL.test(clause) &&
+          !MEAL_ONLY.test(clause),
+      )
+  );
 }
 
 function aiPreferences(notes: string): string | null {

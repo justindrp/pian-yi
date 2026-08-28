@@ -41,7 +41,6 @@ interface Order {
   status: string;
   start_date: string;
   area: string;
-  meal_time_preference: string;
   size: string;
   created_at: string;
   subcontractor_id: string | null;
@@ -60,16 +59,6 @@ interface Order {
     area: string | null;
   };
 }
-
-const MEAL_PREFERENCES = [
-  "lunch_only",
-  "dinner_only",
-  "both_fixed",
-  "per_day_decision",
-  "default_lunch",
-  "default_dinner",
-  "custom_schedule",
-];
 
 const STATUS_LABELS: Record<string, string> = {
   pending_payment: "Pending Payment",
@@ -95,7 +84,6 @@ const PENDING_STATUSES = ["pending_payment", "payment_proof_received"];
 
 type EditForm = {
   subcontractor_id: string;
-  meal_time_preference: string;
   end_date: string;
   size: string;
   lunch_address_slot: number;
@@ -171,7 +159,6 @@ export default function OrdersClient() {
     setSelected(o);
     setEditForm({
       subcontractor_id: o.subcontractor_id ?? "",
-      meal_time_preference: o.meal_time_preference ?? "",
       end_date: o.end_date ?? "",
       size: o.size ?? "s",
       lunch_address_slot: o.lunch_address_slot ?? 1,
@@ -605,33 +592,6 @@ export default function OrdersClient() {
                   {(subcontractors ?? []).map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <Label
-                  htmlFor="order-meal"
-                  className="text-xs text-gray-500 block mb-1"
-                >
-                  Meal Time Preference
-                </Label>
-                <select
-                  id="order-meal"
-                  value={editForm.meal_time_preference}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      meal_time_preference: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                  <option value="">— None —</option>
-                  {MEAL_PREFERENCES.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
                     </option>
                   ))}
                 </select>

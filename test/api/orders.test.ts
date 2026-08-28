@@ -147,7 +147,12 @@ describe("PATCH /api/orders", () => {
     expect(db.from).not.toHaveBeenCalledWith("customer_state");
   });
 
-  test("T1b — mark_paid generates all fixed recurring delivery rows", async () => {
+  test("T1b — mark_paid writes the days stored on the order, and nothing else", async () => {
+    // The rows are the schedule the customer asked for, held on
+    // orders.requested_schedule since order creation. mark_paid is the only
+    // thing that turns them into deliveries: before this, they were written at
+    // order creation, and nothing filters the kitchen sheet by order status, so
+    // three unpaid orders had 37 portions queued for a kitchen on 2026-08-28.
     const db = makeDbMock({
       orders: {
         data: {
@@ -157,7 +162,11 @@ describe("PATCH /api/orders", () => {
           package_size: 30,
           start_date: "2099-01-05",
           end_date: "2099-01-07",
-          meal_time_preference: "lunch_only",
+          requested_schedule: [
+            { date: "2099-01-05", meal_type: "lunch", portions: 1 },
+            { date: "2099-01-06", meal_type: "lunch", portions: 1 },
+            { date: "2099-01-07", meal_type: "lunch", portions: 1 },
+          ],
           portions_per_delivery: 1,
           portions_lunch: null,
           portions_dinner: null,
@@ -198,6 +207,42 @@ describe("PATCH /api/orders", () => {
         onConflict: "delivery_date,customer_id,meal_type",
       }),
     );
+  });
+
+  test("T1c — mark_paid on an order with no stored schedule writes no rows", async () => {
+    // Most of the book buys quota without naming days and books them one at a
+    // time through record_daily_order. This route must never invent a pattern
+    // for them: it used to derive a whole recurring run from a
+    // meal_time_preference enum nobody had checked against what the customer
+    // asked for, and 21 of 28 rows built for 2026-08-21 were over-draws.
+    const db = makeDbMock({
+      orders: {
+        data: {
+          id: "order-1",
+          customer_id: "cust-1",
+          total_price: 30000,
+          package_size: 30,
+          start_date: "2099-01-05",
+          end_date: "2099-01-07",
+          requested_schedule: null,
+          portions_per_delivery: 1,
+          portions_lunch: null,
+          portions_dinner: null,
+          subcontractor_id: "sub-1",
+          lunch_address_slot: 2,
+          dinner_address_slot: 1,
+          customers: { name: "Test Customer", phone_number: "+628111222333" },
+        },
+        error: null,
+      },
+      customers: { data: { converted_at: null }, error: null },
+      daily_deliveries: { data: null, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await PATCH(patchRequest({ id: "order-1", action: "mark_paid" }));
+
+    expect(db.chains.daily_deliveries.upsert).not.toHaveBeenCalled();
   });
 
   test("T2 — update_size m: updates only the size column", async () => {

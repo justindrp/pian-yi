@@ -1582,9 +1582,7 @@ export async function processSavedCustomerMessage(params: {
       .not("customer_nickname", "is", null),
     db
       .from("orders")
-      .select(
-        "id, package_size, portions_per_delivery, meal_time_preference",
-      )
+      .select("id, package_size, portions_per_delivery")
       .eq("customer_id", customerId)
       .eq("status", "active")
       .order("created_at", { ascending: false })
@@ -1620,7 +1618,6 @@ export async function processSavedCustomerMessage(params: {
         id: activeOrderRow.id,
         packageSize: activeOrderRow.package_size,
         portionsPerDelivery: activeOrderRow.portions_per_delivery,
-        mealTimePreference: activeOrderRow.meal_time_preference,
       }
     : null;
 
@@ -2433,33 +2430,6 @@ async function handleToolUse(
       return;
     }
 
-    // Prefer the order whose meal_time_preference matches the requested meal type.
-    // Falls back to newest active order for customers with a single combined order.
-    const mealPrefs: Record<"lunch" | "dinner" | "both", string[]> = {
-      lunch: [
-        "lunch_only",
-        "both_fixed",
-        "per_day_decision",
-        "default_lunch",
-        "custom_schedule",
-      ],
-      dinner: [
-        "dinner_only",
-        "both_fixed",
-        "per_day_decision",
-        "default_dinner",
-        "custom_schedule",
-      ],
-      both: [
-        "lunch_only",
-        "dinner_only",
-        "both_fixed",
-        "per_day_decision",
-        "default_lunch",
-        "default_dinner",
-        "custom_schedule",
-      ],
-    };
     // Every active order, with its undated portions counted from the delivery
     // rows. This used to read the stored `orders.portions_remaining`, a counter
     // nothing kept honest — the daily sheet's delete button removed a row and
@@ -2469,9 +2439,7 @@ async function handleToolUse(
     // already confirmed to her were never written. The column is gone now.
     const { data: activeOrders } = await db
       .from("orders")
-      .select(
-        "id, package_size, start_date, created_at, subcontractor_id, meal_time_preference",
-      )
+      .select("id, package_size, start_date, created_at, subcontractor_id")
       .eq("customer_id", customerId)
       .eq("status", "active");
 
@@ -2490,21 +2458,23 @@ async function handleToolUse(
     );
 
     // Which package the rows bill to: the oldest one that still has undated
-    // portions, per pickDrawOrder. Orders whose meal_time_preference covers the
-    // requested meal are preferred; when none does, every active order is a
-    // candidate, because quota belongs to the customer and not to one package.
-    const asCandidates = (rows: typeof candidates) =>
-      rows.map((o) => ({
+    // portions, per pickDrawOrder. Nothing else narrows the field. Quota
+    // belongs to the customer, not to one package — an order records that they
+    // topped up their balance, and two orders held by the same customer are the
+    // same money.
+    //
+    // A meal filter used to run first, preferring orders whose
+    // meal_time_preference covered the requested meal. Measured against
+    // production on 2026-08-28 it changed the outcome for 3 of the 89 customers
+    // holding two or more active orders, and all 3 were wrong: it skipped the
+    // older package and charged the newer one, which is the exact
+    // misattribution pickDrawOrder was written to stop.
+    const order = pickDrawOrder(
+      candidates.map((o) => ({
         ...o,
         unbooked: unbookedPerOrder.get(o.id) ?? 0,
-      }));
-    const mealMatched = candidates.filter((o) =>
-      mealPrefs[input.meal_type].includes(o.meal_time_preference ?? ""),
+      })),
     );
-    const order =
-      pickDrawOrder(
-        asCandidates(mealMatched.length > 0 ? mealMatched : candidates),
-      ) ?? pickDrawOrder(asCandidates(candidates));
 
     if (!order) {
       console.error(

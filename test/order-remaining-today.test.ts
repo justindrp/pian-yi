@@ -66,7 +66,12 @@ describe("orderRemainingToday", () => {
 
   test("counts portions, not rows", async () => {
     expect(
-      await orderRemainingToday(stubDb([row("2026-08-20", 4)]), "o", 10, "2026-08-20"),
+      await orderRemainingToday(
+        stubDb([row("2026-08-20", 4)]),
+        "o",
+        10,
+        "2026-08-20",
+      ),
     ).toBe(6);
   });
 });

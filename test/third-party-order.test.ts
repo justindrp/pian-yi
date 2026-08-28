@@ -159,7 +159,10 @@ describe("a package bought for someone else", () => {
     });
   });
 
-  it("books the deliveries against the beneficiary too", async () => {
+  it("stores the schedule on the beneficiary's order, and writes no rows yet", async () => {
+    // Order creation records the days; mark_paid turns them into deliveries.
+    // Writing rows here put food on a kitchen sheet for an order nobody had
+    // paid for — nothing filters that sheet by order status.
     const writes = mockDb({
       [BUYER_PHONE]: { id: BUYER_ID, name: "Naya" },
       [CILA_PHONE]: { id: CILA_ID, name: "Cila" },
@@ -172,11 +175,26 @@ describe("a package bought for someone else", () => {
       beneficiary_phone: CILA_PHONE,
     });
 
-    const rows = writes.find(
-      (w) => w.table === "daily_deliveries" && w.op === "upsert",
+    expect(
+      writes.find(
+        (w) =>
+          w.table === "daily_deliveries" &&
+          (w.op === "upsert" || w.op === "insert"),
+      ),
+    ).toBeUndefined();
+
+    const order = orderWrite(writes);
+    const schedule = (
+      order?.payload as {
+        customer_id: string;
+        requested_schedule: { date: string; meal_type: string }[] | null;
+      }
+    )?.requested_schedule;
+    expect((order?.payload as { customer_id: string }).customer_id).toBe(
+      CILA_ID,
     );
-    const first = (rows?.payload as { customer_id: string }[])?.[0];
-    expect(first?.customer_id).toBe(CILA_ID);
+    expect(schedule?.length).toBeGreaterThan(0);
+    expect(schedule?.every((r) => r.meal_type === "lunch")).toBe(true);
   });
 
   // The guards on the customer update only protect against a blank value, not

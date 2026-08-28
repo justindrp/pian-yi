@@ -62,7 +62,6 @@ interface DeliveryRow {
     portions_lunch: number;
     portions_dinner: number;
     portions_per_delivery: number;
-    meal_time_preference: string;
     size?: string;
   };
 }

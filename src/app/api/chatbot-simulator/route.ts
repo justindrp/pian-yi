@@ -73,7 +73,6 @@ export async function POST(req: NextRequest): Promise<Response> {
         id: "sim-order",
         packageSize: 50,
         portionsPerDelivery: 1,
-        mealTimePreference: "per_day_decision",
       }
     : null;
 

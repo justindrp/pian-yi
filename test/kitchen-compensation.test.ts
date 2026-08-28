@@ -18,12 +18,14 @@ describe("stripCompensation", () => {
       "tanpa nasi",
     );
     expect(
-      stripCompensation("tanpa nasi, porsi protein tambah 25% sebagai gantinya"),
+      stripCompensation(
+        "tanpa nasi, porsi protein tambah 25% sebagai gantinya",
+      ),
     ).toBe("tanpa nasi");
     expect(stripCompensation("tanpa nasi, +25% protein")).toBe("tanpa nasi");
-    expect(stripCompensation("tanpa nasi dengan protein 25% lebih banyak")).toBe(
-      "tanpa nasi",
-    );
+    expect(
+      stripCompensation("tanpa nasi dengan protein 25% lebih banyak"),
+    ).toBe("tanpa nasi");
   });
 
   test("leaves a note that says nothing about the compensation alone", () => {
@@ -39,9 +41,9 @@ describe("stripCompensation", () => {
   });
 
   test("keeps other requests when the compensation sits between them", () => {
-    expect(
-      stripCompensation("tidak pedas, protein +25%, tanpa seafood"),
-    ).toBe("tidak pedas, tanpa seafood");
+    expect(stripCompensation("tidak pedas, protein +25%, tanpa seafood")).toBe(
+      "tidak pedas, tanpa seafood",
+    );
   });
 
   test("returns empty when the compensation was the whole note", () => {

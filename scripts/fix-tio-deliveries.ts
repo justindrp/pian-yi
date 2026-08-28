@@ -23,9 +23,7 @@ async function main() {
 
   const { data: orders } = await db
     .from("orders")
-    .select(
-      "id, status, package_size, subcontractor_id, meal_time_preference",
-    )
+    .select("id, status, package_size, subcontractor_id, meal_time_preference")
     .eq("customer_id", CUSTOMER)
     .eq("status", "active");
   const order = (orders ?? []).find((o) => o.id.startsWith(ORDER_PREFIX));
@@ -57,21 +55,13 @@ async function main() {
     (order.package_size ?? 0) -
     (booked ?? []).reduce((n, r) => n + (r.portions ?? 0), 0);
 
-  console.log(
-    "order",
-    order.id,
-    "rem",
-    rem,
-    "kitchen",
-    kitchen,
-  );
+  console.log("order", order.id, "rem", rem, "kitchen", kitchen);
   console.log("already booked:", [...taken].join(", ") || "none");
   console.log("to write:", fresh.join(", "));
   console.log("rem after:", rem - fresh.length);
 
   if (!APPLY) return console.log("\ndry run — pass --apply");
-  if (fresh.length > rem)
-    throw new Error("would overdraft");
+  if (fresh.length > rem) throw new Error("would overdraft");
 
   const { error } = await db.from("daily_deliveries").insert(
     fresh.map((delivery_date) => ({

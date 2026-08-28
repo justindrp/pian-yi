@@ -29,7 +29,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const { data: rows } = await db
     .from("daily_deliveries")
     .select(
-      "*, customers(name, phone_number, area, sub_area, address, google_maps_link, address_2, area_2, sub_area_2, google_maps_link_2, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, meal_time_preference, size)",
+      "*, customers(name, phone_number, area, sub_area, address, google_maps_link, address_2, area_2, sub_area_2, google_maps_link_2, subcontractor_id, delivery_route, delivery_position), orders(portions_lunch, portions_dinner, portions_per_delivery, size)",
     )
     .eq("delivery_date", date);
 

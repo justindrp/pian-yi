@@ -42,7 +42,6 @@ export async function buildSystemPrompt(params: {
     id: string;
     packageSize: number;
     portionsPerDelivery: number;
-    mealTimePreference: string | null;
   } | null;
   /**
    * What is actually on the customer's calendar, and the two different numbers
@@ -496,7 +495,7 @@ Portion deduction rules:
 
 Insufficient quota: if the customer requests keduanya but fewer than ${params.activeOrder.portionsPerDelivery * 2} portions are still without a date, explain they can only schedule ${params.schedule?.unbooked ?? 0} more portion(s) — enough for ${(params.schedule?.unbooked ?? 0) >= params.activeOrder.portionsPerDelivery ? "one meal (siang or malam, not both)" : "no further dates"}. Never call record_daily_order if it would overdraft. The same applies to a multi-day run: with ${params.schedule?.unbooked ?? 0} portion(s) still undated, never agree to more days than that covers — say how many days can still be scheduled and offer a new package for the rest.
 
-${(params.schedule?.remainingToday ?? 0) <= 0 ? `Quota exhausted: offer the same package again — "Mau lanjut paket yang sama lagi kak? ${params.activeOrder.packageSize} porsi ${params.activeOrder.mealTimePreference === "lunch_only" ? "makan siang" : params.activeOrder.mealTimePreference === "dinner_only" ? "makan malam" : params.activeOrder.mealTimePreference === "both_fixed" || params.activeOrder.mealTimePreference === "per_day_decision" ? "keduanya" : ""}." If they say yes, go straight to the order form (skip re-asking their preferences — those are already known). Only re-ask if they want to change something.` : ""}`
+${(params.schedule?.remainingToday ?? 0) <= 0 ? `Quota exhausted: offer the same size again — "Mau lanjut paket ${params.activeOrder.packageSize} porsi lagi kak?" If they say yes, ask which days and which meal they want before you place it. Never carry their last package's schedule over: a renewal that names no days is a renewal with no days, and an order created on a schedule they did not say puts food on a kitchen sheet nobody asked for. Only call extract_order once they have told you the days.` : ""}`
     : "This customer has no active quota-based order. If they mention wanting to order for tomorrow without an existing package, direct them through the normal order flow."
 }
 

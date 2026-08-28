@@ -299,7 +299,6 @@ export default function NewOrderModal({
               ...common,
               start_date: startDate,
               end_date: endDate || undefined,
-              meal_time_preference: mealPref,
               package_size: Number(packageSize),
               size,
               portions_lunch: portionsLunch ? Number(portionsLunch) : undefined,

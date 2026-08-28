@@ -68,7 +68,9 @@ describe("unbookedByOrder", () => {
       { order_id: "a", portions: 5 },
     ];
     expect(
-      (await unbookedByOrder(stubDb(booked), [{ id: "a", package_size: 20 }])).get("a"),
+      (
+        await unbookedByOrder(stubDb(booked), [{ id: "a", package_size: 20 }])
+      ).get("a"),
     ).toBe(10);
     expect(
       (
@@ -80,10 +82,9 @@ describe("unbookedByOrder", () => {
   });
 
   test("over-drawn orders go negative rather than clamping", async () => {
-    const m = await unbookedByOrder(
-      stubDb([{ order_id: "a", portions: 32 }]),
-      [{ id: "a", package_size: 30 }],
-    );
+    const m = await unbookedByOrder(stubDb([{ order_id: "a", portions: 32 }]), [
+      { id: "a", package_size: 30 },
+    ]);
     expect(m.get("a")).toBe(-2);
   });
 

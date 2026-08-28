@@ -62,7 +62,10 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const unbooked = await unbookedByOrder(db, activeOrders ?? []);
   const order = pickDrawOrder(
-    (activeOrders ?? []).map((o) => ({ ...o, unbooked: unbooked.get(o.id) ?? 0 })),
+    (activeOrders ?? []).map((o) => ({
+      ...o,
+      unbooked: unbooked.get(o.id) ?? 0,
+    })),
   );
 
   if (!order) {

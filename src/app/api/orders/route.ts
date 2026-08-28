@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { logEdit } from "@/lib/audit/log-edit";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
-import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
+import { isClosedHoliday } from "@/lib/holidays/id";
 import {
   remainingTodayByOrder,
   unbookedByOrder,
@@ -106,7 +106,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     status: "pending_payment" | "active" | "completed";
     start_date?: string;
     end_date?: string;
-    meal_time_preference?: string;
     portions_lunch?: number;
     portions_dinner?: number;
     package_size?: number;
@@ -178,9 +177,10 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const totalPrice = packageSize * body.price_per_portion;
 
-  // meal_time_preference stays optional: a customer who decides day by day has
-  // no standing preference to record, and downstream auto-expansion already
-  // keys on this being absent or flexible rather than on an order-type flag.
+  // The schedule is stored whether or not it is materialised below: an order
+  // entered as pending_payment gets its rows at mark_paid, same as one the bot
+  // created. A customer who decides day by day has no schedule to record and
+  // books through record_daily_order instead.
   const { data: order, error: insertErr } = await db
     .from("orders")
     .insert({
@@ -193,7 +193,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       subcontractor_id: body.subcontractor_id,
       start_date: startDate,
       end_date: endDate,
-      meal_time_preference: body.meal_time_preference ?? null,
+      requested_schedule: (hasSchedule ? schedule : null) as
+        | Database["public"]["Tables"]["orders"]["Insert"]["requested_schedule"]
+        | null,
       portions_lunch: body.portions_lunch ?? null,
       portions_dinner: body.portions_dinner ?? null,
       size: (body.size ?? "s") as "s" | "m",
@@ -245,6 +247,15 @@ export async function POST(req: NextRequest): Promise<Response> {
   });
 
   if (!hasSchedule) return NextResponse.json({ ok: true, data: order });
+
+  // An unpaid order gets no delivery rows. Nothing filters the kitchen sheet by
+  // order status, so a row written here is food a kitchen will cook for an
+  // order nobody has paid for. The schedule is already stored above; mark_paid
+  // turns it into rows. An admin entering an order that is already active or
+  // completed is recording food that is real — those rows are written below,
+  // together with the revenue journals for any day already delivered.
+  if (body.status === "pending_payment")
+    return NextResponse.json({ ok: true, data: order });
 
   // Fetch subcontractor cost for COGS journals
   let subCost = 0;
@@ -471,10 +482,6 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       update.subcontractor_id = f.subcontractor_id
         ? String(f.subcontractor_id)
         : null;
-    if ("meal_time_preference" in f)
-      update.meal_time_preference = f.meal_time_preference
-        ? String(f.meal_time_preference)
-        : null;
     if ("end_date" in f)
       update.end_date = f.end_date ? String(f.end_date) : null;
     if ("portions_lunch" in f)
@@ -567,7 +574,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const { data: order, error: fetchErr } = await db
     .from("orders")
     .select(
-      "id, customer_id, total_price, package_size, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
+      "id, customer_id, total_price, package_size, start_date, end_date, requested_schedule, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
     )
     .eq("id", body.id)
     .single();
@@ -643,39 +650,60 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     ],
   }).catch((err) => console.error("[mark_paid] journal error:", err));
 
-  // A schedule already on the order is the one the customer asked for, and
-  // regenerating it can only pad it back out to the default pattern.
+  // Payment is when the food becomes real. Until now these rows were written at
+  // order creation, while the order was still pending_payment, and nothing
+  // filters the kitchen sheet by order status — GET /api/deliveries/daily-sheet
+  // keys on delivery_date alone — so an unpaid order put portions in front of a
+  // kitchen. Three orders were carrying 37 such portions on 2026-08-28.
+  //
+  // The days come off orders.requested_schedule, written once from the chat at
+  // order creation. Nothing derives them here: a schedule the customer never
+  // gave is not one we may invent, and this route used to invent a full
+  // recurring pattern from a meal_time_preference enum that nobody had checked
+  // against what the customer actually asked for.
+  //
+  // A null schedule is normal, not a failure — most customers buy quota and
+  // book their days one at a time through record_daily_order.
   const alreadyScheduled = await orderHasDeliveries(body.id);
+  const requested = (order.requested_schedule ?? null) as
+    | { date: string; meal_type: string; portions: number }[]
+    | null;
 
-  const deliveryRows = buildRecurringDeliveryRows({
-    customer_id: order.customer_id,
-    dinner_address_slot: order.dinner_address_slot ?? null,
-    end_date: order.end_date ?? null,
-    lunch_address_slot: order.lunch_address_slot ?? null,
-    meal_time_preference: order.meal_time_preference ?? null,
-    order_id: body.id,
-    package_size: order.package_size ?? null,
-    portions_dinner: order.portions_dinner ?? null,
-    portions_lunch: order.portions_lunch ?? null,
-    portions_per_delivery: order.portions_per_delivery ?? null,
-    start_date: order.start_date ?? null,
-    // The order's own kitchen is an override; the customer's is the default.
-    // Without the fallback a delivery row carries a null subcontractor_id, and
-    // /dapur/[id] filters strictly on it — so the kitchen never sees the
-    // delivery. Julian S's whole renewal was invisible that way. Same rule as
-    // POST /api/deliveries/daily-sheet.
-    subcontractor_id:
-      order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
-  });
-  if (deliveryRows.length > 0 && !alreadyScheduled) {
-    const { error: deliveryErr } = await db
-      .from("daily_deliveries")
-      .upsert(deliveryRows, {
-        onConflict: "delivery_date,customer_id,meal_type",
-        ignoreDuplicates: true,
-      });
-    if (deliveryErr) {
-      console.error("[mark_paid] delivery generation error:", deliveryErr);
+  if (Array.isArray(requested) && requested.length > 0 && !alreadyScheduled) {
+    // The kitchens are shut on libur nasional, so a row on one is a delivery
+    // nobody cooks. Dropping the day here leaves its portions unbooked, which
+    // is exactly right: the customer still owns them and can move them.
+    const deliveryRows = requested
+      .filter((r) => !isClosedHoliday(r.date))
+      .map((r) => ({
+        delivery_date: r.date,
+        customer_id: order.customer_id,
+        order_id: body.id,
+        meal_type: r.meal_type,
+        portions: r.portions,
+        // The order's own kitchen is an override; the customer's is the
+        // default. Without the fallback a delivery row carries a null
+        // subcontractor_id, and /dapur/[id] filters strictly on it — so the
+        // kitchen never sees the delivery. Julian S's whole renewal was
+        // invisible that way.
+        subcontractor_id:
+          order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
+        address_slot:
+          r.meal_type === "dinner"
+            ? (order.dinner_address_slot ?? 1)
+            : (order.lunch_address_slot ?? 1),
+      }));
+
+    if (deliveryRows.length > 0) {
+      const { error: deliveryErr } = await db
+        .from("daily_deliveries")
+        .upsert(deliveryRows, {
+          onConflict: "delivery_date,customer_id,meal_type",
+          ignoreDuplicates: true,
+        });
+      if (deliveryErr) {
+        console.error("[mark_paid] delivery generation error:", deliveryErr);
+      }
     }
   }
 

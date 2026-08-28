@@ -66,6 +66,8 @@ describe("mergeKitchenNote", () => {
   });
 
   test("does not stack when the stored note was written without it", () => {
-    expect(mergeKitchenNote("tanpa nasi", "tanpa nasi (protein +25%)")).toBeNull();
+    expect(
+      mergeKitchenNote("tanpa nasi", "tanpa nasi (protein +25%)"),
+    ).toBeNull();
   });
 });

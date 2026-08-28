@@ -819,32 +819,6 @@ function nextDeliveryDate(): string {
 }
 
 /**
- * The meal schedule the customer's last package ran on, when it was a standing
- * pattern. Only used to fill a renewal the model left blank.
- */
-async function previousMealTimePreference(
-  customerId: string,
-): Promise<string | null> {
-  const db = createAdminClient();
-  const { data } = await db
-    .from("orders")
-    .select("meal_time_preference")
-    .eq("customer_id", customerId)
-    .not("meal_time_preference", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(5);
-  for (const row of data ?? []) {
-    if (
-      row.meal_time_preference &&
-      FIXED_SCHEDULE_PREFS.includes(row.meal_time_preference)
-    ) {
-      return row.meal_time_preference;
-    }
-  }
-  return null;
-}
-
-/**
  * A customer who changes the size before paying is amending the order, not
  * placing a second one. Tiwi asked for "Total 8 porsi" on 2026-08-03, got the
  * transfer details, then wrote "Boleh 6 porsi dulu kak" — the order stayed at 8
@@ -866,23 +840,29 @@ const DATE_LIST =
   /(?<![\d.,])\d{1,2}\s*(jan|feb|mar|apr|mei|jun|jul|agu|sep|okt|nov|des)|(?<![\d.,])\d{1,2}\s*[,/-]\s*\d{1,2}\s*[,/-]\s*\d{1,2}/i;
 
 /**
- * An order created before the customer sent their days has no delivery rows,
- * and nothing else ever writes them: Cindy Angelia confirmed 5 porsi at turn 3
- * and sent the form naming 11, 12, 13, 14 and 18 Agustus afterwards, so her
- * order sat with an empty schedule. Re-read the conversation and fill it while
- * the order is still unpaid. Non-contiguous days are why this cannot be derived
- * — only the customer's own list has them.
+ * An order created before the customer sent their days carries no schedule, and
+ * nothing else ever fills one: Cindy Angelia confirmed 5 porsi at turn 3 and
+ * sent the form naming 11, 12, 13, 14 and 18 Agustus afterwards, so her order
+ * sat empty. Re-read the conversation and fill it while the order is still
+ * unpaid. Non-contiguous days are why this cannot be derived — only the
+ * customer's own list has them.
+ *
+ * This writes orders.requested_schedule, not delivery rows. The rows are
+ * mark_paid's job.
  */
 async function fillMissingSchedule(
   customerId: string,
   orderId: string,
 ): Promise<void> {
   const db = createAdminClient();
-  const { count } = await db
-    .from("daily_deliveries")
-    .select("id", { count: "exact", head: true })
-    .eq("order_id", orderId);
-  if ((count ?? 0) > 0) return;
+  const { data: order } = await db
+    .from("orders")
+    .select("package_size, requested_schedule")
+    .eq("id", orderId)
+    .maybeSingle();
+  // Only ever fill an empty one. A schedule already here is the one the
+  // customer asked for and a second extraction can only degrade it.
+  if (!order || order.requested_schedule) return;
 
   const extracted = await extractOrderFromConversation(customerId);
   const schedule = extracted?.delivery_schedule?.length
@@ -892,66 +872,35 @@ async function fillMissingSchedule(
     : null;
   if (!schedule) return;
 
-  const { data: order } = await db
-    .from("orders")
-    .select(
-      "subcontractor_id, package_size, lunch_address_slot, dinner_address_slot",
-    )
-    .eq("id", orderId)
-    .maybeSingle();
-  // This only runs when the order has no rows at all (checked above), so the
-  // whole package is the budget.
-  const budget = order?.package_size ?? 0;
-
-  const rows: {
-    delivery_date: string;
-    customer_id: string;
-    order_id: string;
-    meal_type: string;
-    portions: number;
-    subcontractor_id: string | null;
-    address_slot: number;
-  }[] = [];
+  // Never record more days than the package covers.
+  const budget = order.package_size ?? 0;
+  const slots: { date: string; meal_type: string; portions: number }[] = [];
   let used = 0;
   for (const slot of schedule) {
-    // Never write more days than the package covers.
     if (used + slot.portions > budget) break;
     used += slot.portions;
-    rows.push({
-      delivery_date: slot.date,
-      customer_id: customerId,
-      order_id: orderId,
+    slots.push({
+      date: slot.date,
       meal_type: slot.meal_type,
       portions: slot.portions,
-      subcontractor_id: order?.subcontractor_id ?? null,
-      address_slot:
-        slot.meal_type === "dinner"
-          ? (order?.dinner_address_slot ?? 1)
-          : (order?.lunch_address_slot ?? 1),
     });
   }
-  if (!rows.length) return;
+  if (!slots.length) return;
 
-  const { error } = await db.from("daily_deliveries").insert(rows);
+  const { error } = await db
+    .from("orders")
+    .update({
+      requested_schedule: slots as import("@/types/database").Json,
+      start_date: slots[0].date,
+      end_date: slots[slots.length - 1].date,
+    })
+    .eq("id", orderId);
   if (error) {
     console.error("[extract-order] schedule backfill failed:", error.message);
     return;
   }
-  // The rows are the draw; the order's own balance moves with them.
-  await db
-    .from("orders")
-    .update({
-      start_date: rows[0].delivery_date,
-      end_date: rows[rows.length - 1].delivery_date,
-      meal_time_preference: schedule.every((s) => s.meal_type === "lunch")
-        ? "lunch_only"
-        : schedule.every((s) => s.meal_type === "dinner")
-          ? "dinner_only"
-          : "custom_schedule",
-    })
-    .eq("id", orderId);
   console.log(
-    `[extract-order] backfilled ${rows.length} delivery rows onto order ${orderId}`,
+    `[extract-order] backfilled ${slots.length} scheduled days onto order ${orderId}`,
   );
 }
 
@@ -1367,18 +1316,14 @@ export async function createOrderFromExtraction(
     ? sortedSchedule[sortedSchedule.length - 1].date
     : (input.end_date ?? null);
 
-  // A renewal extracted from chat rarely names a meal preference — the customer
-  // has one and neither of them restates it. Left null the order booked as
-  // per_day_decision, which delivery generation deliberately skips, so Julian S's
-  // second 5-porsi package on 2026-08-18 was created correctly and then produced
-  // no deliveries at all. Inherit the schedule his previous package ran on. A
-  // genuinely new customer with nothing on file still falls through to
-  // per_day_decision: defaulting them into a week of generated days would book
-  // deliveries for every bebas customer who never asked for a fixed schedule.
-  const extractedPreference =
-    input.meal_time_preference ??
-    (await previousMealTimePreference(orderCustomerId)) ??
-    "per_day_decision";
+  // The shape of this order, inferred from THIS conversation only. It is a
+  // local working value used to size the package and to derive days the model
+  // did not spell out — it is never stored. There is no inheritance from a
+  // previous order: a renewal that names no days is a renewal with no days, and
+  // the bot must ask. Reading the last package's pattern guessed on the
+  // customer's behalf, and a guess that lands on the kitchen sheet is food
+  // somebody has to eat.
+  const extractedPreference = input.meal_time_preference ?? "per_day_decision";
 
   // The customer's own words are the only evidence that they asked for dinner.
   // Lina Marlianty wrote "2 minggu dl aja.. 1 porsi" and never mentioned malam;
@@ -1505,7 +1450,10 @@ export async function createOrderFromExtraction(
     .limit(1)
     .maybeSingle();
   if (openOrder) {
-    // Its schedule was built from the superseded size and is rebuilt below.
+    // Its schedule was built from the superseded size and is replaced below.
+    // An unpaid order should hold no rows at all now — they are written at
+    // mark_paid — but orders created before that change still carry theirs, and
+    // an amend must not leave the old size's days behind.
     await db.from("daily_deliveries").delete().eq("order_id", openOrder.id);
   }
 
@@ -1558,6 +1506,51 @@ export async function createOrderFromExtraction(
     }
   }
 
+  // The days this order will be cooked on, settled here and stored on the
+  // order. They are NOT written as delivery rows yet: rows land at mark_paid.
+  // Writing them here put food on a kitchen's sheet for an order nobody had
+  // paid for — GET /api/deliveries/daily-sheet keys on delivery_date alone and
+  // filters on no order status, so three unpaid orders were carrying 37 future
+  // portions on 2026-08-28.
+  //
+  // Stored exactly as the customer asked, holidays included. mark_paid drops
+  // the closed days when it materialises the rows, which leaves those portions
+  // unbooked for the customer to move — the same result as before, and it keeps
+  // this column an honest record of what they asked for.
+  const requestedSchedule:
+    | { date: string; meal_type: string; portions: number }[]
+    | null = sortedSchedule
+    ? sortedSchedule.map((s) => ({
+        date: s.date,
+        meal_type: s.meal_type,
+        portions: s.portions,
+      }))
+    : FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
+      ? // The model named a standing pattern but no dates. Derive the days
+        // from it now, once, so the order carries real dates from here on —
+        // the enum that produced them is not stored and cannot be re-read.
+        // order_id is unknown until the insert below and is not part of the
+        // stored shape, so it is left empty here.
+        buildRecurringDeliveryRows({
+          customer_id: orderCustomerId,
+          order_id: "",
+          start_date: startDate,
+          end_date: endDate,
+          package_size: packageSize,
+          meal_time_preference: mealTimePreference,
+          portions_per_delivery: input.portions_per_delivery ?? 1,
+          portions_lunch: input.portions_lunch ?? null,
+          portions_dinner: input.portions_dinner ?? null,
+          lunch_address_slot: lunchSlot,
+          dinner_address_slot: dinnerSlot,
+          subcontractor_id: subcontractorId,
+        }).map((r) => ({
+          date: r.delivery_date,
+          meal_type: r.meal_type as string,
+          portions: r.portions,
+        }))
+      : null;
+
   const orderFields = {
     customer_id: orderCustomerId,
     // Null on an ordinary order. Set only when someone else is paying, which
@@ -1574,10 +1567,12 @@ export async function createOrderFromExtraction(
     portions_per_delivery: input.portions_per_delivery ?? 1,
     portions_lunch: input.portions_lunch ?? 0,
     portions_dinner: input.portions_dinner ?? 0,
-    // The computed preference, not the raw extraction: the inference below it
-    // decides which deliveries get written, and storing the model's value
-    // instead left the order row disagreeing with its own schedule.
-    meal_time_preference: mealTimePreference,
+    // The days the customer asked for. mark_paid turns these into delivery
+    // rows; nothing else reads them. Null when they bought quota without
+    // naming days, which is most of the book — those customers book per day.
+    requested_schedule: requestedSchedule as
+      | import("@/types/database").Json
+      | null,
     lunch_address_slot: lunchSlot,
     dinner_address_slot: dinnerSlot,
     custom_schedule: (input.custom_schedule ?? null) as
@@ -1621,64 +1616,6 @@ export async function createOrderFromExtraction(
     throw new Error(
       `createOrderFromExtraction: order insert failed — ${insertError?.message ?? "no row returned"}`,
     );
-  }
-
-  {
-    // The model supplies delivery_schedule when it has spelled the days out.
-    // When it has not, a fixed-schedule order used to get an order row and no
-    // deliveries at all — nothing else fills them in, so the customer had paid
-    // for a package that would never be cooked. This is the only automatic
-    // writer of a fixed schedule: derive the days from buildRecurringDeliveryRows
-    // instead of depending on the model to emit an array of dates.
-    const derived =
-      !sortedSchedule && FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
-        ? buildRecurringDeliveryRows({
-            customer_id: orderCustomerId,
-            order_id: insertedOrder.id,
-            start_date: startDate,
-            end_date: endDate,
-            package_size: packageSize,
-            meal_time_preference: mealTimePreference,
-            portions_per_delivery: input.portions_per_delivery ?? 1,
-            portions_lunch: input.portions_lunch ?? null,
-            portions_dinner: input.portions_dinner ?? null,
-            lunch_address_slot: lunchSlot,
-            dinner_address_slot: dinnerSlot,
-            subcontractor_id: subcontractorId,
-          })
-        : [];
-
-    const rows = sortedSchedule
-      ? sortedSchedule.map((s) => ({
-          delivery_date: s.date,
-          customer_id: orderCustomerId,
-          order_id: insertedOrder.id,
-          meal_type: s.meal_type,
-          portions: s.portions,
-          subcontractor_id: subcontractorId,
-          address_slot: s.meal_type === "dinner" ? dinnerSlot : lunchSlot,
-        }))
-      : derived.map((r) => ({
-          delivery_date: r.delivery_date,
-          customer_id: r.customer_id,
-          order_id: r.order_id,
-          meal_type: r.meal_type as string,
-          portions: r.portions,
-          subcontractor_id: r.subcontractor_id,
-          address_slot: r.address_slot,
-        }));
-
-    // The kitchens are shut on libur nasional, so a row on one is a delivery
-    // nobody cooks. record_daily_order already drops them; a package booked in
-    // one go had no such filter.
-    const deliverable = rows.filter((r) => !isClosedHoliday(r.delivery_date));
-
-    if (deliverable.length > 0) {
-      await db.from("daily_deliveries").upsert(deliverable, {
-        onConflict: "delivery_date,customer_id,meal_type",
-        ignoreDuplicates: true,
-      });
-    }
   }
 
   const { data: existingCustomer } = await db

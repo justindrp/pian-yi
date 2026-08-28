@@ -949,6 +949,7 @@ export type Database = {
           portions_per_delivery: number;
           price_per_portion: number;
           reminder_sent_at: string | null;
+          requested_schedule: Json | null;
           size: string;
           source: string;
           start_date: string;
@@ -986,6 +987,7 @@ export type Database = {
           portions_per_delivery: number;
           price_per_portion: number;
           reminder_sent_at?: string | null;
+          requested_schedule?: Json | null;
           size?: string;
           source?: string;
           start_date: string;
@@ -1023,6 +1025,7 @@ export type Database = {
           portions_per_delivery?: number;
           price_per_portion?: number;
           reminder_sent_at?: string | null;
+          requested_schedule?: Json | null;
           size?: string;
           source?: string;
           start_date?: string;

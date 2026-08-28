@@ -454,7 +454,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | amount_paid | integer | IDR received against this order so far, default 0. For DP / partial payment on corporate orders; `total_price` stays the contracted amount. Set by an admin in the Orders slide-over ("Sudah dibayar") — nothing derives it and nothing gates on it |
 | lunch_address_slot | smallint | Standing address slot for lunch deliveries: 1 = primary, 2 = secondary (customers.address_2) — default 1. Generated daily_deliveries rows inherit it; per-day sheet flip overrides |
 | dinner_address_slot | smallint | Standing address slot for dinner deliveries: 1 = primary, 2 = secondary — default 1 |
-| meal_time_preference | text | Nullable. "lunch_only", "dinner_only", "both_fixed", "per_day_decision", "default_lunch", "default_dinner", "custom_schedule" — null for scheduled orders |
+| requested_schedule | jsonb | Nullable. The days the customer asked for: `[{date, meal_type, portions}]`. Written once at order creation, read once by `mark_paid` to write `daily_deliveries`, never read again — the rows are the truth from there. Null means they bought quota without naming days and book per date. Replaced `meal_time_preference`, dropped in migration 077: a single enum could not express a per-day schedule, and reading a delivery row against it produced a false bug report on correct food. |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | start_date | date | First delivery date |
 | end_date | date | Last requested delivery date |

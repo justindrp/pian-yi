@@ -143,7 +143,12 @@ describe("POST /api/assistant/execute", () => {
           customer_id: "cust-1",
           start_date: "2099-01-05",
           end_date: "2099-01-06",
-          meal_time_preference: "both_fixed",
+          requested_schedule: [
+            { date: "2099-01-05", meal_type: "lunch", portions: 1 },
+            { date: "2099-01-05", meal_type: "dinner", portions: 1 },
+            { date: "2099-01-06", meal_type: "lunch", portions: 1 },
+            { date: "2099-01-06", meal_type: "dinner", portions: 1 },
+          ],
           portions_per_delivery: 1,
           portions_lunch: 1,
           portions_dinner: 1,
@@ -177,7 +182,7 @@ describe("POST /api/assistant/execute", () => {
     // journal created
     expect(createJournalEntry).toHaveBeenCalled();
 
-    // delivery rows created for the whole fixed schedule
+    // the days stored on the order become deliveries, in that order
     expect(db.chains.daily_deliveries?.upsert).toHaveBeenCalledWith(
       [
         expect.objectContaining({

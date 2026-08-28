@@ -1,5 +1,5 @@
-import { createOrderFromExtraction } from "@/lib/claude/extract-order";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
+import { createOrderFromExtraction } from "@/lib/claude/extract-order";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
@@ -116,23 +116,26 @@ describe("createOrderFromExtraction — a name is required before payment", () =
     expect(updateMessageReceipt).toHaveBeenCalled();
   });
 
-  it.each(["Kak", "kakak", "Customer", "unknown", "-"])(
-    "treats the placeholder %p as no name at all",
-    async (placeholder) => {
-      const touched = mockDb(null);
+  it.each([
+    "Kak",
+    "kakak",
+    "Customer",
+    "unknown",
+    "-",
+  ])("treats the placeholder %p as no name at all", async (placeholder) => {
+    const touched = mockDb(null);
 
-      await createOrderFromExtraction(CUSTOMER_ID, PHONE, {
-        ...BASE,
-        customer_name: placeholder,
-      });
+    await createOrderFromExtraction(CUSTOMER_ID, PHONE, {
+      ...BASE,
+      customer_name: placeholder,
+    });
 
-      expect(sendTextMessage).toHaveBeenCalledTimes(1);
-      expect((sendTextMessage as jest.Mock).mock.calls[0][1]).toContain(
-        "nama kakak",
-      );
-      expect(touched).not.toContain("orders");
-    },
-  );
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect((sendTextMessage as jest.Mock).mock.calls[0][1]).toContain(
+      "nama kakak",
+    );
+    expect(touched).not.toContain("orders");
+  });
 
   // The payment-proof path is a customer who has already transferred. Blocking
   // there would throw away the order behind real money.

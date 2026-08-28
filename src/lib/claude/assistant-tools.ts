@@ -266,8 +266,7 @@ export const assistantTools: Tool[] = [
         action: {
           type: "string",
           enum: ["skip", "reschedule"],
-          description:
-            "skip: delete the row. reschedule: move to new_date.",
+          description: "skip: delete the row. reschedule: move to new_date.",
         },
         new_date: {
           type: "string",
@@ -431,7 +430,6 @@ export const assistantTools: Tool[] = [
         field: {
           type: "string",
           enum: [
-            "meal_time_preference",
             "portions_per_delivery",
             "portions_lunch",
             "portions_dinner",
@@ -506,7 +504,7 @@ export const assistantTools: Tool[] = [
             // moment the order is paid. galvent's 10-porsi order was created as
             // dinner_only after he wrote "Jdwal tdk menetap" and asked only for
             // tomorrow, and five days were booked for him.
-            "lunch_only, dinner_only, both_fixed, default_lunch and default_dinner are STANDING patterns: the whole package is scheduled automatically from start_date. Use per_day_decision whenever the customer decides day by day or says their schedule is not fixed — then no deliveries are generated at all.",
+            "lunch_only, dinner_only, both_fixed, default_lunch and default_dinner are STANDING patterns: the days they produce are stored on the order and become deliveries when it is marked paid. This is an input only — the order stores the resulting days, not this value. Use per_day_decision whenever the customer decides day by day or says their schedule is not fixed — then no days are stored and each delivery is recorded as they ask for it.",
         },
         start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
         end_date: {
@@ -590,7 +588,7 @@ export async function runTool(
       let q = db
         .from("orders")
         .select(
-          "id, status, package_size, meal_time_preference, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
+          "id, status, package_size, price_per_portion, total_price, size, start_date, end_date, created_at, customer:customers!orders_customer_id_fkey(name, phone_number, area)",
         );
       if (input.status) q = q.eq("status", input.status as string);
       // Phone or name. An exact phone match was the only way in, and an admin
@@ -1560,7 +1558,7 @@ export async function buildPendingAction(
       const { data: order } = await db
         .from("orders")
         .select(
-          "id, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date, customers!orders_customer_id_fkey(name)",
+          "id, portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date, customers!orders_customer_id_fkey(name)",
         )
         .eq("id", input.order_id as string)
         .single();
@@ -1643,7 +1641,7 @@ export async function buildPendingAction(
           // Nothing on this card said a standing pattern books the whole package
           // up front, so a wrong preference was invisible until the ledger.
           FIXED_SCHEDULE_PREFS.includes(input.meal_time_preference as string)
-            ? `Jadwal: ${scheduledDays} hari otomatis dijadwalkan dari ${input.start_date as string}`
+            ? `Jadwal: ${scheduledDays} hari dari ${input.start_date as string}, masuk ke dapur setelah pembayaran`
             : "Jadwal: tidak otomatis — pengiriman dicatat per hari",
         ],
         dangerous: false,

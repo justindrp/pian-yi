@@ -112,7 +112,6 @@ async function main() {
       id: "sim-order",
       packageSize: 40,
       portionsPerDelivery: 1,
-      mealTimePreference: "per_day_decision",
     },
     // Quota is customer-level and lives here now, not on activeOrder.
     schedule: { upcoming: [], remainingToday: remaining, unbooked: remaining },

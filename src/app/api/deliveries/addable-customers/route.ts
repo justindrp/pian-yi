@@ -26,7 +26,7 @@ export async function GET(): Promise<Response> {
   const { data: orders } = await db
     .from("orders")
     .select(
-      "id, customer_id, portions_per_delivery, portions_lunch, portions_dinner, meal_time_preference, size, package_size, start_date, created_at",
+      "id, customer_id, portions_per_delivery, portions_lunch, portions_dinner, size, package_size, start_date, created_at",
     )
     .eq("status", "active");
 

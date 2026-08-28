@@ -589,7 +589,10 @@ export default function CustomersClient() {
       const drawn = new Map<string, number>();
       for (const row of deliveryPages.rows) {
         if (!row.order_id) continue;
-        drawn.set(row.order_id, (drawn.get(row.order_id) ?? 0) + (row.portions ?? 0));
+        drawn.set(
+          row.order_id,
+          (drawn.get(row.order_id) ?? 0) + (row.portions ?? 0),
+        );
       }
 
       // Quota the customer can actually draw on today. Same statuses the

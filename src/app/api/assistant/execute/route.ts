@@ -4,6 +4,7 @@ import { logEdit } from "@/lib/audit/log-edit";
 import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
+import { isClosedHoliday } from "@/lib/holidays/id";
 import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
 import {
   deleteDelivery,
@@ -37,7 +38,6 @@ type CustomerField = Extract<
 >;
 type OrderField = Extract<
   keyof OrdersUpdate,
-  | "meal_time_preference"
   | "portions_per_delivery"
   | "portions_lunch"
   | "portions_dinner"
@@ -52,7 +52,6 @@ const ALLOWED_CUSTOMER_FIELDS = new Set<CustomerField>([
   "notes",
 ]);
 const ALLOWED_ORDER_FIELDS = new Set<OrderField>([
-  "meal_time_preference",
   "portions_per_delivery",
   "portions_lunch",
   "portions_dinner",
@@ -274,7 +273,7 @@ export async function POST(request: Request) {
       const { data: order, error: fetchErr } = await db
         .from("orders")
         .select(
-          "id, total_price, package_size, customer_id, start_date, end_date, meal_time_preference, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
+          "id, total_price, package_size, customer_id, start_date, end_date, requested_schedule, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
         )
         .eq("id", orderId)
         .single();
@@ -340,40 +339,58 @@ export async function POST(request: Request) {
         console.error("[execute/mark_paid] journal error:", err),
       );
 
-      // A schedule already on the order is the one the customer asked for, and
-      // regenerating it can only pad it back out to the default pattern.
+      // Payment is when the food becomes real: nothing filters the kitchen
+      // sheet by order status, so a row written before payment is a portion a
+      // kitchen cooks for an order nobody paid for. The days come off
+      // orders.requested_schedule, stored when the order was created. Nothing
+      // is derived here — a schedule the customer never gave is not one we may
+      // invent. A null schedule is normal: most customers book day by day.
       const alreadyScheduled = await orderHasDeliveries(orderId);
+      const requested = (order.requested_schedule ?? null) as
+        | { date: string; meal_type: string; portions: number }[]
+        | null;
 
-      const deliveryRows = buildRecurringDeliveryRows({
-        customer_id: order.customer_id,
-        dinner_address_slot: order.dinner_address_slot ?? null,
-        end_date: order.end_date ?? null,
-        lunch_address_slot: order.lunch_address_slot ?? null,
-        meal_time_preference: order.meal_time_preference ?? null,
-        order_id: orderId,
-        package_size: order.package_size ?? null,
-        portions_dinner: order.portions_dinner ?? null,
-        portions_lunch: order.portions_lunch ?? null,
-        portions_per_delivery: order.portions_per_delivery ?? null,
-        start_date: order.start_date ?? null,
-        // Order kitchen overrides, customer kitchen is the default. A null here
-        // makes the delivery invisible on /dapur/[id], which filters strictly on
-        // subcontractor_id. Same rule as POST /api/deliveries/daily-sheet.
-        subcontractor_id:
-          order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
-      });
-      if (deliveryRows.length > 0 && !alreadyScheduled) {
-        const { error: deliveryErr } = await db
-          .from("daily_deliveries")
-          .upsert(deliveryRows, {
-            onConflict: "delivery_date,customer_id,meal_type",
-            ignoreDuplicates: true,
-          });
-        if (deliveryErr) {
-          console.error(
-            "[execute/mark_paid] delivery generation error:",
-            deliveryErr,
-          );
+      if (
+        Array.isArray(requested) &&
+        requested.length > 0 &&
+        !alreadyScheduled
+      ) {
+        // A libur nasional is a day nobody cooks. Dropping it leaves those
+        // portions unbooked, which is right — the customer still owns them.
+        const deliveryRows = requested
+          .filter((r) => !isClosedHoliday(r.date))
+          .map((r) => ({
+            delivery_date: r.date,
+            customer_id: order.customer_id,
+            order_id: orderId,
+            meal_type: r.meal_type,
+            portions: r.portions,
+            // Order kitchen overrides, customer kitchen is the default. A null
+            // here makes the delivery invisible on /dapur/[id], which filters
+            // strictly on it.
+            subcontractor_id:
+              order.subcontractor_id ??
+              order.customers?.subcontractor_id ??
+              null,
+            address_slot:
+              r.meal_type === "dinner"
+                ? (order.dinner_address_slot ?? 1)
+                : (order.lunch_address_slot ?? 1),
+          }));
+
+        if (deliveryRows.length > 0) {
+          const { error: deliveryErr } = await db
+            .from("daily_deliveries")
+            .upsert(deliveryRows, {
+              onConflict: "delivery_date,customer_id,meal_type",
+              ignoreDuplicates: true,
+            });
+          if (deliveryErr) {
+            console.error(
+              "[execute/mark_paid] delivery generation error:",
+              deliveryErr,
+            );
+          }
         }
       }
 
@@ -918,7 +935,30 @@ export async function POST(request: Request) {
           portions_per_delivery: portionsPerDelivery,
           price_per_portion: pricePerPortion,
           total_price: totalPrice,
-          meal_time_preference: mealTimePreference,
+          // The admin names a standing pattern; the order stores the days it
+          // produces, not the pattern. An enum on the order was a lossy summary
+          // of a schedule — it could not express "Senin-Kamis malam, Jumat dan
+          // Sabtu keduanya" — and reading a delivery row against it produced a
+          // false bug report on food that was correct. mark_paid turns these
+          // days into rows.
+          requested_schedule: buildRecurringDeliveryRows({
+            customer_id: customerId,
+            order_id: "",
+            start_date: startDate,
+            end_date: endDate,
+            package_size: packageSize,
+            meal_time_preference: mealTimePreference,
+            portions_per_delivery: portionsPerDelivery,
+            portions_lunch: null,
+            portions_dinner: null,
+            lunch_address_slot: 1,
+            dinner_address_slot: 1,
+            subcontractor_id: null,
+          }).map((r) => ({
+            date: r.delivery_date,
+            meal_type: r.meal_type,
+            portions: r.portions,
+          })) as OrdersUpdate["requested_schedule"],
           start_date: startDate,
           end_date: endDate,
           status: "pending_payment",
