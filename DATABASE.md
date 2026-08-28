@@ -272,7 +272,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | address_type | text | "house", "apartment", or "office" — classified by Sonnet at order time |
 | google_maps_link | text | Google Maps URL for the delivery address |
 | delivery_phone | text | Alternative phone number for delivery if different |
-| meal_time_preference | text | Default meal preference (e.g. "lunch_only", "both_fixed") |
+| meal_time_preference | text | Display-only. Null for 381 of 384 customers, read by no decision path, rendered in one panel of the chatbot-training screen. The order-level column of the same name was dropped in migration 077 and the code that expanded these values into dates was deleted on 2026-08-28. Do not wire anything new to it. |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen serves this customer |
 | portions_remaining | integer | Dead column — never read it. See the `customers.portions_remaining` rule in `CLAUDE.md`. `orders.portions_remaining` was the same idea one table over and was dropped in migration 075; this one survives only because 27 customers hold a cached balance with no order behind it. Was meant as the total quota balance across all active orders |
@@ -454,7 +454,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | amount_paid | integer | IDR received against this order so far, default 0. For DP / partial payment on corporate orders; `total_price` stays the contracted amount. Set by an admin in the Orders slide-over ("Sudah dibayar") — nothing derives it and nothing gates on it |
 | lunch_address_slot | smallint | Standing address slot for lunch deliveries: 1 = primary, 2 = secondary (customers.address_2) — default 1. Generated daily_deliveries rows inherit it; per-day sheet flip overrides |
 | dinner_address_slot | smallint | Standing address slot for dinner deliveries: 1 = primary, 2 = secondary — default 1 |
-| requested_schedule | jsonb | Nullable. The days the customer asked for: `[{date, meal_type, portions}]`. Written once at order creation, read once by `mark_paid` to write `daily_deliveries`, never read again — the rows are the truth from there. Null means they bought quota without naming days and book per date. Replaced `meal_time_preference`, dropped in migration 077: a single enum could not express a per-day schedule, and reading a delivery row against it produced a false bug report on correct food. |
+| requested_schedule | jsonb | Nullable. The days the customer asked for: `[{date, meal_type, portions}]`. Written once at order creation, read once by `mark_paid` to write `daily_deliveries`, never read again — the rows are the truth from there. Null means they bought quota without naming days and book per date — that is what `extract_order`'s `delivery_schedule: []` stores, and it is a normal order, not a gap. `mark_paid` filters the days through `isDeliveryDay()`, so a Minggu or a libur nasional in the list is dropped and its portions stay unbooked. Replaced `meal_time_preference`, dropped in migration 077: a single enum could not express a per-day schedule, and reading a delivery row against it produced a false bug report on correct food. |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | start_date | date | First delivery date |
 | end_date | date | Last requested delivery date |

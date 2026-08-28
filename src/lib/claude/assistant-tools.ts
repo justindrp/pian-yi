@@ -1,6 +1,5 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
-import { FIXED_SCHEDULE_PREFS } from "@/lib/orders/build-recurring-deliveries";
 import { remainingTodayByOrder } from "@/lib/orders/customer-schedule";
 import {
   deliveryStatus,
@@ -31,7 +30,6 @@ export const WRITE_TOOLS = new Set([
   "mark_payment_proof_received",
   "update_order",
   "create_customer",
-  "create_order",
 ]);
 
 export function isWriteTool(name: string): boolean {
@@ -471,55 +469,6 @@ export const assistantTools: Tool[] = [
         },
       },
       required: ["phone_number", "address", "area"],
-    },
-  },
-  {
-    name: "create_order",
-    description:
-      "Create a new pending_payment order for an existing customer. Does not generate deliveries or send payment details — use mark_order_paid and send_payment_details as follow-up steps. Admin must confirm before this executes.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        customer_id: { type: "string", description: "Customer UUID" },
-        package_size: {
-          type: "number",
-          description: "Total portions in the package",
-        },
-        portions_per_delivery: {
-          type: "number",
-          // Spelled out because the model got this wrong on a real order: asked
-          // to renew a 5-porsi package it passed 5 here, and every one of the
-          // five days was generated at 5 portions.
-          description:
-            "Portions in ONE day's delivery — almost always 1. This is NOT the package total: a 5-porsi package eaten one a day is package_size 5, portions_per_delivery 1.",
-        },
-        price_per_portion: {
-          type: "number",
-          description: "Price in IDR per portion (e.g. 28000)",
-        },
-        meal_time_preference: {
-          type: "string",
-          description:
-            // A standing pattern generates the package's whole run of days the
-            // moment the order is paid. galvent's 10-porsi order was created as
-            // dinner_only after he wrote "Jdwal tdk menetap" and asked only for
-            // tomorrow, and five days were booked for him.
-            "lunch_only, dinner_only, both_fixed, default_lunch and default_dinner are STANDING patterns: the days they produce are stored on the order and become deliveries when it is marked paid. This is an input only — the order stores the resulting days, not this value. Use per_day_decision whenever the customer decides day by day or says their schedule is not fixed — then no days are stored and each delivery is recorded as they ask for it.",
-        },
-        start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
-        end_date: {
-          type: "string",
-          description: "End date (YYYY-MM-DD) — optional for recurring",
-        },
-      },
-      required: [
-        "customer_id",
-        "package_size",
-        "portions_per_delivery",
-        "price_per_portion",
-        "meal_time_preference",
-        "start_date",
-      ],
     },
   },
 ];
@@ -1591,58 +1540,6 @@ export async function buildPendingAction(
           `Phone: ${input.phone_number as string}`,
           `Area: ${input.area as string}`,
           `Address: ${input.address as string}`,
-        ],
-        dangerous: false,
-      };
-    }
-
-    case "create_order": {
-      const { data: customer } = await db
-        .from("customers")
-        .select("name")
-        .eq("id", input.customer_id as string)
-        .single();
-      if (!customer) {
-        return {
-          tool,
-          input,
-          label: `⚠ create_order — customer not found (${input.customer_id as string})`,
-          details: [
-            `customer_id "${input.customer_id as string}" does not exist — use query_customers to get the correct UUID`,
-          ],
-          dangerous: true,
-        };
-      }
-      const packageSize = input.package_size as number;
-      const pricePerPortion = input.price_per_portion as number;
-      const totalPrice = packageSize * pricePerPortion;
-      const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
-      const perDelivery = Math.max(
-        1,
-        (input.portions_per_delivery as number) || 1,
-      );
-      const scheduledDays = Math.ceil(packageSize / perDelivery);
-      return {
-        tool,
-        input,
-        label: `Create order — Rp ${formatted}`,
-        details: [
-          `Customer: ${(customer as { name?: string }).name}`,
-          `Package: ${packageSize} porsi`,
-          // Shown because it decides how many portions each generated delivery
-          // draws. It was absent from this card while the model was getting it
-          // wrong, so there was nothing on screen for the admin to catch.
-          `Per pengiriman: ${input.portions_per_delivery as number} porsi`,
-          `Price: Rp ${new Intl.NumberFormat("id-ID").format(pricePerPortion)}/porsi`,
-          `Total: Rp ${formatted}`,
-          `Start: ${input.start_date as string}${input.end_date ? ` → ${input.end_date as string}` : ""}`,
-          `Meal: ${input.meal_time_preference as string}`,
-          // What the meal preference actually costs the customer in booked days.
-          // Nothing on this card said a standing pattern books the whole package
-          // up front, so a wrong preference was invisible until the ledger.
-          FIXED_SCHEDULE_PREFS.includes(input.meal_time_preference as string)
-            ? `Jadwal: ${scheduledDays} hari dari ${input.start_date as string}, masuk ke dapur setelah pembayaran`
-            : "Jadwal: tidak otomatis — pengiriman dicatat per hari",
         ],
         dangerous: false,
       };

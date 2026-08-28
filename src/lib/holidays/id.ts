@@ -135,6 +135,24 @@ export function isClosedHoliday(ymd: string): boolean {
   return holidayOn(ymd)?.type === "libur_nasional";
 }
 
+/**
+ * True when we deliver on this date at all: Senin–Sabtu, minus the days we are
+ * definitely closed.
+ *
+ * Saturday counts. It was excluded once, in the delivery generator this moved
+ * out of, and no 6-day package could then produce its sixth day — every one
+ * came up a delivery short with nothing saying so, and Julian S's 18–22
+ * Agustus package generated four days for five portions. Minggu stays closed.
+ *
+ * Cuti bersama is deliberately not filtered: whether the partner kitchens work
+ * those days is an escalation, not a closure.
+ */
+export function isDeliveryDay(ymd: string): boolean {
+  const day = new Date(`${ymd}T00:00:00Z`).getUTCDay();
+  if (day < 1 || day > 6) return false;
+  return !isClosedHoliday(ymd);
+}
+
 /** Holidays from `today` (inclusive) through the next `days` days. */
 export function upcomingHolidays(
   today: string = jakartaDateString(),

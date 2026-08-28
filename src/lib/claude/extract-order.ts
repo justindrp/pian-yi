@@ -12,13 +12,8 @@ import {
   saveMessage,
   updateMessageReceipt,
 } from "@/lib/claude/conversation";
-import { isClosedHoliday } from "@/lib/holidays/id";
+import { isDeliveryDay } from "@/lib/holidays/id";
 import { stripCompensation } from "@/lib/kitchen/compensation";
-import {
-  buildRecurringDeliveryRows,
-  FIXED_SCHEDULE_PREFS,
-  portionsInRange,
-} from "@/lib/orders/build-recurring-deliveries";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -51,8 +46,11 @@ export interface ExtractedOrderInput {
   area_2?: string;
   sub_area_2?: string;
   address_2_meal?: string;
-  meal_time_preference?: string;
   custom_schedule?: Record<string, unknown>;
+  /**
+   * Every delivery day the customer named. Required, and `[]` is the answer for
+   * a customer who books day by day — see the tool description.
+   */
   delivery_schedule?: DeliveryScheduleSlot[];
   start_date?: string;
   end_date?: string;
@@ -169,18 +167,6 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
     description:
       "Which meal is delivered to address_2 every day. Required whenever address_2 is given — without it the second address is stored but never delivered to.",
   },
-  meal_time_preference: {
-    type: "string",
-    enum: [
-      "lunch_only",
-      "dinner_only",
-      "both_fixed",
-      "per_day_decision",
-      "default_lunch",
-      "default_dinner",
-      "custom_schedule",
-    ],
-  },
   custom_schedule: { type: "object" },
   start_date: {
     type: "string",
@@ -194,7 +180,7 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
   delivery_schedule: {
     type: "array",
     description:
-      "Every delivery day the customer named, one entry per day per meal. Use this whenever the days are known — including a plain Senin–Jumat run and especially a set with gaps (11, 12, 13, 14, 18). Omitting it leaves the days to be guessed from start_date/end_date by weekday, which is a different set of days whenever the customer skipped one. package_size must equal the sum of all slot portions.",
+      'REQUIRED. Every delivery day the customer named, one entry per day per meal — a plain Senin–Jumat run and a set with gaps (11, 12, 13, 14, 18) are both written out in full. Send `[]`, an empty array, when the customer books day by day ("bebas", "saya pesan harian", "nanti saya kabari") — that is a real answer and it sells them the quota with no dates attached. Never leave the field out: if you do not yet know which days they want, ask them before calling this tool at all. package_size must equal the sum of all slot portions.',
     items: {
       type: "object",
       properties: {
@@ -309,6 +295,7 @@ export function extractOrderTool(areas: string[]): Anthropic.Messages.Tool {
         "portions_per_delivery",
         "address",
         "area",
+        "delivery_schedule",
       ],
     },
   };
@@ -484,13 +471,6 @@ export function statedWeeks(text: string): number | null {
   }
   return weeks.size === 1 ? ([...weeks][0] as number) : null;
 }
-
-/** A customer who wrote one of these asked for lunch. */
-const LUNCH_WORDS = /\b(makan siang|siang aja|siang saja|siang doang|lunch)\b/i;
-
-/** A customer who never wrote one of these never asked for dinner. */
-const DINNER_WORDS =
-  /\b(malam|dinner|keduanya|2\s*(x|kali)\s*sehari|dua kali)\b/i;
 
 /** The customer's own messages, newest last, as one string per message. */
 async function customerMessages(
@@ -812,7 +792,7 @@ function nextDeliveryDate(): string {
   d.setDate(d.getDate() + 1);
   for (let i = 0; i < 14; i++) {
     const ymd = d.toISOString().slice(0, 10);
-    if (d.getDay() !== 0 && !isClosedHoliday(ymd)) return ymd;
+    if (isDeliveryDay(ymd)) return ymd;
     d.setDate(d.getDate() + 1);
   }
   return d.toISOString().slice(0, 10);
@@ -1285,6 +1265,43 @@ export async function createOrderFromExtraction(
     }
   }
 
+  // Never sell a package without knowing which days it is for.
+  //
+  // `delivery_schedule` is a required field of the tool now, and `[]` is the
+  // answer for a customer who books day by day — so an absent field is the
+  // model failing to ask, not a customer with nothing to say. It used to be
+  // optional, and whenever it was missing this handler invented a week out of
+  // a meal-preference enum: Senin–Jumat, both meals, starting tomorrow. That
+  // put food on the kitchen sheet for dates nobody had confirmed.
+  //
+  // Refuse the whole order rather than create one with a null schedule: an
+  // order is what sends the bank details, and a customer should not be asked
+  // to transfer before we can say when they eat. Returning here writes nothing
+  // and lets the model call again next turn with the days — or with `[]`.
+  //
+  // Not on the payment-proof path (`sendPaymentInfo: false`): that customer has
+  // already transferred, and blocking there would throw away a real payment.
+  if (sendPaymentInfo && input.delivery_schedule === undefined) {
+    const askMsg =
+      "Baik kak, sebelum saya proses — untuk tanggal pengirimannya mau mulai kapan dan hari apa saja ya? 🙏 Kalau kakak mau pesan harian saja (tidak ditentukan dari sekarang), boleh juga kok, tinggal kabari saya tiap mau kirim.";
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: askMsg,
+      modelUsed: "system",
+    });
+    const askMessageId = await sendTextMessage(phone, askMsg);
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId: askMessageId,
+      status: "sent",
+    });
+    console.log(
+      `[extract-order] order withheld for ${customerId}: no delivery_schedule`,
+    );
+    return;
+  }
+
   const schedule = input.delivery_schedule?.length
     ? input.delivery_schedule
     : null;
@@ -1316,77 +1333,16 @@ export async function createOrderFromExtraction(
     ? sortedSchedule[sortedSchedule.length - 1].date
     : (input.end_date ?? null);
 
-  // The shape of this order, inferred from THIS conversation only. It is a
-  // local working value used to size the package and to derive days the model
-  // did not spell out — it is never stored. There is no inheritance from a
-  // previous order: a renewal that names no days is a renewal with no days, and
-  // the bot must ask. Reading the last package's pattern guessed on the
-  // customer's behalf, and a guess that lands on the kitchen sheet is food
-  // somebody has to eat.
-  const extractedPreference = input.meal_time_preference ?? "per_day_decision";
-
-  // The customer's own words are the only evidence that they asked for dinner.
-  // Lina Marlianty wrote "2 minggu dl aja.. 1 porsi" and never mentioned malam;
-  // the recovery extraction booked her both_fixed and sold 18 porsi for an order
-  // that was 10 porsi of lunch. Siang is the documented default, so a both_fixed
-  // no message supports is downgraded rather than trusted.
-  const inbound = await customerMessages(customerId);
-  const askedForDinner = inbound.some((m) => DINNER_WORDS.test(m));
-  const askedForLunch = inbound.some((m) => LUNCH_WORDS.test(m));
-  // And the mirror of it: a customer who did say "makan siang" must not fall
-  // through to per_day_decision, which delivery generation skips. Dewi wrote
-  // "Makan siang" and named her days on 2026-07-28; the order was created at the
-  // right size and price and produced no delivery rows at all.
-  const weeks = inbound.map(statedWeeks).find((n) => n !== null) ?? null;
-  // A customer who bought a block of days described a standing pattern even if
-  // they never named a meal, and makan siang is the documented default — the
-  // prompt states it in the same breath as asking. Left at per_day_decision the
-  // order generates nothing: Lina Marlianty's "2 minggu dl aja.. 1 porsi" was
-  // priced exactly right and produced no delivery rows at all. A customer with
-  // no duration and no dates is genuinely ordering bebas and still falls
-  // through, so this never books a week for someone who never asked for one.
-  const standingBlock = !sortedSchedule && (weeks !== null || Boolean(endDate));
-  const mealTimePreference =
-    extractedPreference === "both_fixed" && !askedForDinner
-      ? "lunch_only"
-      : !FIXED_SCHEDULE_PREFS.includes(extractedPreference) &&
-          !sortedSchedule &&
-          (askedForLunch || askedForDinner)
-        ? askedForLunch && askedForDinner
-          ? "both_fixed"
-          : askedForLunch
-            ? "lunch_only"
-            : "dinner_only"
-        : !FIXED_SCHEDULE_PREFS.includes(extractedPreference) && standingBlock
-          ? "lunch_only"
-          : extractedPreference;
-
-  // The schedule is the order. A customer who says "20 hari mulai 10 Agustus,
-  // selesai 8 September" has described a range that yields exactly 20 delivery
-  // days, and the model's prose arithmetic said 22 — so the order was sold at
-  // 22 porsi while writing 20 delivery rows, incoherent with its own schedule.
-  // When both dates and a standing meal pattern are present, count the days the
-  // range actually produces instead of trusting the number the model wrote.
-  const rangeSize =
-    !sortedSchedule &&
-    endDate &&
-    FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
-      ? portionsInRange(
-          {
-            portions_per_delivery: input.portions_per_delivery ?? 1,
-            portions_lunch: input.portions_lunch ?? null,
-            portions_dinner: input.portions_dinner ?? null,
-            meal_time_preference: mealTimePreference,
-            lunch_address_slot: 1,
-            dinner_address_slot: 1,
-          },
-          startDate,
-          endDate,
-        )
-      : null;
-  // A duration in weeks is a portion count: our week is Senin-Jumat unless the
+  // A duration in weeks is a portion count for a customer who named no days:
+  // "2 minggu, 1 porsi" is 10 portions. Our week is Senin-Jumat unless the
   // customer picks Sabtu, and the bot must never hold an order open asking which.
-  const portionsPerDay = mealTimePreference === "both_fixed" ? 2 : 1;
+  const inbound = await customerMessages(customerId);
+  const weeks = inbound.map(statedWeeks).find((n) => n !== null) ?? null;
+
+  // portions_per_delivery is one day's portions and is a required field, so it
+  // is a better source for this than the meal-preference enum it replaced —
+  // that enum could only ever say 1 or 2.
+  const portionsPerDay = Math.max(1, input.portions_per_delivery ?? 1);
   // `inbound` is newest first, so this is the last total the customer stated —
   // and a customer who changes their mind means the newer number. Tiwi asked for
   // 8 porsi, was told 8 was off the list, wrote "Boleh 6 porsi dulu kak", and
@@ -1416,23 +1372,15 @@ export async function createOrderFromExtraction(
   // what turned Cila's 5-porsi order into a copy of Naya's. For someone else's
   // package, the size the model extracted for that package is all we have.
   const chatSize =
-    beneficiary.kind === "self"
-      ? (paidSize ?? statedTotal ?? weeksSize ?? rangeSize)
-      : null;
+    beneficiary.kind === "self" ? (paidSize ?? statedTotal ?? weeksSize) : null;
   const packageSize = chatSize ?? flooredPackageSize;
   if (packageSize !== flooredPackageSize) {
     console.log(
-      `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} stated=${statedTotal} weeks=${weeksSize} range=${rangeSize})`,
+      `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} stated=${statedTotal} weeks=${weeksSize})`,
     );
   }
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
     await getExtractedOrderPricing(packageSize, nasiMerah, orderCustomerId);
-
-  if (mealTimePreference !== extractedPreference) {
-    console.log(
-      `[extract-order] meal_time_preference ${extractedPreference} -> ${mealTimePreference} (customer said siang=${askedForLunch} malam=${askedForDinner})`,
-    );
-  }
 
   // A customer already being asked to pay for an order has one order, not two.
   // The model re-calls extract_order whenever it restates the summary, and each
@@ -1513,10 +1461,14 @@ export async function createOrderFromExtraction(
   // filters on no order status, so three unpaid orders were carrying 37 future
   // portions on 2026-08-28.
   //
-  // Stored exactly as the customer asked, holidays included. mark_paid drops
-  // the closed days when it materialises the rows, which leaves those portions
-  // unbooked for the customer to move — the same result as before, and it keeps
-  // this column an honest record of what they asked for.
+  // Stored exactly as the customer asked, Minggu and libur nasional included.
+  // mark_paid drops the days we do not deliver on (`isDeliveryDay`) when it
+  // materialises the rows, which leaves those portions unbooked for the
+  // customer to move, and keeps this column an honest record of what they
+  // asked for.
+  //
+  // Null only when the customer books day by day and the model sent `[]`. A
+  // model that sends nothing at all never reaches here — see the guard above.
   const requestedSchedule:
     | { date: string; meal_type: string; portions: number }[]
     | null = sortedSchedule
@@ -1525,31 +1477,7 @@ export async function createOrderFromExtraction(
         meal_type: s.meal_type,
         portions: s.portions,
       }))
-    : FIXED_SCHEDULE_PREFS.includes(mealTimePreference)
-      ? // The model named a standing pattern but no dates. Derive the days
-        // from it now, once, so the order carries real dates from here on —
-        // the enum that produced them is not stored and cannot be re-read.
-        // order_id is unknown until the insert below and is not part of the
-        // stored shape, so it is left empty here.
-        buildRecurringDeliveryRows({
-          customer_id: orderCustomerId,
-          order_id: "",
-          start_date: startDate,
-          end_date: endDate,
-          package_size: packageSize,
-          meal_time_preference: mealTimePreference,
-          portions_per_delivery: input.portions_per_delivery ?? 1,
-          portions_lunch: input.portions_lunch ?? null,
-          portions_dinner: input.portions_dinner ?? null,
-          lunch_address_slot: lunchSlot,
-          dinner_address_slot: dinnerSlot,
-          subcontractor_id: subcontractorId,
-        }).map((r) => ({
-          date: r.delivery_date,
-          meal_type: r.meal_type as string,
-          portions: r.portions,
-        }))
-      : null;
+    : null;
 
   const orderFields = {
     customer_id: orderCustomerId,
@@ -1652,8 +1580,8 @@ export async function createOrderFromExtraction(
     : null;
 
   // The kitchen has no other way to learn about an accepted custom request:
-  // `buildRecurringDeliveryRows` writes no per-row notes, and the AI summary is
-  // written later and only sometimes mentions it.
+  // nothing that materialises a delivery row writes a per-row note, and the AI
+  // summary is written later and only sometimes mentions it.
   const kitchenNote = mergeKitchenNote(
     existingCustomer?.notes ?? null,
     input.catatan ?? "",

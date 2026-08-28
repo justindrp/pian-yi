@@ -95,9 +95,13 @@ A customer who transfers before the bot ever called `extract_order` used to leav
 
 The webhook now runs the same forced-tool `extractOrderFromConversation()` the admin inbox uses when an image arrives and the customer has **no order in any status**, creates the order with `sendPaymentInfo: false` (they have already paid), then falls into the normal proof handling so the order advances to `payment_proof_received`. Extraction returns null when the chat never contained an order, and the create is gated on `package_size > 0 && address`, so a photo from a browsing customer still creates nothing. Admins get a **high**-priority push either way.
 
-## An order row must carry the meal preference the code computed, not the one the model returned
+## The days are required, and nothing infers them
 
-`createOrderFromExtraction` infers the meal preference three ways — inherit the customer's previous standing pattern, downgrade an unsupported `both_fixed` to `lunch_only`, promote a `per_day_decision` the customer's own words contradict — and then wrote `input.meal_time_preference ?? "per_day_decision"` to the row anyway. Every inference fed delivery generation and none of it reached the order, so the stored preference disagreed with the schedule sitting underneath it: an order with a week of `lunch_only` rows reading `per_day_decision`, which every downstream filter (`FIXED_SCHEDULE_PREFS`, the daily sheet) then skips. The insert now stores the computed value.
+`delivery_schedule` is a **required** field of `extract_order`, and `[]` is the answer for a customer who books day by day. A call that omits it is refused outright: `createOrderFromExtraction` writes nothing, sends no bank details, asks the customer which days they want, and lets the model call again next turn — the same shape as the name guard, and for the same reason. Creating the order is what asks for money.
+
+This replaced a ladder of inferences (2026-08-28). `createOrderFromExtraction` used to guess a meal preference three ways — inherit the customer's previous standing pattern, downgrade an unsupported `both_fixed` to `lunch_only`, promote a `per_day_decision` the customer's own words contradicted — and a stated duration in weeks or an end date was read as a standing block and filled with `lunch_only`. Every one of those existed to answer a question the model was not being made to answer, and each turned into dates: a whole week of deliveries built out of an enum. galvent's is the case that made it visible — "Jdwal tdk menetap", one day asked for, five booked.
+
+What survives is the arithmetic that needs no schedule: `statedWeeks()` still reads "2 minggu" as 10 portions, because a duration is a **size** for a customer who named no days, and Lina Marlianty's 10-porsi order is why. `portions_per_delivery` is a required field and is now the source for one day's portions — the enum it replaced could only ever say 1 or 2.
 
 ## A payment-date question is answered, not escalated
 
@@ -185,7 +189,7 @@ That is the customer-facing half. The other half is that the image drifts, becau
 
 ## An accepted custom request now reaches the kitchen, in `catatan`
 
-Agreeing to "tanpa nasi" in the chat used to be the whole of it. `extract_order` had eighteen fields and the only rice one was `nasi_merah`, a *paid* upsell — so the prompt told the model to accept the request and never stall, then gave it nowhere to record what it had promised. `buildRecurringDeliveryRows` writes no per-row `notes`, so every delivery row landed `notes: null`. On 2026-08-25 Surya ordered 15 porsi tanpa nasi and all five rows were blank; the kitchen would have cooked rice for the lot if an admin had not typed the note into `customers.notes` by hand.
+Agreeing to "tanpa nasi" in the chat used to be the whole of it. `extract_order` had eighteen fields and the only rice one was `nasi_merah`, a *paid* upsell — so the prompt told the model to accept the request and never stall, then gave it nowhere to record what it had promised. Nothing that materialises a delivery row writes a per-row `notes`, so every delivery row landed `notes: null`. On 2026-08-25 Surya ordered 15 porsi tanpa nasi and all five rows were blank; the kitchen would have cooked rice for the lot if an admin had not typed the note into `customers.notes` by hand.
 
 `extract_order` now takes `catatan`, and the prompt requires the accepted requests (items 1–4 — tanpa nasi, tidak pedas, tidak ada daging sapi, tidak ada seafood) to be passed in it. Nasi merah stays in its own field because it moves the price.
 
@@ -219,7 +223,7 @@ The refusal is scoped to `sendPaymentInfo: true`. The payment-proof path (`sendP
 
 ## A schedule that arrives after the order row is backfilled onto it
 
-An order created the moment the customer confirms has no delivery rows if their days come in the *next* message, and nothing else ever writes them — auto-generation deliberately skips a `per_day_decision` order, and non-contiguous days cannot be derived from a range anyway. Cindy Angelia's 5-porsi order was created at turn 3; she named 11, 12, 13, 14 and 18 Agustus afterwards, and her order sat with an empty schedule.
+An order created the moment the customer confirms has no delivery rows if their days come in the *next* message, and nothing else ever writes them — nothing generates a schedule, and non-contiguous days could never have been derived from a range anyway. Cindy Angelia's 5-porsi order was created at turn 3; she named 11, 12, 13, 14 and 18 Agustus afterwards, and her order sat with an empty schedule.
 
 `fillMissingSchedule()` (`src/lib/claude/extract-order.ts`) re-runs the forced-tool extraction and writes the `delivery_schedule` it returns, capped at the order's unbooked balance (`unbookedByOrder()`) so a package can never be over-booked, then sets `start_date`, `end_date` and the meal preference the days imply. It only ever touches an order with **zero** delivery rows, so it cannot duplicate a schedule already written.
 
@@ -305,15 +309,9 @@ The `extract_order` recovery has a twin for the customers who already bought. Th
 
 The webhook now matches `SCHEDULE_PROMISE` on any reply that called no `record_daily_order`, for a customer with an active order and `schedule.unbooked > 0`, and hands the reply to `extractPromisedSchedule()` — a small model call that resolves "mulai Senin 24 Agustus", "besok dan lusa" or "Senin sampai Jumat" into ISO dates against the WIB clock. As with order recovery, the sentence shape is only the trigger; the extraction is the guard. It returns null for an offer, a question, or anything it cannot date, drops dates before today, and refuses to invent an end date for a bare "mulai". What it returns goes through `handleToolUse("record_daily_order")`, the same path the tool call would have taken, so the active-order check, `pickDrawOrder()`, the customer-wide quota gate, the libur nasional drop and the double-booking skip all still apply — a wrong guess is dropped there, never written. If no dates can be recovered, admins get a high-priority push instead, because by then the customer has already been told the dates are set.
 
-## A block of days with no meal named defaults to makan siang
+## Neither a block of days nor a renewal produces a schedule any more
 
-A customer who bought a duration described a standing pattern even without saying siang or malam, and siang is the documented default — the prompt states it in the same breath as asking. Left at `per_day_decision` the order generates nothing: Lina Marlianty's "2 minggu dl aja.. 1 porsi" was priced exactly right (10 porsi, Rp 280.000) and produced no delivery rows at all. `createOrderFromExtraction` now reads a stated duration in weeks or an end date as a standing block and fills `lunch_only`. A customer with neither is genuinely ordering bebas and still falls through, so this never books a week for someone who never asked for one.
-
-## A renewal inherits the schedule the previous package ran on
-
-A renewal extracted from chat rarely restates the days: the customer has a habit and neither side says it out loud. `createOrderFromExtraction` used to fill the gap from the customer's most recent order that carried a standing pattern. **That inheritance is gone** (2026-08-28). A renewal that names no days is a renewal with no days, and the bot must ask: a guess that lands on the kitchen sheet is food somebody has to eat, and the guess was made from a column that had already been shown to disagree with the schedule underneath it. The quota-exhausted prompt now offers the same *size* again and asks which days before placing anything. What survives is inference from **this** conversation — a `both_fixed` no message supports is still downgraded, and a customer who wrote "makan siang" is still read as lunch — because that is the customer's own words, not a previous order's.
-
-A customer with nothing on file still falls through to `per_day_decision` — unless their own messages named a meal. Dewi wrote "Makan siang" and listed her days on 2026-07-28; the order was created at the right size and price and produced no delivery rows at all, because nothing carried the meal into the order. `createOrderFromExtraction` now reads the customer's own messages for siang / malam and sets `lunch_only`, `dinner_only` or `both_fixed` from them; a customer who named neither still falls through, since defaulting them into a generated week would book deliveries for every bebas customer who never asked for a fixed schedule.
+Two rules used to live here: a duration with no meal named was filled with `lunch_only`, and a renewal inherited the days of the customer's most recent standing order. Both were deleted on 2026-08-28 along with the rest of the inference ladder — see "The days are required, and nothing infers them". A renewal that restates no days is now an order with no days, which is a normal order: the customer books each date through `record_daily_order`. The size half of the duration rule is kept (`statedWeeks()`); only the invented week is gone.
 
 The corpus is filtered to match: a case whose customer messages never state a size in words — a package agreed from an order form sent as a photo — is dropped rather than scored, because the model never sees images and cannot reproduce it.
 

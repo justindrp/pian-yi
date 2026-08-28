@@ -130,6 +130,15 @@ const BASE = {
   address: "Kost Cila, Jl. Melati 3",
   maps_link: "",
   area: "Gading Serpong",
+  // Required now: an order without the days is refused before anything is
+  // written, so every fixture here has to carry them.
+  delivery_schedule: [
+    { date: "2026-09-01", meal_type: "lunch", portions: 1 },
+    { date: "2026-09-02", meal_type: "lunch", portions: 1 },
+    { date: "2026-09-03", meal_type: "lunch", portions: 1 },
+    { date: "2026-09-04", meal_type: "lunch", portions: 1 },
+    { date: "2026-09-05", meal_type: "lunch", portions: 1 },
+  ],
 };
 
 function orderWrite(writes: Write[]) {
@@ -170,7 +179,6 @@ describe("a package bought for someone else", () => {
 
     await createOrderFromExtraction(BUYER_ID, BUYER_PHONE, {
       ...BASE,
-      meal_time_preference: "lunch_only",
       beneficiary_name: "Cila",
       beneficiary_phone: CILA_PHONE,
     });

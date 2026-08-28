@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { logEdit } from "@/lib/audit/log-edit";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
-import { isClosedHoliday } from "@/lib/holidays/id";
+import { isDeliveryDay } from "@/lib/holidays/id";
 import {
   remainingTodayByOrder,
   unbookedByOrder,
@@ -670,11 +670,14 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     | null;
 
   if (Array.isArray(requested) && requested.length > 0 && !alreadyScheduled) {
-    // The kitchens are shut on libur nasional, so a row on one is a delivery
-    // nobody cooks. Dropping the day here leaves its portions unbooked, which
-    // is exactly right: the customer still owns them and can move them.
+    // We do not deliver on Minggu, and the kitchens are shut on libur
+    // nasional, so a row on either is a delivery nobody cooks. Dropping the day
+    // here leaves its portions unbooked, which is exactly right: the customer
+    // still owns them and can move them. Minggu used to slip through — the
+    // filter only asked about holidays, and a schedule the model wrote out by
+    // date never passed through any weekday check.
     const deliveryRows = requested
-      .filter((r) => !isClosedHoliday(r.date))
+      .filter((r) => isDeliveryDay(r.date))
       .map((r) => ({
         delivery_date: r.date,
         customer_id: order.customer_id,

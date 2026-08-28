@@ -1678,6 +1678,12 @@ export async function processSavedCustomerMessage(params: {
           "maps_link",
           "area",
           "size",
+          // The days are part of the order brief, not an optional extra. The
+          // schedule used to be optional and the code invented a week from a
+          // meal-preference enum whenever it was missing — food on the kitchen
+          // sheet for dates nobody had confirmed. `[]` is the answer for a
+          // customer who books day by day.
+          "delivery_schedule",
           ...(dapurOptions.length > 0 ? ["subcontractor_id"] : []),
         ],
       },

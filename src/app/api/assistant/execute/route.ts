@@ -4,8 +4,7 @@ import { logEdit } from "@/lib/audit/log-edit";
 import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
-import { isClosedHoliday } from "@/lib/holidays/id";
-import { buildRecurringDeliveryRows } from "@/lib/orders/build-recurring-deliveries";
+import { isDeliveryDay } from "@/lib/holidays/id";
 import {
   deleteDelivery,
   isLocked,
@@ -355,10 +354,11 @@ export async function POST(request: Request) {
         requested.length > 0 &&
         !alreadyScheduled
       ) {
-        // A libur nasional is a day nobody cooks. Dropping it leaves those
-        // portions unbooked, which is right — the customer still owns them.
+        // Minggu and libur nasional are days nobody cooks. Dropping them
+        // leaves those portions unbooked, which is right — the customer still
+        // owns them.
         const deliveryRows = requested
-          .filter((r) => !isClosedHoliday(r.date))
+          .filter((r) => isDeliveryDay(r.date))
           .map((r) => ({
             delivery_date: r.date,
             customer_id: order.customer_id,
@@ -881,104 +881,6 @@ export async function POST(request: Request) {
 
       return reply(
         `Customer ${name ?? phoneNumber} sudah dibuat (ID: ${newCustomer.id}).`,
-      );
-    }
-
-    case "create_order": {
-      const customerId = input.customer_id as string;
-      const packageSize = input.package_size as number;
-      const portionsPerDelivery = input.portions_per_delivery as number;
-      const pricePerPortion = input.price_per_portion as number;
-      const mealTimePreference = input.meal_time_preference as string;
-      const startDate = input.start_date as string;
-      const endDate = (input.end_date as string | undefined) ?? null;
-      const totalPrice = packageSize * pricePerPortion;
-
-      // A per-delivery count above the package size means the model confused the
-      // two, and every generated day would draw the whole package. Julian S's
-      // renewal was created that way: package 5, per-delivery 5, four days each
-      // billing 5 portions.
-      if (
-        !Number.isFinite(portionsPerDelivery) ||
-        portionsPerDelivery < 1 ||
-        portionsPerDelivery > packageSize
-      ) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `portions_per_delivery (${portionsPerDelivery}) must be between 1 and package_size (${packageSize}) — it is one day's portions, not the package total`,
-          },
-          { status: 400 },
-        );
-      }
-
-      const { data: existingCustomer } = await db
-        .from("customers")
-        .select("id, subcontractor_id")
-        .eq("id", customerId)
-        .single();
-      if (!existingCustomer) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `Customer ${customerId} not found — use query_customers to get the correct UUID`,
-          },
-          { status: 400 },
-        );
-      }
-
-      const { data: newOrder, error: insertErr } = await db
-        .from("orders")
-        .insert({
-          customer_id: customerId,
-          package_size: packageSize,
-          portions_per_delivery: portionsPerDelivery,
-          price_per_portion: pricePerPortion,
-          total_price: totalPrice,
-          // The admin names a standing pattern; the order stores the days it
-          // produces, not the pattern. An enum on the order was a lossy summary
-          // of a schedule — it could not express "Senin-Kamis malam, Jumat dan
-          // Sabtu keduanya" — and reading a delivery row against it produced a
-          // false bug report on food that was correct. mark_paid turns these
-          // days into rows.
-          requested_schedule: buildRecurringDeliveryRows({
-            customer_id: customerId,
-            order_id: "",
-            start_date: startDate,
-            end_date: endDate,
-            package_size: packageSize,
-            meal_time_preference: mealTimePreference,
-            portions_per_delivery: portionsPerDelivery,
-            portions_lunch: null,
-            portions_dinner: null,
-            lunch_address_slot: 1,
-            dinner_address_slot: 1,
-            subcontractor_id: null,
-          }).map((r) => ({
-            date: r.delivery_date,
-            meal_type: r.meal_type,
-            portions: r.portions,
-          })) as OrdersUpdate["requested_schedule"],
-          start_date: startDate,
-          end_date: endDate,
-          status: "pending_payment",
-          size: "s",
-          // POST /api/orders takes the kitchen from the admin form; this path has
-          // no form, and leaving it null propagated into every generated delivery
-          // row, none of which then showed on the kitchen's own page.
-          subcontractor_id: existingCustomer.subcontractor_id,
-        })
-        .select("id")
-        .single();
-      if (insertErr || !newOrder) {
-        return NextResponse.json(
-          { ok: false, error: insertErr?.message ?? "Insert failed" },
-          { status: 500 },
-        );
-      }
-      const formatted = new Intl.NumberFormat("id-ID").format(totalPrice);
-      return reply(
-        `Pesanan baru sudah dibuat (ID: ${newOrder.id}, total: Rp ${formatted}).`,
       );
     }
 

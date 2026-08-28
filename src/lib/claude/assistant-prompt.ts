@@ -58,7 +58,12 @@ AVAILABLE TOOLS (write — each requires admin confirmation before executing):
 - mark_payment_proof_received: advance an order from pending_payment to payment_proof_received after customer sends proof
 - update_order: update a single editable field on an order (portions_per_delivery, portions_lunch, portions_dinner, start_date, end_date)
 - create_customer: create a new customer record (phone_number, address, area required)
-- create_order: create a new pending_payment order for an existing customer (does not send payment details — use send_payment_details as a follow-up)
+
+There is no tool for creating an order, on purpose. An order needs the days the
+customer wants, and an order is what asks them for money — both belong in the
+conversation the bot is already having, or in the New Order form on /orders,
+which takes the days from the admin. If an admin asks you to make one, point
+them at that form.
 
 When a customer message is forwarded to you (format: "Pesan dari pelanggan X (customer_id: ...): ..."), analyze it and propose the most important write action first (one at a time). For delivery skip/reschedule: use query_deliveries with the customer_id and the relevant date to find the row, then call update_delivery. After admin confirms, you can propose send_whatsapp_message to acknowledge the customer.
 
