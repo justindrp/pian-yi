@@ -37,7 +37,6 @@ export interface CorpusExpectation {
   packageSize: number;
   pricePerPortion: number;
   totalPrice: number;
-  mealTimePreference: string | null;
   deliveryDates: string[];
 }
 
@@ -69,7 +68,7 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
   const { data: orders } = await db
     .from("orders")
     .select(
-      "id, customer_id, package_size, price_per_portion, total_price, meal_time_preference, created_at, customers!orders_customer_id_fkey(name, phone_number)",
+      "id, customer_id, package_size, price_per_portion, total_price, created_at, customers!orders_customer_id_fkey(name, phone_number)",
     )
     .eq("source", "purchase")
     // A cancelled order is not something the bot should reproduce. The phantom
@@ -157,7 +156,7 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
     const { data: siblings } = await db
       .from("orders")
       .select(
-        "id, package_size, price_per_portion, total_price, meal_time_preference, created_at",
+        "id, package_size, price_per_portion, total_price, created_at",
       )
       .eq("customer_id", order.customer_id ?? "")
       .eq("source", "purchase")
@@ -188,7 +187,6 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
         packageSize: sib.package_size,
         pricePerPortion: sib.price_per_portion,
         totalPrice: sib.total_price,
-        mealTimePreference: sib.meal_time_preference,
         deliveryDates: (sibDels ?? []).map((d) => d.delivery_date),
       });
     }
@@ -205,7 +203,6 @@ export async function buildCorpus(count = 20): Promise<CorpusCase[]> {
         packageSize: order.package_size,
         pricePerPortion: order.price_per_portion,
         totalPrice: order.total_price,
-        mealTimePreference: order.meal_time_preference,
         deliveryDates: (dels ?? []).map((d) => d.delivery_date),
       },
     });
@@ -217,7 +214,7 @@ async function main() {
   const cases = await buildCorpus(Number(process.argv[2] ?? 20));
   for (const c of cases) {
     console.log(
-      `${c.createdAt.slice(0, 10)} ${c.orderId.slice(0, 8)} ${c.customerName ?? "?"} — ${c.turns.length} turns, pkg=${c.expected.packageSize} @${c.expected.pricePerPortion} ${c.expected.mealTimePreference ?? "-"} ${c.expected.deliveryDates.length} deliveries`,
+      `${c.createdAt.slice(0, 10)} ${c.orderId.slice(0, 8)} ${c.customerName ?? "?"} — ${c.turns.length} turns, pkg=${c.expected.packageSize} @${c.expected.pricePerPortion} ${c.expected.deliveryDates.length} deliveries`,
     );
   }
   console.log(`\n${cases.length} cases`);

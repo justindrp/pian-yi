@@ -869,7 +869,6 @@ async function main() {
           portions_per_delivery: 1,
           price_per_portion: priceRaw,
           total_price: totalPrice,
-          meal_time_preference: "per_day_decision",
           start_date: new Date().toISOString().slice(0, 10),
         })
         .select("id")
