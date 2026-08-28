@@ -1189,6 +1189,11 @@ export async function processWebhookAsync(
       .from("customer_state")
       .update({ state: "ordering", updated_at: new Date().toISOString() })
       .eq("customer_id", customerId);
+    // Keep the snapshot honest. stateRow was read near the top of this
+    // function and is handed to processSavedCustomerMessage below, which feeds
+    // it straight to buildSystemPrompt — so without this the model is told
+    // customerState "new" on the very turn the customer started ordering.
+    if (stateRow) stateRow.state = "ordering";
   }
 
   const learnedNotes = await tryLearnCustomerContext(customerId, db);
@@ -1267,6 +1272,10 @@ export async function processWebhookAsync(
       .eq("customer_id", customerId)
       .or("menu_shown.is.null,menu_shown.eq.false")
       .select("customer_id");
+    // True either way now — this request claimed it, or a concurrent one did.
+    // The stale snapshot told the model menuShown:false immediately after the
+    // welcome sequence had sent the menu, price list and T&C.
+    if (stateRow) stateRow.menu_shown = true;
 
     if (claimed && claimed.length > 0) {
       const [
@@ -1936,8 +1945,20 @@ export async function processSavedCustomerMessage(params: {
 
   // Run the tool before asking for the accompanying text, so the follow-up call
   // below can report the real result back to the model.
+  const toolResults = new Map<string, ToolResult>();
   for (const toolUse of toolUses) {
-    await handleToolUse(toolUse, customerId, phone, customerName);
+    const result = await handleToolUse(
+      toolUse,
+      customerId,
+      phone,
+      customerName,
+    );
+    toolResults.set(toolUse.id, result);
+    if (!result.ok) {
+      console.warn(
+        `[webhook] tool ${toolUse.name} did nothing for ${customerId}: ${result.error}`,
+      );
+    }
   }
 
   // An order the conversation already contains must never die in a turn that
@@ -1982,7 +2003,7 @@ export async function processSavedCustomerMessage(params: {
     console.log(
       `[webhook] menu claimed but never sent — sending it for ${customerId}`,
     );
-    await handleToolUse(
+    const recovered = await handleToolUse(
       {
         type: "tool_use",
         id: "menu-claim",
@@ -1994,6 +2015,16 @@ export async function processSavedCustomerMessage(params: {
       phone,
       customerName,
     );
+    // The reply has already gone out claiming the menu was sent, so a failed
+    // recovery leaves the same lie standing that the guard exists to catch.
+    if (!recovered.ok) {
+      await sendPushToAllAdmins(
+        `Menu dijanjikan tapi tidak terkirim — ${customerName ?? phone}`,
+        recovered.error,
+        "/inbox",
+        "high",
+      ).catch(console.error);
+    }
   }
 
   // The model promises a delivery date to a customer who already has quota and
@@ -2018,7 +2049,7 @@ export async function processSavedCustomerMessage(params: {
       console.log(
         `[webhook] schedule promised but never booked — recording ${promisedSchedule.delivery_dates.join(", ")} for ${customerId}`,
       );
-      await handleToolUse(
+      const recovered = await handleToolUse(
         {
           type: "tool_use",
           id: "schedule-promise",
@@ -2030,6 +2061,17 @@ export async function processSavedCustomerMessage(params: {
         phone,
         customerName,
       );
+      // record_daily_order pushes on its own for the failures it can name, but
+      // not for the ones it only logs — and the customer has already been told
+      // the dates are set, so silence here is the worst outcome.
+      if (!recovered.ok) {
+        await sendPushToAllAdmins(
+          `Jadwal dijanjikan tapi tidak tercatat — ${customerName ?? phone}`,
+          recovered.error,
+          "/deliveries",
+          "high",
+        ).catch(console.error);
+      }
     } else {
       console.warn(
         `[webhook] schedule promised but no dates could be recovered for ${customerId}`,
@@ -2084,7 +2126,15 @@ export async function processSavedCustomerMessage(params: {
             content: toolUses.map((t) => ({
               type: "tool_result" as const,
               tool_use_id: t.id,
-              content: "done",
+              // The real outcome, not the literal "done" this used to send for
+              // every tool regardless of whether it wrote anything.
+              content: JSON.stringify(
+                toolResults.get(t.id) ?? {
+                  ok: false,
+                  error: "Tool tidak dijalankan.",
+                },
+              ),
+              is_error: toolResults.get(t.id)?.ok === false,
             })),
           },
         ],
@@ -2466,12 +2516,26 @@ async function handlePaymentProofImage(
   );
 }
 
+/**
+ * What a tool actually did, in the words the model is allowed to repeat.
+ *
+ * Every branch of handleToolUse used to return void, and the follow-up call
+ * that asks the model for the text to go with a tool call fed it the literal
+ * string "done" for every tool. record_daily_order alone has eight ways to
+ * write nothing — no valid date, no active order, no draw order, no unbooked
+ * quota, every date a holiday, nothing left after dedup, an insert error —
+ * and each of them reached the model as success, so it could answer "sudah
+ * tercatat kak" over an empty calendar. The messages are Indonesian because
+ * the model paraphrases them straight into its reply.
+ */
+type ToolResult = { ok: true; message: string } | { ok: false; error: string };
+
 async function handleToolUse(
   tool: Anthropic.Messages.ToolUseBlock,
   customerId: string,
   phone: string,
   customerName: string | null,
-): Promise<void> {
+): Promise<ToolResult> {
   const db = createAdminClient();
 
   if (tool.name === "extract_order") {
@@ -2483,6 +2547,16 @@ async function handleToolUse(
         tool.input as ExtractedOrderInput,
       ),
     );
+    // createOrderFromExtraction returns void, so this cannot say whether the
+    // order was written — it withholds one when the delivery days or a
+    // beneficiary's number are missing, and asks the customer itself. Say only
+    // what is true either way, and never re-state the amount: the payment
+    // message is composed there, with the bank details the model never sees.
+    return {
+      ok: true,
+      message:
+        "extract_order dijalankan. Kalau datanya lengkap, sistem sudah mengirim detail transfer ke customer — jangan ulangi nominal atau nomor rekening. Kalau ada yang kurang, sistem yang menanyakannya sendiri.",
+    };
   } else if (tool.name === "record_daily_order") {
     const input = tool.input as {
       delivery_dates?: string[];
@@ -2508,7 +2582,11 @@ async function handleToolUse(
         "[webhook] record_daily_order: no valid delivery date",
         JSON.stringify(tool.input),
       );
-      return;
+      return {
+        ok: false,
+        error:
+          "Tidak ada tanggal yang valid di panggilan ini. Tidak ada yang tercatat — tanyakan tanggalnya ke customer, lalu panggil lagi.",
+      };
     }
 
     // Every active order, with its undated portions counted from the delivery
@@ -2530,7 +2608,11 @@ async function handleToolUse(
         "[webhook] record_daily_order: no active order for customer",
         customerId,
       );
-      return;
+      return {
+        ok: false,
+        error:
+          "Customer tidak punya order aktif, jadi tidak ada yang tercatat. Jangan bilang jadwalnya sudah masuk.",
+      };
     }
 
     const unbookedPerOrder = await unbookedByOrder(
@@ -2562,7 +2644,11 @@ async function handleToolUse(
         "[webhook] record_daily_order: no draw order for customer",
         customerId,
       );
-      return;
+      return {
+        ok: false,
+        error:
+          "Tidak ada paket yang bisa dipakai untuk mencatat hari ini. Tidak ada yang tercatat.",
+      };
     }
 
     // The gate is customer-wide: a customer with two packages can draw across
@@ -2584,7 +2670,11 @@ async function handleToolUse(
         "/deliveries",
         "high",
       );
-      return;
+      return {
+        ok: false,
+        error:
+          "Semua porsi yang customer beli sudah punya tanggal, jadi tidak ada yang tercatat. Sisa kuota yang belum dijadwalkan: 0.",
+      };
     }
 
     // A libur nasional is a day we are definitely shut, and the model schedules
@@ -2605,7 +2695,10 @@ async function handleToolUse(
         "/deliveries",
         "high",
       );
-      return;
+      return {
+        ok: false,
+        error: `Semua tanggal yang diminta jatuh di hari libur nasional (${closedDates.map((d) => `${d} ${holidayOn(d)?.name ?? "libur"}`).join(", ")}). Tidak ada yang tercatat — tawarkan tanggal lain.`,
+      };
     }
 
     // The model re-states a schedule while confirming it, so the same dates can
@@ -2635,7 +2728,13 @@ async function handleToolUse(
           affordable,
         }),
       );
-      return;
+      return {
+        ok: false,
+        error:
+          alreadyBooked.size > 0 && fresh.length === 0
+            ? `Tanggal itu sudah ada di jadwal customer sebelumnya (${[...alreadyBooked].join(", ")}), jadi tidak ada yang baru dicatat. Beri tahu customer jadwalnya memang sudah ada.`
+            : "Kuota yang belum dijadwalkan tidak cukup untuk satu hari pun. Tidak ada yang tercatat.",
+      };
     }
 
     const { error: insertError } = await db.from("daily_deliveries").insert(
@@ -2660,7 +2759,11 @@ async function handleToolUse(
         "/deliveries",
         "high",
       );
-      return;
+      return {
+        ok: false,
+        error:
+          "Gagal menyimpan ke database. Tidak ada yang tercatat — jangan bilang jadwalnya sudah masuk, bilang saja sedang dicek admin.",
+      };
     }
 
     const deducted = booking.length * perDate;
@@ -2717,6 +2820,23 @@ async function handleToolUse(
         "high",
       );
     }
+
+    // Partial success is still success, but it has to say which dates. The
+    // model was told "done" for a booking that dropped half the run and
+    // confirmed the whole run to the customer.
+    const notBooked = [
+      ...closedDates.map((d) => `${d} (libur nasional)`),
+      ...[...alreadyBooked].map((d) => `${d} (sudah ada di jadwal)`),
+      ...fresh.slice(booking.length).map((d) => `${d} (kuota tidak cukup)`),
+    ];
+    return {
+      ok: true,
+      message: `Tercatat: ${booking.join(", ")} — ${input.meal_type}, ${perDate} porsi/hari.${
+        notBooked.length > 0
+          ? ` TIDAK tercatat: ${notBooked.join(", ")}. Sebutkan ini ke customer, jangan konfirmasi tanggal yang tidak masuk.`
+          : ""
+      } Sisa porsi yang belum dijadwalkan setelah ini: ${custUnbooked - deducted}.`,
+    };
   } else if (tool.name === "ask_admin_for_help") {
     const input = tool.input as { question: string };
     await db
@@ -2738,6 +2858,11 @@ async function handleToolUse(
       "/inbox",
       "high",
     );
+    return {
+      ok: true,
+      message:
+        "Pertanyaan sudah diteruskan ke admin, dan customer sudah diberi tahu untuk menunggu. Jangan jawab pertanyaan itu sendiri.",
+    };
   } else if (tool.name === "escalate_to_human") {
     const input = tool.input as { reason: string };
     await db
@@ -2751,6 +2876,10 @@ async function handleToolUse(
       "/inbox",
       "high",
     );
+    return {
+      ok: true,
+      message: "Thread sudah dialihkan ke admin.",
+    };
   } else if (tool.name === "mark_payment_proof_received") {
     await db
       .from("orders")
@@ -2764,6 +2893,11 @@ async function handleToolUse(
       "/payments",
       "medium",
     );
+    return {
+      ok: true,
+      message:
+        "Bukti bayar dicatat, order menunggu verifikasi admin. Jangan bilang pembayaran sudah dikonfirmasi.",
+    };
   } else if (tool.name === "record_customer_name") {
     // Before this tool existed the bot had no way to write a name outside of
     // extract_order, so when +6285692715738 answered "keira" on 2026-08-26 it
@@ -2786,7 +2920,12 @@ async function handleToolUse(
         action: "update",
         changes: { name: { from: current?.name ?? null, to: given } },
       });
+      return { ok: true, message: `Nama customer dicatat sebagai "${given}".` };
     }
+    return {
+      ok: false,
+      error: `Nama "${given}" tidak dicatat — tidak lolos pemeriksaan nama. Jangan bilang namanya sudah dicatat.`,
+    };
   } else if (tool.name === "send_menu_image") {
     const { data: menuSubsRaw } = await db
       .from("subcontractors")
@@ -2816,7 +2955,25 @@ async function handleToolUse(
         status: "sent",
       });
     }
+    if (menuSubs.length === 0) {
+      console.error("[webhook] send_menu_image: no active kitchen has a menu");
+      return {
+        ok: false,
+        error:
+          "Tidak ada gambar menu yang terkirim — belum ada dapur aktif yang punya menu. Jangan bilang menunya sudah dikirim.",
+      };
+    }
+    return {
+      ok: true,
+      message: `${menuSubs.length} gambar menu sudah dikirim ke customer.`,
+    };
   }
+
+  console.error(`[webhook] handleToolUse: unknown tool ${tool.name}`);
+  return {
+    ok: false,
+    error: `Tool "${tool.name}" tidak ada, jadi tidak ada yang dikerjakan.`,
+  };
 }
 
 export const dynamic = "force-dynamic";

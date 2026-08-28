@@ -2,6 +2,8 @@ import { processWebhookAsync } from "@/app/api/webhook/whatsapp/route";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { getAnthropicClient } from "@/lib/claude/client";
 import { loadHistory, saveMessage } from "@/lib/claude/conversation";
+import { classifyIntent } from "@/lib/claude/prompts/classifier";
+import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import {
   checkRateLimit,
   detectInjection,
@@ -612,5 +614,94 @@ describe("processWebhookAsync", () => {
 
     expect(sendTextMessage).not.toHaveBeenCalled();
     expect(getAnthropicClient).not.toHaveBeenCalled();
+  });
+  // The follow-up call that asks for the text to go with a tool call used to
+  // feed the model the literal string "done" for every tool, so a
+  // record_daily_order that booked nothing came back as success and the model
+  // could answer "sudah tercatat kak" over an empty calendar.
+  test("T19 — a tool that wrote nothing is reported to the model as a failure", async () => {
+    const db = makeDefaultDb({
+      // No active order, so record_daily_order bails before touching the sheet.
+      orders: { data: [], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const create = jest
+      .fn()
+      // First turn: a tool call with no text alongside it.
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-1",
+            name: "record_daily_order",
+            input: {
+              delivery_dates: ["2026-09-01"],
+              meal_type: "lunch",
+              portions: 1,
+            },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      })
+      // Follow-up: the text that should have come with it.
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "Maaf kak, belum bisa dicatat." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+    (getAnthropicClient as jest.Mock).mockReturnValue({ messages: { create } });
+
+    await processWebhookAsync(makePayload("Besok kirim ya kak"));
+
+    expect(create).toHaveBeenCalledTimes(2);
+    const followUp = create.mock.calls[1][0];
+    const toolResult = followUp.messages.at(-1).content[0];
+    expect(toolResult.tool_use_id).toBe("tool-1");
+    expect(toolResult.is_error).toBe(true);
+    expect(JSON.parse(toolResult.content)).toEqual(
+      expect.objectContaining({ ok: false, error: expect.any(String) }),
+    );
+    expect(toolResult.content).not.toBe("done");
+  });
+
+  // stateRow is read once near the top of processWebhookAsync and handed to
+  // processSavedCustomerMessage, which feeds it to buildSystemPrompt. Both
+  // writes below used to leave the snapshot stale for the rest of the turn.
+  test("T20 — the model is told menuShown:true on the turn the welcome sequence ran", async () => {
+    const db = makeDefaultDb({
+      customer_state: {
+        data: { state: "idle", menu_shown: false },
+        error: null,
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await processWebhookAsync(makePayload("Halo"));
+
+    expect(db.chains.customer_state.update).toHaveBeenCalledWith({
+      menu_shown: true,
+    });
+    expect(buildSystemPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ menuShown: true }),
+    );
+  });
+
+  test("T21 — the model is told customerState:ordering on the turn the customer starts ordering", async () => {
+    const db = makeDefaultDb({
+      customer_state: { data: { state: "new", menu_shown: true }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+    (classifyIntent as jest.Mock).mockResolvedValueOnce("ordering");
+
+    await processWebhookAsync(makePayload("Mau pesan 10 porsi kak"));
+
+    expect(db.chains.customer_state.update).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "ordering" }),
+    );
+    expect(buildSystemPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ customerState: "ordering" }),
+    );
   });
 });
