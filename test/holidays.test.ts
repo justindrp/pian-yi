@@ -76,9 +76,51 @@ describe("describeUpcomingHolidays", () => {
     expect(block).toContain("tergantung dapur partner");
   });
 
-  it("returns null when nothing is coming up, so the section is omitted", () => {
-    // Quiet stretch: nothing between Maulid and Natal.
-    expect(describeUpcomingHolidays("2026-09-01", 45)).toBeNull();
+  it("still lists the Minggu through a stretch with no libur nasional", () => {
+    // Quiet stretch: nothing between Maulid and Natal. The section used to be
+    // omitted entirely here, which left the model with no closed dates at all
+    // for six weeks and the day-of-week arithmetic to do itself.
+    const block = describeUpcomingHolidays("2026-09-01", 45) as string;
+    expect(block).toContain("Minggu 6 September 2026: TUTUP, hari Minggu");
+    expect(block).toContain("Minggu 27 September 2026: TUTUP, hari Minggu");
+  });
+
+  it("names every Minggu in the range the customer asked about", () => {
+    // Julie, 2026-08-29: asked for 1-7 September and was quoted seven delivery
+    // days at 28 porsi. 6 September is a Minggu, so the run is six days and 24
+    // porsi. The date has to be on the list the model reads, not derived.
+    const block = describeUpcomingHolidays("2026-08-29", 20) as string;
+    const sundays = block
+      .split("\n")
+      .filter((l) => l.includes("hari Minggu"))
+      .length;
+    expect(block).toContain("Minggu 6 September 2026: TUTUP, hari Minggu");
+    expect(sundays).toBe(3);
+    // 1-5 and 7 September are working days, so none of them may be listed.
+    const septClosed = block
+      .split("\n")
+      .map((l) => /(\d+) September 2026/.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => Number(m[1]));
+    expect(septClosed.filter((d) => d <= 7)).toEqual([6]);
+  });
+
+  it("names a Minggu that is also a libur nasional only once", () => {
+    // Two lines for one date would let the model subtract it twice.
+    const block = describeUpcomingHolidays("2026-03-20", 4) as string;
+    const lines = block.split("\n").filter((l) => l.includes("22 Maret 2026"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("Idulfitri");
+  });
+
+  it("keeps the list in date order once the Minggu are merged in", () => {
+    const block = describeUpcomingHolidays("2026-08-14", 10) as string;
+    const dates = block
+      .split("\n")
+      .map((l) => /(\d+) (Agustus|September)/.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => Number(m[1]));
+    expect(dates).toEqual([...dates].sort((a, b) => a - b));
   });
 
   it("returns null past the end of the list rather than implying no holidays", () => {

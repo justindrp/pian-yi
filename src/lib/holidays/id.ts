@@ -207,23 +207,62 @@ export function formatHolidayDate(ymd: string): string {
  * taught the override. The customer would have received food she had just been
  * told was not coming. One rule, one source: the schedule and the sentence have
  * to be read off the same function.
+ *
+ * Every Minggu in the window is on the same list. It used to be a second rule
+ * carried in the prompt instead — "any date not on this list is a working day
+ * (except Minggu, which is always closed)" — which made the model work out the
+ * day of week for every date itself. On 2026-08-29 Julie asked for 1–7
+ * September; the model read that as seven delivery days and quoted 28 porsi at
+ * Rp 728.000, when 6 September is a Minggu and the run is six days and 24
+ * porsi. A closed date the model has to derive is a closed date it will
+ * sometimes miss, so the list carries them and the prompt does no arithmetic.
  */
 export function describeUpcomingHolidays(
   today: string = jakartaDateString(),
   days = 45,
 ): string | null {
   if (today > HOLIDAYS_KNOWN_THROUGH) return null;
-  const upcoming = upcomingHolidays(today, days);
-  if (upcoming.length === 0) return null;
 
-  return upcoming
-    .map((h) => {
-      const when = `- ${formatHolidayDate(h.date)} — ${h.name}${h.type === "cuti_bersama" ? " (cuti bersama)" : ""}`;
-      if (h.type === "cuti_bersama")
-        return `${when}: belum tentu tutup — tergantung dapur partner, harus dicek dulu`;
-      if (!isClosedHoliday(h.date))
-        return `${when}: BUKA — tanggal merah, tapi kami tetap mengirim seperti biasa hari itu`;
-      return `${when}: TUTUP, tidak ada pengiriman`;
-    })
-    .join("\n");
+  const entries = upcomingHolidays(today, days).map((h) => {
+    const when = `- ${formatHolidayDate(h.date)} — ${h.name}${h.type === "cuti_bersama" ? " (cuti bersama)" : ""}`;
+    if (h.type === "cuti_bersama")
+      return {
+        date: h.date,
+        line: `${when}: belum tentu tutup — tergantung dapur partner, harus dicek dulu`,
+      };
+    if (!isClosedHoliday(h.date))
+      return {
+        date: h.date,
+        line: `${when}: BUKA — tanggal merah, tapi kami tetap mengirim seperti biasa hari itu`,
+      };
+    return { date: h.date, line: `${when}: TUTUP, tidak ada pengiriman` };
+  });
+
+  // A Minggu that is also a tanggal merah is already named above; naming it
+  // twice would let the model subtract it twice.
+  for (const date of upcomingSundays(today, days)) {
+    if (entries.some((e) => e.date === date)) continue;
+    entries.push({
+      date,
+      line: `- ${formatHolidayDate(date)}: TUTUP, hari Minggu`,
+    });
+  }
+
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => a.date.localeCompare(b.date));
+  return entries.map((e) => e.line).join("\n");
+}
+
+/** Every Minggu from `today` (inclusive) through the next `days` days. */
+export function upcomingSundays(
+  today: string = jakartaDateString(),
+  days = 45,
+): string[] {
+  const out: string[] = [];
+  const cursor = new Date(`${today}T00:00:00Z`);
+  for (let i = 0; i <= days; i++) {
+    if (cursor.getUTCDay() === 0) out.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return out;
 }
