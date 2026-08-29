@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { stripCompensation } from "@/lib/kitchen/compensation";
+import {
+  kitchenCostPerPortion,
+  normalizeSize,
+  type OrderSize,
+} from "@/lib/orders/size";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatIDR } from "@/lib/utils/format";
 import { DatePicker } from "./date-picker";
@@ -176,7 +182,7 @@ type Delivery = {
   notes: string | null;
   address_slot: number | null;
   customers: Customer | null;
-  orders: { addon_cost_per_portion: number | null } | null;
+  orders: { addon_cost_per_portion: number | null; size: string | null } | null;
 };
 
 function DeliveryCard({ d }: { d: Delivery }) {
@@ -322,6 +328,48 @@ function MealSummary({
   );
 }
 
+// Only the kitchens that cook M see these. S and M are different dish lists —
+// M adds the second side — so the cook needs the day split, not one merged
+// sheet with a badge per card.
+function SizeTabs({
+  id,
+  date,
+  active,
+  counts,
+}: {
+  id: string;
+  date: string;
+  active: OrderSize;
+  counts: Record<OrderSize, number>;
+}) {
+  const tabs: { size: OrderSize; label: string }[] = [
+    { size: "s", label: "Ukuran S" },
+    { size: "m", label: "Ukuran M" },
+  ];
+  return (
+    <div className="flex gap-2">
+      {tabs.map((t) => (
+        <Link
+          key={t.size}
+          href={`/dapur/${id}?date=${date}&size=${t.size}`}
+          className={`flex-1 text-center rounded-lg border px-3 py-2 text-sm font-semibold ${
+            t.size === active
+              ? "bg-orange-500 border-orange-500 text-white"
+              : "bg-white border-gray-200 text-gray-600"
+          }`}
+        >
+          {t.label}{" "}
+          <span
+            className={t.size === active ? "text-orange-100" : "text-gray-400"}
+          >
+            {counts[t.size]} porsi
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function Section({
   title,
   deliveries,
@@ -347,10 +395,10 @@ export default async function DapurPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; size?: string }>;
 }) {
   const { id } = await params;
-  const { date: dateParam } = await searchParams;
+  const { date: dateParam, size: sizeParam } = await searchParams;
   const date = dateParam ?? getTomorrowWIB();
 
   const db = createAdminClient();
@@ -358,13 +406,15 @@ export default async function DapurPage({
   const [{ data: sub }, { data: rows }] = await Promise.all([
     db
       .from("subcontractors")
-      .select("id, name, cost_per_portion, cost_per_portion_route1")
+      .select(
+        "id, name, cost_per_portion, cost_per_portion_route1, offers_size_m, cost_per_portion_m, cost_per_portion_route1_m",
+      )
       .eq("id", id)
       .single(),
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion), customers(name, notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion, size), customers(name, notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date),
@@ -372,7 +422,15 @@ export default async function DapurPage({
 
   if (!sub) notFound();
 
-  const deliveries = (rows ?? []) as Delivery[];
+  // A delivery has no size of its own — it has an order, and the order has the
+  // size. Kept that way on purpose: a size copied onto the row would go stale
+  // the moment the order's did.
+  const allDeliveries = (rows ?? []) as Delivery[];
+  const offersM = sub.offers_size_m === true;
+  const activeSize: OrderSize = offersM ? normalizeSize(sizeParam) : "s";
+  const deliveries = offersM
+    ? allDeliveries.filter((d) => normalizeSize(d.orders?.size) === activeSize)
+    : allDeliveries;
 
   // "breakfast" only appears on event bookings — the standing packages have no
   // morning slot, so most kitchens will never have one. The summary line and the
@@ -402,10 +460,10 @@ export default async function DapurPage({
     (d) => d.meal_type === "dinner" && (d.customers?.delivery_route ?? 1) === 2,
   );
 
-  // Route 1 is our own courier, so the kitchen charges less for it. A null
-  // override means this kitchen bills one rate for both routes.
-  const rate2 = sub.cost_per_portion ?? 0;
-  const rate1 = sub.cost_per_portion_route1 ?? rate2;
+  // M is a different dish list, so the kitchen bills it at its own pair of
+  // route rates; a kitchen that does not cook M has neither and stays on S.
+  const rate1 = kitchenCostPerPortion(sub, activeSize, 1);
+  const rate2 = kitchenCostPerPortion(sub, activeSize, 2);
   const bills = {
     breakfastR1: billFor(breakfastR1, rate1),
     breakfastR2: billFor(breakfastR2, rate2),
@@ -415,6 +473,10 @@ export default async function DapurPage({
     dinnerR2: billFor(dinnerR2, rate2),
   };
   const total = deliveries.reduce((s, d) => s + (d.portions ?? 0), 0);
+  const countsBySize: Record<OrderSize, number> = { s: 0, m: 0 };
+  for (const d of allDeliveries) {
+    countsBySize[normalizeSize(d.orders?.size)] += d.portions ?? 0;
+  }
   const billTotal = Object.values(bills).reduce((s, b) => s + b.amount, 0);
 
   return (
@@ -427,8 +489,17 @@ export default async function DapurPage({
             </h1>
             <p className="text-gray-500 text-sm mt-0.5">{formatDateID(date)}</p>
           </div>
-          <DatePicker id={id} date={date} />
+          <DatePicker id={id} date={date} size={offersM ? activeSize : null} />
         </div>
+
+        {offersM && (
+          <SizeTabs
+            id={id}
+            date={date}
+            active={activeSize}
+            counts={countsBySize}
+          />
+        )}
 
         {/* Summary */}
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
@@ -475,7 +546,9 @@ export default async function DapurPage({
         {/* Order lists */}
         {deliveries.length === 0 ? (
           <p className="text-center text-gray-400 py-12 text-sm">
-            Belum ada pengiriman terjadwal untuk tanggal ini
+            {offersM
+              ? `Belum ada pengiriman ukuran ${activeSize.toUpperCase()} untuk tanggal ini`
+              : "Belum ada pengiriman terjadwal untuk tanggal ini"}
           </p>
         ) : (
           <div className="space-y-8">

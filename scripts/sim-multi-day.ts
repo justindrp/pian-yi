@@ -80,7 +80,7 @@ async function main() {
   const { data: activeSubs } = await db
     .from("subcontractors")
     .select(
-      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas",
+      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m",
     )
     .eq("is_active", true)
     .not("customer_nickname", "is", null);
@@ -98,7 +98,11 @@ async function main() {
     menuShown: true,
     dapurOptions: rawSubs
       .filter((s) => !!s.menu_image_url)
-      .map((s) => ({ id: s.id, nickname: s.customer_nickname as string })),
+      .map((s) => ({
+        id: s.id,
+        nickname: s.customer_nickname as string,
+        offersM: s.offers_size_m === true,
+      })),
     dapurMenuTexts: [],
     menuWeek: describeMenuWeeks(
       rawSubs.filter((s) => !!s.menu_image_url).map((s) => s.menu_week_start),

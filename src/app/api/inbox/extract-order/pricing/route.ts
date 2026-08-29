@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getExtractedOrderPricing } from "@/lib/claude/extract-order";
+import { normalizeSize } from "@/lib/orders/size";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const body = (await req.json()) as {
     package_size?: number;
     customer_id?: string;
+    size?: string;
   };
   const packageSize = Number(body.package_size);
   if (!Number.isFinite(packageSize) || packageSize <= 0) {
@@ -27,11 +29,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   // customer_id is optional: the review modal reprices as the admin edits the
-  // size, and a corporate customer must reprice at their contract rate.
+  // size, and a corporate customer must reprice at their contract rate. `size`
+  // here is the S/M one, so flipping it in the modal reprices too.
   const pricing = await getExtractedOrderPricing(
     packageSize,
     false,
     body.customer_id ?? null,
+    normalizeSize(body.size),
   );
   return NextResponse.json({ ok: true, data: pricing });
 }

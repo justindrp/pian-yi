@@ -15,6 +15,11 @@ import {
 } from "@/lib/claude/conversation";
 import { isDeliveryDay } from "@/lib/holidays/id";
 import { stripCompensation } from "@/lib/kitchen/compensation";
+import {
+  normalizeSize,
+  type OrderSize,
+  sizeMSurcharge,
+} from "@/lib/orders/size";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -204,7 +209,9 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
   },
   size: {
     type: "string",
-    enum: ["s"],
+    enum: ["s", "m"],
+    description:
+      '"m" only when the customer chose size M from a dapur that offers it, and only after they were told the M price. Otherwise "s". An M order for a dapur that does not cook M is written as S.',
   },
   nasi_merah: {
     type: "boolean",
@@ -625,14 +632,22 @@ export async function getExtractedOrderPricing(
   packageSize: number,
   nasiMerah = false,
   customerId?: string | null,
+  portionSize: OrderSize = "s",
 ): Promise<ExtractedOrderPricing> {
+  // M is folded into price_per_portion rather than carried beside it, so the
+  // rate an order locks at creation is the rate the customer agreed to and
+  // every downstream reader — total_price, the ledger, accounting — keeps
+  // working without learning about sizes.
+  const sizeExtra = portionSize === "m" ? await sizeMSurcharge() : 0;
+
   // A negotiated rate replaces the ladder outright. PT Bintang Lautan buys 110
   // porsi at Rp 35.000 — above every tier — so tier lookup can only ever get
   // their order wrong. Add-ons still stack: what the kitchen charges extra is
   // charged through at cost regardless of who the customer is.
   const contract = await contractPrice(customerId);
   if (contract !== null) {
-    const pricePerPortion = contract + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
+    const pricePerPortion =
+      contract + (nasiMerah ? NASI_MERAH_SURCHARGE : 0) + sizeExtra;
     return {
       price_per_portion: pricePerPortion,
       total_price: pricePerPortion * packageSize,
@@ -663,7 +678,8 @@ export async function getExtractedOrderPricing(
 
   const basePrice =
     tier?.price_per_portion ?? smallestTier?.price_per_portion ?? 0;
-  const pricePerPortion = basePrice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0);
+  const pricePerPortion =
+    basePrice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0) + sizeExtra;
   return {
     price_per_portion: pricePerPortion,
     total_price: pricePerPortion * packageSize,
@@ -902,7 +918,7 @@ export async function resizePendingOrderFromMessage(
   const db = createAdminClient();
   const { data: order } = await db
     .from("orders")
-    .select("id, package_size, addon_cost_per_portion")
+    .select("id, package_size, addon_cost_per_portion, size")
     .eq("customer_id", customerId)
     .eq("status", "pending_payment")
     .order("created_at", { ascending: false })
@@ -928,8 +944,15 @@ export async function resizePendingOrderFromMessage(
   const addingAddon = nasiMerah && (order.addon_cost_per_portion ?? 0) === 0;
   if (size === order.package_size && !addingAddon) return false;
 
+  // The S/M size is the order's, never re-read from this message. It is folded
+  // into price_per_portion, so re-pricing without it would quietly demote an M
+  // order to S rates the moment the customer changed the portion count — the
+  // same way dropping the add-on would. Changing size is not something a bare
+  // number in a chat message can express, and nothing here tries to read one.
+  const portionSize = normalizeSize(order.size);
+
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(size, nasiMerah, customerId);
+    await getExtractedOrderPricing(size, nasiMerah, customerId, portionSize);
 
   const { error } = await db
     .from("orders")
@@ -1400,9 +1423,6 @@ export async function createOrderFromExtraction(
       `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} stated=${statedTotal} weeks=${weeksSize})`,
     );
   }
-  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(packageSize, nasiMerah, orderCustomerId);
-
   // A customer already being asked to pay for an order has one order, not two.
   // The model re-calls extract_order whenever it restates the summary, and each
   // call used to insert: Sherine Fayola was billed Rp 145.000, then Rp 540.000,
@@ -1475,6 +1495,39 @@ export async function createOrderFromExtraction(
     }
   }
 
+  // Which size, and what it costs. Both settled here rather than earlier
+  // because M is per kitchen — like `delivery_areas` — so the size cannot be
+  // known until the kitchen is. A kitchen that does not cook M must never be
+  // sent an M row: its sheet would say M, it would cook S, and the customer
+  // would have paid the surcharge for a dish nobody made. The prompt only
+  // offers M where a kitchen has it; this is the guard behind that, and it
+  // writes S rather than refusing, so the order still exists and the price
+  // matches the food.
+  let portionSize = normalizeSize(input.size);
+  if (portionSize === "m") {
+    const { data: kitchen } = subcontractorId
+      ? await db
+          .from("subcontractors")
+          .select("offers_size_m")
+          .eq("id", subcontractorId)
+          .maybeSingle()
+      : { data: null };
+    if (!kitchen?.offers_size_m) {
+      console.log(
+        `[extract-order] size M asked for but dapur ${subcontractorId ?? "(none)"} does not cook it — writing S`,
+      );
+      portionSize = "s";
+    }
+  }
+
+  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
+    await getExtractedOrderPricing(
+      packageSize,
+      nasiMerah,
+      orderCustomerId,
+      portionSize,
+    );
+
   // The days this order will be cooked on, settled here and stored on the
   // order. They are NOT written as delivery rows yet: rows land at mark_paid.
   // Writing them here put food on a kitchen's sheet for an order nobody had
@@ -1529,7 +1582,7 @@ export async function createOrderFromExtraction(
       | null,
     start_date: startDate,
     end_date: endDate,
-    size: "s",
+    size: portionSize,
     subcontractor_id: subcontractorId,
     status: "pending_payment" as const,
     confirmed_at: new Date().toISOString(),

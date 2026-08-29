@@ -35,7 +35,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const { data: activeSubs } = await db
     .from("subcontractors")
     .select(
-      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas",
+      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m",
     )
     .eq("is_active", true)
     .not("customer_nickname", "is", null);
@@ -50,12 +50,17 @@ export async function POST(req: NextRequest): Promise<Response> {
       menu_text: string | null;
       menu_week_start: string | null;
       delivery_areas: string[] | null;
+      offers_size_m: boolean;
     } => s.customer_nickname !== null,
   );
 
   const dapurOptions = rawSubs
     .filter((s) => !!s.menu_image_url)
-    .map((s) => ({ id: s.id, nickname: s.customer_nickname }));
+    .map((s) => ({
+      id: s.id,
+      nickname: s.customer_nickname,
+      offersM: s.offers_size_m === true,
+    }));
 
   const dapurMenuTexts = rawSubs
     .filter((s) => !!s.menu_image_url && !!s.menu_text)

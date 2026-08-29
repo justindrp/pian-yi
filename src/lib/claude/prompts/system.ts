@@ -5,6 +5,7 @@ import {
   jakartaDateString,
   weekAfter,
 } from "@/lib/menu/week";
+import { sizeMSurcharge } from "@/lib/orders/size";
 import { earliestDeliveryDate, jakartaTimeString } from "@/lib/time/jakarta";
 
 const PRICE_LIST_LINES = [
@@ -29,7 +30,7 @@ export async function buildSystemPrompt(params: {
   customerNotes: string | null;
   detectedMapsLink: string | null;
   menuShown: boolean;
-  dapurOptions: { id: string; nickname: string }[];
+  dapurOptions: { id: string; nickname: string; offersM: boolean }[];
   dapurMenuTexts: { nickname: string; menuText: string }[];
   /** Which week the menu image on file covers, relative to today. */
   menuWeek: {
@@ -204,6 +205,20 @@ Kalau customer minta ubah atau skip salah satu tanggal di atas, konfirmasi hanya
   // 110 porsi at Rp 35.000 and the bot spent the whole conversation trying to
   // fit that into a personal package.
   const contract = params.contractPricePerPortion;
+  // Which kitchens cook M is per kitchen, like their delivery areas — never a
+  // literal here. Today that is one kitchen; the moment a second adds the dish,
+  // this section says so without anyone editing the prompt.
+  const mKitchens = params.dapurOptions.filter((d) => d.offersM);
+  const mExtra = mKitchens.length > 0 ? await sizeMSurcharge() : 0;
+  const offersM = mKitchens.length > 0 && mExtra > 0;
+  const mNames = mKitchens.map((d) => d.nickname).join(", ");
+  const sizeSection = offersM
+    ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). M costs **Rp ${mExtra.toLocaleString("id-ID")}/porsi more than the price list below**, on every tier.
+- Only ${mNames} cook${mKitchens.length === 1 ? "s" : ""} M. Every other dapur is S only — never offer M for them, and never promise a size a dapur does not cook.
+- Quote M as the tier's per-meal price plus Rp ${mExtra.toLocaleString("id-ID")}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp 26.000 = *Rp ${(26000 * 40).toLocaleString("id-ID")}*, M = 40 × Rp ${(26000 + mExtra).toLocaleString("id-ID")} = *Rp ${((26000 + mExtra) * 40).toLocaleString("id-ID")}*.
+- If the customer does not say which size, use S. Never make them choose before you have quoted a price.`
+    : "- Only size S is available. Never ask whether the customer wants S or M.";
+
   const pricingSection = contract
     ? `## Harga khusus (kontrak korporat)
 
@@ -216,11 +231,11 @@ Work the total out the same way as always and multiply:
 - Example: 22 box × 5 hari = 110 porsi → 110 × Rp ${contract.toLocaleString("id-ID")} = *Rp ${(contract * 110).toLocaleString("id-ID")}*
 
 Give one exact total, the same way you would for anyone else. Everything else — delivery areas, the deadline, scheduling, the order form — is unchanged.`
-    : `## Current price list (Paket Personal, size S only)
+    : `## Current price list (Paket Personal${offersM ? " — harga ukuran S" : ", size S only"})
 Current active kitchen availability:
-- Only size S is available. Never ask whether the customer wants S or M.
+${sizeSection}
 - Dapur kami delivers Senin–Sabtu. Minggu is closed, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date falls Senin–Sabtu and is not a closure. Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a Minggu or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
-- If customers ask about grams or size: size S is the standard size, and that is the only size currently available.
+- If customers ask about grams or size: S is the standard size${offersM ? ", and M is the larger one — one extra side dish, not a bigger scoop of rice" : ", and that is the only size currently available"}.
 
 Price list:
 ${PRICE_LIST_LINES}
@@ -363,7 +378,11 @@ When a customer says a relative day phrase ("senin depan", "minggu depan", "beso
 
 ${pricingSection}
 
-Do not ask size. Always use size S.
+${
+  offersM
+    ? `Size: quote S by default. Offer M only when the customer asks about sizes, or is ordering from a dapur that cooks it and asks what else is included — one clause, not a menu. Send \`size: "m"\` on extract_order only after they have picked M *and* heard the M price.`
+    : "Do not ask size. Always use size S."
+}
 
 Once the total is known, give **one exact price**: "Paket 20 porsi → 20 ×
 Rp 27.000/porsi = *Rp 540.000*". Never say "tergantung" or show multiple scenarios.
@@ -428,7 +447,7 @@ Nama Lengkap: (optional — use the name they signed with, or leave it and addre
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Jumlah total porsi (paket):
-${params.dapurOptions.length > 1 ? "Dapur:\n" : params.dapurOptions.length === 1 ? `Dapur: ${params.dapurOptions[0].nickname}\n` : ""}Ukuran: S
+${params.dapurOptions.length > 1 ? "Dapur:\n" : params.dapurOptions.length === 1 ? `Dapur: ${params.dapurOptions[0].nickname}\n` : ""}${offersM ? "Ukuran (S / M):" : "Ukuran: S"}
 Makan siang / makan malam / keduanya:
 Jumlah porsi per pengiriman:
 Tanggal mulai:

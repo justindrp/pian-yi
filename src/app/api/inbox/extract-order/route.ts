@@ -3,6 +3,7 @@ import {
   extractOrderFromConversation,
   getExtractedOrderPricing,
 } from "@/lib/claude/extract-order";
+import { normalizeSize } from "@/lib/orders/size";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     extracted.package_size,
     false,
     customer_id,
+    normalizeSize(extracted.size),
   );
   return NextResponse.json({ ok: true, data: { ...extracted, ...pricing } });
 }

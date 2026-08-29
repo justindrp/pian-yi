@@ -1188,7 +1188,9 @@ export type Database = {
           admin_phone: string | null
           admin_phone_2: string | null
           cost_per_portion: number
+          cost_per_portion_m: number | null
           cost_per_portion_route1: number | null
+          cost_per_portion_route1_m: number | null
           created_at: string | null
           customer_nickname: string | null
           delivery_areas: Json | null
@@ -1200,6 +1202,7 @@ export type Database = {
           menu_week_start: string | null
           name: string
           notes: string | null
+          offers_size_m: boolean
           total_delivery_count: number | null
           updated_at: string | null
         }
@@ -1207,7 +1210,9 @@ export type Database = {
           admin_phone?: string | null
           admin_phone_2?: string | null
           cost_per_portion?: number
+          cost_per_portion_m?: number | null
           cost_per_portion_route1?: number | null
+          cost_per_portion_route1_m?: number | null
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null
@@ -1219,6 +1224,7 @@ export type Database = {
           menu_week_start?: string | null
           name: string
           notes?: string | null
+          offers_size_m?: boolean
           total_delivery_count?: number | null
           updated_at?: string | null
         }
@@ -1226,7 +1232,9 @@ export type Database = {
           admin_phone?: string | null
           admin_phone_2?: string | null
           cost_per_portion?: number
+          cost_per_portion_m?: number | null
           cost_per_portion_route1?: number | null
+          cost_per_portion_route1_m?: number | null
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null
@@ -1238,6 +1246,7 @@ export type Database = {
           menu_week_start?: string | null
           name?: string
           notes?: string | null
+          offers_size_m?: boolean
           total_delivery_count?: number | null
           updated_at?: string | null
         }

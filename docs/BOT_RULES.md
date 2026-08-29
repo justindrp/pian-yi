@@ -223,6 +223,14 @@ The refusal is scoped to `sendPaymentInfo: true`. The payment-proof path (`sendP
 
 `resizePendingOrderFromMessage` only ever read a size. Cindy Angelia's 5-porsi order was created at the moment she confirmed, *before* she sent the order form naming nasi merah, so it stayed at Rp 145.000 against a real Rp 170.000 and nothing anywhere reconciled it. The function now also matches `nasi\s*merah` on the inbound message and, on a `pending_payment` order whose `addon_cost_per_portion` is still 0, re-prices through `getExtractedOrderPricing(size, true)` and writes `NASI_MERAH_SURCHARGE`. Size and add-on are independent — either one alone is enough to amend, and neither touches an order once a proof is in, because by then the money has moved.
 
+## Size M is offered per kitchen, and quoted before it is sold
+
+The prompt used to say "Only size S is available. Never ask whether the customer wants S or M." Now S and M are both real: same nasi and lauk utama, M adds the fourth item on that week's menu, at `settings.size_m_surcharge` (Rp 4.000/porsi) on top of every tier — including a corporate contract rate, because it is a real extra dish the kitchen bills us for either way.
+
+**Which kitchens cook M is read, never written down.** The prompt builds its size section from `dapurOptions[].offersM`, which comes from `subcontractors.offers_size_m`: it names the kitchens that have it, and falls back to the old S-only wording when none do. Only Dapur 1 has it today, and that is exactly why nothing may name Dapur 1 — a prompt, doc or `if` that does is wrong the day a second kitchen adds the dish, the same failure mode as writing the delivery areas into a string.
+
+Two rules the prompt carries: **S is the default**, so the model quotes S unless the customer asks about sizes, and it may only send `size: "m"` once the customer has picked M *and* heard the M price — the surcharge is not something to discover on the bank transfer. And it must never promise M for a kitchen that does not cook it. `createOrderFromExtraction` is the guard behind that promise: it re-reads `offers_size_m` after resolving the kitchen and writes S instead, rather than refusing, so the order still exists and the price matches the food. A kitchen sent an M row it cannot cook would print M on its sheet, cook S, and the customer would have paid the surcharge for a dish nobody made.
+
 ## A schedule that arrives after the order row is backfilled onto it
 
 An order created the moment the customer confirms has no delivery rows if their days come in the *next* message, and nothing else ever writes them — nothing generates a schedule, and non-contiguous days could never have been derived from a range anyway. Cindy Angelia's 5-porsi order was created at turn 3; she named 11, 12, 13, 14 and 18 Agustus afterwards, and her order sat with an empty schedule.

@@ -444,7 +444,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | portions_per_delivery | integer | Portions per meal per delivery (e.g. 1 or 2) |
 | portions_lunch | integer | Portions at lunch (for fixed both_fixed orders) |
 | portions_dinner | integer | Portions at dinner (for fixed both_fixed orders) |
-| size | text | Portion size: "s" (standard) or "m" (medium, +Rp 2,000/portion) — default "s" |
+| size | text | Portion size: `"s"` (menu items 1, 2, 3, 5) or `"m"` (all five — one extra side dish) — default `"s"`, constraint `IN ('s', 'm')`. Read it through `normalizeSize()` (`src/lib/orders/size.ts`): legacy rows and a model-filled field both reach `null`, and anything that is not the literal `"m"` is S. M adds `settings.size_m_surcharge` to `price_per_portion` at creation and is only sold by a kitchen with `offers_size_m` |
 | price_per_portion | integer | Locked-in price in IDR at order time (includes size surcharge if "m") |
 | total_price | integer | Total amount due in IDR |
 | source | text | "purchase" (default) or "free_quota" — free_quota rows are admin-granted goodwill/compensation portions (price_per_portion 0, total_price 0), created via `POST /api/customers/free-quota` |
@@ -549,7 +549,7 @@ Key-value store for all configurable business settings. Edited via the Settings 
 | updated_by | text | Admin email who last changed it |
 | updated_at | timestamp | |
 
-Notable keys: `business_name`, `chatbot_enabled`, `welcome_message`, `price_list_image_url`, `bank_name`, `bank_account_number`, `bank_account_name`, `order_deadline_hour`, `order_deadline_daily_hour`, `casual_mode_probability`, `typing_delay_base_seconds`, `escalation_keywords`, `instagram_handle`
+Notable keys: `business_name`, `chatbot_enabled`, `welcome_message`, `price_list_image_url`, `bank_name`, `bank_account_number`, `bank_account_name`, `order_deadline_hour`, `order_deadline_daily_hour`, `size_m_surcharge` (rupiah added per portion for size M, on top of the S tier or a contract rate — Rp 4.000; a missing or unparseable value reads 0 and prices M as S), `casual_mode_probability`, `typing_delay_base_seconds`, `escalation_keywords`, `instagram_handle`
 
 `welcome_message` supports four template placeholders resolved at send time: `{{dapur_list}}` (active subcontractor names), `{{delivery_areas}}` (unique delivery areas from active subcontractors), `{{price_20}}` (20-portion tier price formatted as e.g. `27RB`), `{{order_deadline}}` (order_deadline_hour formatted as e.g. `16.00`). `price_list_image_url` is sent automatically to new WhatsApp contacts before the AI reply; keep it synced with the current Paket Personal S price list.
 
@@ -584,6 +584,9 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | delivery_areas | json | Array of area strings **this kitchen** serves. Each kitchen has its own list and the lists overlap only in part; the areas Pian Yi offers are the union of this column across rows with `is_active = true`, computed at read time by `activeDeliveryAreas()` / `unionAreas()` (`src/lib/subcontractors/areas.ts`) and never stored anywhere else. **This column is the only source** — not `settings.delivery_areas` (which exists, is written by nothing that reads it, and is no longer editable in the UI), and not a literal in code. Editing this column, or flipping `is_active`, changes what the chatbot tells customers. See "Delivery areas" in `OPERATIONS.md` |
 | cost_per_portion | integer | What we pay per portion in IDR — used for Route 2 (kitchen delivers) |
 | cost_per_portion_route1 | integer | Override cost for Route 1 (we use own courier, cheaper). NULL = same as cost_per_portion. Per kitchen — never quote a figure from memory, read the row |
+| offers_size_m | boolean | Whether this kitchen cooks size M (migration 078). Per kitchen, like `delivery_areas` — only Dapur 1 has it today and nothing may hardcode that. The bot's prompt builds its size section from this column, and `createOrderFromExtraction` re-reads it after resolving the kitchen and downgrades an M order to S rather than sending an M row to a kitchen that cooks S |
+| cost_per_portion_m | integer | What we pay per M portion on Route 2. NULL = this kitchen has no M rate on file and M is costed at the S rate |
+| cost_per_portion_route1_m | integer | Override M cost for Route 1. NULL falls back to `cost_per_portion_m` **before** the S route-1 rate — a kitchen that quoted a single M price bills it on both routes. All four rates are picked by `kitchenCostPerPortion(sub, size, route)` (`src/lib/orders/size.ts`); never index the columns by hand |
 | menu_image_url | text | URL of the current weekly menu image (shown to new customers). Inactive kitchens keep their last image forever — nobody refreshes it once they stop cooking, so every read of this column must filter `is_active = true`. The `send_menu_image` tool did not, and sent customers a live menu plus a two-month-old one. |
 | menu_text | text | Plain-text menu description injected into the chatbot system prompt |
 | menu_week_start | date | Monday of the week `menu_image_url` covers. Added in migration 066 because nothing recorded the week, so the prompt hardcoded "always the current week" and the bot refused to send an already-uploaded next-week menu. Defaulted on upload by `defaultMenuWeekStart()` (Thursday onward → next week) and editable on the subcontractor form — the upload day is a guess, not the answer. Null means unknown, and the bot then makes no claim about which week it holds. |

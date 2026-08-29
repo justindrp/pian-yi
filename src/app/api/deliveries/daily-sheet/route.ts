@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { deleteDelivery } from "@/lib/orders/delivery-state";
+import {
+  kitchenCostPerPortion,
+  normalizeSize,
+  type OrderSize,
+} from "@/lib/orders/size";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -101,14 +106,12 @@ export async function PUT(req: NextRequest): Promise<Response> {
   // Pre-fetch subcontractor costs to avoid N+1 queries in the loop
   const { data: rawSubs } = await db
     .from("subcontractors")
-    .select("id, cost_per_portion, cost_per_portion_route1");
-  const subcontractors = rawSubs ?? [];
-  const subCostMap = new Map<string, number>(
-    subcontractors.map((s) => [s.id, s.cost_per_portion ?? 0]),
-  );
-  const subCostRoute1Map = new Map<string, number | null>(
-    subcontractors.map((s) => [s.id, s.cost_per_portion_route1 ?? null]),
-  );
+    .select(
+      "id, cost_per_portion, cost_per_portion_route1, cost_per_portion_m, cost_per_portion_route1_m",
+    );
+  // Keyed by kitchen; the rate is picked per line, because it depends on the
+  // order's size and the customer's route, neither of which is known here.
+  const subRateMap = new Map((rawSubs ?? []).map((s) => [s.id, s] as const));
 
   // Accumulate per-meal journal data; journals created after loop (one per meal_type per day)
   type JournalAccum = {
@@ -117,6 +120,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
     addonCostPerPortion: number;
     subcontractorId: string | null;
     customerId: string;
+    size: OrderSize;
   };
   const journalAccum = new Map<string, JournalAccum[]>(); // key: meal_type
 
@@ -186,7 +190,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
     if (upserted?.id && row.order_id) {
       const { data: ord } = await db
         .from("orders")
-        .select("price_per_portion, addon_cost_per_portion")
+        .select("price_per_portion, addon_cost_per_portion, size")
         .eq("id", row.order_id)
         .single();
 
@@ -200,6 +204,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
           addonCostPerPortion: ord.addon_cost_per_portion ?? 0,
           subcontractorId: row.subcontractor_id,
           customerId: row.customer_id,
+          size: normalizeSize(ord.size),
         });
       }
     }
@@ -254,12 +259,14 @@ export async function PUT(req: NextRequest): Promise<Response> {
       // COGS: group by effective cost per portion (route-aware)
       const cogsByRate = new Map<number, number>();
       for (const e of entries) {
-        const subId = e.subcontractorId;
-        const baseCost = subId ? (subCostMap.get(subId) ?? 0) : 0;
-        const route1Cost = subId ? (subCostRoute1Map.get(subId) ?? null) : null;
-        const route = routeMap.get(e.customerId);
-        const subCost =
-          route1Cost !== null && route === "1" ? route1Cost : baseCost;
+        const sub = e.subcontractorId
+          ? subRateMap.get(e.subcontractorId)
+          : undefined;
+        const route = routeMap.get(e.customerId) === "1" ? 1 : 2;
+        // M is a second dish the kitchen bills us for, so it carries its own
+        // pair of route rates; costing an M portion at the S rate reports a
+        // margin wider than it is.
+        const subCost = sub ? kitchenCostPerPortion(sub, e.size, route) : 0;
         const totalRate = subCost + e.addonCostPerPortion;
         if (totalRate > 0) {
           cogsByRate.set(

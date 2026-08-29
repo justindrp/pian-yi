@@ -8,6 +8,7 @@ import {
   unbookedByOrder,
 } from "@/lib/orders/customer-schedule";
 import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
+import { kitchenCostPerPortion, normalizeSize } from "@/lib/orders/size";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
@@ -257,15 +258,20 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (body.status === "pending_payment")
     return NextResponse.json({ ok: true, data: order });
 
-  // Fetch subcontractor cost for COGS journals
+  // Fetch subcontractor cost for COGS journals. M is a second dish the kitchen
+  // bills us for, so it has its own rate — booking an M order at the S cost
+  // reports a margin 3.000/porsi wider than it is. Fall back to the S rate when
+  // the kitchen has no M rate on file rather than to zero.
   let subCost = 0;
   if (body.subcontractor_id) {
     const { data: sub } = await db
       .from("subcontractors")
-      .select("cost_per_portion")
+      .select(
+        "cost_per_portion, cost_per_portion_route1, cost_per_portion_m, cost_per_portion_route1_m",
+      )
       .eq("id", body.subcontractor_id)
       .single();
-    subCost = sub?.cost_per_portion ?? 0;
+    subCost = sub ? kitchenCostPerPortion(sub, normalizeSize(body.size), 2) : 0;
   }
 
   const deliveryRows = schedule.map((slot) => ({
