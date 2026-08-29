@@ -92,4 +92,58 @@ describe("customer chatbot system prompt", () => {
     // small-package rate on large orders, so 25 porsi cost more than 24.
     expect(prompt).not.toContain("Rp 435.000");
   });
+
+  // The turn that follows the welcome sequence: 153 of the first 223 welcomed
+  // customers got one. Everything has just been sent and the rules forbid
+  // repeating any of it, so without a job the model fills the hole — an ad
+  // lead on 2026-08-27 got "Aku cek dulu bentar ya kak" and nothing after,
+  // because no second turn is ever scheduled. See docs/BOT_RULES.md.
+  describe("the turn right after the welcome sequence", () => {
+    const base = {
+      customerState: "new",
+      customerName: null,
+      customerNotes: null,
+      detectedMapsLink: null,
+      menuShown: true,
+      dapurOptions: [],
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["BSD Baru"],
+      neighborhoods: {},
+      activeOrder: null,
+      schedule: null,
+    };
+
+    test("gives that turn one question to ask", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        casual: false,
+        justWelcomed: true,
+      });
+
+      expect(prompt).toContain("This is your first reply to this customer");
+      expect(prompt).toContain("one question that moves the order forward");
+      expect(prompt).toContain("Never stall");
+      expect(prompt).toContain("Aku cek dulu");
+    });
+
+    // The stall is what casual mode produced, so the block is worthless if
+    // casual mode is what drops it.
+    test("applies in casual mode too", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        casual: true,
+        justWelcomed: true,
+      });
+
+      expect(prompt).toContain("This is your first reply to this customer");
+      expect(prompt).toContain("Casual changes the wording, never the job");
+    });
+
+    test("says nothing on every other turn", async () => {
+      const prompt = await buildSystemPrompt({ ...base, casual: false });
+
+      expect(prompt).not.toContain("This is your first reply to this customer");
+    });
+  });
 });

@@ -1285,6 +1285,12 @@ export async function processWebhookAsync(
   // Skip entirely if the customer already has an order (e.g. legacy-imported
   // customers whose customer_state row never got menu_shown set) — they go
   // straight to Claude, which treats them as a returning customer.
+  // The model gets a turn after this block whether or not the welcome fired,
+  // and on the turn that follows it there is nothing left for the model to say
+  // — the greeting, price list, menu and T&C have just gone out, and the rules
+  // forbid repeating any of them. Tell the prompt so it can hand that turn a
+  // job instead. See `justWelcomed` in `buildSystemPrompt`.
+  let justWelcomed = false;
   if (!stateRow?.menu_shown && !latestOrderStatus) {
     const { data: claimed } = await db
       .from("customer_state")
@@ -1298,6 +1304,7 @@ export async function processWebhookAsync(
     if (stateRow) stateRow.menu_shown = true;
 
     if (claimed && claimed.length > 0) {
+      justWelcomed = true;
       const [
         welcomeText,
         priceListUrl,
@@ -1493,6 +1500,7 @@ export async function processWebhookAsync(
     customerId,
     customerName: customer.name,
     customerNotes: learnedNotes ?? customer.notes,
+    justWelcomed,
     latestOrderStatus,
     phone: message.from,
     stateRow,
@@ -1511,6 +1519,9 @@ export async function processSavedCustomerMessage(params: {
   customerId: string;
   customerName: string | null;
   customerNotes: string | null;
+  // Set only by the webhook path, and only on the request that actually sent
+  // the welcome sequence. Draft mode and the replay-latest path leave it false.
+  justWelcomed?: boolean;
   latestOrderStatus?: string | null;
   phone: string;
   stateRow:
@@ -1538,6 +1549,7 @@ export async function processSavedCustomerMessage(params: {
     customerId,
     customerName,
     customerNotes,
+    justWelcomed = false,
     latestOrderStatus,
     phone,
     stateRow,
@@ -1721,6 +1733,7 @@ export async function processSavedCustomerMessage(params: {
     customerName,
     customerNotes,
     detectedMapsLink,
+    justWelcomed,
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,
     dapurMenuTexts,

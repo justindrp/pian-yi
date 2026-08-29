@@ -26,6 +26,13 @@ const PRICE_LIST_LINES = [
 export async function buildSystemPrompt(params: {
   casual: boolean;
   customerState: string;
+  /**
+   * True only on the turn that follows the welcome sequence in the same
+   * request — the model's first reply to someone who has just been sent the
+   * greeting, price list, menu, T&C and window notice. See the block it
+   * switches on below.
+   */
+  justWelcomed?: boolean;
   customerName: string | null;
   customerNotes: string | null;
   detectedMapsLink: string | null;
@@ -335,6 +342,32 @@ paket 4 porsi = Rp 116.000" — a size that is under the floor, divides by neith
 5 nor 6, and contradicted the reply one message earlier that said the quota would
 be kept. Say the skip is free and the package is unchanged.`;
 
+  // The turn right after the welcome sequence, which fires on every first
+  // contact: 153 of the first 223 welcomed customers got one, with no message
+  // of their own in between. Everything the lead asked for has just been sent
+  // by the system, and the rules above forbid the two obvious replies — no
+  // greeting (they have just been greeted) and no mentioning the menu (it is
+  // already in their chat). That leaves the model with nothing it is allowed
+  // to say, and what it says instead depends on the casual coin flip:
+  // polished mode pads out a paragraph, casual mode is told to text like a
+  // friend in a hurry and emits the shortest friendly noise available. On
+  // 2026-08-27 an ad lead got twelve tokens of "Aku cek dulu bentar ya kak" —
+  // a promise to check something nobody had asked about — and never heard
+  // back, because nothing schedules a second turn. So give the turn one job
+  // instead of only telling it what not to do.
+  const justWelcomedBlock = params.justWelcomed
+    ? `
+
+## This is your first reply to this customer
+The system has just sent them, in this order: the greeting, the price list image, the menu image, the T&C, and the 24-hour window notice. They have all of it already. Do not greet them, do not describe or re-send any of it, and do not summarise what they were just sent.
+
+Your whole job in this reply is **one question that moves the order forward** — how many porsi in total, or which area they are in. Ask that question and stop. Two sentences at most.
+
+- Never stall. "Aku cek dulu", "sebentar ya", "saya tunggu", "silakan liat-liat dulu" and anything else that ends the turn without asking for something are all wrong here: nothing is being checked, nothing is coming, and no second turn is scheduled — the customer is left waiting on a reply that will never arrive.
+- If they already said something answerable in that first message — an area, a portion count, a date — answer it in one clause and still end on the next question.
+- This applies to casual mode exactly as it does to polished mode. Casual changes the wording, never the job.`
+    : "";
+
   return `You are the WhatsApp customer service AI for ${businessName}, a daily catering service in Tangerang Selatan, Indonesia.
 
 Always respond in Indonesian. Use "kak" as honorific. Keep replies under 200 words. ${modeInstruction} Never open with a greeting like "Halo kak" or "Selamat datang" — the customer has already been welcomed; jump straight to answering.
@@ -623,5 +656,5 @@ ${cutoffLine}
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
-  }${scheduleBlock}`;
+  }${scheduleBlock}${justWelcomedBlock}`;
 }
