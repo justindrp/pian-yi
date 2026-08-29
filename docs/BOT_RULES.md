@@ -263,6 +263,8 @@ Eight guards were added across those incidents, in ten commits on 2026-08-19 alo
 
 What was fixable was the consequence. An inference no longer holds write authority, so a wrong one costs an admin a notification instead of costing a customer. `flagOrderAtRisk` sets `customer_flags.needs_human_review` and `escalation_reason`, pushes to all admins, and returns. No order row, no delivery rows, no payment message. Tiwi's order still does not die — it arrives in the inbox instead of billing her unattended.
 
+**The order landing clears the flag** — `createOrderFromExtraction` sets `needs_human_review` back to false and nulls `escalation_reason` once the order row is written. Nothing used to: the trigger fires on any reply that called no tool, so a customer who simply took a few turns to answer stayed flagged for good after the order arrived. Carolin was flagged at 05:20 on 2026-08-29 with "Kemungkinan order belum tercatat: 5 porsi", ordered at 05:49, and was still flagged at 05:52; four of the nine standing flags were that shape (Gracia, Lidya, Keira, Julie) and were cleared by hand in the same change. A warning that has already come true is how the next real one gets ignored. `escalated_to_human` is untouched — that one is inbox takeover, and only an admin ends it.
+
 Three filters remain, and only to keep the push rare:
 
 - The extraction found an order at all, read through `extractOrderFromConversation(customerId, { since: newestOrder.created_at })`. The window starts after the newest order of **any** status, because for a returning customer the last 60 messages still contain the chat that produced the order they already have.

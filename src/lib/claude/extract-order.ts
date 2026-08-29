@@ -1620,6 +1620,25 @@ export async function createOrderFromExtraction(
     );
   }
 
+  // The flag that warned this order might never be recorded is answered by the
+  // order existing, and nothing used to clear it. flagOrderAtRisk() fires on any
+  // reply that called no tool, so a customer who simply took a few turns to give
+  // their name stayed flagged for good: Carolin was flagged at 05:20 on
+  // 2026-08-29 and her order was created at 05:49, and at 05:52 the warning was
+  // still sitting there. Ten customers had accumulated that way. One stale alert
+  // is how the next real one gets ignored. Best-effort — the order has landed
+  // either way, and the takeover flag (`escalated_to_human`) is not ours to touch.
+  const { error: clearFlagError } = await db
+    .from("customer_flags")
+    .update({ needs_human_review: false, escalation_reason: null })
+    .eq("customer_id", customerId)
+    .eq("needs_human_review", true);
+  if (clearFlagError) {
+    console.error(
+      `[extract-order] could not clear needs_human_review for ${customerId}: ${clearFlagError.message}`,
+    );
+  }
+
   const { data: existingCustomer } = await db
     .from("customers")
     .select("name, notes, portions_remaining, avg_price_per_portion")
