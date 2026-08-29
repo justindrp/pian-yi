@@ -15,7 +15,11 @@ import type {
 import { modelRole } from "@/lib/claude/model-tag";
 import { normalizeCustomerState } from "@/lib/customers/lifecycle";
 import { createClient } from "@/lib/supabase/client";
-import { formatDateTime, maskPhone } from "@/lib/utils/format";
+import {
+  formatDateTime,
+  formatThreadTime,
+  maskPhone,
+} from "@/lib/utils/format";
 import type { Database } from "@/types/database";
 
 type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
@@ -1087,9 +1091,16 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                 )}
               </div>
             </div>
-            <p className="text-xs text-gray-400 truncate">
-              {thread.lastMessage.content.slice(0, 60)}
-            </p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-xs text-gray-400 truncate">
+                {thread.lastMessage.content.slice(0, 60)}
+              </p>
+              {thread.lastMessage.created_at && (
+                <span className="shrink-0 text-[10px] text-gray-400 tabular-nums">
+                  {formatThreadTime(thread.lastMessage.created_at)}
+                </span>
+              )}
+            </div>
           </button>
         ))}
         {visibleThreads.length === 0 && (

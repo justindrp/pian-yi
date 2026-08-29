@@ -76,3 +76,32 @@ export function formatDateTime(date: string | Date): string {
     minute: "2-digit",
   }).format(new Date(date));
 }
+
+/**
+ * A last-message stamp for a list row: the clock for today, "Kemarin" for
+ * yesterday, the day and month for anything older.
+ *
+ * `formatDateTime` is seventeen characters ("29 Agu 2026 13.46") and does not
+ * fit beside a truncated message preview in a 288px thread column. The year is
+ * dropped for the same reason — an inbox row is scanned for recency, and
+ * anything old enough for the year to matter reads as "old" from the date.
+ */
+export function formatThreadTime(date: string | Date): string {
+  const d = new Date(date);
+  const midnight = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  // Calendar days apart, not 24-hour blocks: a message at 23:50 last night is
+  // "Kemarin" at 00:10 this morning, not "10 minutes ago rounded to today".
+  const days = Math.round((midnight(new Date()) - midnight(d)) / 86_400_000);
+
+  if (days === 0)
+    return new Intl.DateTimeFormat("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
+  if (days === 1) return "Kemarin";
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "short",
+  }).format(d);
+}
