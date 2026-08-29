@@ -3,6 +3,7 @@ import { POST } from "@/app/api/cron/cancel-unpaid/route";
 import { logEdit } from "@/lib/audit/log-edit";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deleteDelivery } from "@/lib/orders/delivery-state";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
@@ -12,6 +13,7 @@ jest.mock("@/lib/audit/log-edit", () => ({
 }));
 jest.mock("@/lib/push/send", () => ({ sendPushToAllAdmins: jest.fn() }));
 jest.mock("@/lib/whatsapp/client", () => ({ sendTextMessage: jest.fn() }));
+jest.mock("@/lib/orders/delivery-state", () => ({ deleteDelivery: jest.fn() }));
 jest.mock("@/lib/cache/settings", () => ({
   getSetting: jest.fn(),
   getTemplate: jest.fn(),
@@ -28,8 +30,16 @@ type Result = { data?: Row[] | null; error: { message: string } | null };
  * the update, which is why `.eq()` only returns a promise once `.update()` has
  * run. `filters` records the query's `.lte()` arguments so a test can assert
  * which `start_date` ceiling the route asked for.
+ *
+ * The row sweep adds a third chain: `select → eq → gte` against
+ * `daily_deliveries`, resolving on `.gte()`. Only that chain calls `.gte()`,
+ * so one shared chain object still serves all three.
  */
-function makeDb(spec: { select: Result; update?: Result }) {
+function makeDb(spec: {
+  select: Result;
+  update?: Result;
+  deliveries?: Result;
+}) {
   const updates: Row[] = [];
   const filters: { column: string; value: unknown }[] = [];
   const from = jest.fn(() => {
@@ -37,6 +47,9 @@ function makeDb(spec: { select: Result; update?: Result }) {
     const chain: Record<string, unknown> = {};
     chain.select = jest.fn().mockReturnValue(chain);
     chain.lt = jest.fn().mockReturnValue(chain);
+    chain.gte = jest.fn(() =>
+      Promise.resolve(spec.deliveries ?? { data: [], error: null }),
+    );
     chain.lte = jest.fn((column: string, value: unknown) => {
       filters.push({ column, value });
       return Promise.resolve(spec.select);
@@ -120,7 +133,7 @@ describe("cancel-unpaid", () => {
 
     const body = await (await POST(req())).json();
 
-    expect(body).toEqual({ ok: true, cancelled: 2 });
+    expect(body).toMatchObject({ ok: true, cancelled: 2 });
     expect(updates).toHaveLength(2);
     expect(updates[0]).toMatchObject({ status: "cancelled_unpaid" });
     expect(sendTextMessage).toHaveBeenCalledTimes(2);
@@ -135,7 +148,7 @@ describe("cancel-unpaid", () => {
 
     const body = await (await POST(req())).json();
 
-    expect(body).toEqual({ ok: true, cancelled: 0 });
+    expect(body).toMatchObject({ ok: true, cancelled: 0 });
     expect(sendTextMessage).not.toHaveBeenCalled();
   });
 
@@ -212,6 +225,70 @@ describe("cancel-unpaid", () => {
 
     expect(filters).toEqual([{ column: "start_date", value: "2026-08-27" }]);
     jest.useRealTimers();
+  });
+
+  // The other half of a cancellation. `orders.status` moved and nothing else
+  // did, so the cancelled order's meals stayed on the kitchen sheet — which
+  // keys on `delivery_date` alone and never joins order status — and a kitchen
+  // would have cooked portions nobody paid for.
+  it("takes the order's undelivered rows off the sheet with it", async () => {
+    const { db } = makeDb({
+      select: { data: [order("a", "+628111")], error: null },
+      deliveries: { data: [{ id: "row-1" }, { id: "row-2" }], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(body.deliveriesRemoved).toBe(2);
+    expect(body.deliveriesStuck).toBe(0);
+    expect(deleteDelivery).toHaveBeenCalledTimes(2);
+    expect((deleteDelivery as jest.Mock).mock.calls[0][0]).toMatchObject({
+      id: "row-1",
+      actor: "system:cancel-unpaid",
+    });
+  });
+
+  // A row in the past is food that was already cooked and delivered. Deleting
+  // it would erase a real cost from the books to make an unpaid order tidy, so
+  // the sweep asks for today onwards and nothing earlier.
+  it("only asks for rows from today onwards", async () => {
+    const { db } = makeDb({
+      select: { data: [order("a", "+628111")], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await POST(req());
+
+    const gte = (db.from as jest.Mock).mock.results
+      .flatMap((r) => (r.value as { gte: jest.Mock }).gte.mock.calls)
+      .filter((c) => c.length > 0);
+    expect(gte[0][0]).toBe("delivery_date");
+    expect(gte[0][1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  // The order is already cancelled by the time a row is deleted, so a failure
+  // here must not swallow the customer's notice or drop the order out of the
+  // count. It must still be loud: a cancelled order with live rows is exactly
+  // the bug this block exists to prevent.
+  it("still notifies the customer when a row will not delete, and says so", async () => {
+    const { db } = makeDb({
+      select: { data: [order("a", "+628111")], error: null },
+      deliveries: { data: [{ id: "row-1" }], error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+    (deleteDelivery as jest.Mock).mockRejectedValueOnce(
+      new Error("delivery_proofs violates foreign key constraint"),
+    );
+
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(body.cancelled).toBe(1);
+    expect(body.deliveriesRemoved).toBe(0);
+    expect(body.deliveriesStuck).toBe(1);
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a request without the cron secret", async () => {

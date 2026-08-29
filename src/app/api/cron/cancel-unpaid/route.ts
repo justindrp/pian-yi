@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { jakartaDateString } from "@/lib/menu/week";
+import { deleteDelivery } from "@/lib/orders/delivery-state";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { addDays, jakartaHour } from "@/lib/time/jakarta";
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const template = await getTemplate("payment_overdue_final");
   let cancelled = 0;
+  let deliveriesRemoved = 0;
+  let deliveriesStuck = 0;
 
   for (const order of orders) {
     // The notice goes to whoever owes the money. On a package bought for
@@ -127,6 +130,53 @@ export async function POST(req: NextRequest): Promise<Response> {
         },
       });
 
+      // Cancelling the order used to leave its food on the kitchen sheet.
+      // `orders.status` moved and nothing else did, and the sheet
+      // (`GET /api/deliveries/daily-sheet`) keys on `delivery_date` alone —
+      // it has never joined order status and must not start, because a row's
+      // presence is the whole truth about whether that food gets cooked
+      // (migration 075). So the cancellation has to take the rows with it, or
+      // a kitchen cooks portions nobody paid for. Rows only reach a
+      // `pending_payment` order by hand today, via the daily sheet's PUT,
+      // which accepts any order_id regardless of status — that is how twelve
+      // of Cindi's landed on 2026-08-22.
+      //
+      // Only today onwards. A row in the past is food that was already cooked
+      // and delivered, and deleting it would erase a real cost from the books
+      // to make an unpaid order look tidy.
+      const { data: futureRows, error: rowsError } = await db
+        .from("daily_deliveries")
+        .select("id")
+        .eq("order_id", order.id)
+        .gte("delivery_date", today);
+      if (rowsError) throw new Error(rowsError.message);
+
+      // Its own try/catch, and after the cancellation. The order is already
+      // cancelled by this point, so a failure here must not swallow the
+      // customer's notice or drop the order out of the count — but it must
+      // still be loud, because a cancelled order with live rows is exactly the
+      // bug this block exists to prevent.
+      for (const row of futureRows ?? []) {
+        try {
+          await deleteDelivery({
+            db,
+            id: row.id,
+            actor: systemActor("cancel-unpaid"),
+            reason,
+          });
+          deliveriesRemoved++;
+        } catch (err) {
+          deliveriesStuck++;
+          console.error(
+            "[cron/cancel-unpaid] could not remove delivery",
+            row.id,
+            "on cancelled order",
+            order.id,
+            err,
+          );
+        }
+      }
+
       if (phone)
         await sendTextMessage(phone, `${template}\n\n${WINDOW_NOTICE_SHORT}`);
       cancelled++;
@@ -136,13 +186,23 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   if (cancelled > 0) {
+    // A stuck row is the one thing here worth waking someone for: the order is
+    // cancelled and its food is still on a kitchen sheet.
+    const body = deliveriesStuck
+      ? `${deliveriesStuck} delivery row(s) STILL ON THE SHEET — remove by hand`
+      : `Unpaid orders cancelled, ${deliveriesRemoved} delivery row(s) removed`;
     await sendPushToAllAdmins(
       `${cancelled} order(s) auto-cancelled`,
-      "Unpaid orders cancelled after 24h",
-      "/payments",
-      "low",
+      body,
+      deliveriesStuck ? "/deliveries" : "/payments",
+      deliveriesStuck ? "high" : "low",
     );
   }
 
-  return NextResponse.json({ ok: true, cancelled });
+  return NextResponse.json({
+    ok: true,
+    cancelled,
+    deliveriesRemoved,
+    deliveriesStuck,
+  });
 }
