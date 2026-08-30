@@ -387,6 +387,45 @@ ${dapurList || "none"}`;
   );
 }
 
+// A sentence that points at the address already on file instead of stating one.
+// The bot is told not to ask a returning customer for their address again, so a
+// renewal chat contains "alamat sama" and nothing else — and extraction returns
+// the model's paraphrase of *that sentence* in the address field. Every write
+// below is guarded against an empty address, never against a full one that says
+// nothing, so on 2026-08-30 Julian S's "Apartment Brooklyn AlamSutera Unit A17F"
+// was replaced on his record by "Alamat sama seperti sebelumnya (diantar ke
+// atas)", and that is what the kitchen sheet printed as the place to deliver to.
+//
+// Length-capped because the shapes below are openers: a real address may well
+// begin "Sama Residence" or "Seperti Indah Blok B", and one that long is a real
+// address whatever it starts with.
+const ADDRESS_PLACEHOLDER = new RegExp(
+  [
+    // "alamat sama", "alamatnya masih sama", "alamat tetap", "alamat lama"
+    /^\W*alamat\w*\s+(yang\s+|yg\s+)?(sama|tetap|masih|lama|sebelumnya|biasa)\b/
+      .source,
+    // "sama seperti sebelumnya", "masih sama kayak kemarin"
+    /^\W*(sama|masih)\b[^\n]{0,20}\b(sepert|spt|kayak|dengan|dgn|biasa|sebelum|kemarin|lalu)/
+      .source,
+    // "seperti biasa", "spt order sebelumnya"
+    /^\W*(seperti|spt)\s+(biasa|sebelumnya|order|pesanan)\b/.source,
+  ].join("|"),
+  "i",
+);
+
+/** Whether this "address" only refers back to the one already on the record. */
+export function isAddressPlaceholder(address: string): boolean {
+  const trimmed = address.trim();
+  return trimmed.length <= 80 && ADDRESS_PLACEHOLDER.test(trimmed);
+}
+
+/** The address as given, or undefined when it only points at the stored one. */
+function realAddress(address?: string | null): string | undefined {
+  const trimmed = address?.trim();
+  if (!trimmed || isAddressPlaceholder(trimmed)) return undefined;
+  return trimmed;
+}
+
 // A returning customer never retypes their address — it is on their record, and
 // the bot is told not to ask for it again. Extraction reads the chat alone, so it
 // comes back with no address for exactly those customers, and both webhook
@@ -402,7 +441,7 @@ function withRecordedAddress(
     sub_area?: string | null;
   } | null,
 ): ExtractedOrderInput {
-  if (input.address?.trim()) return input;
+  if (realAddress(input.address)) return input;
   const recorded = customer?.address?.trim();
   if (!recorded) return input;
   return {
@@ -1238,10 +1277,19 @@ const NOTHING_TO_SEND: CreateOrderResult = { sendPayment: null };
 export async function createOrderFromExtraction(
   customerId: string,
   phone: string,
-  input: ExtractedOrderInput,
+  extracted: ExtractedOrderInput,
   options?: { sendPaymentInfo?: boolean; deferPaymentMessage?: boolean },
 ): Promise<CreateOrderResult> {
   const db = createAdminClient();
+  // "Alamat sama seperti sebelumnya" is not an address (see
+  // ADDRESS_PLACEHOLDER). Dropped here rather than at each use, so that every
+  // "only when this order carried an address" guard downstream keeps what the
+  // record already holds instead of overwriting it with a sentence.
+  const input: ExtractedOrderInput = {
+    ...extracted,
+    address: realAddress(extracted.address) ?? "",
+    address_2: realAddress(extracted.address_2),
+  };
   const sendPaymentInfo = options?.sendPaymentInfo ?? true;
   // The bank details are the last thing the customer should read, not the
   // first. The model answers and calls extract_order in the same turn, and the
