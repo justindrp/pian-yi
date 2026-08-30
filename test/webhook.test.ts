@@ -545,6 +545,28 @@ describe("processWebhookAsync", () => {
     expect(getAnthropicClient).not.toHaveBeenCalled();
   });
 
+  // A package bought for someone else sits on the beneficiary, with the buyer
+  // in `paid_by_customer_id`. Matching the proof on customer_id alone left the
+  // friend's order in pending_payment: Naya sent one transfer proof on
+  // 2026-08-30 covering her own 20-porsi package and Cila's 5, only hers
+  // flipped, and cancel-unpaid was four hours from sweeping Cila's the evening
+  // before its 31 August start.
+  test("T14b — a buyer's proof also flips the orders they bought for others", async () => {
+    const db = makeDefaultDb({
+      orders: { data: { id: "order-1", status: "pending_payment" }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await processWebhookAsync(makeImagePayload());
+
+    expect(db.chains.orders.or).toHaveBeenCalledWith(
+      expect.stringContaining("paid_by_customer_id.eq."),
+    );
+    expect(db.chains.orders.or).toHaveBeenCalledWith(
+      expect.stringContaining("customer_id.eq."),
+    );
+  });
+
   test("T15 — burst: a message superseded by a newer one draws no reply", async () => {
     const db = makeDefaultDb({
       // Whatever this message's id is, the newest saved inbound is a different

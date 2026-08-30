@@ -2491,10 +2491,18 @@ async function handlePaymentProofImage(
     }
   }
 
+  // The payer's proof covers every order they are paying for, not only the one
+  // in their own name. A package bought for someone else sits on the
+  // beneficiary, with the buyer in `paid_by_customer_id` — so matching on
+  // customer_id alone leaves the friend's order in pending_payment with no
+  // signal that anything arrived. Naya sent one transfer proof on 2026-08-30
+  // for her 20-porsi package and Cila's 5, only her own flipped, and
+  // cancel-unpaid was four hours from sweeping Cila's the evening before its
+  // start date.
   await db
     .from("orders")
     .update({ status: "payment_proof_received", payment_proof_url: imageUrl })
-    .eq("customer_id", customerId)
+    .or(`customer_id.eq.${customerId},paid_by_customer_id.eq.${customerId}`)
     .eq("status", "pending_payment");
 
   await saveMessage({
@@ -2647,10 +2655,12 @@ async function handleToolUse(
       message: "Thread sudah dialihkan ke admin.",
     };
   } else if (tool.name === "mark_payment_proof_received") {
+    // Same reach as the image path above: a buyer's proof covers the packages
+    // they bought for other people too.
     await db
       .from("orders")
       .update({ status: "payment_proof_received" })
-      .eq("customer_id", customerId)
+      .or(`customer_id.eq.${customerId},paid_by_customer_id.eq.${customerId}`)
       .eq("status", "pending_payment");
 
     await sendPushToAllAdmins(

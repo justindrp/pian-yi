@@ -225,6 +225,8 @@ Operational consequences:
 - **`/payments` shows a "Dibayar oleh" line** on any order with a payer, so a transfer under a name that does not match the order reads correctly instead of as a mismatch.
 - **`cancel-unpaid` chases the payer.** Its notice goes to `paid_by_customer_id` when set.
 - Two orders out of one conversation is now the correct outcome, not a duplicate. Before treating a `pending_payment` order as money owed, check `paid_by_customer_id` — the debt is the payer's, once.
+- **The buyer's payment proof flips every order they are paying for, not only the one in their own name.** Both proof paths in the webhook — the image handler and the `mark_payment_proof_received` tool — used to match `.eq("customer_id", customerId)` alone, which is the beneficiary on a third-party order, so the friend's package stayed in `pending_payment` with nothing to show an admin that money had arrived. They now match `customer_id` **or** `paid_by_customer_id`. On 2026-08-30 Naya sent one transfer proof covering her own 20-porsi package and Cila's 5; only Naya's flipped, and `cancel-unpaid` was four hours from sweeping Cila's the evening before its 31 August start. Pinned by T14b in `test/webhook.test.ts`.
+- **A beneficiary order created outside `extract_order` can arrive with `paid_by_customer_id` null**, and then nothing links it to the payer at all — not the proof handler, not `cancel-unpaid`'s notice, not the Payments page. Cila's was one: an `IMPORT_cila` customer row with no number and no payer. When entering a third-party order by hand, set the payer.
 
 `linked_order_id` is a different thing entirely: use it when a person *draws from* someone else's package, never when they have their own order.
 
