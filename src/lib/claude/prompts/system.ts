@@ -153,6 +153,10 @@ Ini catatan resmi kami, bukan tebakan dari percakapan di atas. **Kalau customer 
 - Sisa porsi sudah dibayar dan belum dikirim: **${params.schedule.remainingToday} porsi**. Ini angka yang customer maksud kalau bertanya "sisa kuota saya berapa".
 - Porsi yang belum punya tanggal: **${params.schedule.unbooked} porsi**. Hanya sebanyak ini yang tanggalnya masih bisa dipesan baru. Kalau 0, semua porsi sudah ada tanggalnya — jangan bilang kuotanya habis, karena makanannya masih akan dikirim.
 ${
+  params.schedule.remainingToday > 0
+    ? `\n**Sisa itu dipakai dulu sebelum menjual paket baru.** Kalau customer minta rangkaian hari yang butuh lebih banyak porsi daripada sisanya, besar paket barunya = jumlah porsi yang diminta − ${params.schedule.remainingToday} porsi sisa. Baru angka itu dicek ke aturan ukuran paket (5, 6, atau kelipatannya). Jangan pernah menjual ulang porsi yang sudah dibayar: Veronica Catherine minta 7 porsi untuk minggu depan pada 2026-08-30 dengan 1 porsi masih tersisa, dan ditawari paket 7 porsi — porsi miliknya dihitung dua kali, dan 7 bukan ukuran yang kami jual. Yang benar: 7 − 1 = paket 6 porsi. Sebutkan sisa itu ke customer waktu menawarkan paketnya.\n\n**Begitu customer setuju dengan ukuran paketnya, turn itu juga yang memanggil extract_order.** Nama, alamat dan harga sudah ada di catatan, jadi tidak ada field lain yang ditunggu dan tidak perlu ringkasan sekali lagi. Jangan pernah menutup turn dengan "aku siapkan sekarang ya kak" atau "detail transfernya menyusul" tanpa memanggil tool: detail transfer hanya terkirim kalau extract_order dipanggil, jadi kalimat itu adalah janji yang tidak pernah ditepati. Veronica Catherine setuju paket 6 porsi pada 2026-08-30 dan mengonfirmasi alamatnya; bot menjawab "Aku siapkan sekarang ya kak", lalu "Nanti detail transfernya menyusul", dan ordernya tidak pernah dibuat.\n`
+    : ""
+}${
   params.schedule.upcoming.length > 0
     ? `\nSudah terjadwal:\n${params.schedule.upcoming
         .map(

@@ -157,6 +157,8 @@ Both `mark_paid` paths (`PATCH /api/orders`, assistant `mark_order_paid`) used t
 
 Not fixed by this: `resizePendingOrderFromMessage` shrinks a package but calls `fillMissingSchedule`, which only ever touches an order with **zero** delivery rows — so a size reduced after a schedule exists leaves the surplus days in place. Nothing has hit it yet.
 
+**And `mark_paid` does not cap the rows it writes at `package_size`, deliberately.** A top-up is sized net of what the customer still holds — 7 days wanted, 1 porsi left, paket 6 (see "A leftover porsi is spent before a new package is sold" in `BOT_RULES.md`) — so its schedule is legitimately one day longer than its own package. The seventh row is the porsi they already paid for on the previous order. Per order that reads as a one-porsi over-draw; netted at the customer level, which is the level every balance is read at, it is exactly 0. Do not add a cap: it would drop the customer's own paid-for porsi off the calendar, and the same arithmetic is why a quota balance is never floored per order.
+
 ## The ledger dates a package credit by when it was bought
 
 Both ledgers date the `+package_size` row with `packageCreditDate()` (`src/lib/orders/credit-date.ts`), which is the **earliest** of `created_at` and `start_date`. Neither column alone is the purchase date:

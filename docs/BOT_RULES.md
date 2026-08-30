@@ -299,6 +299,90 @@ The general shape is worth keeping in mind when editing this prompt: a rule that
 only says when *not* to call the tool leaves the model with no moment at which
 it must. Every gate needs the turn that opens it named alongside.
 
+## A leftover porsi is spent before a new package is sold
+
+Veronica Catherine asked for seven days on 2026-08-30 holding 1 porsi she had
+already bought (38 bought, 37 drawn, no future rows). The bot named the leftover
+to her in one message — "sisa 1 porsi ya kak" — and in the next sized the new
+package at the full 7, which sells her that porsi a second time.
+
+The daily-quota block only ever spoke to the two ends: quota exhausted (the
+renewal branch above) and quota left (keep booking against it). A customer with
+quota left but *less* of it than the run they want had no rule at all, and the
+model treated the leftover as a separate thing to be used later rather than as
+the first porsi of what it was quoting. The schedule block now carries the
+arithmetic whenever `remainingToday > 0`: the new package is what they asked for
+**minus** the leftover, "7 − 1 = paket 6 porsi", and the leftover keeps its own
+price — it was bought at the old rate and is not re-quoted. Pinned by "a
+customer whose leftover quota is smaller than what they want" in
+`test/api/system-prompt.test.ts`.
+
+**The residue is on the order side, not the customer's.** A 6-porsi top-up with
+a 7-day schedule writes 7 rows against the new order at `mark_paid`, which does
+not cap rows at `package_size`. Per order that is a one-porsi over-draw; netted
+at the customer level it is exactly 0, which is the level every balance is read
+at (see "Those three columns are derived one way each" in `OPERATIONS.md`). Do
+not "fix" it by flooring the schedule at the package size — that would drop the
+customer's own paid-for porsi off the calendar.
+
+## 7 porsi is not a package, and the model may not invent one
+
+The same thread produced a total we do not sell. The pricing rule — off-list
+totals are billed at the rate of the largest listed size below, as long as the
+total is a multiple of 5 or of 6 — is in the prompt with worked examples, and
+the model applied the *pricing* half to a size the *sellable* half excludes:
+7 is neither on the ladder nor a multiple of 5 or 6. Nothing downstream checked.
+`createOrderFromExtraction` would have priced 7 porsi at Rp 29.000 and sent the
+bank details for a package that does not exist.
+
+The guard is now in code, immediately after `packageSize` is resolved and before
+the open-order lookup that deletes `daily_deliveries` — so a rejected size
+touches nothing. `isSellableSize()` is the ladder floor plus "multiple of 5 or
+of 6"; `nearestSellableSizes()` finds the one below and the one above.
+
+Two exemptions and one fallback, all deliberate:
+
+- **A contract customer is exempt.** `contract_price_per_portion` replaces the
+  ladder entirely, so their sizes are not ladder sizes.
+- **`sendPaymentInfo: false` is exempt.** That path amends or backfills an order
+  that already exists; refusing there would strand it.
+- **Prefer the model's own `package_size` when it is sellable.** The refusal
+  would otherwise loop forever on the very case that produced it: Veronica's
+  schedule sums to 7 while the package she agreed to is 6. When the schedule
+  total is unsellable and `input.package_size` is not, the stated size wins and
+  the order is created.
+
+Only when both are unsellable does the bot withhold the order and ask, in the
+withhold pattern every other guard here uses (compose → `saveMessage` →
+`sendTextMessage` → `updateMessageReceipt` → `NOTHING_TO_SEND`): "paket 7 porsi
+belum ada 🙏 … Yang paling dekat: *6 porsi (Rp 174.000)* atau *10 porsi
+(Rp 280.000)*". Both quotes are real, priced through `getExtractedOrderPricing`
+at the size the customer would actually be buying. No order, no bank details, no
+delivery rows. Pinned by `test/order-sellable-size.test.ts`.
+
+## An order promised while quota is left is promised by nobody
+
+Veronica agreed to the 6-porsi package and confirmed her address. The bot
+answered "Aku siapkan sekarang ya kak", then "Nanti detail transfernya menyusul
+ya kak", and called no tool. Payment details are composed and sent **only** by
+`createOrderFromExtraction`, so nothing was ever going to follow — and no order
+was created.
+
+That is the Julian S failure again, and the rule written for it did not fire:
+the renewal branch is gated on `remainingToday <= 0`, and her 1 leftover porsi
+switched it off. `flagOrderAtRisk()` did not fire either, because
+`customerStatedSize()` looks for a digit in the customer's *own* last 40
+messages within 48h and she never typed one — the sizes were all the bot's.
+
+The trigger now lives in the top-up block too, with the same shape as the
+renewal one: the turn the customer agrees to a size is the turn that calls
+`extract_order`, and closing a turn with "aku siapkan sekarang ya kak" or
+"detail transfernya menyusul" without a tool call is named as forbidden. Neither
+the alerting nor the extraction side was loosened: widening
+`customerStatedSize()` adds an alert nobody watches, and building the order from
+an inference is the thing that billed seven real customers twice (see "One order
+per purchase" below).
+
 ## A restriction reaches the sheet only if the customer said it
 
 **The summarizer prompt may not name a dietary restriction, and a customer who asked for nothing gets `Preferensi: tidak ada permintaan khusus.`** The prompt in `learn-context.ts` used to gloss the rule with an example — "dietary requests and restrictions (tanpa nasi, tidak pedas, tanpa seafood, alergi)" — and the model copied the parenthetical out as an observation. On 2026-08-30 five customers carried that exact list and only one had ever asked for any of it. Two had food on the calendar: Carolin (one delivery, 2026-09-01) and Kurniadi Tan, whose 16 rows started the next morning and whose 48 messages never mention food at all — his own bullet asserted three restrictions and then said they were *"tidak disebutkan eksplisit di transkrip"*. Julian S shows the second half of the damage: the invented list stood where his real request, *"Makanan tidak ada kacang dan Bawang goreng"*, should have been, so an invention did not merely add a wrong instruction, it displaced a right one.

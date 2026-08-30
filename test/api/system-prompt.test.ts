@@ -210,6 +210,67 @@ describe("customer chatbot system prompt", () => {
     });
   });
 
+  // Veronica Catherine asked for seven days on 2026-08-30 holding 1 porsi she
+  // had already paid for. The bot named the leftover in one message and still
+  // sized the new package at the full 7 — her porsi sold to her twice, and 7 is
+  // not a size we sell. The renewal block only fires once quota is exhausted, so
+  // a customer with quota left but not enough of it had no rule at all.
+  describe("a customer whose leftover quota is smaller than what they want", () => {
+    const base = {
+      casual: false,
+      customerState: "ordering" as const,
+      customerName: "Veronica Catherine",
+      customerNotes: null,
+      detectedMapsLink: null,
+      menuShown: true,
+      dapurOptions: [],
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["BSD Baru"],
+      neighborhoods: {},
+      activeOrder: null,
+    };
+
+    test("nets the leftover off the new package first", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        schedule: { unbooked: 1, remainingToday: 1, upcoming: [] },
+      } as never);
+
+      expect(prompt).toContain("Sisa itu dipakai dulu sebelum menjual paket baru");
+      expect(prompt).toContain("− 1 porsi sisa");
+      expect(prompt).toContain("7 − 1 = paket 6 porsi");
+    });
+
+    // The renewal branch that carries "never promise an order you do not
+    // create" fires only once quota hits 0, so her 1 leftover porsi switched it
+    // off. She agreed to the 6-porsi package and confirmed her address; the bot
+    // answered "Aku siapkan sekarang ya kak", then "Nanti detail transfernya
+    // menyusul", and called nothing. Payment details are only ever sent by
+    // extract_order, so the promise could not have been kept.
+    test("makes the agreed size the trigger, and forbids the empty promise", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        schedule: { unbooked: 1, remainingToday: 1, upcoming: [] },
+      } as never);
+
+      expect(prompt).toContain("turn itu juga yang memanggil extract_order");
+      expect(prompt).toContain("aku siapkan sekarang ya kak");
+      expect(prompt).toContain("detail transfernya menyusul");
+    });
+
+    test("says nothing when there is no leftover to net off", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        schedule: { unbooked: 0, remainingToday: 0, upcoming: [] },
+      } as never);
+
+      expect(prompt).not.toContain(
+        "Sisa itu dipakai dulu sebelum menjual paket baru",
+      );
+    });
+  });
+
   describe("the turn right after the welcome sequence", () => {
     const base = {
       customerState: "new",

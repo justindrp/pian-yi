@@ -23,7 +23,7 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getDeliveryRoute } from "@/lib/utils/format";
+import { formatIDR, getDeliveryRoute } from "@/lib/utils/format";
 import { normalizePhone, samePhone } from "@/lib/utils/phone";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import { demoDisplayName, isDemoPhone } from "@/lib/whatsapp/demo";
@@ -607,6 +607,37 @@ export async function minPackageSize(): Promise<number> {
     .limit(1)
     .maybeSingle();
   return data?.portions ?? 5;
+}
+
+/**
+ * The sizes we can actually sell. The published ladder is 5, 6 and multiples of
+ * either, and an off-list total is priced at the rate of the largest listed size
+ * below it — so every sellable total divides by 5 or by 6, and nothing else is a
+ * package. 7 is the shape of the mistake: it looks like a week, it is not a size.
+ */
+export function isSellableSize(size: number, floor: number): boolean {
+  return size >= floor && (size % 5 === 0 || size % 6 === 0);
+}
+
+/**
+ * The two nearest sellable totals either side, to offer a customer who asked for
+ * one we cannot sell — 7 gives 6 and 10, 13 gives 12 and 15. `below` is null
+ * only when nothing sellable fits between the floor and the size asked for.
+ */
+export function nearestSellableSizes(
+  size: number,
+  floor: number,
+): { below: number | null; above: number } {
+  let below: number | null = null;
+  for (let n = size - 1; n >= floor; n--) {
+    if (isSellableSize(n, floor)) {
+      below = n;
+      break;
+    }
+  }
+  let above = size + 1;
+  while (!isSellableSize(above, floor)) above++;
+  return { below, above };
 }
 
 /**
@@ -1417,12 +1448,88 @@ export async function createOrderFromExtraction(
   // package, the size the model extracted for that package is all we have.
   const chatSize =
     beneficiary.kind === "self" ? (paidSize ?? statedTotal ?? weeksSize) : null;
-  const packageSize = chatSize ?? flooredPackageSize;
+  let packageSize = chatSize ?? flooredPackageSize;
   if (packageSize !== flooredPackageSize) {
     console.log(
       `[extract-order] package_size ${flooredPackageSize} -> ${packageSize} (paid=${paidSize} stated=${statedTotal} weeks=${weeksSize})`,
     );
   }
+  // 7 porsi is not a package.
+  //
+  // Every size we sell divides by 5 or by 6 — the ladder is 5, 6 and multiples
+  // of either — and the prompt carries the rule, five worked examples and the
+  // literal line "7 porsi → offer 6 and 10". The model broke it anyway:
+  // Veronica Catherine named seven days on 2026-08-30 and was offered "paket 7
+  // porsi (7 × Rp 28.000 = Rp 196.000)" — a size we do not sell, at a rate that
+  // is not even the tier-below fallback (6 is the largest listed size below 7,
+  // so the fallback would have been Rp 29.000). A rule the prompt states three
+  // ways and the model still breaks belongs in code.
+  //
+  // The days are usually what produce the odd total, since packageSize comes
+  // from the schedule sum whenever there is one — and a customer with quota left
+  // is *right* to name more days than the package they are buying: seven days
+  // against a 6-porsi top-up is 6 bought plus 1 they already own. So prefer the
+  // size the model extracted when that one is sellable, and refuse only when
+  // neither number is.
+  //
+  // Refusing writes nothing. It sends the two nearest sellable totals with their
+  // prices — the same pair the prompt tells the model to offer — and the model
+  // calls again next turn with whichever the customer picks.
+  //
+  // Exempt: a contract customer, whose negotiated rate replaces the ladder
+  // outright and says nothing about which sizes exist; and the payment-proof
+  // path (`sendPaymentInfo: false`), where the money has already moved and
+  // refusing would throw away a real payment.
+  const sizeFloor = await minPackageSize();
+  if (
+    sendPaymentInfo &&
+    !isSellableSize(packageSize, sizeFloor) &&
+    (await contractPrice(orderCustomerId)) === null
+  ) {
+    if (
+      typeof input.package_size === "number" &&
+      isSellableSize(input.package_size, sizeFloor)
+    ) {
+      console.log(
+        `[extract-order] package_size ${packageSize} -> ${input.package_size}: the schedule sums to a size we do not sell`,
+      );
+      packageSize = input.package_size;
+    } else {
+      const { below, above } = nearestSellableSizes(packageSize, sizeFloor);
+      // Quoted at the size the model asked for rather than the one the kitchen
+      // can cook: the M check needs a subcontractor, which is not resolved until
+      // further down, and this branch creates nothing for that check to protect.
+      const quoted = await Promise.all(
+        (below === null ? [above] : [below, above]).map(async (n) => {
+          const { total_price } = await getExtractedOrderPricing(
+            n,
+            input.nasi_merah === true,
+            orderCustomerId,
+            normalizeSize(input.size),
+          );
+          return `*${n} porsi (${formatIDR(total_price)})*`;
+        }),
+      );
+      const askMsg = `Maaf kak, paket ${packageSize} porsi belum ada 🙏 Ukuran paket kami 5 porsi, 6 porsi, atau kelipatannya. Yang paling dekat: ${quoted.join(" atau ")}. Kakak mau ambil yang mana?`;
+      const conversationId = await saveMessage({
+        customerId,
+        role: "assistant",
+        content: askMsg,
+        modelUsed: "system",
+      });
+      const askMessageId = await sendTextMessage(phone, askMsg);
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: askMessageId,
+        status: "sent",
+      });
+      console.log(
+        `[extract-order] order withheld for ${customerId}: ${packageSize} porsi is not a sellable size`,
+      );
+      return NOTHING_TO_SEND;
+    }
+  }
+
   // A customer already being asked to pay for an order has one order, not two.
   // The model re-calls extract_order whenever it restates the summary, and each
   // call used to insert: Sherine Fayola was billed Rp 145.000, then Rp 540.000,
