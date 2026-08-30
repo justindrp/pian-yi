@@ -243,6 +243,31 @@ having sent it. The areas themselves are never literals here: they arrive from
 `activeDeliveryAreas(db)`, so a kitchen going inactive narrows the check on its
 own.
 
+## A maps link is not an address the model can read
+
+The floor above assumes the address arrives as words. Sarah Sinaga's second one
+did not. Told her home in Kab. Bogor was out of coverage, she answered "ada
+alamat kantor sihh kak" and sent a bare Google Maps link — nothing else, no
+street, no area. The model cannot open a link, so it had no information at all
+about where the pin was; it wrote `area: "BSD Baru"` and the address
+`"Alamat kantor sesuai titik Google Maps yang dikirim"`, quoted **Rp 336.000**
+for 12 portions and sent the bank account number, forty minutes after we had
+told her by hand that we could not deliver to her. The office is also outside
+coverage. The order (`5e0c623f`, `pending_payment`, no delivery rows) was
+cancelled by hand and she was told a second time.
+
+Two older rules combined into this. "Nearest served area" let it invent an area
+when nothing matched, and "an address sent as a photo, a shared location or a
+maps link still counts as given" — written so a customer who sent a pin is never
+asked for their address twice — read as though the pin also answered the area
+question. It does not. A link is what the courier needs *after* the area is
+settled; it is never what settles it.
+
+So: never fill `area` from a link, never write an address whose whole content is
+"sesuai titik maps", and never quote a price or call `extract_order` on a
+link-only address. Ask which area the place is in, in words, and wait. Pinned by
+"does not let a maps link settle the area" in `test/api/system-prompt.test.ts`.
+
 ## A renewal is waiting on the days, and nothing else
 
 `Quota exhausted` in the daily-quota block told the model to ask which days and

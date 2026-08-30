@@ -129,6 +129,39 @@ describe("customer chatbot system prompt", () => {
     );
   });
 
+  // The kabupaten rule above assumed the address arrives as words. Sarah
+  // Sinaga's second one did not: told her home was out of coverage, she sent a
+  // bare maps pin for her office. The model cannot open a link, so it filled
+  // `area` with "BSD Baru", wrote the address as "Alamat kantor sesuai titik
+  // Google Maps yang dikirim", quoted Rp 336.000 and sent the bank details —
+  // for an office that is also outside coverage. The "a maps link counts as an
+  // address given" rule is about not asking twice, never about coverage.
+  test("does not let a maps link settle the area", async () => {
+    const prompt = await buildSystemPrompt({
+      casual: false,
+      customerState: "new",
+      customerName: null,
+      customerNotes: null,
+      detectedMapsLink: "https://maps.app.goo.gl/abc",
+      menuShown: true,
+      dapurOptions: [],
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["BSD Baru"],
+      neighborhoods: {},
+      activeOrder: null,
+      schedule: null,
+    });
+    expect(prompt).toContain("A Google Maps link is not an address you can read");
+    expect(prompt).toContain("never let a link end the area question");
+    expect(prompt).toContain(
+      "do not quote a price or call extract_order until they answer",
+    );
+    // The bullet is worthless if it leaves the old "counts as given" wording
+    // reading as permission to skip the area.
+    expect(prompt).toContain("it never means the area is confirmed");
+  });
+
   describe("a renewal whose quota is exhausted", () => {
     const renewing = {
       casual: false,
