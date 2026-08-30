@@ -24,9 +24,17 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { useDeliveryAreas, withCurrentAreas } from "@/hooks/use-delivery-areas";
-import { deriveCustomerDisplayState } from "@/lib/customers/lifecycle";
+import {
+  deriveCustomerDisplayState,
+  hasCurrentOrder,
+} from "@/lib/customers/lifecycle";
+import {
+  type DrawCandidate,
+  pickDrawOrder,
+} from "@/lib/orders/pick-draw-order";
 import { matchCustomerByName, parseGrantPaste } from "@/lib/grants/parse-paste";
 import { createClient } from "@/lib/supabase/client";
+import { jakartaDateString } from "@/lib/menu/week";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { formatDate, maskPhone } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
@@ -47,7 +55,14 @@ type CustomerListRow = Customer & {
   // including one showing Rp 32.333, above any tier that has ever existed.
   // Deriving here makes this page agree with Orders and the customer ledger.
   derived_remaining: number;
-  derived_avg_price: number;
+  // What the next portion this customer draws will cost, not a blend of what
+  // they hold. pickDrawOrder() drains the oldest active order with undated
+  // portions left, and each order locked its price at creation, so that order's
+  // price_per_portion is the only rate any of their food is billed at. The
+  // weighted average this replaced was migration 035's WAC formula computed on
+  // read: galvent showed Rp 28.385 across a 29.000 order and a 28.000 order,
+  // a rate nothing has ever charged and nothing ever will.
+  derived_next_price: number;
   kitchen: string | null;
 };
 
@@ -195,10 +210,10 @@ const COLUMNS: ColumnDef[] = [
     smOnly: true,
   },
   {
-    key: "derived_avg_price",
-    label: "Avg Price",
+    key: "derived_next_price",
+    label: "Next Price",
     kind: "number",
-    value: (r) => r.derived_avg_price,
+    value: (r) => r.derived_next_price,
     defaultVisible: true,
     align: "right",
     smOnly: true,
@@ -297,7 +312,7 @@ const CELL_TONE: Record<string, string> = {
   customer_number: "text-gray-400 text-xs tabular-nums",
   name: "text-gray-900",
   derived_remaining: "text-gray-700",
-  derived_avg_price: "text-gray-500 text-xs",
+  derived_next_price: "text-gray-500 text-xs",
   created_at: "text-gray-400 text-xs",
   notes: "text-gray-400 text-xs",
 };
@@ -531,7 +546,10 @@ export default function CustomersClient() {
   const { data, isLoading } = useQuery({
     queryKey: ["customers-list"],
     queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      // WIB, not UTC. Railway runs UTC, so between 00:00 and 07:00 WIB
+      // `toISOString()` names yesterday and every delivery dated today drops
+      // out of the balance.
+      const today = jakartaDateString();
       const [customerPages, orderPages, deliveryPages] = await Promise.all([
         fetchAllRows<
           Customer & {
@@ -554,6 +572,7 @@ export default function CustomersClient() {
             | "customer_id"
             | "status"
             | "created_at"
+            | "start_date"
             | "package_size"
             | "price_per_portion"
           >
@@ -561,22 +580,28 @@ export default function CustomersClient() {
           supabase
             .from("orders")
             .select(
-              "id, customer_id, status, created_at, package_size, price_per_portion",
+              "id, customer_id, status, created_at, start_date, package_size, price_per_portion",
             )
             .order("created_at", { ascending: false })
             .range(from, to),
         ),
-        // Every delivery dated on or before today, which is what each order has
-        // actually drawn. There is no stored balance to read instead — the
-        // dropped orders.portions_remaining counted bookings, so a customer
-        // whose package was fully dated read 0 with every meal still to come.
-        fetchAllRows<{ order_id: string | null; portions: number | null }>(
-          (from, to) =>
-            supabase
-              .from("daily_deliveries")
-              .select("order_id, portions")
-              .lte("delivery_date", today)
-              .range(from, to),
+        // The whole calendar, split at today by the caller below. There is no
+        // stored balance to read instead — the dropped orders.portions_remaining
+        // counted bookings, so a customer whose package was fully dated read 0
+        // with every meal still to come. Both halves are needed and they are
+        // different numbers: rows up to today are what an order has drawn (the
+        // balance), every row is what it has booked (what pickDrawOrder calls
+        // unbooked, and what decides which order the next portion bills to).
+        fetchAllRows<{
+          order_id: string | null;
+          customer_id: string | null;
+          delivery_date: string;
+          portions: number | null;
+        }>((from, to) =>
+          supabase
+            .from("daily_deliveries")
+            .select("order_id, customer_id, delivery_date, portions")
+            .range(from, to),
         ),
       ]);
       if (customerPages.error) throw new Error(customerPages.error);
@@ -586,54 +611,103 @@ export default function CustomersClient() {
       const customers = customerPages.rows;
       const orders = orderPages.rows;
 
-      const drawn = new Map<string, number>();
+      // Drawn is counted per customer and booked per order, and that asymmetry
+      // is the point. What a customer has left does not depend on which of
+      // their orders a row was charged to; which order the *next* row bills to
+      // does. Counting the balance per order made it depend on attribution, and
+      // the attribution is not sound — see the netting note below.
+      const drawnByCustomer = new Map<string, number>();
+      const bookedByOrder = new Map<string, number>();
       for (const row of deliveryPages.rows) {
-        if (!row.order_id) continue;
-        drawn.set(
-          row.order_id,
-          (drawn.get(row.order_id) ?? 0) + (row.portions ?? 0),
-        );
+        const portions = row.portions ?? 0;
+        if (row.order_id) {
+          bookedByOrder.set(
+            row.order_id,
+            (bookedByOrder.get(row.order_id) ?? 0) + portions,
+          );
+        }
+        if (row.customer_id && row.delivery_date <= today) {
+          drawnByCustomer.set(
+            row.customer_id,
+            (drawnByCustomer.get(row.customer_id) ?? 0) + portions,
+          );
+        }
       }
 
-      // Quota the customer can actually draw on today. Same statuses the
-      // customer ledger counts as real credit, minus `completed` — a completed
-      // order holding portions is a bug, not spendable balance. Weighted
-      // average price is migration 035's own formula, computed on read.
-      const OPEN_STATUSES = ["active", "paused", "payment_proof_received"];
-      const quota = new Map<string, { portions: number; value: number }>();
+      // Everything the customer bought, against everything they have eaten —
+      // the same two sums the ledger drawer shows as `balanceToday`, so the
+      // list and the drawer now answer with the same number.
+      //
+      // This used to be computed per order, each order's remainder floored at
+      // zero and the positives added up. That turned one order's over-draw into
+      // free portions on another. The June import gave most customers a
+      // `package_size = 0` catch-all order dated 2026-06-24 carrying their whole
+      // migrated delivery history, so the catch-all sits far below zero and was
+      // discarded while the real packages, whose rows are all on the catch-all,
+      // still read full. galvent showed 13 with 8 left; Hanna showed 18 with 4.
+      //
+      // Attribution is what is broken, and a customer-level balance does not
+      // depend on it. `completed` is in the credit list for the same reason the
+      // ledger has it there: those packages' draws are on the catch-all too, so
+      // dropping their credit would charge food they paid for to the orders
+      // still open.
+      const LEDGER_STATUSES = [
+        "active",
+        "paused",
+        "completed",
+        "payment_proof_received",
+      ];
+      const bought = new Map<string, number>();
+      // Candidates for the next draw, mirroring what record-daily-order feeds
+      // pickDrawOrder: active orders only, keyed by undated portions.
+      const drawCandidates = new Map<
+        string,
+        (DrawCandidate & { price: number })[]
+      >();
       for (const order of orders) {
         if (!order.customer_id) continue;
-        if (!OPEN_STATUSES.includes(order.status)) continue;
-        const remaining =
-          (order.package_size ?? 0) - (drawn.get(order.id) ?? 0);
-        if (remaining <= 0) continue;
-        const entry = quota.get(order.customer_id) ?? { portions: 0, value: 0 };
-        entry.portions += remaining;
-        entry.value += remaining * (order.price_per_portion ?? 0);
-        quota.set(order.customer_id, entry);
+        if (!LEDGER_STATUSES.includes(order.status)) continue;
+        bought.set(
+          order.customer_id,
+          (bought.get(order.customer_id) ?? 0) + (order.package_size ?? 0),
+        );
+        if (order.status !== "active") continue;
+        const list = drawCandidates.get(order.customer_id) ?? [];
+        list.push({
+          id: order.id,
+          unbooked:
+            (order.package_size ?? 0) - (bookedByOrder.get(order.id) ?? 0),
+          start_date: order.start_date,
+          created_at: order.created_at,
+          price: order.price_per_portion ?? 0,
+        });
+        drawCandidates.set(order.customer_id, list);
       }
+      // The newest *live* order, which is the only kind that may override the
+      // customer's own state — see deriveCustomerDisplayState. `orders` arrives
+      // newest first, so the first live one wins.
       const latestOrderByCustomer = new Map<string, Pick<Order, "status">>();
       for (const order of orders) {
-        if (
-          !order.customer_id ||
-          latestOrderByCustomer.has(order.customer_id)
-        ) {
+        if (!order.customer_id || latestOrderByCustomer.has(order.customer_id)) {
           continue;
         }
+        if (!hasCurrentOrder(order.status)) continue;
         latestOrderByCustomer.set(order.customer_id, { status: order.status });
       }
 
       return customers.map((customer) => {
-        const q = quota.get(customer.id);
+        const remaining =
+          (bought.get(customer.id) ?? 0) - (drawnByCustomer.get(customer.id) ?? 0);
+        const nextOrder = pickDrawOrder(drawCandidates.get(customer.id) ?? []);
         return {
           ...customer,
           display_state: deriveCustomerDisplayState(
             customer.customer_state?.state,
             latestOrderByCustomer.get(customer.id)?.status ?? null,
           ),
-          derived_remaining: q?.portions ?? 0,
-          derived_avg_price:
-            q && q.portions > 0 ? Math.round(q.value / q.portions) : 0,
+          derived_remaining: Math.max(0, remaining),
+          derived_next_price:
+            remaining > 0 && nextOrder ? nextOrder.price : 0,
           kitchen: null,
         };
       }) as CustomerListRow[];
@@ -1138,7 +1212,7 @@ export default function CustomersClient() {
     if (col.key === "derived_remaining")
       return c.derived_remaining > 0 ? c.derived_remaining : "\u2014";
     if (
-      col.key === "derived_avg_price" ||
+      col.key === "derived_next_price" ||
       col.key === "contract_price_per_portion"
     ) {
       const n = Number(col.value(c) ?? 0);
