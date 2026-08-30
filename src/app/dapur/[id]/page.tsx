@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { stripCompensation } from "@/lib/kitchen/compensation";
+import { splitPreferences } from "@/lib/kitchen/preferences";
 import {
   kitchenCostPerPortion,
   normalizeSize,
@@ -196,7 +197,7 @@ function DeliveryCard({ d }: { d: Delivery }) {
       ? (c?.google_maps_link_2 ?? c?.google_maps_link)
       : c?.google_maps_link;
   const location = [area, subArea].filter(Boolean).join(" · ");
-  const preference = kitchenPreferences(c?.notes ?? null);
+  const preference = splitPreferences(kitchenPreferences(c?.notes ?? null));
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
@@ -220,9 +221,14 @@ function DeliveryCard({ d }: { d: Delivery }) {
           Lihat di Maps
         </a>
       )}
-      {preference && (
+      {preference.food && (
         <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded mt-1">
-          Preferensi: {preference}
+          Makanan: {preference.food}
+        </div>
+      )}
+      {preference.delivery && (
+        <div className="text-sm text-sky-800 bg-sky-50 border border-sky-200 px-3 py-1.5 rounded mt-1">
+          Pengiriman: {preference.delivery}
         </div>
       )}
       {d.notes && (
