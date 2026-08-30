@@ -159,8 +159,40 @@ const ESCALATION_CLAIM =
 // only ever books tomorrow for orders it can see. On the 24th he wrote "Dah
 // nyampe blom kak" about food nobody had cooked. Matched only to decide whether
 // a turn is worth re-reading; the dates themselves come from the model below.
-const SCHEDULE_PROMISE =
-  /\b(jadwalkan|dijadwalkan|jadwalnya|kirim|kirimkan|antar|antarkan|diantar|mulai)\b[\s\S]{0,60}?(\b(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|besok|lusa)\b|\b\d{1,2}\s+(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember)\b|\b\d{4}-\d{2}-\d{2}\b)/i;
+const DATE_MENTION_SRC =
+  /\b(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|besok|lusa)\b|\b\d{1,2}\s+(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember)\b|\b\d{4}-\d{2}-\d{2}\b/
+    .source;
+const DATE_MENTION = new RegExp(DATE_MENTION_SRC, "i");
+const SCHEDULE_PROMISE = new RegExp(
+  `\\b(jadwalkan|dijadwalkan|jadwalnya|kirim|kirimkan|antar|antarkan|diantar|mulai)\\b[\\s\\S]{0,60}?(${DATE_MENTION_SRC})`,
+  "i",
+);
+
+/**
+ * Whether the reply told a customer their dates are booked.
+ *
+ * Two shapes, because the promise and the dates are not always in the same
+ * sentence. SCHEDULE_PROMISE is the delivery-verb shape ("saya jadwalkan mulai
+ * Senin 24 Agustus"). The second is a booking promise anywhere in the reply
+ * plus a date anywhere in it: on 2026-08-30 Vania sent "selasa 1 sep / rabu 2
+ * sep / jumat 4 sep" and was answered with those three dates as a bulleted
+ * confirmation, then "Saya catat pesanannya sekarang ya kak ✅ Sebentar ya,
+ * saya proses dulu" — no delivery verb within 60 characters of any date, so
+ * nothing matched, no recovery ran, and three dinners she had been told were
+ * booked reached no kitchen sheet. She asked her remaining quota in the next
+ * message and was told the arithmetic that assumed they existed.
+ *
+ * Widening the pre-filter is cheap: extractPromisedSchedule is the arbiter and
+ * returns nothing for a reply that only offers or asks, and the caller has
+ * already established that the customer holds unbooked quota and that no
+ * record_daily_order ran this turn.
+ */
+export function promisesSchedule(replyText: string): boolean {
+  return (
+    SCHEDULE_PROMISE.test(replyText) ||
+    (ORDER_PROMISE.test(replyText) && DATE_MENTION.test(replyText))
+  );
+}
 
 /**
  * Read the dates out of a reply that promised a schedule and called no tool.
@@ -2054,7 +2086,7 @@ export async function processSavedCustomerMessage(params: {
     activeOrder &&
     (schedule?.unbooked ?? 0) > 0 &&
     !toolUses.some((t) => t.name === "record_daily_order") &&
-    SCHEDULE_PROMISE.test(replyText)
+    promisesSchedule(replyText)
   ) {
     const promisedSchedule = await extractPromisedSchedule({
       customerMessage: text,
