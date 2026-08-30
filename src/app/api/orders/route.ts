@@ -402,7 +402,10 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   if (body.action === "mark_payment_proof_received") {
     const { error } = await db
       .from("orders")
-      .update({ status: "payment_proof_received" })
+      .update({
+        status: "payment_proof_received",
+        payment_proof_received_at: new Date().toISOString(),
+      })
       .eq("id", body.id)
       .eq("status", "pending_payment");
     if (error)

@@ -459,6 +459,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | start_date | date | First delivery date |
 | end_date | date | Last requested delivery date |
 | payment_proof_url | text | URL of payment transfer screenshot |
+| payment_proof_received_at | timestamptz | When the proof arrived (migration 079). The Payments page printed `confirmed_at` under a "Proof received" label until 2026-08-30, so Naya's row claimed 24 Agu 12.12 for a proof that came in at 13.33 that day. NULL on every order that reached `payment_proof_received` before the migration; the page says "Order confirmed" for those rather than inventing a time. |
 | pause_until | date | If paused, resume from this date |
 | cancellation_reason | text | Why it was cancelled |
 | reminder_sent_at | timestamp | When the payment reminder was last sent |

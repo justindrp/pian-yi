@@ -281,8 +281,13 @@ describe("PATCH /api/orders", () => {
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
+    // The timestamp goes on with the status. The Payments page used to print
+    // `confirmed_at` under "Proof received" — Naya's proof arrived 30 Agu 13.33
+    // and her row read "24 Agu 12.12" — so every path that sets the status must
+    // set the time too, or the page falls back to the confirmation label.
     expect(db.chains.orders.update).toHaveBeenCalledWith({
       status: "payment_proof_received",
+      payment_proof_received_at: expect.any(String),
     });
     expect(db.chains.orders.eq).toHaveBeenCalledWith("id", "order-1");
     expect(db.chains.orders.eq).toHaveBeenCalledWith(

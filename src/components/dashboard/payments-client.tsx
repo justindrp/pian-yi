@@ -207,10 +207,25 @@ export default function PaymentsClient() {
                           {order.payer.name ?? order.payer.phone_number}
                         </p>
                       )}
-                      {order.confirmed_at && (
+                      {/* `confirmed_at` is when the order was confirmed, and
+                          printing it under "Proof received" made it look like
+                          the money had arrived days before it did — Naya's
+                          proof came in at 13.33 on 2026-08-30 and the row read
+                          "24 Agu 2026, 12.12". Only the real column may carry
+                          that label; orders that reached this status before
+                          migration 079 have none, so they say what they can
+                          actually vouch for. */}
+                      {order.payment_proof_received_at ? (
                         <p className="text-xs text-gray-900 mt-1">
-                          Proof received {formatDateTime(order.confirmed_at)}
+                          Proof received{" "}
+                          {formatDateTime(order.payment_proof_received_at)}
                         </p>
+                      ) : (
+                        order.confirmed_at && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Order confirmed {formatDateTime(order.confirmed_at)}
+                          </p>
+                        )
                       )}
                     </div>
                     <div className="flex gap-2">

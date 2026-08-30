@@ -2501,7 +2501,11 @@ async function handlePaymentProofImage(
   // start date.
   await db
     .from("orders")
-    .update({ status: "payment_proof_received", payment_proof_url: imageUrl })
+    .update({
+      status: "payment_proof_received",
+      payment_proof_url: imageUrl,
+      payment_proof_received_at: new Date().toISOString(),
+    })
     .or(`customer_id.eq.${customerId},paid_by_customer_id.eq.${customerId}`)
     .eq("status", "pending_payment");
 
@@ -2659,7 +2663,10 @@ async function handleToolUse(
     // they bought for other people too.
     await db
       .from("orders")
-      .update({ status: "payment_proof_received" })
+      .update({
+        status: "payment_proof_received",
+        payment_proof_received_at: new Date().toISOString(),
+      })
       .or(`customer_id.eq.${customerId},paid_by_customer_id.eq.${customerId}`)
       .eq("status", "pending_payment");
 

@@ -745,7 +745,10 @@ export async function POST(request: Request) {
       const orderId = input.order_id as string;
       const { error } = await db
         .from("orders")
-        .update({ status: "payment_proof_received" })
+        .update({
+          status: "payment_proof_received",
+          payment_proof_received_at: new Date().toISOString(),
+        })
         .eq("id", orderId)
         .eq("status", "pending_payment");
       if (error) {
