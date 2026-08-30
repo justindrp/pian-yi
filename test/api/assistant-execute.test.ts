@@ -30,8 +30,15 @@ jest.mock("@/lib/accounting/journal", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
+// `listData` is what a select that is not `.single()` resolves to. Both
+// mark_paid paths now read the customer's active orders as a list from the same
+// `orders` table they fetch the paid order from, and a list select resolves to
+// an array, never to the single row.
 function makeChain(
-  result: { data: unknown; error: unknown } = { data: null, error: null },
+  result: { data: unknown; error: unknown; listData?: unknown } = {
+    data: null,
+    error: null,
+  },
 ) {
   const chain: Record<string, unknown> = {};
   const methods = [
@@ -53,26 +60,31 @@ function makeChain(
     "limit",
     "order",
     "is",
+    "range",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  const listResult = { data: result.listData ?? null, error: result.error };
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (
     resolve: (v: unknown) => unknown,
     reject?: (e: unknown) => unknown,
-  ) => Promise.resolve(result).then(resolve, reject);
+  ) => Promise.resolve(listResult).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
-    Promise.resolve(result).catch(reject);
+    Promise.resolve(listResult).catch(reject);
   return chain;
 }
 
 type Chain = ReturnType<typeof makeChain>;
 
 function makeDbMock(
-  config: Record<string, { data: unknown; error: unknown }> = {},
+  config: Record<
+    string,
+    { data: unknown; error: unknown; listData?: unknown }
+  > = {},
 ) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {

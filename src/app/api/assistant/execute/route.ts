@@ -4,13 +4,13 @@ import { logEdit } from "@/lib/audit/log-edit";
 import { saveAssistantReply } from "@/lib/claude/assistant-history";
 import { WRITE_TOOLS } from "@/lib/claude/assistant-tools";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
-import { isDeliveryDay } from "@/lib/holidays/id";
 import {
   deleteDelivery,
   isLocked,
   loadDeadlineHour,
 } from "@/lib/orders/delivery-state";
 import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
+import { buildPaidDeliveryRows } from "@/lib/orders/paid-delivery-rows";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { getDeliveryRoute, withDeliveryRoute } from "@/lib/utils/format";
@@ -354,29 +354,23 @@ export async function POST(request: Request) {
         requested.length > 0 &&
         !alreadyScheduled
       ) {
-        // Minggu and libur nasional are days nobody cooks. Dropping them
-        // leaves those portions unbooked, which is right — the customer still
-        // owns them.
-        const deliveryRows = requested
-          .filter((r) => isDeliveryDay(r.date))
-          .map((r) => ({
-            delivery_date: r.date,
+        // Minggu and libur nasional are dropped, and each row is charged to
+        // the order that owes it — a top-up's schedule runs longer than its own
+        // package by the portions the customer still holds. See
+        // buildPaidDeliveryRows().
+        const deliveryRows = await buildPaidDeliveryRows({
+          db,
+          order: {
+            id: orderId,
             customer_id: order.customer_id,
-            order_id: orderId,
-            meal_type: r.meal_type,
-            portions: r.portions,
-            // Order kitchen overrides, customer kitchen is the default. A null
-            // here makes the delivery invisible on /dapur/[id], which filters
-            // strictly on it.
-            subcontractor_id:
-              order.subcontractor_id ??
-              order.customers?.subcontractor_id ??
-              null,
-            address_slot:
-              r.meal_type === "dinner"
-                ? (order.dinner_address_slot ?? 1)
-                : (order.lunch_address_slot ?? 1),
-          }));
+            package_size: order.package_size,
+            subcontractor_id: order.subcontractor_id,
+            lunch_address_slot: order.lunch_address_slot,
+            dinner_address_slot: order.dinner_address_slot,
+          },
+          customerSubcontractorId: order.customers?.subcontractor_id ?? null,
+          requested,
+        });
 
         if (deliveryRows.length > 0) {
           const { error: deliveryErr } = await db

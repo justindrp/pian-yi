@@ -2,12 +2,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createJournalEntry } from "@/lib/accounting/journal";
 import { logEdit } from "@/lib/audit/log-edit";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
-import { isDeliveryDay } from "@/lib/holidays/id";
 import {
   remainingTodayByOrder,
   unbookedByOrder,
 } from "@/lib/orders/customer-schedule";
 import { orderHasDeliveries } from "@/lib/orders/order-has-deliveries";
+import { buildPaidDeliveryRows } from "@/lib/orders/paid-delivery-rows";
 import { kitchenCostPerPortion, normalizeSize } from "@/lib/orders/size";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -679,32 +679,23 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     | null;
 
   if (Array.isArray(requested) && requested.length > 0 && !alreadyScheduled) {
-    // We do not deliver on Minggu, and the kitchens are shut on libur
-    // nasional, so a row on either is a delivery nobody cooks. Dropping the day
-    // here leaves its portions unbooked, which is exactly right: the customer
-    // still owns them and can move them. Minggu used to slip through — the
-    // filter only asked about holidays, and a schedule the model wrote out by
-    // date never passed through any weekday check.
-    const deliveryRows = requested
-      .filter((r) => isDeliveryDay(r.date))
-      .map((r) => ({
-        delivery_date: r.date,
+    // Minggu and libur nasional are dropped, and each row is charged to the
+    // order that owes it rather than to this one — a top-up's schedule is
+    // longer than its own package by however many portions the customer still
+    // holds. See buildPaidDeliveryRows().
+    const deliveryRows = await buildPaidDeliveryRows({
+      db,
+      order: {
+        id: body.id,
         customer_id: order.customer_id,
-        order_id: body.id,
-        meal_type: r.meal_type,
-        portions: r.portions,
-        // The order's own kitchen is an override; the customer's is the
-        // default. Without the fallback a delivery row carries a null
-        // subcontractor_id, and /dapur/[id] filters strictly on it — so the
-        // kitchen never sees the delivery. Julian S's whole renewal was
-        // invisible that way.
-        subcontractor_id:
-          order.subcontractor_id ?? order.customers?.subcontractor_id ?? null,
-        address_slot:
-          r.meal_type === "dinner"
-            ? (order.dinner_address_slot ?? 1)
-            : (order.lunch_address_slot ?? 1),
-      }));
+        package_size: order.package_size,
+        subcontractor_id: order.subcontractor_id,
+        lunch_address_slot: order.lunch_address_slot,
+        dinner_address_slot: order.dinner_address_slot,
+      },
+      customerSubcontractorId: order.customers?.subcontractor_id ?? null,
+      requested,
+    });
 
     if (deliveryRows.length > 0) {
       const { error: deliveryErr } = await db

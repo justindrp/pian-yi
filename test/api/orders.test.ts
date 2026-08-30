@@ -19,8 +19,15 @@ jest.mock("@/lib/accounting/journal", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
+// `listData` is what a select that is not `.single()` resolves to. Both
+// mark_paid paths now read the customer's active orders as a list from the same
+// `orders` table they fetch the paid order from, and a list select resolves to
+// an array, never to the single row.
 function makeChain(
-  result: { data: unknown; error: unknown } = { data: null, error: null },
+  result: { data: unknown; error: unknown; listData?: unknown } = {
+    data: null,
+    error: null,
+  },
 ) {
   const chain: Record<string, unknown> = {};
   const methods = [
@@ -41,26 +48,31 @@ function makeChain(
     "limit",
     "order",
     "is",
+    "range",
   ];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);
+  const listResult = { data: result.listData ?? null, error: result.error };
   // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
   chain.then = (
     resolve: (v: unknown) => unknown,
     reject?: (e: unknown) => unknown,
-  ) => Promise.resolve(result).then(resolve, reject);
+  ) => Promise.resolve(listResult).then(resolve, reject);
   chain.catch = (reject: (e: unknown) => unknown) =>
-    Promise.resolve(result).catch(reject);
+    Promise.resolve(listResult).catch(reject);
   return chain;
 }
 
 type Chain = ReturnType<typeof makeChain>;
 
 function makeDbMock(
-  config: Record<string, { data: unknown; error: unknown }> = {},
+  config: Record<
+    string,
+    { data: unknown; error: unknown; listData?: unknown }
+  > = {},
 ) {
   const chains: Record<string, Chain> = {};
   const from = jest.fn((table: string) => {
@@ -207,6 +219,80 @@ describe("PATCH /api/orders", () => {
         onConflict: "delivery_date,customer_id,meal_type",
       }),
     );
+  });
+
+  // Veronica Catherine, 2026-08-30: 1 porsi left on the June order, seven days
+  // wanted, a 6-porsi top-up bought to cover the difference. Every row used to
+  // be stamped with the order being paid, so the top-up sat 1 over its own
+  // package while the June order kept a portion it had been paid for and could
+  // never complete. The first date belongs to the older package.
+  test("T1b2 — mark_paid charges the oldest package with balance first", async () => {
+    const db = makeDbMock({
+      orders: {
+        data: {
+          id: "topup",
+          customer_id: "cust-1",
+          total_price: 174000,
+          package_size: 2,
+          start_date: "2099-01-05",
+          end_date: "2099-01-07",
+          requested_schedule: [
+            { date: "2099-01-05", meal_type: "lunch", portions: 1 },
+            { date: "2099-01-06", meal_type: "lunch", portions: 1 },
+            { date: "2099-01-07", meal_type: "lunch", portions: 1 },
+          ],
+          portions_per_delivery: 1,
+          portions_lunch: null,
+          portions_dinner: null,
+          subcontractor_id: "sub-1",
+          lunch_address_slot: 1,
+          dinner_address_slot: 1,
+          customers: { name: "Test Customer", phone_number: "+628111222333" },
+        },
+        // The customer's active orders, as the list select returns them: an
+        // older 6-porsi package with 1 porsi still unbooked, and the top-up.
+        listData: [
+          {
+            id: "june",
+            package_size: 6,
+            start_date: "2098-06-17",
+            created_at: "2098-06-08T00:00:00Z",
+          },
+          {
+            id: "topup",
+            package_size: 2,
+            start_date: "2099-01-05",
+            created_at: "2099-01-04T00:00:00Z",
+          },
+        ],
+        error: null,
+      },
+      customers: { data: { converted_at: null }, error: null },
+      // Five of the June package's six portions are already on the calendar,
+      // so it has exactly one left to give.
+      daily_deliveries: {
+        data: null,
+        listData: [
+          { order_id: "june", portions: 1 },
+          { order_id: "june", portions: 1 },
+          { order_id: "june", portions: 1 },
+          { order_id: "june", portions: 1 },
+          { order_id: "june", portions: 1 },
+        ],
+        error: null,
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await PATCH(patchRequest({ id: "topup", action: "mark_paid" }));
+
+    const rows = (db.chains.daily_deliveries.upsert as jest.Mock).mock
+      .calls[0][0] as { delivery_date: string; order_id: string }[];
+    expect(rows.map((r) => [r.delivery_date, r.order_id])).toEqual([
+      ["2099-01-05", "june"],
+      ["2099-01-06", "topup"],
+      ["2099-01-07", "topup"],
+    ]);
   });
 
   test("T1c — mark_paid on an order with no stored schedule writes no rows", async () => {

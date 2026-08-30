@@ -317,13 +317,15 @@ price — it was bought at the old rate and is not re-quoted. Pinned by "a
 customer whose leftover quota is smaller than what they want" in
 `test/api/system-prompt.test.ts`.
 
-**The residue is on the order side, not the customer's.** A 6-porsi top-up with
-a 7-day schedule writes 7 rows against the new order at `mark_paid`, which does
-not cap rows at `package_size`. Per order that is a one-porsi over-draw; netted
-at the customer level it is exactly 0, which is the level every balance is read
-at (see "Those three columns are derived one way each" in `OPERATIONS.md`). Do
-not "fix" it by flooring the schedule at the package size — that would drop the
-customer's own paid-for porsi off the calendar.
+**The leftover is spent on the calendar too, not just in the arithmetic.** A
+6-porsi top-up with a 7-day schedule writes 7 rows at `mark_paid`, and those
+rows used to be stamped with the new order: it sat 1 over its own package while
+the older order kept a portion it had been paid for and could never complete.
+Veronica's seventh row was repointed by hand. `mark_paid` now charges each row
+through `pickDrawOrder()`, oldest package with balance first, so the leftover
+porsi is drawn from the order that sold it — see "Marking an order paid never
+regenerates a schedule it already has" in `OPERATIONS.md`. Still do not floor
+the schedule at the package size: that drops a meal the customer paid for.
 
 ## 7 porsi is not a package, and the model may not invent one
 
