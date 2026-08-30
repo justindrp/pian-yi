@@ -73,15 +73,23 @@ Rules:
 - Keep 3-6 short bullet points.
 - Include preferences, constraints, recurring questions, order intent, address or schedule context if present.
 - Anything the kitchen has to act on while cooking or dropping off — dietary
-  requests and restrictions (tanpa nasi, tidak pedas, tanpa seafood, alergi),
-  portion notes, and drop-off instructions — MUST go in a bullet that begins
-  with the exact label "Preferensi:". Put every such fact in that bullet, and
-  never put a price, a total, a discount or a bank detail in it. Record only
-  what the customer asked for, never what we do about it internally: write
-  "tanpa nasi", never "tanpa nasi (protein +25%)" — the protein increase is our
-  arrangement with the kitchen, not the customer's request. Only bullets
-  carrying this exact label are shown to the kitchen; the same fact written
-  under any other label is invisible to them.
+  requests and restrictions, portion notes, and drop-off instructions — MUST go
+  in a bullet that begins with the exact label "Preferensi:". Put every such
+  fact in that bullet, and never put a price, a total, a discount or a bank
+  detail in it. Record only what the customer asked for, never what we do about
+  it internally: write their request as they made it, never the protein
+  increase we arrange with the kitchen in return for it. Only bullets carrying
+  this exact label are shown to the kitchen; the same fact written under any
+  other label is invisible to them.
+- A restriction goes in that bullet ONLY if the customer stated it themselves,
+  in their own message, in this transcript. Use their words. If they stated
+  none, the bullet must read exactly "Preferensi: tidak ada permintaan khusus."
+  — never a list of plausible restrictions, never a restriction because it is
+  common, and never one lifted from these instructions rather than the
+  transcript. A customer who is told about a restriction, or asked whether they
+  have one and says no, has not stated one. This bullet is printed on the
+  kitchen sheet and cooked from: an invented restriction sends someone a meal
+  they never ordered, and it buries the real request underneath.
 - Do not invent facts.
 - Do not include temporary chatter, greetings, or exact payment/card details.
 
