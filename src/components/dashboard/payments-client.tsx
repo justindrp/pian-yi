@@ -78,24 +78,35 @@ export default function PaymentsClient() {
     queryFn: async () => {
       // Day bounds in the browser's timezone, so "30 Agu" means the admin's
       // 30 Agu and not a UTC day that starts at 07.00 WIB.
-      const start = new Date(`${paidDate}T00:00:00`);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 1);
+      const dayStart = new Date(`${paidDate}T00:00:00`);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const start = dayStart.toISOString();
+      const end = dayEnd.toISOString();
+      // The picked date has to select on the same value the card prints, or the
+      // two disagree: Puspa's proof arrived 29 Agu 20.17 and was verified the
+      // next lunchtime, so filtering on `paid_at` put a card reading "29 Agu"
+      // under a picker reading 30 Agu. The date means when the money arrived,
+      // which is also what a bank statement means by it. Two branches because
+      // `payment_proof_received_at` is NULL on 20 of 38 paid orders and those
+      // fall back to `paid_at`, exactly as the card does.
       const { data } = await supabase
         .from("orders")
         .select(
           "*, customers!orders_customer_id_fkey(*), payer:customers!orders_paid_by_customer_id_fkey(name, phone_number)",
         )
-        .gte("paid_at", start.toISOString())
-        .lt("paid_at", end.toISOString())
-        .order("paid_at", { ascending: false });
+        .not("paid_at", "is", null)
+        .or(
+          `and(payment_proof_received_at.gte.${start},payment_proof_received_at.lt.${end}),` +
+            `and(payment_proof_received_at.is.null,paid_at.gte.${start},paid_at.lt.${end})`,
+        );
       return (data ?? []) as OrderWithCustomer[];
     },
   });
 
-  // The cards print the proof time, so the list has to be ordered by it —
-  // sorted by `paid_at` while showing proof times, the column read as shuffled.
-  // A day's payments, already fetched whole, so this sorts nothing it cannot see.
+  // Ordered on the same coalesced value the filter and the cards use. Postgres
+  // cannot order on it without a generated column, and this is one day's
+  // payments already fetched whole, so nothing outside the sort exists.
   const paidRows = useMemo(
     () =>
       [...paidOnDate].sort((a, b) =>
