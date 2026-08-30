@@ -209,6 +209,40 @@ Both writers are now told not to, and `stripCompensation()` (`src/lib/kitchen/co
 
 The same strip-don't-drop rule now applies to prices: `usefulClauses()` used to discard the whole clause when `MONEY` matched, so "tanpa nasi (harga tetap sama)" cost that customer their dietary request. The parenthetical is removed and what remains is judged on its own; a parenthetical that is not about money ("(diganti ayam)") is untouched.
 
+## "Nearest served area" has a floor, and it is the kabupaten
+
+`Area never blocks the order` was written for the opposite failure. The
+neighbourhood lists injected into the prompt are clusters, not the whole map, so
+an address fragment the bot does not recognise usually means we *do* serve the
+place — Janice's "Pagedangan" was asked about four times running on 2026-08-10
+and her order was never created. The rule therefore says: if nothing matches,
+ask once, then pick the nearest served area yourself and create the order.
+
+It had no floor. An address genuinely outside coverage took the same path.
+Sarah Sinaga gave "Serpong Natura City Cluster Riverside, Jalan Raya Serpong,
+Gunung Sindur (Blok NRS 2 No. 58), KAB. BOGOR" on 2026-08-30 and shared a pin at
+-6.36135, 106.68559. The word "Serpong" in the cluster name was enough for the
+matcher; nobody checked the kabupaten. She was quoted **Rp 1.040.000** for 40
+dinner portions, Senin–Sabtu for 20 days, to an address no active kitchen
+delivers to, and told "saya lanjut buatkan ya". Only the separate `extract_order`
+failure kept it from becoming a real order — the quote had already gone out.
+
+The rule now distinguishes the two cases by administrative region: an
+unrecognised *cluster* still rounds to the nearest served area, but an address
+naming a different kota or kabupaten from the ones our areas sit in is outside
+coverage, and no proximity of pin changes that. The bot says so plainly, names
+the areas we serve, does not call `extract_order`, and escalates. Pinned by
+"stops nearest-area rounding at the edge of coverage" in
+`test/api/system-prompt.test.ts`.
+
+**Check reachability before quoting, not after.** A price named to someone we
+cannot deliver to is the part that costs a relationship — Sarah had already
+filled in her name, her address, her maps pin and her schedule by the time the
+figure appeared, and withdrawing it afterwards is a worse message than never
+having sent it. The areas themselves are never literals here: they arrive from
+`activeDeliveryAreas(db)`, so a kitchen going inactive narrows the check on its
+own.
+
 ## A renewal is waiting on the days, and nothing else
 
 `Quota exhausted` in the daily-quota block told the model to ask which days and

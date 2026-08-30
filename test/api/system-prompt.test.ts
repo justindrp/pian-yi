@@ -98,6 +98,37 @@ describe("customer chatbot system prompt", () => {
   // repeating any of it, so without a job the model fills the hole — an ad
   // lead on 2026-08-27 got "Aku cek dulu bentar ya kak" and nothing after,
   // because no second turn is ever scheduled. See docs/BOT_RULES.md.
+  // "Area never blocks the order" was written for a cluster inside coverage the
+  // bot did not recognise — Janice's "Pagedangan" was asked about four times
+  // running. It had no floor, so an address in another kabupaten took the same
+  // path: Sarah Sinaga gave Gunung Sindur, Kab. Bogor on 2026-08-30, the word
+  // "Serpong" in her cluster name was enough, and she was quoted Rp 1.040.000
+  // for 40 portions to an address no kitchen can reach.
+  test("stops nearest-area rounding at the edge of coverage", async () => {
+    const prompt = await buildSystemPrompt({
+      casual: false,
+      customerState: "new",
+      customerName: null,
+      customerNotes: null,
+      detectedMapsLink: null,
+      menuShown: true,
+      dapurOptions: [],
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["BSD Baru"],
+      neighborhoods: {},
+      activeOrder: null,
+      schedule: null,
+    });
+    expect(prompt).toContain("different kota or kabupaten");
+    expect(prompt).toContain("do not call extract_order");
+    // The old rule stays for the case it was written for.
+    expect(prompt).toContain("Area never blocks the order");
+    expect(prompt).toContain(
+      "check the address is reachable before you quote",
+    );
+  });
+
   describe("a renewal whose quota is exhausted", () => {
     const renewing = {
       casual: false,
