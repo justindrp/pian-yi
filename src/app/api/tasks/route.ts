@@ -3,7 +3,13 @@ import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { createClient } from "@/lib/supabase/server";
-import { badRequest, STATUS_RANK, text, validateTaskInput } from "./validate";
+import {
+  BAND,
+  badRequest,
+  STATUS_RANK,
+  text,
+  validateTaskInput,
+} from "./validate";
 
 // A task may point at the customer or order it is about. The embed is the whole
 // reason this lives in the app rather than in Asana: "Cindi — second address
@@ -29,7 +35,10 @@ export async function GET(): Promise<Response> {
   const db = createAdminClient();
   // Paged rather than a bare select: PostgREST caps one response at 1000 rows
   // and says nothing when it truncates (CLAUDE.md, principle 9).
-  const { rows, error } = await fetchAllRows<{ status: string }>((from, to) =>
+  const { rows, error } = await fetchAllRows<{
+    status: string;
+    priority: number;
+  }>((from, to) =>
     db
       .from("tasks")
       .select(SELECT)
@@ -42,11 +51,19 @@ export async function GET(): Promise<Response> {
     return NextResponse.json({ ok: false, error }, { status: 500 });
   }
 
-  // Open work first, done last. Ordering on the status column itself sorts it
-  // alphabetically, which puts `done` second — ahead of `in_progress` and
-  // `open` — so the rank is applied here instead.
+  // Three bands: blocked, then live work, then done. Blocked is pinned to the
+  // top because those are the ones only Justin can unstick, and `done` is sorted
+  // last by hand — ordering on the status column itself is alphabetical, which
+  // puts `done` second, ahead of `in_progress` and `open`.
+  //
+  // Priority is compared *inside* a band, never across one. Ranking status above
+  // priority outright — which is what this did until 2026-08-30 — let a single
+  // blocked priority-2 task sit above sixteen open priority-1 ones.
   const data = rows.sort(
-    (a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9),
+    (a, b) =>
+      (BAND[a.status] ?? 1) - (BAND[b.status] ?? 1) ||
+      (a.priority ?? 2) - (b.priority ?? 2) ||
+      (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9),
   );
   return NextResponse.json({ ok: true, data });
 }

@@ -58,6 +58,14 @@ const PRIORITY_LABEL: Record<number, string> = {
   3: "Low",
 };
 
+// The column used to be a bare "!" or "·" in a 10px gutter, which said nothing
+// about the difference between Normal and Low and could not be scanned down.
+const PRIORITY_STYLE: Record<number, string> = {
+  1: "bg-red-100 text-red-700",
+  2: "bg-gray-100 text-gray-600",
+  3: "bg-gray-50 text-gray-400",
+};
+
 function rupiah(v: number | null): string {
   return v == null ? "—" : `Rp ${v.toLocaleString("id-ID")}`;
 }
@@ -232,7 +240,7 @@ export default function TasksClient() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-                <th className="px-3 py-2 font-medium w-10" />
+                <th className="px-3 py-2 font-medium w-20">Priority</th>
                 <th className="px-3 py-2 font-medium">Task</th>
                 <th className="px-3 py-2 font-medium hidden sm:table-cell">
                   Area
@@ -252,16 +260,9 @@ export default function TasksClient() {
                 >
                   <td className="px-3 py-2">
                     <span
-                      title={PRIORITY_LABEL[t.priority]}
-                      className={
-                        t.priority === 1
-                          ? "text-red-600 font-semibold"
-                          : t.priority === 3
-                            ? "text-gray-300"
-                            : "text-gray-400"
-                      }
+                      className={`inline-block rounded px-1.5 py-0.5 text-xs ${PRIORITY_STYLE[t.priority] ?? "bg-gray-100 text-gray-600"}`}
                     >
-                      {t.priority === 1 ? "!" : "·"}
+                      {PRIORITY_LABEL[t.priority] ?? t.priority}
                     </span>
                   </td>
                   <td className="px-3 py-2">

@@ -16,6 +16,20 @@ export const STATUS_RANK: Record<string, number> = {
   done: 3,
 };
 
+/**
+ * The band a task sorts into before priority is looked at. Blocked work is
+ * pinned above everything because those rows are waiting on a person, not on
+ * code, and burying one loses the only signal that it is stuck; `done` sinks.
+ * `in_progress` and `open` share a band so a priority-1 task is not outranked
+ * by a priority-3 one that happens to have been started.
+ */
+export const BAND: Record<string, number> = {
+  blocked: 0,
+  in_progress: 1,
+  open: 1,
+  done: 2,
+};
+
 const MAX_TITLE = 300;
 
 export function badRequest(error: string): Response {

@@ -278,6 +278,31 @@ describe("GET /api/tasks", () => {
     ]);
   });
 
+  // A blocked priority-2 task used to sit above every open priority-1 one,
+  // because status was ranked outright rather than banded.
+  it("compares priority inside a band, not across one", async () => {
+    mockDb({
+      data: [
+        { id: "1", status: "open", priority: 1 },
+        { id: "2", status: "blocked", priority: 2 },
+        { id: "3", status: "blocked", priority: 1 },
+        { id: "4", status: "open", priority: 3 },
+        { id: "5", status: "in_progress", priority: 2 },
+        { id: "6", status: "done", priority: 1 },
+      ],
+      error: null,
+    });
+    const body = await json(await getTasks());
+    expect((body.data as { id: string }[]).map((t) => t.id)).toEqual([
+      "3", // blocked p1
+      "2", // blocked p2 — still pinned above live work, but below blocked p1
+      "1", // open p1
+      "5", // in_progress p2 — priority beats "already started"
+      "4", // open p3
+      "6", // done
+    ]);
+  });
+
   it("sorts an unknown status to the very end rather than dropping it", async () => {
     mockDb({
       data: [

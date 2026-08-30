@@ -604,7 +604,9 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 
 ## tasks
 
-The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude could update went stale between sessions and no other admin could ever see it. Edited at `/tasks`, printed by `pnpm tasks`. Statuses are plain text, not an enum — `open | in_progress | blocked | done` — so a new one costs no migration; the allowlist that keeps a typo out lives in `src/app/api/tasks/validate.ts`, and adding a status means adding it there and to `STATUS_RANK` as well. Nothing at the database level rejects a bad value: a fuzzing pass stored `status: "transcended"` and `priority: 999`, and such a row is then invisible in every filter chip but "All". Priority is 1 (highest) to 3.
+The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude could update went stale between sessions and no other admin could ever see it. Edited at `/tasks`, printed by `pnpm tasks`. Statuses are plain text, not an enum — `open | in_progress | blocked | done` — so a new one costs no migration; the allowlist that keeps a typo out lives in `src/app/api/tasks/validate.ts`, and adding a status means adding it there and to both `STATUS_RANK` and `BAND` as well. Nothing at the database level rejects a bad value: a fuzzing pass stored `status: "transcended"` and `priority: 999`, and such a row is then invisible in every filter chip but "All". Priority is 1 (highest) to 3.
+
+`GET /api/tasks` sorts in three bands — blocked, then live work (`open` and `in_progress` together), then done — and compares priority **inside** a band, never across one. Blocked is pinned to the top because those rows wait on a person rather than on code. Until 2026-08-30 status was ranked outright, which put a single blocked priority-2 task above sixteen open priority-1 ones; `in_progress` also outranked `open`, so starting a low-priority task promoted it over urgent work. The `/tasks` table shows priority as its own labelled column rather than the old one-character gutter, which could not distinguish Normal from Low.
 
 | Column | Type | Notes |
 |--------|------|-------|
