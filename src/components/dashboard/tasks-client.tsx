@@ -58,6 +58,17 @@ const PRIORITY_LABEL: Record<number, string> = {
   3: "Low",
 };
 
+// The table says P1/P2/P3, the edit form says High/Normal/Low. The table is
+// scanned — the rows are sorted by priority, so the order teaches the scale —
+// and P1 is the word the integer column, the API error, `pnpm tasks` and the
+// docs all use. The form is where a level is chosen, which is the one moment
+// the meaning is worth spelling out.
+const PRIORITY_SHORT: Record<number, string> = {
+  1: "P1",
+  2: "P2",
+  3: "P3",
+};
+
 // The column used to be a bare "!" or "·" in a 10px gutter, which said nothing
 // about the difference between Normal and Low and could not be scanned down.
 const PRIORITY_STYLE: Record<number, string> = {
@@ -240,7 +251,7 @@ export default function TasksClient() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-                <th className="px-3 py-2 font-medium w-20">Priority</th>
+                <th className="px-3 py-2 font-medium w-16">Priority</th>
                 <th className="px-3 py-2 font-medium">Task</th>
                 <th className="px-3 py-2 font-medium hidden sm:table-cell">
                   Area
@@ -262,7 +273,7 @@ export default function TasksClient() {
                     <span
                       className={`inline-block rounded px-1.5 py-0.5 text-xs ${PRIORITY_STYLE[t.priority] ?? "bg-gray-100 text-gray-600"}`}
                     >
-                      {PRIORITY_LABEL[t.priority] ?? t.priority}
+                      {PRIORITY_SHORT[t.priority] ?? `P${t.priority}`}
                     </span>
                   </td>
                   <td className="px-3 py-2">
