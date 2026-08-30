@@ -128,11 +128,21 @@ function getInboxDocument(
       label: msg.content?.replace(/^\[Dokumen: (.+?)\]\s*/, "$1") ?? "Dokumen",
     };
   }
-  if (!msg.content?.startsWith("https://")) return null;
-  const filename = decodeURIComponent(
-    msg.content.split("/").pop() ?? "",
-  ).replace(/^\d+-/, "");
-  return { href: msg.content, label: filename || "Dokumen" };
+  // media_url first, then content — the image path above already reads both,
+  // this one only read content. An outbound document keeps its caption in
+  // content and the file URL in media_url, so a PDF sent from a script was
+  // invisible: Carolin's invoice went out on 2026-08-30, WhatsApp marked it
+  // read, and the inbox showed the caption bubble with no attachment under it.
+  // Any bucket counts. The two proxied buckets are handled above; a file
+  // uploaded anywhere else is still a public URL we can link straight to.
+  for (const candidate of [msg.media_url, msg.content]) {
+    if (!candidate?.startsWith("https://")) continue;
+    const filename = decodeURIComponent(
+      candidate.split("/").pop() ?? "",
+    ).replace(/^\d+-/, "");
+    return { href: candidate, label: filename || "Dokumen" };
+  }
+  return null;
 }
 
 // Rows saved before the webhook stored media (migration 060) carry only a
