@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, formatIDR } from "@/lib/utils/format";
 import type { Database } from "@/types/database";
@@ -21,8 +22,24 @@ type OrderWithCustomer = Order & {
 
 type Tab = "pending_verification" | "awaiting_payment" | "paid_today";
 
+/** Today in the browser's own timezone — `toISOString()` would give UTC, which
+ *  is yesterday for a WIB admin until 07.00. */
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** What the card's timestamp means: when the money showed up, not when an
+ *  admin got round to clicking. `payment_proof_received_at` is NULL for every
+ *  order that reached this status before migration 079, and for any order
+ *  marked paid straight from `pending_payment` without the proof step. */
+function paymentTime(order: OrderWithCustomer): string | null {
+  return order.payment_proof_received_at ?? order.paid_at;
+}
+
 export default function PaymentsClient() {
   const [tab, setTab] = useState<Tab>("pending_verification");
+  const [paidDate, setPaidDate] = useState(localToday());
   const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const queryClient = useQueryClient();
@@ -56,21 +73,36 @@ export default function PaymentsClient() {
     },
   });
 
-  const { data: paidToday = [], isLoading: ptLoading } = useQuery({
-    queryKey: ["orders", "paid_today"],
+  const { data: paidOnDate = [], isLoading: ptLoading } = useQuery({
+    queryKey: ["orders", "paid_on", paidDate],
     queryFn: async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Day bounds in the browser's timezone, so "30 Agu" means the admin's
+      // 30 Agu and not a UTC day that starts at 07.00 WIB.
+      const start = new Date(`${paidDate}T00:00:00`);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
       const { data } = await supabase
         .from("orders")
         .select(
           "*, customers!orders_customer_id_fkey(*), payer:customers!orders_paid_by_customer_id_fkey(name, phone_number)",
         )
-        .gte("paid_at", today.toISOString())
+        .gte("paid_at", start.toISOString())
+        .lt("paid_at", end.toISOString())
         .order("paid_at", { ascending: false });
       return (data ?? []) as OrderWithCustomer[];
     },
   });
+
+  // The cards print the proof time, so the list has to be ordered by it —
+  // sorted by `paid_at` while showing proof times, the column read as shuffled.
+  // A day's payments, already fetched whole, so this sorts nothing it cannot see.
+  const paidRows = useMemo(
+    () =>
+      [...paidOnDate].sort((a, b) =>
+        (paymentTime(b) ?? "").localeCompare(paymentTime(a) ?? ""),
+      ),
+    [paidOnDate],
+  );
 
   const markPaidMutation = useMutation({
     mutationFn: async (orderId: string) => {
@@ -143,7 +175,13 @@ export default function PaymentsClient() {
       label: "Pending verification",
       count: pendingVerification.length,
     },
-    { key: "paid_today", label: "Paid today", count: paidToday.length },
+    {
+      key: "paid_today",
+      // The tab may be showing any date once the picker is moved, so it only
+      // claims "today" while it is actually today.
+      label: paidDate === localToday() ? "Paid today" : "Paid",
+      count: paidRows.length,
+    },
   ];
 
   return (
@@ -370,6 +408,27 @@ export default function PaymentsClient() {
       {/* Paid today */}
       {tab === "paid_today" && (
         <div className="space-y-3">
+          <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-end gap-3">
+            <div>
+              <Label className="block text-xs text-gray-500 mb-1">Date</Label>
+              <Input
+                type="date"
+                value={paidDate}
+                onChange={(e) => setPaidDate(e.target.value || localToday())}
+                className="w-44"
+              />
+            </div>
+            {paidDate !== localToday() && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPaidDate(localToday())}
+              >
+                Today
+              </Button>
+            )}
+          </div>
           {ptLoading
             ? (["a", "b", "c"] as const).map((id) => (
                 <div
@@ -377,39 +436,62 @@ export default function PaymentsClient() {
                   className="h-20 bg-gray-100 rounded-xl animate-pulse"
                 />
               ))
-            : paidToday.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-white border border-gray-100 rounded-xl p-4"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {order.customers?.name ??
-                          order.customers?.phone_number ??
-                          "Unknown"}
-                      </p>
-                      <p className="text-xs text-gray-900 mt-0.5">
-                        {order.package_size} porsi ·{" "}
-                        {formatIDR(order.total_price)}
-                      </p>
-                      {order.payer && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Dibayar oleh{" "}
-                          {order.payer.name ?? order.payer.phone_number}
+            : paidRows.map((order) => {
+                const shownAt = paymentTime(order);
+                return (
+                  <div
+                    key={order.id}
+                    className="bg-white border border-gray-100 rounded-xl p-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {order.customers?.name ??
+                            order.customers?.phone_number ??
+                            "Unknown"}
                         </p>
+                        <p className="text-xs text-gray-900 mt-0.5">
+                          {order.package_size} porsi ·{" "}
+                          {formatIDR(order.total_price)}
+                        </p>
+                        {order.payer && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Dibayar oleh{" "}
+                            {order.payer.name ?? order.payer.phone_number}
+                          </p>
+                        )}
+                      </div>
+                      {/* The proof time, not the time an admin clicked "Mark as
+                          paid" — Cila's proof landed 13.33 and her card read
+                          14.56, the moment the queue was worked through. The
+                          label is there because half the rows still have no
+                          proof time (NULL before migration 079, and NULL for
+                          anything marked paid without the proof step), and an
+                          unlabelled timestamp that means two different things
+                          is what produced the wrong reading in the first
+                          place. */}
+                      {shownAt && (
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-gray-900">
+                            {formatDateTime(shownAt)}
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            {order.payment_proof_received_at
+                              ? "Proof received"
+                              : "Marked paid"}
+                          </p>
+                        </div>
                       )}
                     </div>
-                    {order.paid_at && (
-                      <p className="text-xs text-gray-900">
-                        {formatDateTime(order.paid_at)}
-                      </p>
-                    )}
                   </div>
-                </div>
-              ))}
-          {!ptLoading && paidToday.length === 0 && (
-            <p className="text-sm text-gray-400">No payments today yet.</p>
+                );
+              })}
+          {!ptLoading && paidRows.length === 0 && (
+            <p className="text-sm text-gray-400">
+              {paidDate === localToday()
+                ? "No payments today yet."
+                : "No payments on this date."}
+            </p>
           )}
         </div>
       )}
