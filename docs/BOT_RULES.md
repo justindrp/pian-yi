@@ -209,6 +209,37 @@ Both writers are now told not to, and `stripCompensation()` (`src/lib/kitchen/co
 
 The same strip-don't-drop rule now applies to prices: `usefulClauses()` used to discard the whole clause when `MONEY` matched, so "tanpa nasi (harga tetap sama)" cost that customer their dietary request. The parenthetical is removed and what remains is judged on its own; a parenthetical that is not about money ("(diganti ayam)") is untouched.
 
+## A renewal is waiting on the days, and nothing else
+
+`Quota exhausted` in the daily-quota block told the model to ask which days and
+which meal "before you place it", and to call `extract_order` "only once they
+have told you the days". Both sentences are gates. Neither is a trigger, and the
+branch had nothing else in it, so the days arriving changed nothing.
+
+Julian S asked to renew 5 porsi on 2026-08-30 at 07:10. By 07:14:51 he had given
+the meal (dinner), the days (Senin–Jumat, "seperti biasa"), the start date
+(31 Agustus) and a kitchen note (diantar ke atas), and had confirmed the address
+was unchanged. The bot printed the package back at 07:12:29, again at 07:13:38,
+again at 07:15:25 — "Sudah benar semua kan kak? Kalau iya saya buatkan ordernya
+ya" — and at 07:15:50 said "Baik kak, saya buatkan ordernya sekarang ya kak"
+with no tool call. `flagOrderAtRisk()` caught it as an unkept promise and pushed
+to an admin; the order did not exist. He had renewed four times before, so
+nothing about the request was ambiguous.
+
+The rules that would have stopped it were all present — "Never ask for
+confirmation twice", "An address already on the customer record is not
+re-confirmed", "Never say an order is recorded unless you called extract_order
+in that same message" — but they live in the sign-up flow section, and a
+renewal reads as a different procedure. The branch now carries the trigger
+itself: a returning customer's name, address, price and portions per delivery
+are already on file, so the days are the only outstanding field and the turn
+they arrive is the turn that calls the tool. Pinned by "a renewal whose quota is
+exhausted" in `test/api/system-prompt.test.ts`.
+
+The general shape is worth keeping in mind when editing this prompt: a rule that
+only says when *not* to call the tool leaves the model with no moment at which
+it must. Every gate needs the turn that opens it named alongside.
+
 ## A restriction reaches the sheet only if the customer said it
 
 **The summarizer prompt may not name a dietary restriction, and a customer who asked for nothing gets `Preferensi: tidak ada permintaan khusus.`** The prompt in `learn-context.ts` used to gloss the rule with an example — "dietary requests and restrictions (tanpa nasi, tidak pedas, tanpa seafood, alergi)" — and the model copied the parenthetical out as an observation. On 2026-08-30 five customers carried that exact list and only one had ever asked for any of it. Two had food on the calendar: Carolin (one delivery, 2026-09-01) and Kurniadi Tan, whose 16 rows started the next morning and whose 48 messages never mention food at all — his own bullet asserted three restrictions and then said they were *"tidak disebutkan eksplisit di transkrip"*. Julian S shows the second half of the damage: the invented list stood where his real request, *"Makanan tidak ada kacang dan Bawang goreng"*, should have been, so an invention did not merely add a wrong instruction, it displaced a right one.

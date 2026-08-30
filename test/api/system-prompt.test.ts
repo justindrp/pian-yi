@@ -98,6 +98,54 @@ describe("customer chatbot system prompt", () => {
   // repeating any of it, so without a job the model fills the hole — an ad
   // lead on 2026-08-27 got "Aku cek dulu bentar ya kak" and nothing after,
   // because no second turn is ever scheduled. See docs/BOT_RULES.md.
+  describe("a renewal whose quota is exhausted", () => {
+    const renewing = {
+      casual: false,
+      customerState: "ordering" as const,
+      customerName: "Julian S",
+      customerNotes: null,
+      detectedMapsLink: null,
+      menuShown: true,
+      dapurOptions: [],
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["BSD Baru"],
+      neighborhoods: {},
+      activeOrder: {
+        id: "o1",
+        packageSize: 5,
+        portionsPerDelivery: 1,
+        pricePerPortion: 29000,
+      },
+      schedule: { unbooked: 0, remainingToday: 0, upcoming: [] },
+    };
+
+    // The branch gated the call ("only once they have told you the days") and
+    // never fired it. Julian S renewed on 2026-08-30, gave dinner, Senin–Jumat
+    // and a 31 August start, and was asked to confirm three more times before
+    // the bot promised an order it never created — flagOrderAtRisk caught it as
+    // an unkept promise. Everything a renewal needs is already on the record,
+    // so the days arriving is the trigger, not another gate.
+    test("makes the days the trigger, not one more gate", async () => {
+      const prompt = await buildSystemPrompt(renewing as never);
+      expect(prompt).toContain(
+        "the turn they arrive is the turn that calls extract_order",
+      );
+      expect(prompt).toContain("sudah benar semua kan kak?");
+      expect(prompt).toContain("saya buatkan ordernya sekarang ya kak");
+    });
+
+    test("says none of it while quota is left", async () => {
+      const prompt = await buildSystemPrompt({
+        ...renewing,
+        schedule: { unbooked: 3, remainingToday: 3, upcoming: [] },
+      } as never);
+      expect(prompt).not.toContain(
+        "the turn they arrive is the turn that calls extract_order",
+      );
+    });
+  });
+
   describe("the turn right after the welcome sequence", () => {
     const base = {
       customerState: "new",
