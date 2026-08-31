@@ -41,7 +41,7 @@ Two pages, and the split matters: `/guide` ("Panduan Admin") is how to click eac
 
 The handbook states the takeover rule the way an admin experiences it: there is no Take over button for them, and a bot reply that needs correcting goes out through the Assistant, which confirms before sending and records who approved it.
 
-## Forwarding a delivery photo from your own phone
+## Proof Relay — forwarding a delivery photo from your own phone
 
 Send the photo to the WABA (`+62 851-1121-4390`) with **the customer's name as the caption**, and it goes straight on to that customer. Nothing else is needed — no dashboard, no upload.
 

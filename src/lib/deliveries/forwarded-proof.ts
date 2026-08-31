@@ -1,5 +1,6 @@
 /**
- * A delivery photo forwarded to the WABA by an admin's own handset.
+ * Proof Relay — a delivery photo forwarded to the WABA by an admin's own
+ * handset, relayed on to the customer named in the caption.
  *
  * The kitchens have always been able to do this — `handleSubcontractorMessage`
  * recognises `subcontractors.admin_phone` and runs the photo through
