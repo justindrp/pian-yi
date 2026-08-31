@@ -305,6 +305,8 @@ npx tsx --env-file=.env.local scripts/menu-card.ts
 
 **The card is flat `#C0181C`** — brand primary, no gradient and no panel fills, so every background pixel samples exactly `srgb(192,24,28)`. `magick .menu-photos/card.png -format "%[pixel:p{4,4}]" info:` is the check. Accent is `#F7C948`, type is Poppins over Nunito, both fetched from Google Fonts at render time (no system install).
 
+**The card reaches customers through `subcontractors.menu_image_url`, so a render nobody uploads changes nothing.** Put `.menu-photos/card.png` through the dashboard (Subcontractors → the kitchen → menu image), which compresses it with `compressUploadedImage()` to a ≤5 MB JPEG, stores it at `menu-images/subcontractors/<id>/<epoch>.jpg` and sets `menu_week_start`. Batch 51 was uploaded that way on 2026-08-31 (1920×2400, 415 KB); the previous URL is in `edit_log`. Nothing deletes the old object, so an image already sent to a customer keeps resolving.
+
 `scripts/assets/menu-card-logo.png` is the master white-on-transparent mark, trimmed of its padding. It carries the wordmark, so the card prints no brand name of its own. `public/icon-512.png` is still a green "PY" placeholder, not the brand mark — replace it when the PWA icon next matters.
 
 ## Automated tests
@@ -313,7 +315,7 @@ Jest suite in `test/`. Uses `next/jest`, `testEnvironment: "node"`, `jest.mock()
 
 Suites: `webhook`, `orders`, `orders-post`, `customers-delete`, `customers-post`, `inbox`, `assistant`, `assistant-execute`, `assistant-history`, `delivery-proofs`, `accounting`, `accounting-accounts`, `accounting-reports`, `addable-customers`, `settings`, `tasks`, `stalled-leads`.
 
-Playwright (`@playwright/test`, chromium only) is installed for browser-level testing — `pnpm exec playwright --version` to check it, `pnpm exec playwright install chromium` to refetch the browser. Nothing uses it yet; it is the prerequisite for the deferred visual-regression work, and Jest stays the suite the pre-push hook runs.
+Playwright (`@playwright/test`, chromium only) is installed for browser-level testing — `pnpm exec playwright --version` to check it, `pnpm exec playwright install chromium` to refetch the browser. `scripts/menu-card.ts` renders the weekly card with it; no *test* uses it yet, and it is the prerequisite for the deferred visual-regression work. Jest stays the suite the pre-push hook runs.
 
 `test/api/tasks.test.ts` is the pattern to copy for a new route: it tests `validate.ts` directly as a pure function (no mocks at all — that is where the input rules live) and mocks Supabase only for the handler-level behaviour a validator cannot express (the STATUS_RANK re-sort, `fetchAllRows` walking a second page, the 404 on a ghost DELETE, the allowlist, the no-op PATCH that must not write). It exists because the routes were first tested by hand — curl and browser screenshots — which found eleven real defects and then left nothing behind that would catch any of them coming back. Mutation-check a suite before trusting it: break the code on purpose, confirm the tests go red, restore.
 
