@@ -251,6 +251,13 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
       }`
     : "- Only size S is available. Never ask whether the customer wants S or M.";
 
+  // The weekly menu card is drawn with the M line-up and marks nothing, so an S
+  // customer reads five items as what they bought. Naya ate four all week
+  // against Batch 51's five and thought she had been shorted (2026-08-31).
+  const menuSizeNotice = offersM
+    ? `  - **The menu image is drawn for size M and does not say so.** Every weekday on the card lists five items; a size S box has four — the item marked "(M)" in the menu text above is the extra one, and only M gets it. Whenever you send the card, or read a day's menu off it, to a customer on S or to one who has not picked a size, name that item as the tambahan size M in the same message: "yang di menu ada telur dadar itu tambahan size M ya kak". Never let the list stand unqualified, and never read the M item out as part of an S box.\n`
+    : "";
+
   const pricingSection = contract
     ? `## Harga khusus (kontrak korporat)
 
@@ -406,7 +413,7 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Free delivery (ongkir gratis)
 - Halal
 - Menu rotates daily. ${params.dapurMenuTexts.length > 0 ? `Menu per dapur:\n${params.dapurMenuTexts.map((d) => `${d.nickname}:\n${d.menuText}`).join("\n\n")}` : "Menu details change daily — you don't have the specific menu text right now. Call send_menu_image and point the customer at the image; that tool call is the only thing that makes the image real. Do NOT call ask_admin_for_help just because you don't know today's menu."}
-  - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different menus — menu and price list images are sent automatically to new customers. If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image. **Asked for the price list again, call send_price_list** — it resends the image. Never say you cannot send it, and never promise to send it later: the tool call is the only thing that sends anything, and there is no later turn.
+${menuSizeNotice}  - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different menus — menu and price list images are sent automatically to new customers. If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image. **Asked for the price list again, call send_price_list** — it resends the image. Never say you cannot send it, and never promise to send it later: the tool call is the only thing that sends anything, and there is no later turn.
   - ${menuWeekGuidance}
   - **Asked for proof their food arrived** — "bukti pengiriman", "foto pengirimannya", "udah dianter belum" — call **send_delivery_proof**. It sends the photo the dapur took. Pass the date they mean in the "date" field (resolve it yourself from Today, never a weekday name), or leave it out for the most recent one. If the tool answers that there is no photo, say that plainly and offer to check with the team — never say a photo is on its way.
   - NEVER write an image URL or any link in your reply. Images go out only through send_menu_image, send_price_list and send_delivery_proof.

@@ -402,6 +402,49 @@ describe("customer chatbot system prompt", () => {
     });
   });
 
+  // The weekly card is drawn with the M line-up and marks nothing: Batch 51
+  // (31 Agustus) listed five items a day, Naya was eating S — four — and read
+  // the difference as food she had been shorted.
+  describe("the menu card is drawn for M and says so nowhere", () => {
+    const base = {
+      casual: false,
+      customerState: "new" as const,
+      customerName: null,
+      customerNotes: null,
+      detectedMapsLink: null,
+      menuShown: true,
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["BSD Baru"],
+      neighborhoods: {},
+      activeOrder: null,
+      schedule: null,
+    };
+
+    test("a kitchen that cooks M carries the caveat", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
+      );
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+      });
+
+      expect(prompt).toContain("The menu image is drawn for size M");
+      expect(prompt).toContain("a size S box has four");
+    });
+
+    test("an S-only kitchen carries no caveat and no empty bullet", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: false }],
+      });
+
+      expect(prompt).not.toContain("The menu image is drawn for size M");
+      expect(prompt).not.toMatch(/^ {2}- *$/m);
+    });
+  });
+
   // A short run of days multiplies out to a total below the 5-porsi floor, and
   // the days-flexibility rule said nothing about totals: Rachel was quoted
   // "4 porsi x Rp 29.000 = Rp 116.000" on 2026-08-31 for a package that does
