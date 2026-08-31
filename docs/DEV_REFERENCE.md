@@ -326,7 +326,7 @@ Renders 1080×1350 at 2x through the same headless chromium as the menu card and
 
 **Nothing on it is typed.** The rates come from `pricing_tiers`, the size M surcharge from `settings.size_m_surcharge`, the areas from `activeDeliveryAreas()`, and whether M appears at all from `offers_size_m` on the active kitchens. A tier change is a re-run, not a redraw. Layout rules and the reasons behind them: "The price list" in `docs/DESIGN_SYSTEM.md`.
 
-**A render nobody uploads changes nothing.** The sheet reaches customers through `settings.price_list_image_url`, which `send_price_list` reads — upload the PNG to the `menu` bucket and point the setting at the new object. Nothing deletes the old one, so an image already sent keeps resolving. Before 2026-08-31 that setting pointed at `price-list-personal-s-1787384421668.png`, a hand-drawn S-only sheet, which is why a customer asking for prices never learned size M existed.
+**A render nobody uploads changes nothing.** The sheet reaches customers through `settings.price_list_image_url`, which `send_price_list` reads — upload the PNG to the `menu` bucket and point the setting at the new object. Nothing deletes the old one, so an image already sent keeps resolving, and the flip is a settings write like any other: audit it with `logEdit()` and let the 60-second settings-cache refresh pick it up. Until 2026-08-31 that setting pointed at `price-list-personal-s-1787384421668.png`, a hand-drawn S-only sheet, which is why a customer asking for prices never learned size M existed; it now points at `price-list-personal-1788170708513.png`, this script's output.
 
 ## Automated tests
 
