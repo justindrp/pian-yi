@@ -239,7 +239,8 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). M costs **Rp ${mExtra.toLocaleString("id-ID")}/porsi more than the price list below**, on every tier.
 - Only ${mNames} cook${mKitchens.length === 1 ? "s" : ""} M. Every other dapur is S only — never offer M for them, and never promise a size a dapur does not cook.
 - Quote M as the tier's per-meal price plus Rp ${mExtra.toLocaleString("id-ID")}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp 26.000 = *Rp ${(26000 * 40).toLocaleString("id-ID")}*, M = 40 × Rp ${(26000 + mExtra).toLocaleString("id-ID")} = *Rp ${((26000 + mExtra) * 40).toLocaleString("id-ID")}*.
-- If the customer does not say which size, use S. Never make them choose before you have quoted a price.`
+- **Name both sizes the first time you quote a price, and whenever they ask what is in a box or how big a porsi is.** One line, in the same message as the total — S is what the price list shows, M adds one more side dish for Rp ${mExtra.toLocaleString("id-ID")}/porsi more. Do not wait to be asked. Naya ordered on 2026-08-24, ate S all week, and found out M existed on 2026-08-31 only because an admin told her: "kyanya gada diinfo deh kak", "gaada diinfo kak". The price list image shows the S box, so the customer has no other way to learn this.
+- Say it as an option, never as a question they must answer first: quote S as the default total, add the M line, and let them upgrade if they want. If they do not say which size, use S.`
     : "- Only size S is available. Never ask whether the customer wants S or M.";
 
   const pricingSection = contract

@@ -322,6 +322,49 @@ describe("customer chatbot system prompt", () => {
     });
   });
 
+  // Naya bought on 2026-08-24, ate the S box all week and learned M existed on
+  // 2026-08-31 from an admin, not the bot: "gaada diinfo kak". The prompt knew
+  // about M the whole time and was told to default to S without mentioning it.
+  describe("size M is volunteered, not waited for", () => {
+    const base = {
+      casual: false,
+      customerState: "ordering",
+      customerName: null,
+      customerNotes: null,
+      detectedMapsLink: null,
+      menuShown: true,
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["BSD Baru"],
+      neighborhoods: {},
+      activeOrder: null,
+      schedule: null,
+    };
+
+    test("a kitchen that cooks M makes the bot name both sizes on the first quote", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
+      );
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+      });
+
+      expect(prompt).toContain("Name both sizes the first time you quote");
+      expect(prompt).toContain("gaada diinfo kak");
+    });
+
+    test("says nothing about M when no active kitchen cooks it", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: false }],
+      });
+
+      expect(prompt).toContain("Only size S is available");
+      expect(prompt).not.toContain("Name both sizes the first time you quote");
+    });
+  });
+
   // Three tools send images and each was added after a turn that claimed an
   // image without one: the menu (2026-08-26), the price list and the delivery
   // proof (both 2026-08-31). The prompt has to name all three, or the model
