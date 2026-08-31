@@ -45,3 +45,6 @@ next-env.d.ts
 scripts/rollback-*.json
 # Rollback dumps hold full customer rows (names, phones, addresses)
 scripts/rollback/
+
+# generated menu-card food photos (scripts/menu-photos.ts)
+.menu-photos/

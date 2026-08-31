@@ -286,6 +286,27 @@ Standard commands (always use these spellings):
 - Run tests in watch mode: `pnpm test:watch`
 - Run tests with coverage: `pnpm test:coverage`
 
+## The weekly menu card
+
+Two scripts, run in order, produce the card that goes to customers and to Instagram:
+
+```
+npx tsx --env-file=.env.local scripts/menu-photos.ts [--day N] [--quality low|medium|high]
+npx tsx --env-file=.env.local scripts/menu-card.ts
+```
+
+`menu-photos.ts` generates one food photo per menu day with OpenAI `gpt-image-2` (`OPENAI_API_KEY`, local only — nothing on Railway calls it). `menu-card.ts` renders 1080×1350 at 2x through headless chromium and writes `.menu-photos/card.png` (gitignored).
+
+**Nothing on the card is typed.** The batch, the dates, the dishes and the size M item are parsed out of `subcontractors.menu_text` for the active kitchen; the surcharge is `settings.size_m_surcharge`; the areas are `activeDeliveryAreas()`. Both scripts parse that column the same way, so the photo prompt and the printed dish names cannot drift apart — which is the whole point. Batch 51's card was drawn by hand in a chat window and three of its five photos showed food nobody cooks that week; Senin's "Chicken Katsu" was plated as tempeh sticks. Next week is a re-run, not a redraw.
+
+**Cost:** ~$0.041 per image at medium, ~$0.005 at low, so a full week is about $0.21. Medium is worth it — low renders rice as a smooth dome and telur dadar as a yellow slab. Every run bills; `--day N` regenerates one day when a dish comes back wrong.
+
+**Ask the model for the transparency; never knock it out afterwards.** `background: "transparent"` gives an alpha edge with no colour of its own. Cutting a photo off a coloured background instead leaves the anti-aliased edge pixels holding *that* colour at partial alpha, and they blend as a dark ring on any other ground — the first Batch 51 rebuild haloed every plate, and the fix (repaint every pixel with alpha < 250 to the new background colour) only works because the card is exactly one flat colour.
+
+**The card is flat `#C0181C`** — brand primary, no gradient and no panel fills, so every background pixel samples exactly `srgb(192,24,28)`. `magick .menu-photos/card.png -format "%[pixel:p{4,4}]" info:` is the check. Accent is `#F7C948`, type is Poppins over Nunito, both fetched from Google Fonts at render time (no system install).
+
+`scripts/assets/menu-card-logo.png` is a 150×150 crop off the old Batch 51 artwork, standing in until we have the real logo file — `public/icon-512.png` is a green "PY" placeholder, not the brand mark.
+
 ## Automated tests
 
 Jest suite in `test/`. Uses `next/jest`, `testEnvironment: "node"`, `jest.mock()` for all externals (Supabase, Claude, WhatsApp). No real network calls.
