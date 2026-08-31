@@ -54,6 +54,7 @@ import {
   IMAGE_STAGE_DIRECTION,
   sanitizeReply,
 } from "@/lib/claude/sanitize-reply";
+import { fixWeekdayNames } from "@/lib/claude/fix-dates";
 import { validateReply } from "@/lib/claude/validate-reply";
 import {
   hasCurrentOrder,
@@ -63,7 +64,7 @@ import {
 import { shouldAutoResume } from "@/lib/customers/takeover";
 import { formatHolidayDate } from "@/lib/holidays/id";
 import { sendInvoice } from "@/lib/invoices/send";
-import { describeMenuWeeks } from "@/lib/menu/week";
+import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
 import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
   type RecordDailyOrderInput,
@@ -2606,6 +2607,12 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
     // Last, so it also cleans up a validator retry or a translated reply. Saved
     // in its cleaned form too — the inbox must show what the customer got.
     replyText = sanitizeReply(replyText);
+
+    // A weekday the model wrote next to a date it did not check. Runs on the
+    // cleaned text so it also catches a translated or retried reply, and
+    // before the send so the customer and the inbox see the same corrected
+    // sentence. See src/lib/claude/fix-dates.ts.
+    replyText = fixWeekdayNames(replyText, jakartaDateString());
 
     // The conversation may have moved on while this turn was thinking. If it
     // has, the turn answering the newer message loads the whole burst as its

@@ -8,7 +8,11 @@ import {
 } from "@/lib/menu/week";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
-import { earliestDeliveryDate, jakartaTimeString } from "@/lib/time/jakarta";
+import {
+  deliveryCalendar,
+  earliestDeliveryDate,
+  jakartaTimeString,
+} from "@/lib/time/jakarta";
 
 const PRICE_LIST_LINES = [
   "- 5 hari siang/malam saja: Rp 145.000 (Rp 29.000/meal)",
@@ -176,6 +180,10 @@ export async function buildSystemPrompt(params: {
     now,
   });
   const earliestDisplay = formatHolidayDate(earliestDate);
+  const calendar = deliveryCalendar({
+    deadlineHour: Number(deadlineHour) || 16,
+    now,
+  });
   const cutoffLine = deadlinePassed
     ? `- Deadline ${deadlineTime} untuk besok SUDAH LEWAT (sekarang ${timeWib} WIB). Do NOT offer or agree to a delivery tomorrow, and do not accept a change or a skip for tomorrow — tomorrow is already locked with the kitchen. The soonest date you may promise is ${earliestDisplay}. Say so plainly and offer that date.`
     : `- Deadline ${deadlineTime} untuk besok masih terbuka (sekarang ${timeWib} WIB). Soonest deliverable date: ${earliestDisplay}.`;
@@ -479,7 +487,13 @@ ${upcomingHolidays}
 - For events (acara), we can supply custom orders: min. 10 portions, starting from Rp 18.000/porsi. Tell interested customers to contact us for details.
 
 ## Relative date words
-When a customer says a relative day phrase ("senin depan", "minggu depan", "besok", "lusa"), compute the actual calendar date yourself from Today (see Current context below) — don't guess. "X depan" ("next X") means the nearest upcoming occurrence of that day, not the one after — e.g. said on Sunday, "Senin depan" = tomorrow, not the Monday after. If the customer later states an explicit date (e.g. "mulai 6 Juli") that conflicts with your earlier interpretation of a relative phrase, trust the explicit date — never silently recompute or "correct" a date the customer just confirmed.
+**Every day word the customer says is a lookup in the delivery calendar below, never a calculation.** "besok", "lusa", "Selasa", "Sabtu", "senin depan" — find the row and use the date on it. Do not work out a weekday, do not count days forward, and never write a weekday name next to a date you did not read off that calendar together. "X depan" ("next X") means the nearest upcoming row for that day, not the one after.
+
+**A row that says SUDAH DIKUNCI or TUTUP is a no, whatever word the customer used for it.** If they say "besok" and besok's row is locked, do not repeat their word back as though it were available — name the date, say it is closed, and offer the soonest row that is open. On 2026-08-31 at 21.54 WIB Cindi asked what time "besok" arrived and was told "untuk besok (Selasa, 2 September) pengiriman siang jam 10.00-12.00" — besok was 1 September and already locked, 2 September is a Rabu, and she was left waiting for food nobody had been asked to cook.
+
+**Resolve a run of weekday names to dates before you answer it, not after.** Every named day gets its row checked, and a closed one is dropped and said out loud. Cindi asked in the same chat for "besok, sabtu, minggu" to one address and "rabu, kamis, jumat" to another, and got "Bisa banget" with Minggu still in the list — a day we never deliver — because the names were never turned into dates.
+
+If the customer later states an explicit date (e.g. "mulai 6 Juli") that conflicts with your earlier interpretation of a relative phrase, trust the explicit date — never silently recompute or "correct" a date the customer just confirmed.
 
 ${pricingSection}
 
@@ -739,5 +753,5 @@ ${cutoffLine}
     activeInstructions.length > 0
       ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
-  }${scheduleBlock}${justWelcomedBlock}`;
+  }\n\n## Kalender pengiriman\nThe only place a date comes from. Read a day word off this list; never work one out.\n${calendar}${scheduleBlock}${justWelcomedBlock}`;
 }

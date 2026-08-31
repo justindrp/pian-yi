@@ -164,7 +164,7 @@ export function upcomingHolidays(
   return HOLIDAYS.filter((h) => h.date >= today && h.date <= until);
 }
 
-const DAY_NAMES = [
+export const DAY_NAMES = [
   "Minggu",
   "Senin",
   "Selasa",
@@ -173,7 +173,7 @@ const DAY_NAMES = [
   "Jumat",
   "Sabtu",
 ];
-const MONTH_NAMES = [
+export const MONTH_NAMES = [
   "Januari",
   "Februari",
   "Maret",

@@ -1,4 +1,4 @@
-import { isClosedHoliday } from "@/lib/holidays/id";
+import { formatHolidayDate, isClosedHoliday } from "@/lib/holidays/id";
 import { jakartaDateString } from "@/lib/menu/week";
 
 // Wall-clock time in the timezone the business runs on.
@@ -61,4 +61,58 @@ export function earliestDeliveryDate(opts: {
     date = addDays(date, 1);
   }
   return { date, deadlinePassed };
+}
+
+/**
+ * The next `days` dates, each already labelled with its weekday and whether we
+ * can still promise it. Handed to the model so a relative day word is a lookup
+ * rather than a calculation.
+ *
+ * The prompt used to state today's date and the cutoff hour and tell the model
+ * to "compute the actual calendar date yourself". It computed badly. On
+ * 2026-08-31 at 21:54 WIB — five hours past the cutoff — Cindi asked what time
+ * tomorrow's delivery came and got "untuk besok (Selasa, 2 September)": the
+ * right date, carrying the wrong weekday and the wrong relative word, for a
+ * day the kitchen was already closed for. Four minutes later she proposed
+ * "besok, sabtu, minggu" to one address and was told "Bisa banget", Minggu
+ * included, because weekday names were never resolved to dates and so never
+ * met the closure list.
+ *
+ * Every line is built from `isDeliveryDay`, the same function the sheet
+ * generator asks, so the calendar and the food agree.
+ */
+export function deliveryCalendar(opts: {
+  deadlineHour: number;
+  now?: Date;
+  days?: number;
+}): string {
+  const now = opts.now ?? new Date();
+  const today = jakartaDateString(now);
+  const deadlinePassed = jakartaHour(now) >= opts.deadlineHour;
+  const lines: string[] = [];
+
+  for (let i = 0; i < (opts.days ?? 14); i++) {
+    const date = addDays(today, i);
+    const label = formatHolidayDate(date);
+    if (i === 0) {
+      lines.push(`- ${label} — HARI INI, sudah lewat untuk pengiriman`);
+      continue;
+    }
+    if (!isDeliveryDay(date)) {
+      lines.push(
+        `- ${label} — TUTUP, tidak ada pengiriman${date === addDays(today, 1) ? ' (ini yang customer sebut "besok")' : ""}`,
+      );
+      continue;
+    }
+    if (i === 1 && deadlinePassed) {
+      lines.push(
+        `- ${label} — SUDAH DIKUNCI, deadline ${opts.deadlineHour}.00 WIB hari ini sudah lewat. Ini yang customer sebut "besok", dan jawabannya tidak bisa.`,
+      );
+      continue;
+    }
+    lines.push(
+      `- ${label} — bisa dikirim${date === addDays(today, 1) ? ' (ini yang customer sebut "besok")' : ""}`,
+    );
+  }
+  return lines.join("\n");
 }
