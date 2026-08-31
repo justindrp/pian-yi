@@ -48,7 +48,10 @@ const ORDER_CREATED = "2026-08-29T00:00:00.000Z";
  * knobs: whether an open `pending_payment` order already exists, and whether a
  * payment message for it is already on record in `conversations`.
  */
-function mockDb(opts: { openOrder: boolean; paymentOnRecord: boolean }) {
+function mockDb(opts: {
+  openOrder: boolean;
+  paymentOnRecord: boolean | (() => boolean);
+}) {
   const from = jest.fn((table: string) => {
     const filters: Record<string, unknown> = {};
     let op = "select";
@@ -91,7 +94,11 @@ function mockDb(opts: { openOrder: boolean; paymentOnRecord: boolean }) {
       }
       if (table === "orders") return { id: ORDER_ID };
       if (table === "conversations" && filters.role === "assistant") {
-        return opts.paymentOnRecord ? { id: "conv-old" } : null;
+        const onRecord =
+          typeof opts.paymentOnRecord === "function"
+            ? opts.paymentOnRecord()
+            : opts.paymentOnRecord;
+        return onRecord ? { id: "conv-old" } : null;
       }
       if (table === "customers" && op === "select") {
         return { id: CUSTOMER_ID, name: "Rian" };
@@ -190,5 +197,32 @@ describe("the bank details are asked for once per purchase", () => {
 
     await sendPayment?.();
     expect(paymentMessages()).toHaveLength(1);
+  });
+
+  // The first check runs while the tool is still executing; under
+  // deferPaymentMessage the send then waits for the model's reply and its
+  // typing delay. Two turns out of one burst both looked, both saw nothing,
+  // and both deferred — Sharleen was asked to transfer Rp 1.690.000 twice on
+  // 2026-08-31, twenty-one seconds apart. The deferred send looks again.
+  test("a payment message that lands while the send is deferred cancels it", async () => {
+    let looks = 0;
+    mockDb({ openOrder: true, paymentOnRecord: () => ++looks > 1 });
+
+    const { sendPayment } = await createOrderFromExtraction(
+      CUSTOMER_ID,
+      PHONE,
+      INPUT,
+      { deferPaymentMessage: true },
+    );
+    expect(sendPayment).toEqual(expect.any(Function));
+
+    await sendPayment?.();
+
+    expect(paymentMessages()).toHaveLength(0);
+    expect(saveMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("4971805760"),
+      }),
+    );
   });
 });

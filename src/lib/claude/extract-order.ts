@@ -1953,8 +1953,9 @@ export async function createOrderFromExtraction(
   // is on record. That matters more since the send moved after the reply: the
   // gap where a death loses the message is wider now, and the next turn has to
   // be able to recover it.
-  if (openOrder) {
-    const { data: alreadyAsked } = await db
+  const paymentAlreadyAsked = async (): Promise<boolean> => {
+    if (!openOrder) return false;
+    const { data } = await db
       .from("conversations")
       .select("id")
       .eq("customer_id", customerId)
@@ -1964,15 +1965,30 @@ export async function createOrderFromExtraction(
       .ilike("content", `%${nominal}%`)
       .limit(1)
       .maybeSingle();
-    if (alreadyAsked) {
-      console.log(
-        `[extract-order] payment message for order ${openOrder.id} already sent (${nominal}) — not repeating it`,
-      );
-      return NOTHING_TO_SEND;
-    }
+    return Boolean(data);
+  };
+
+  if (await paymentAlreadyAsked()) {
+    console.log(
+      `[extract-order] payment message for order ${openOrder?.id} already sent (${nominal}) — not repeating it`,
+    );
+    return NOTHING_TO_SEND;
   }
 
   const send = async () => {
+    // Asked a second time, immediately before the write. The check above runs
+    // while the tool is still executing, and under `deferPaymentMessage` the
+    // send waits for the model's reply and its typing delay — twenty seconds
+    // in which a second turn can run the same check, see nothing, and defer an
+    // identical message. Sharleen was asked to transfer Rp 1.690.000 twice on
+    // 2026-08-31, at 01:34:47 and 01:35:08, by two turns that had both passed
+    // the earlier check before either of them saved anything.
+    if (await paymentAlreadyAsked()) {
+      console.log(
+        `[extract-order] payment message for order ${openOrder?.id} already sent (${nominal}) — not repeating it`,
+      );
+      return;
+    }
     const conversationId = await saveMessage({
       customerId,
       role: "assistant",
