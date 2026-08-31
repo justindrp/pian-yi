@@ -61,11 +61,19 @@ Both numbers are in the line because the answer is always the same two moves —
 
 **And the message to send is written for you**, under `Draft, tinggal copy:` — `manualDraft()`, ready to paste into the second number's chat with no editing:
 
-> Halo kak Clairine, ini Pian Yi Catering dari nomor kedua kami 😊 Foto bukti pengiriman hari ini sudah siap, tapi belum bisa masuk ke chat kakak di nomor utama. Boleh kakak chat dulu ke +6285111214390? Begitu masuk, langsung kami kirim fotonya ya kak. Terima kasih!
+> Halo kak Clairine, ini Pian Yi Catering dari nomor kedua kami 😊 Kami chat dari sini karena nomor utama pakai WhatsApp Business API, yang cuma bisa mengirim pesan dalam 24 jam setelah kakak terakhir chat — jadi foto bukti pengiriman hari ini belum bisa kami kirim ke sana.
+>
+> Boleh kakak chat ke +6285111214390 dengan pesan ini ya kak:
+>
+> "Boleh minta bukti pengiriman hari ini?"
+>
+> Begitu masuk, fotonya langsung kami kirim. Terima kasih kak!
 
 **The draft asks for one thing, and it is not the photo: that the customer chat the main number.** An inbound message is the only thing that reopens the 24-hour window, and once it is open the proof goes out through the WABA with everything that comes with it — the `delivery_proofs` row, the inbox thread, the receipt. A photo pasted from the second handset reaches that one customer once and is invisible to every screen we own. The main number is read from `settings.whatsapp_business_number`, which nothing read until this.
 
-Since it is sent as-is, the draft obeys the customer-facing rules: Indonesian, "kak", first name only, and no mention of windows, templates, restrictions or any other machinery the customer neither knows nor can act on. It says the photo is ready and asks where to be reached, which is all true.
+**The sentence is quoted for them to copy, and that is load-bearing.** A customer who reopens the window with "halo" lands on the welcome path, where the bot knows nothing about a photo waiting for them and answers a greeting with a greeting. `PROOF_REQUEST` carries the words "bukti pengiriman", which is what routes the turn to `send_delivery_proof` — see the tool-routing list in `src/lib/claude/prompts/system.ts`. Change the phrase in one place and change it in the other.
+
+The draft also says why we are writing from a number they do not know: the main one runs on the WhatsApp Business API and can only message inside 24 hours of theirs. That is the true reason, it costs us nothing to say, and an unknown number with no explanation reads like a scam. What stays out is the machinery they cannot act on — templates, `131042`, the WABA's billing state. Otherwise it is sent as-is, so it obeys the customer-facing rules: Indonesian, "kak", first name only.
 
 **What the customer receives is the photo with a caption on it** — `Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima, …` — as one message, sent free-form by `sendDeliveryPhotoToCustomer()`. It used to be two: a `delivery_proof` template carrying an image header and an empty body, then that sentence as a separate text. Veronica's proof on 2026-08-31 arrived as a bare photo with no word about what it was. **Out of the window it is still the template**, because a free-form image cannot leave the window and the follow-up text would have been rejected there anyway — a closed window is the one case that genuinely cannot carry a caption.
 

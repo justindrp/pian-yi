@@ -198,7 +198,18 @@ describe("manualDraft", () => {
 
   it("asks the customer to message the main number", () => {
     expect(draft).toContain("+6285111214390");
-    expect(draft).toMatch(/chat dulu ke/i);
+    expect(draft).toMatch(/chat ke/i);
+  });
+
+  it("quotes the words that route the turn to send_delivery_proof", () => {
+    // A bare "halo" reopens the window and lands on the welcome path, where
+    // the bot knows nothing about a waiting photo.
+    expect(draft).toContain('"Boleh minta bukti pengiriman hari ini?"');
+  });
+
+  it("says why we are writing from a number they do not know", () => {
+    expect(draft).toContain("WhatsApp Business API");
+    expect(draft).toContain("24 jam");
   });
 
   it("greets with the first name only", () => {
@@ -206,8 +217,8 @@ describe("manualDraft", () => {
     expect(draft).not.toContain("Aurelia");
   });
 
-  it("never names the machinery the customer cannot act on", () => {
-    for (const word of ["window", "24 jam", "template", "WABA", "restriction"]) {
+  it("leaves out the machinery the customer cannot act on", () => {
+    for (const word of ["template", "WABA", "131042", "restriction"]) {
       expect(draft.toLowerCase()).not.toContain(word.toLowerCase());
     }
   });

@@ -244,26 +244,37 @@ export function windowWarning(params: {
   return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari ${params.manualNumber} ke ${params.phone}.\n\nDraft, tinggal copy:\n\n${manualDraft({ name: params.name, mainNumber: params.mainNumber })}`;
 }
 
+/** The words that reach `send_delivery_proof`. See `src/lib/claude/prompts/system.ts`. */
+const PROOF_REQUEST = "Boleh minta bukti pengiriman hari ini?";
+
 /**
  * The message to paste into the manual number's chat with the customer.
  *
- * The ask is one thing and it is not the photo: **chat the main number**. An
- * inbound message is the only thing that reopens the 24-hour window, and once
- * it is open the proof goes out through the WABA with everything else — the
- * ledger row, the inbox thread, the receipt. A photo pasted from the second
- * number reaches one customer once and is invisible to every screen we own.
+ * The ask is one thing and it is not the photo: **chat the main number, in
+ * those words**. An inbound message is the only thing that reopens the 24-hour
+ * window, and once it is open the proof goes out through the WABA with
+ * everything else — the ledger row, the inbox thread, the receipt. A photo
+ * pasted from the second number reaches one customer once and is invisible to
+ * every screen we own.
  *
- * Written to be sent as-is, so it obeys the customer-facing rules: Indonesian,
- * "kak", no mention of windows, templates, restrictions or any other machinery
- * the customer neither knows nor can act on. It says the photo is ready and
- * asks where to be reached, which is all true.
+ * The exact sentence is quoted for them to copy, because a bare "halo" reopens
+ * the window and then lands on the welcome path: the bot has no idea a photo is
+ * waiting, and answers a greeting with a greeting. `PROOF_REQUEST` carries
+ * "bukti pengiriman", which is what routes the turn to `send_delivery_proof`.
+ *
+ * And it says why we are writing from a number they do not know: the main one
+ * runs on the WhatsApp Business API, which only allows a message inside 24
+ * hours of their last one. That is the true reason, it is not embarrassing, and
+ * a stranger's number with no explanation reads like a scam. What stays out is
+ * the machinery they cannot act on — templates, error codes, the WABA's billing
+ * state.
  */
 export function manualDraft(params: {
   name: string;
   mainNumber: string;
 }): string {
   const first = params.name.trim().split(/\s+/)[0];
-  return `Halo kak ${first}, ini Pian Yi Catering dari nomor kedua kami 😊 Foto bukti pengiriman hari ini sudah siap, tapi belum bisa masuk ke chat kakak di nomor utama. Boleh kakak chat dulu ke ${params.mainNumber}? Begitu masuk, langsung kami kirim fotonya ya kak. Terima kasih!`;
+  return `Halo kak ${first}, ini Pian Yi Catering dari nomor kedua kami 😊 Kami chat dari sini karena nomor utama pakai WhatsApp Business API, yang cuma bisa mengirim pesan dalam 24 jam setelah kakak terakhir chat — jadi foto bukti pengiriman hari ini belum bisa kami kirim ke sana.\n\nBoleh kakak chat ke ${params.mainNumber} dengan pesan ini ya kak:\n\n"${PROOF_REQUEST}"\n\nBegitu masuk, fotonya langsung kami kirim. Terima kasih kak!`;
 }
 
 /**
