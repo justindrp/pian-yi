@@ -210,6 +210,54 @@ async function todaysCustomers(): Promise<ProofCandidate[]> {
   return [...seen.values()];
 }
 
+/** Hours since the customer last messaged us; Infinity if they never have. */
+async function hoursSinceInbound(customerId: string): Promise<number> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("conversations")
+    .select("created_at")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  const at = data?.[0]?.created_at;
+  return at
+    ? (Date.now() - new Date(at).getTime()) / 3_600_000
+    : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * The warning appended to the ack when the photo went to a closed window.
+ *
+ * A `delivery_proof` template send returns 200 `accepted` whatever the window
+ * says; the refusal arrives later in the status webhook, where nobody is
+ * watching. So the ack cannot report what happened — it reports what is about
+ * to happen, and names the number to finish the job by hand. Of 30 proofs sent
+ * 20–31 Agustus, the 18 that failed were exactly the 18 whose customer had not
+ * spoken in the previous 24 hours. See "No payment method on the WABA" in
+ * `docs/WHATSAPP.md`.
+ *
+ * Empty string when the window is open, so the ack stays one line on the days
+ * nothing is wrong.
+ */
+export function windowWarning(params: {
+  name: string;
+  phone: string;
+  hours: number;
+  manualNumber: string;
+}): string {
+  if (params.hours < 24) return "";
+
+  const since = Number.isFinite(params.hours)
+    ? params.hours < 48
+      ? `${Math.floor(params.hours)} jam lalu`
+      : `${Math.floor(params.hours / 24)} hari lalu`
+    : "belum pernah chat ke nomor ini";
+
+  return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari ${params.manualNumber} ke ${params.phone}.`;
+}
+
 /**
  * Handles one forwarded image. Returns the text sent back to the forwarder, so
  * the webhook test can assert on it without reading WhatsApp.
@@ -314,9 +362,28 @@ export async function handleForwardedProof(
     },
   });
 
-  return say(
+  const [hours, manualNumber, { data: customer }] = await Promise.all([
+    hoursSinceInbound(match.customerId),
+    getSetting("whatsapp_manual_number"),
+    db
+      .from("customers")
+      .select("phone_number")
+      .eq("id", match.customerId)
+      .single(),
+  ]);
+
+  const sent =
     match.fuzzy
       ? `Terkirim ke ${match.name} (caption "${message.imageCaption}").`
-      : `Terkirim ke ${match.name}.`,
+      : `Terkirim ke ${match.name}.`;
+
+  return say(
+    sent +
+      windowWarning({
+        name: match.name,
+        phone: customer?.phone_number ?? "-",
+        hours,
+        manualNumber: manualNumber || "nomor kedua",
+      }),
   );
 }

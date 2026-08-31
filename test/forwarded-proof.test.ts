@@ -1,4 +1,4 @@
-import { matchCaption } from "@/lib/deliveries/forwarded-proof";
+import { matchCaption, windowWarning } from "@/lib/deliveries/forwarded-proof";
 
 const today = [
   { customerId: "c1", name: "Clairine Aurelia" },
@@ -145,5 +145,32 @@ describe("matchCaption", () => {
     expect(matchCaption("", today)).toMatchObject({ ok: false, reason: "empty" });
     expect(matchCaption("   ", today)).toMatchObject({ ok: false, reason: "empty" });
     expect(matchCaption("🙏", today)).toMatchObject({ ok: false, reason: "empty" });
+  });
+});
+
+describe("windowWarning", () => {
+  const base = { name: "Clairine Aurelia", phone: "+628126619952", manualNumber: "+6285128024390" };
+
+  it("says nothing while the window is open", () => {
+    expect(windowWarning({ ...base, hours: 3 })).toBe("");
+    expect(windowWarning({ ...base, hours: 23.9 })).toBe("");
+  });
+
+  it("warns the moment the window has closed, naming both numbers", () => {
+    const w = windowWarning({ ...base, hours: 26 });
+    expect(w).toContain("sudah tutup");
+    expect(w).toContain("26 jam lalu");
+    expect(w).toContain("+6285128024390");
+    expect(w).toContain("+628126619952");
+  });
+
+  it("counts in days once it is past two", () => {
+    expect(windowWarning({ ...base, hours: 100 })).toContain("4 hari lalu");
+  });
+
+  it("handles a customer who has never messaged in", () => {
+    expect(windowWarning({ ...base, hours: Number.POSITIVE_INFINITY })).toContain(
+      "belum pernah chat",
+    );
   });
 });

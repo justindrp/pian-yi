@@ -51,7 +51,13 @@ Only **images** from a listed number are intercepted. Text from the same number 
 
 The caption is matched against the names of everyone with a delivery row **today**, by `matchCaption()` in `src/lib/deliveries/forwarded-proof.ts`: exact name, then word-prefix ("clairine" → Clairine Aurelia), then substring, then a misspelling — edit distance, one character allowed per four typed, so "Clarine" still finds Clairine and "Veronika" still finds Veronica. Tolerance scales with length on purpose: a flat allowance of two makes "Ani", "Adi" and "Andi" the same word. When the caption was misspelled the ack says so — `Terkirim ke Clairine Aurelia (caption "Clarine").` — so a correction you did not intend is visible in the chat rather than only in the customer's. **A caption that fits two people equally well sends nothing** — the reply names both and asks for the full name. That is deliberate: the kitchens' captions run through a Haiku matcher with a 0.95 confidence threshold because a kitchen writes prose in a hurry, but a name typed by an admin needs no inference, and a confident wrong guess here sends one customer a photo of another customer's food.
 
-You get a one-line reply per photo: `Terkirim ke <nama>.`, the candidate list when it could not tell, or the reason it refused. **That reply means the photo was handed to WhatsApp, not that it arrived.** A `delivery_proof` template send returns 200 `accepted` and its failure — `131042`, or a closed window — only turns up later in the status webhook. See "No payment method on the WABA" in `docs/WHATSAPP.md`.
+You get a one-line reply per photo: `Terkirim ke <nama>.`, the candidate list when it could not tell, or the reason it refused. **That reply means the photo was handed to WhatsApp, not that it arrived.** A `delivery_proof` template send returns 200 `accepted` and its failure — `131042`, or a closed window — only turns up later in the status webhook, where nobody is watching. See "No payment method on the WABA" in `docs/WHATSAPP.md`.
+
+Which is why the ack checks the window itself. When that customer has not messaged the WABA in 24 hours, a second line follows:
+
+> ⚠️ Window 24 jam Clairine Aurelia sudah tutup (3 hari lalu), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari +6285128024390 ke +628126619952.
+
+Both numbers are in the line because the answer is always the same two moves — open WhatsApp on the second handset, send it to that customer. The manual number is read from `settings.whatsapp_manual_number`, not typed. The photo is still sent through the API first: the ack is a prediction, not a refusal, and on the day the WABA restriction clears it starts arriving on its own.
 
 Every forwarded send writes a `delivery_proofs` row (`match_method: "forwarded_caption"`, `sent_by: "forward:<phone>"`) and an `edit_log` entry.
 
