@@ -28,6 +28,7 @@ import {
   type ExtractedOrderInput,
   extractOrderFromConversation,
   extractOrderProperties,
+  minPackageSize,
   resizePendingOrderFromMessage,
   shouldRecordName,
 } from "@/lib/claude/extract-order";
@@ -2694,7 +2695,7 @@ async function handleToolUse(
   const db = createAdminClient();
 
   if (tool.name === "extract_order") {
-    const { sendPayment } = await createOrderFromExtraction(
+    const { sendPayment, order } = await createOrderFromExtraction(
       customerId,
       phone,
       await applyLatestCustomerSize(
@@ -2703,15 +2704,25 @@ async function handleToolUse(
       ),
       { deferPaymentMessage: true },
     );
-    // createOrderFromExtraction returns void, so this cannot say whether the
-    // order was written — it withholds one when the delivery days or a
-    // beneficiary's number are missing, and asks the customer itself. Say only
-    // what is true either way, and never re-state the amount: the payment
-    // message is composed there, with the bank details the model never sees.
+    // An order is not always written — one is withheld when the delivery days
+    // or a beneficiary's number are missing, and the system asks the customer
+    // itself — so say only what is true either way.
+    //
+    // When one *was* written, its real figures go back to the model. They are
+    // not always the ones it asked for: an unsellable schedule sum falls back
+    // to package_size, an M order at a dapur that cannot cook M is written as
+    // S, and a contract rate ignores the ladder. Withholding them cost real
+    // money on 2026-08-31 — the model had quoted Rachel 4 porsi / Rp 116.000,
+    // the order was created at 5 porsi / Rp 145.000, and asked which was right
+    // it told her to ignore the system's amount and transfer its own.
+    //
+    // The bank account number is still never in here. That is the rule this
+    // one used to be lumped in with.
     return {
       ok: true,
-      message:
-        "extract_order dijalankan. Kalau datanya lengkap, sistem yang mengirim detail transfer ke customer setelah balasan ini — jangan ulangi nominal atau nomor rekening. Kalau ada yang kurang, sistem yang menanyakannya sendiri.",
+      message: order
+        ? `Order tercatat: *${order.packageSize} porsi* (size ${order.size.toUpperCase()}), Rp ${order.pricePerPortion.toLocaleString("id-ID")}/porsi, total *Rp ${order.totalPrice.toLocaleString("id-ID")}*. Sistem yang mengirim detail transfer ke customer setelah balasan ini — jangan tulis nomor rekening dan jangan ulangi nominalnya kecuali customer bertanya. Kalau angka ini beda dari yang kamu sebut tadi, angka inilah yang benar: akui saja apa adanya dan jelaskan kenapa (misalnya paket minimal ${await minPackageSize()} porsi), jangan pernah menyuruh customer mengabaikan nominal yang dikirim sistem.`
+        : "extract_order dijalankan, tapi ordernya belum tercatat — ada data yang kurang dan sistem sudah menanyakannya sendiri ke customer. Jangan sebut nominal atau nomor rekening.",
       sendPayment,
     };
   } else if (tool.name === "record_daily_order") {

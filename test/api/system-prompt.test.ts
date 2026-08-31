@@ -402,6 +402,36 @@ describe("customer chatbot system prompt", () => {
     });
   });
 
+  // A short run of days multiplies out to a total below the 5-porsi floor, and
+  // the days-flexibility rule said nothing about totals: Rachel was quoted
+  // "4 porsi x Rp 29.000 = Rp 116.000" on 2026-08-31 for a package that does
+  // not exist, then told to ignore the Rp 145.000 the system had sent.
+  describe("a run of days is not a licence to quote any total", () => {
+    test("the days rule carries the portions floor with it", async () => {
+      const prompt = await buildSystemPrompt({
+        casual: false,
+        customerState: "new",
+        customerName: null,
+        customerNotes: null,
+        detectedMapsLink: null,
+        menuShown: true,
+        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: false }],
+        dapurMenuTexts: [],
+        menuWeek: { relation: "unknown" as const, weekStart: null },
+        servedAreas: ["BSD Baru"],
+        neighborhoods: {},
+        activeOrder: null,
+        schedule: null,
+      });
+
+      expect(prompt).toContain("The days are free; the total is not");
+      expect(prompt).toContain("4 porsi × Rp 29.000 = Rp 116.000");
+      expect(prompt).toContain(
+        "Never tell a customer to ignore the amount the system sent",
+      );
+    });
+  });
+
   // Three tools send images and each was added after a turn that claimed an
   // image without one: the menu (2026-08-26), the price list and the delivery
   // proof (both 2026-08-31). The prompt has to name all three, or the model

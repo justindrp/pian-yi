@@ -162,6 +162,38 @@ describe("createOrderFromExtraction — a package is never an off-ladder size", 
     expect(touched).toContain("orders");
   });
 
+  // Rachel, 2026-08-31: quoted 4 porsi / Rp 116.000, order written at 5 porsi /
+  // Rp 145.000, and the tool result said neither number — so the model kept its
+  // own and told her to ignore the amount the system had sent.
+  it("hands back the figures the order was actually written with", async () => {
+    mockDb();
+
+    const result = await createOrderFromExtraction(CUSTOMER_ID, PHONE, {
+      ...BASE,
+      package_size: 6,
+      delivery_schedule: SEVEN_DAYS,
+    });
+
+    expect(result.order).not.toBeNull();
+    expect(result.order?.packageSize).toBe(6);
+    expect(result.order?.size).toBe("s");
+    expect(result.order?.totalPrice).toBe(
+      (result.order?.pricePerPortion ?? 0) * 6,
+    );
+  });
+
+  it("hands back no figures when no order was written", async () => {
+    mockDb();
+
+    const result = await createOrderFromExtraction(CUSTOMER_ID, PHONE, {
+      ...BASE,
+      package_size: 7,
+      delivery_schedule: SEVEN_DAYS,
+    });
+
+    expect(result.order).toBeNull();
+  });
+
   // Money has already moved on this path; refusing throws away a real payment.
   it("still creates the order when we are not the ones asking for money", async () => {
     const touched = mockDb();

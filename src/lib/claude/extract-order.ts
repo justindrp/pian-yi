@@ -1270,9 +1270,30 @@ function askBeneficiaryName(): string {
  */
 export type CreateOrderResult = {
   sendPayment: (() => Promise<void>) | null;
+  /**
+   * What was actually written, or null when no order was. The model needs it:
+   * the size it asked for is not always the size that lands — an unsellable
+   * schedule sum falls back to `input.package_size`, an M order at a dapur that
+   * cannot cook M is written as S, and a contract rate replaces the ladder. The
+   * tool result used to say none of it, so the model kept its own arithmetic as
+   * the only figure it held. On 2026-08-31 Rachel was quoted 4 porsi / Rp
+   * 116.000, the order was created at 5 porsi / Rp 145.000, and when she asked
+   * which was right the model told her to ignore the system and transfer the
+   * smaller number.
+   *
+   * The bank account number is NOT here and never should be — that is the rule
+   * this one was mistaken for. A total the customer has already been shown is
+   * not a secret; the account number is.
+   */
+  order: {
+    packageSize: number;
+    pricePerPortion: number;
+    totalPrice: number;
+    size: "s" | "m";
+  } | null;
 };
 
-const NOTHING_TO_SEND: CreateOrderResult = { sendPayment: null };
+const NOTHING_TO_SEND: CreateOrderResult = { sendPayment: null, order: null };
 
 export async function createOrderFromExtraction(
   customerId: string,
@@ -1775,6 +1796,13 @@ export async function createOrderFromExtraction(
     );
   }
 
+  const orderSummary = {
+    packageSize,
+    pricePerPortion,
+    totalPrice,
+    size: portionSize,
+  };
+
   // The flag that warned this order might never be recorded is answered by the
   // order existing, and nothing used to clear it. flagOrderAtRisk() fires on any
   // reply that called no tool, so a customer who simply took a few turns to give
@@ -1889,7 +1917,7 @@ export async function createOrderFromExtraction(
     })
     .eq("customer_id", orderCustomerId);
 
-  if (!sendPaymentInfo) return NOTHING_TO_SEND;
+  if (!sendPaymentInfo) return { sendPayment: null, order: orderSummary };
 
   const [bankName, bankAccountNumber, bankAccountName] = await Promise.all([
     getSetting("bank_name"),
@@ -1972,7 +2000,7 @@ export async function createOrderFromExtraction(
     console.log(
       `[extract-order] payment message for order ${openOrder?.id} already sent (${nominal}) — not repeating it`,
     );
-    return NOTHING_TO_SEND;
+    return { sendPayment: null, order: orderSummary };
   }
 
   const send = async () => {
@@ -2003,7 +2031,7 @@ export async function createOrderFromExtraction(
     });
   };
 
-  if (deferPaymentMessage) return { sendPayment: send };
+  if (deferPaymentMessage) return { sendPayment: send, order: orderSummary };
   await send();
-  return NOTHING_TO_SEND;
+  return { sendPayment: null, order: orderSummary };
 }
