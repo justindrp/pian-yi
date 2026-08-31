@@ -27,7 +27,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const OUT = process.env.MENU_PHOTO_DIR ?? ".menu-photos";
 const MODEL = "gpt-image-2";
-const SIZE = "1024x1536"; // portrait — the tray is portrait, and the card trims the photo to it
+const SIZE = "1024x1536"; // portrait — the tray's own aspect; `deskew()` turns it landscape for the card
 /**
  * A real delivery, deskewed, cropped and stripped. Passed to the model as an
  * actual image rather than described in prose: two rounds of prompt wording
@@ -211,9 +211,20 @@ async function deskew(png: Buffer): Promise<Buffer> {
     }
   }
 
-  return sharp(png)
-    .rotate(-best, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 0 })
+  const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
+  const upright = await sharp(png)
+    .rotate(-best, { background: transparent })
+    .trim({ background: transparent, threshold: 0 })
+    .png()
+    .toBuffer();
+
+  // The card lays the photos out in a wide slot, so the tray is turned on its
+  // side to fill it. The generation itself stays portrait, which is the tray's
+  // own aspect and spends the most pixels on it; only the last step is landscape.
+  const { width = 0, height = 0 } = await sharp(upright).metadata();
+  if (height <= width) return upright;
+  return sharp(upright)
+    .rotate(90, { background: transparent })
     .png()
     .toBuffer();
 }
