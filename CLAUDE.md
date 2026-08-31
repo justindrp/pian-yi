@@ -21,6 +21,7 @@ Read at the start of every session. Permanent context, conventions, and the rule
 | `docs/DATABASE.md` | schema, columns, migrations |
 | `docs/API_ROUTES.md` | endpoint-level API reference |
 | `docs/DEV_REFERENCE.md` | AI cost controls, folder tree, tooling, tests, push internals |
+| `docs/DESIGN_SYSTEM.md` | anything customers see as an image — the menu card, Instagram/Ads creative, the lunch-box spec |
 | `docs/OVERDRAW.md` | the 32 customers who have drawn more than they bought |
 
 Each of those keeps the incident that produced each rule. That is deliberate: a rule stripped of its reason gets "simplified" back into the bug.
