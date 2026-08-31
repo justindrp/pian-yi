@@ -402,10 +402,10 @@ describe("customer chatbot system prompt", () => {
     });
   });
 
-  // The weekly card is drawn with the M line-up and marks nothing: Batch 51
-  // (31 Agustus) listed five items a day, Naya was eating S — four — and read
-  // the difference as food she had been shorted.
-  describe("the menu card is drawn for M and says so nowhere", () => {
+  // The menu text keeps the S box and the M tambahan apart; Batch 51's card
+  // (31 Agustus) did not, and Naya — eating S — read its five items as food
+  // she had been shorted.
+  describe("the M dish is named apart from the S box", () => {
     const base = {
       casual: false,
       customerState: "new" as const,
@@ -430,8 +430,8 @@ describe("customer chatbot system prompt", () => {
         dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
       });
 
-      expect(prompt).toContain("The menu image is drawn for size M");
-      expect(prompt).toContain("a size S box has four");
+      expect(prompt).toContain('The dish after "Tambahan size M:"');
+      expect(prompt).toContain("Never fold the M dish into the S list");
     });
 
     test("an S-only kitchen carries no caveat and no empty bullet", async () => {
@@ -440,7 +440,7 @@ describe("customer chatbot system prompt", () => {
         dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: false }],
       });
 
-      expect(prompt).not.toContain("The menu image is drawn for size M");
+      expect(prompt).not.toContain('The dish after "Tambahan size M:"');
       expect(prompt).not.toMatch(/^ {2}- *$/m);
     });
   });

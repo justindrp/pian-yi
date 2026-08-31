@@ -255,7 +255,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   // customer reads five items as what they bought. Naya ate four all week
   // against Batch 51's five and thought she had been shorted (2026-08-31).
   const menuSizeNotice = offersM
-    ? `  - **The menu image is drawn for size M and does not say so.** Every weekday on the card lists five items; a size S box has four — the item marked "(M)" in the menu text above is the extra one, and only M gets it. Whenever you send the card, or read a day's menu off it, to a customer on S or to one who has not picked a size, name that item as the tambahan size M in the same message: "yang di menu ada telur dadar itu tambahan size M ya kak". Never let the list stand unqualified, and never read the M item out as part of an S box.\n`
+    ? `  - **The dish after "Tambahan size M:" in the menu text is the only one size S does not get.** Everything before it on that day's line is the S box. When you read a day's menu out, keep the two apart the way the menu text does — the S items, then the tambahan named as size M. Never fold the M dish into the S list. **The menu card image may not draw that line at all**: Batch 51 (31 Agustus) listed all five items with no size marking, and Naya, who had eaten S all week, read it as food she had been shorted. So whenever you send the card to a customer on S or to one who has not picked a size, say in the same message which dish is the tambahan size M.\n`
     : "";
 
   const pricingSection = contract
