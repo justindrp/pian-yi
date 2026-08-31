@@ -59,6 +59,14 @@ Which is why the ack checks the window itself. When that customer has not messag
 
 Both numbers are in the line because the answer is always the same two moves — open WhatsApp on the second handset, send it to that customer. The manual number is read from `settings.whatsapp_manual_number`, not typed. The photo is still sent through the API first: the ack is a prediction, not a refusal, and on the day the WABA restriction clears it starts arriving on its own.
 
+**And the message to send is written for you**, under `Draft, tinggal copy:` — `manualDraft()`, ready to paste into the second number's chat with no editing:
+
+> Halo kak Clairine, ini Pian Yi Catering dari nomor kedua kami 😊 Foto bukti pengiriman hari ini sudah siap, tapi belum bisa masuk ke chat kakak di nomor utama. Boleh kakak chat dulu ke +6285111214390? Begitu masuk, langsung kami kirim fotonya ya kak. Terima kasih!
+
+**The draft asks for one thing, and it is not the photo: that the customer chat the main number.** An inbound message is the only thing that reopens the 24-hour window, and once it is open the proof goes out through the WABA with everything that comes with it — the `delivery_proofs` row, the inbox thread, the receipt. A photo pasted from the second handset reaches that one customer once and is invisible to every screen we own. The main number is read from `settings.whatsapp_business_number`, which nothing read until this.
+
+Since it is sent as-is, the draft obeys the customer-facing rules: Indonesian, "kak", first name only, and no mention of windows, templates, restrictions or any other machinery the customer neither knows nor can act on. It says the photo is ready and asks where to be reached, which is all true.
+
 **What the customer receives is the photo with a caption on it** — `Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima, …` — as one message, sent free-form by `sendDeliveryPhotoToCustomer()`. It used to be two: a `delivery_proof` template carrying an image header and an empty body, then that sentence as a separate text. Veronica's proof on 2026-08-31 arrived as a bare photo with no word about what it was. **Out of the window it is still the template**, because a free-form image cannot leave the window and the follow-up text would have been rejected there anyway — a closed window is the one case that genuinely cannot carry a caption.
 
 The row saved for it now writes the caption to `conversations.content` and the file to `media_url`, the shape `/api/inbox/manual-image` already used. The URL used to sit in `content` with the caption saved nowhere, so the inbox drew the photo and none of the words that went with it.

@@ -1,4 +1,8 @@
-import { matchCaption, windowWarning } from "@/lib/deliveries/forwarded-proof";
+import {
+  manualDraft,
+  matchCaption,
+  windowWarning,
+} from "@/lib/deliveries/forwarded-proof";
 
 const today = [
   { customerId: "c1", name: "Clairine Aurelia" },
@@ -149,7 +153,12 @@ describe("matchCaption", () => {
 });
 
 describe("windowWarning", () => {
-  const base = { name: "Clairine Aurelia", phone: "+628126619952", manualNumber: "+6285128024390" };
+  const base = {
+    name: "Clairine Aurelia",
+    phone: "+628126619952",
+    manualNumber: "+6285128024390",
+    mainNumber: "+6285111214390",
+  };
 
   it("says nothing while the window is open", () => {
     expect(windowWarning({ ...base, hours: 3 })).toBe("");
@@ -172,5 +181,34 @@ describe("windowWarning", () => {
     expect(windowWarning({ ...base, hours: Number.POSITIVE_INFINITY })).toContain(
       "belum pernah chat",
     );
+  });
+
+  it("carries the ready-to-paste draft once the window is closed", () => {
+    const w = windowWarning({ ...base, hours: 26 });
+    expect(w).toContain("Draft, tinggal copy:");
+    expect(w).toContain(manualDraft({ ...base }));
+  });
+});
+
+describe("manualDraft", () => {
+  const draft = manualDraft({
+    name: "Clairine Aurelia",
+    mainNumber: "+6285111214390",
+  });
+
+  it("asks the customer to message the main number", () => {
+    expect(draft).toContain("+6285111214390");
+    expect(draft).toMatch(/chat dulu ke/i);
+  });
+
+  it("greets with the first name only", () => {
+    expect(draft).toContain("kak Clairine");
+    expect(draft).not.toContain("Aurelia");
+  });
+
+  it("never names the machinery the customer cannot act on", () => {
+    for (const word of ["window", "24 jam", "template", "WABA", "restriction"]) {
+      expect(draft.toLowerCase()).not.toContain(word.toLowerCase());
+    }
   });
 });

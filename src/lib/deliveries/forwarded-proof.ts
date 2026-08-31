@@ -231,6 +231,7 @@ export function windowWarning(params: {
   phone: string;
   hours: number;
   manualNumber: string;
+  mainNumber: string;
 }): string {
   if (params.hours < 24) return "";
 
@@ -240,7 +241,29 @@ export function windowWarning(params: {
       : `${Math.floor(params.hours / 24)} hari lalu`
     : "belum pernah chat ke nomor ini";
 
-  return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari ${params.manualNumber} ke ${params.phone}.`;
+  return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari ${params.manualNumber} ke ${params.phone}.\n\nDraft, tinggal copy:\n\n${manualDraft({ name: params.name, mainNumber: params.mainNumber })}`;
+}
+
+/**
+ * The message to paste into the manual number's chat with the customer.
+ *
+ * The ask is one thing and it is not the photo: **chat the main number**. An
+ * inbound message is the only thing that reopens the 24-hour window, and once
+ * it is open the proof goes out through the WABA with everything else — the
+ * ledger row, the inbox thread, the receipt. A photo pasted from the second
+ * number reaches one customer once and is invisible to every screen we own.
+ *
+ * Written to be sent as-is, so it obeys the customer-facing rules: Indonesian,
+ * "kak", no mention of windows, templates, restrictions or any other machinery
+ * the customer neither knows nor can act on. It says the photo is ready and
+ * asks where to be reached, which is all true.
+ */
+export function manualDraft(params: {
+  name: string;
+  mainNumber: string;
+}): string {
+  const first = params.name.trim().split(/\s+/)[0];
+  return `Halo kak ${first}, ini Pian Yi Catering dari nomor kedua kami 😊 Foto bukti pengiriman hari ini sudah siap, tapi belum bisa masuk ke chat kakak di nomor utama. Boleh kakak chat dulu ke ${params.mainNumber}? Begitu masuk, langsung kami kirim fotonya ya kak. Terima kasih!`;
 }
 
 /**
@@ -347,15 +370,17 @@ export async function handleForwardedProof(
     },
   });
 
-  const [hours, manualNumber, { data: customer }] = await Promise.all([
-    hoursSinceInbound(match.customerId),
-    getSetting("whatsapp_manual_number"),
-    db
-      .from("customers")
-      .select("phone_number")
-      .eq("id", match.customerId)
-      .single(),
-  ]);
+  const [hours, manualNumber, mainNumber, { data: customer }] =
+    await Promise.all([
+      hoursSinceInbound(match.customerId),
+      getSetting("whatsapp_manual_number"),
+      getSetting("whatsapp_business_number"),
+      db
+        .from("customers")
+        .select("phone_number")
+        .eq("id", match.customerId)
+        .single(),
+    ]);
 
   const sent =
     match.fuzzy
@@ -369,6 +394,7 @@ export async function handleForwardedProof(
         phone: customer?.phone_number ?? "-",
         hours,
         manualNumber: manualNumber || "nomor kedua",
+        mainNumber: mainNumber || "nomor utama kami",
       }),
   );
 }
