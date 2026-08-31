@@ -9,7 +9,7 @@ interface JournalLine {
 interface CreateJournalOptions {
   description: string;
   date: string; // YYYY-MM-DD
-  sourceType: "order_payment" | "delivery" | "delivery_cogs";
+  sourceType: "order_payment" | "delivery" | "delivery_cogs" | "delivery_ongkir";
   sourceId: string;
   notes?: string;
   lines: JournalLine[];

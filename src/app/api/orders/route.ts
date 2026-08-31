@@ -583,7 +583,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const { data: order, error: fetchErr } = await db
     .from("orders")
     .select(
-      "id, customer_id, total_price, package_size, start_date, end_date, requested_schedule, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
+      "id, customer_id, total_price, delivery_surcharge_total, package_size, start_date, end_date, requested_schedule, portions_per_delivery, portions_lunch, portions_dinner, subcontractor_id, lunch_address_slot, dinner_address_slot, customers!orders_customer_id_fkey(name, phone_number, subcontractor_id)",
     )
     .eq("id", body.id)
     .single();
@@ -647,15 +647,26 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   }
 
   // Journal: Dr Bank BCA / Cr Uang Muka Pelanggan (full order value)
+  // total_price carries the ongkir inside it (delivery_surcharge_total), and
+  // ongkir is not revenue we ever earn — we collect it and owe the kitchen the
+  // same amount. Credited whole to 2100 it would sit there forever: revenue
+  // recognition only ever draws 2100 down by portions × price_per_portion. So
+  // the surcharge is split off to 2101 Unearned Delivery Fee, which the daily
+  // sheet moves to Accounts Payable one delivery day at a time.
   const today = new Date().toISOString().slice(0, 10);
+  const paidTotal = order.total_price ?? 0;
+  const paidOngkir = Math.min(order.delivery_surcharge_total ?? 0, paidTotal);
   createJournalEntry({
     description: `Penerimaan pembayaran pesanan`,
     date: today,
     sourceType: "order_payment",
     sourceId: body.id,
     lines: [
-      { accountCode: "1002", debit: order.total_price ?? 0, credit: 0 },
-      { accountCode: "2100", debit: 0, credit: order.total_price ?? 0 },
+      { accountCode: "1002", debit: paidTotal, credit: 0 },
+      { accountCode: "2100", debit: 0, credit: paidTotal - paidOngkir },
+      ...(paidOngkir > 0
+        ? [{ accountCode: "2101", debit: 0, credit: paidOngkir }]
+        : []),
     ],
   }).catch((err) => console.error("[mark_paid] journal error:", err));
 

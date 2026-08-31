@@ -30,7 +30,9 @@ to see what production actually has.
 
 ## accounts
 
-Chart of accounts for double-entry bookkeeping. Key accounts: 1001–1004 (Cash/Banks), 1200 Subcontractor Advance, **1201 Courier Cash Advance (Kasbon Kurir)**, 2001 Accounts Payable, 2100 Unearned Revenue, 4001 Catering Revenue, 5001 Subcontractor Cost.
+Chart of accounts for double-entry bookkeeping. Key accounts: 1001–1004 (Cash/Banks), 1200 Subcontractor Advance, **1201 Courier Cash Advance (Kasbon Kurir)**, 2001 Accounts Payable, 2100 Unearned Revenue, 2101 Unearned Delivery Fee, 4001 Catering Revenue, 5001 Subcontractor Cost.
+
+**2100 holds food, 2101 holds ongkir, and the difference is that ongkir is never ours.** Revenue recognition (`PUT /api/deliveries/daily-sheet`) draws 2100 down by `portions × price_per_portion` and nothing else, so a delivery surcharge credited there has nothing that will ever debit it — it becomes a liability the books carry for good. A surcharge is collected from the customer and owed to the kitchen at the same Rp 10.000 a drop, so it is held in 2101 at payment and moved to 2001 Accounts Payable one delivery day at a time, as the drops actually happen; it never touches 4001 or 5001, because a zero-margin pass-through belongs on neither side of the P&L. Sharleen's Rp 220.000 was posted to 2100 on 2026-08-31 and corrected the same day (JV-2026-634, JV-2026-635).
 
 | Column | Type | Notes |
 |--------|------|-------|

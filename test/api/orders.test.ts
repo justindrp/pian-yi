@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { DELETE, PATCH } from "@/app/api/orders/route";
+import { createJournalEntry } from "@/lib/accounting/journal";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -157,6 +158,72 @@ describe("PATCH /api/orders", () => {
       expect.objectContaining({ status: "active" }),
     );
     expect(db.from).not.toHaveBeenCalledWith("customer_state");
+  });
+
+  test("T1a — mark_paid credits the ongkir to 2101, not to Unearned Revenue", async () => {
+    // Sharleen, 2026-08-31: Rp 220.000 of Akasa ongkir sat inside total_price
+    // and went to 2100 with the food. Revenue recognition only ever draws 2100
+    // down by portions × price_per_portion, so it would have stayed there for
+    // good. Ongkir is a pass-through — collected from the customer, owed to the
+    // kitchen — so it is held apart and released a delivery day at a time.
+    const db = makeDbMock({
+      orders: {
+        data: {
+          id: "order-1",
+          customer_id: "cust-1",
+          total_price: 1910000,
+          delivery_surcharge_total: 220000,
+          package_size: 65,
+          requested_schedule: null,
+          customers: { name: "Sharleen", phone_number: "+628111090929" },
+        },
+        error: null,
+      },
+      customers: { data: { converted_at: null }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await PATCH(patchRequest({ id: "order-1", action: "mark_paid" }));
+
+    expect(createJournalEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lines: [
+          { accountCode: "1002", debit: 1910000, credit: 0 },
+          { accountCode: "2100", debit: 0, credit: 1690000 },
+          { accountCode: "2101", debit: 0, credit: 220000 },
+        ],
+      }),
+    );
+  });
+
+  test("T1a2 — an order with no surcharge posts the same two lines as before", async () => {
+    const db = makeDbMock({
+      orders: {
+        data: {
+          id: "order-1",
+          customer_id: "cust-1",
+          total_price: 280000,
+          delivery_surcharge_total: 0,
+          package_size: 10,
+          requested_schedule: null,
+          customers: { name: "Test Customer", phone_number: "+628111222333" },
+        },
+        error: null,
+      },
+      customers: { data: { converted_at: null }, error: null },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    await PATCH(patchRequest({ id: "order-1", action: "mark_paid" }));
+
+    expect(createJournalEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lines: [
+          { accountCode: "1002", debit: 280000, credit: 0 },
+          { accountCode: "2100", debit: 0, credit: 280000 },
+        ],
+      }),
+    );
   });
 
   test("T1b — mark_paid writes the days stored on the order, and nothing else", async () => {

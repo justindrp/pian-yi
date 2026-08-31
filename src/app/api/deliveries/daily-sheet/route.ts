@@ -118,6 +118,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
     portions: number;
     pricePerPortion: number;
     addonCostPerPortion: number;
+    surchargePerDelivery: number;
     subcontractorId: string | null;
     customerId: string;
     size: OrderSize;
@@ -190,7 +191,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
     if (upserted?.id && row.order_id) {
       const { data: ord } = await db
         .from("orders")
-        .select("price_per_portion, addon_cost_per_portion, size")
+        .select(
+          "price_per_portion, addon_cost_per_portion, size, delivery_surcharge_per_delivery",
+        )
         .eq("id", row.order_id)
         .single();
 
@@ -202,6 +205,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
           portions: row.portions,
           pricePerPortion: ord.price_per_portion,
           addonCostPerPortion: ord.addon_cost_per_portion ?? 0,
+          surchargePerDelivery: ord.delivery_surcharge_per_delivery ?? 0,
           subcontractorId: row.subcontractor_id,
           customerId: row.customer_id,
           size: normalizeSize(ord.size),
@@ -298,6 +302,50 @@ export async function PUT(req: NextRequest): Promise<Response> {
             { accountCode: "2001", debit: 0, credit: totalCogs },
           ],
         }).catch((err) => console.error("[delivery] cogs journal error:", err));
+      }
+
+      // Ongkir is a pass-through, never revenue: we collect Rp 10.000 a drop
+      // from a customer in a surcharged neighbourhood and owe the kitchen the
+      // same Rp 10.000 for driving there. It is held as 2101 Unearned Delivery
+      // Fee when the customer pays, and moves to 2001 Accounts Payable here —
+      // per delivery day, because that is how the kitchen is paid, and because
+      // a drop that never happens is a fee we never owe. Nothing touches 4001
+      // or 5001, so a zero-margin fee does not inflate either side of the P&L.
+      //
+      // Counted in **drops, not portions**: three portions to one door is one
+      // fee. `entries` holds one element per delivery row, which is one drop.
+      const ongkirDrops = entries.filter((e) => e.surchargePerDelivery > 0);
+      const totalOngkir = ongkirDrops.reduce(
+        (s, e) => s + e.surchargePerDelivery,
+        0,
+      );
+      if (totalOngkir > 0) {
+        const ongkirByRate = new Map<number, number>();
+        for (const e of ongkirDrops) {
+          ongkirByRate.set(
+            e.surchargePerDelivery,
+            (ongkirByRate.get(e.surchargePerDelivery) ?? 0) + 1,
+          );
+        }
+        const ongkirParts = [...ongkirByRate.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(
+            ([rate, drops]) =>
+              `${drops} drop × Rp${rate.toLocaleString("id-ID")}`,
+          );
+        createJournalEntry({
+          description: `Ongkir terutang ke dapur ${body.date} ${mealType}`,
+          date: body.date,
+          sourceType: "delivery_ongkir",
+          sourceId: `ongkir_${body.date}_${mealType}`,
+          notes: `${ongkirParts.join(", ")} = Rp${totalOngkir.toLocaleString("id-ID")}`,
+          lines: [
+            { accountCode: "2101", debit: totalOngkir, credit: 0 },
+            { accountCode: "2001", debit: 0, credit: totalOngkir },
+          ],
+        }).catch((err) =>
+          console.error("[delivery] ongkir journal error:", err),
+        );
       }
     }
   }
