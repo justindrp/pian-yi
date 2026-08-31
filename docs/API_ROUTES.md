@@ -103,6 +103,7 @@ All four call `logEdit()` with `entityType: "tasks"`. They replaced `TASKS.md` o
 
 ### Delivery areas
 - `GET /api/areas` — The areas we can deliver to right now: the union of `delivery_areas` across subcontractors with `is_active = true`, deduplicated and sorted. `?scope=known` widens it to every area name any kitchen has ever carried, active or not — the vocabulary the subcontractor and neighborhood editors need, since they define coverage rather than consume it. Admin-only (coverage is internal). Backed by `activeDeliveryAreas()` / `knownDeliveryAreas()` in `src/lib/subcontractors/areas.ts`; consumed client-side through `useDeliveryAreas()` (`src/hooks/use-delivery-areas.ts`). Server code with the subcontractor rows already in hand should call `unionAreas(rows)` instead of paying for a second query.
+- `GET /api/subcontractors/coverage` — every kitchen's neighborhood exceptions, keyed by subcontractor id: `{neighborhoodId, area, name, canDeliver, surchargePerDelivery}[]`. A neighborhood with no row is served at the normal rate, so the map is short by design. `PUT` upserts one rule (`subcontractorId`, `neighborhoodId`, `canDeliver`, `surchargePerDelivery`), logs it as `subcontractor_neighborhoods` and invalidates the settings cache. Admin-only; backs the per-kitchen tabs on `/areas`. See `subcontractor_neighborhoods` in `DATABASE.md`.
 
 ### Subcontractors
 - `GET /api/subcontractors` — List all subcontractors with off days

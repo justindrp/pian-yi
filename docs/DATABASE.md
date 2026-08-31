@@ -64,6 +64,8 @@ People who can log in to the dashboard. Email is the primary key (matches Supaba
 
 Named neighborhoods within each delivery area, used by `/api/settings/neighborhoods` for area-picker autocomplete. RLS enabled (authenticated-only policy, migration 053); only accessed server-side via the admin client.
 
+This table is global and include-only: a row says "this cluster belongs to that area", never that anyone will deliver to it. **Which kitchen will go there, and for how much, lives in `subcontractor_neighborhoods`** — see below.
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
@@ -496,6 +498,8 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | end_date | date | Last requested delivery date |
 | payment_proof_url | text | URL of payment transfer screenshot |
 | payment_proof_received_at | timestamptz | When the proof arrived (migration 079). The Payments page printed `confirmed_at` under a "Proof received" label until 2026-08-30, so Naya's row claimed 24 Agu 12.12 for a proof that came in at 13.33 that day. NULL on every order that reached `payment_proof_received` before the migration; the page says "Order confirmed" for those rather than inventing a time. Backfillable where the proof is still in the thread: the arrival time is the customer's last `conversations` row with `role='user'`, `message_type='image'` and a `payment-proofs` URL **in `content` — not in `media_url`, which is NULL on those rows**, between the order's `confirmed_at` and its `paid_at`. Last, not first: an earlier image may have been a wrong or rejected transfer. Two further guards, because a customer's older proof must not be read as this order's: skip an order with no `confirmed_at` (nothing bounds the search — `created_at` is the import date on the June rows, months after the chat), and skip a timestamp another order already holds. 14 orders were filled that way on 2026-08-30 and logged as `backfill_payment_proof_received_at`, taking the column to 18 of 38 paid orders. The remaining 20 are unrecoverable: 5 have no `confirmed_at` (galvent, Julian S `eb3179b7`, Elaine, Elvia, Tia) and 15 have no proof image in the thread at all — paid by a third party, sent before the image-storage flow, or confirmed by hand. **A shared timestamp is legitimate when one transfer paid for two orders** — Naya's proof carries both her order and Cila's. |
+| delivery_surcharge_per_delivery | integer | IDR the kitchen charges extra to reach this address, per drop (migration 085). Copied from `subcontractor_neighborhoods.surcharge_per_delivery` at order creation and locked there, like `price_per_portion` |
+| delivery_surcharge_total | integer | `delivery_surcharge_per_delivery` × the number of drops the package pays for, already inside `total_price`. It is the customer's share; nothing on the cost side reads it |
 | pause_until | date | If paused, resume from this date |
 | cancellation_reason | text | Why it was cancelled |
 | reminder_sent_at | timestamp | When the payment reminder was last sent |
@@ -589,6 +593,26 @@ Key-value store for all configurable business settings. Edited via the Settings 
 Notable keys: `business_name`, `chatbot_enabled`, `welcome_message`, `price_list_image_url`, `bank_name`, `bank_account_number`, `bank_account_name`, `order_deadline_hour`, `order_deadline_daily_hour`, `size_m_surcharge` (rupiah added per portion for size M, on top of the S tier or a contract rate — Rp 4.000; a missing or unparseable value reads 0 and prices M as S), `casual_mode_probability`, `typing_delay_base_seconds`, `escalation_keywords`, `instagram_handle`, `whatsapp_business_number` (the WABA the app sends through), `whatsapp_manual_number` (the hand-operated second account, migration 081) and `proof_forwarder_phones` (comma-separated numbers allowed to forward a delivery photo to the WABA and have it sent on to the customer named in the caption, migration 083 — see "Proof Relay" in `docs/ADMIN.md`). Of the two numbers, `whatsapp_manual_number` is read by `windowWarning()` in `src/lib/deliveries/forwarded-proof.ts`, which names it to an admin whose forwarded proof went to a closed window, and `whatsapp_business_number` is read by `manualDraft()` in the same file, which puts it in the paste-ready message asking a closed-window customer to chat the main number. The manual one must never be added to `src/lib/claude/prompts/system.ts`, which reads settings by name and would hand customers a channel with none of the API path's guards. See "The manual number" in `docs/WHATSAPP.md`
 
 `welcome_message` supports four template placeholders resolved at send time: `{{dapur_list}}` (active subcontractor names), `{{delivery_areas}}` (unique delivery areas from active subcontractors), `{{price_20}}` (20-portion tier price formatted as e.g. `27RB`), `{{order_deadline}}` (order_deadline_hour formatted as e.g. `16.00`). `price_list_image_url` is sent automatically to new WhatsApp contacts before the AI reply; keep it synced with the current Paket Personal S price list.
+
+---
+
+## subcontractor_neighborhoods
+
+One kitchen's verdict on one neighborhood: will it go, and does it charge extra to go. Added in migration 085. RLS enabled, authenticated-only policy; read server-side through `src/lib/subcontractors/coverage.ts`, written by `PUT /api/subcontractors/coverage` (logged as `subcontractor_neighborhoods`).
+
+**A missing row means "served, normal rate".** Rows exist only for the neighborhoods a kitchen has actually ruled on, which is how coverage worked before this table existed and what an empty table has to keep meaning. `subcontractors.delivery_areas` is still coverage at the area level; this is the exception list underneath it, because a kitchen's own courier knows finer than an area name: Dapur 1 carries BSD Lama and Alam Sutera and still refuses Kost Casa Living, and charges Rp 10.000 a drop for Apartemen Akasa (migrations 085 and 086, both from the same evening — Akasa was seeded as a refusal and re-priced hours later once the kitchen was asked again).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| subcontractor_id | uuid | FK → subcontractors, cascade delete |
+| neighborhood_id | uuid | FK → area_neighborhoods, cascade delete. Unique together with `subcontractor_id` |
+| can_deliver | boolean | Default true. False is a refusal: the bot may not quote, may not call `extract_order`, and `record_daily_order` writes no date — it escalates instead |
+| surcharge_per_delivery | integer | IDR added **per drop, not per portion**, and passed to the customer. Ignored when `can_deliver` is false |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+**Matched on the address line, never on `customers.area`/`sub_area`.** Those two disagree with each other for the same place: the two towers of Apartemen Akasa are filed under BSD Lama and BSD Baru, and Evelyn's `sub_area` is "Pakojan" while her address reads "Kost Casa Living 158". `addressMatchesNeighborhood()` anchors the name at a word boundary at the front only — open at the end so "Apartemen Akasa" catches "Apartemen Akasa Tower Kalyana", anchored at the front so "Casa Living" does not catch Valen's "Tucasa Living, Regentown" in a different area entirely.
 
 ---
 

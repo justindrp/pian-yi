@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  coverageFor,
+  kitchenCoverage,
+} from "@/lib/subcontractors/coverage";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import {
   loadCustomerSchedule,
@@ -139,6 +143,38 @@ export async function recordDailyOrder(params: {
       error:
         "Tidak ada paket yang bisa dipakai untuk mencatat hari ini. Tidak ada yang tercatat.",
     };
+  }
+
+  // Whether the kitchen this order draws from will go to the address at all.
+  //
+  // Coverage is per kitchen at the neighborhood level (see
+  // `kitchenCoverage`), and a customer whose package was sold before the
+  // kitchen ruled on their building still has quota and a standing order —
+  // Sharleen holds 65 portions to Apartemen Akasa, which Thenie refused on
+  // 2026-08-31. Booking another date there writes a row the kitchen will not
+  // cook. Refuse the booking and say why: the model escalates, and an admin
+  // moves the customer or the address.
+  const kitchenId = order.subcontractor_id;
+  if (kitchenId) {
+    const { data: addressRow } = await db
+      .from("customers")
+      .select("address, sub_area")
+      .eq("id", customerId)
+      .maybeSingle();
+    const { blocked } = coverageFor(
+      await kitchenCoverage(db, kitchenId),
+      addressRow?.address,
+      addressRow?.sub_area,
+    );
+    if (blocked) {
+      console.warn(
+        `[record-daily-order] ${customerId} is at ${blocked.name}, which dapur ${kitchenId} does not serve — nothing booked`,
+      );
+      return {
+        ok: false,
+        error: `Dapur yang memasak paket customer ini tidak bisa mengantar ke ${blocked.name}, jadi tidak ada tanggal yang tercatat. Minta maaf ke customer, jangan janjikan tanggalnya, dan panggil escalate_to_human.`,
+      };
+    }
   }
 
   // The gate is customer-wide: a customer with two packages can draw across

@@ -3,6 +3,7 @@ import { getNeighborhoods } from "@/lib/cache/settings";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { unionAreas } from "@/lib/subcontractors/areas";
+import { coverageNotes } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -61,6 +62,7 @@ export async function GET(): Promise<Response> {
   const servedAreas = unionAreas(rawSubs);
 
   const neighborhoods = await getNeighborhoods();
+  const kitchenCoverageNotes = await coverageNotes(db, rawSubs);
 
   const prompt = await buildSystemPrompt({
     casual: false,
@@ -76,6 +78,7 @@ export async function GET(): Promise<Response> {
     ),
     servedAreas,
     neighborhoods,
+    coverageNotes: kitchenCoverageNotes,
     activeOrder: null,
     schedule: null,
   });

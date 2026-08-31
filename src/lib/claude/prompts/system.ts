@@ -7,6 +7,7 @@ import {
   weekAfter,
 } from "@/lib/menu/week";
 import { sizeMSurcharge } from "@/lib/orders/size";
+import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
 import { earliestDeliveryDate, jakartaTimeString } from "@/lib/time/jakarta";
 
 const PRICE_LIST_LINES = [
@@ -23,6 +24,36 @@ const PRICE_LIST_LINES = [
   "- 72 hari siang/malam saja: Rp 1.872.000 (Rp 26.000/meal)",
   "- 72 hari siang + malam: Rp 3.600.000 (Rp 25.000/meal)",
 ].join("\n");
+
+/**
+ * The addresses a kitchen has ruled on, written for the model.
+ *
+ * An area a kitchen carries is not the same as an address it will go to: on
+ * 2026-08-31 Thenie refused Apartemen Akasa and Kost Casa Living, both inside
+ * areas it serves, and charges Rp 5.000 on some drops. Without these lines the
+ * bot quotes a price and takes the money for food nobody will deliver, and the
+ * refusal only surfaces at extract_order — after the customer has been promised.
+ *
+ * Nicknames only. A kitchen's real name never reaches a customer.
+ */
+function coverageSection(notes: KitchenCoverageNote[]): string {
+  if (notes.length === 0) return "";
+  const lines = notes.flatMap((n) => {
+    const out: string[] = [];
+    if (n.blocked.length > 0) {
+      out.push(
+        `- **${n.nickname} tidak bisa mengantar ke: ${n.blocked.map((r) => `${r.name} (${r.area})`).join(", ")}.** An address at one of these is not deliverable, however well the area matches. Do not quote a price, do not call extract_order — say plainly we cannot reach it and call escalate_to_human.`,
+      );
+    }
+    if (n.surcharged.length > 0) {
+      out.push(
+        `- **${n.nickname} charges extra per pengiriman to: ${n.surcharged.map((r) => `${r.name} (${r.area}) Rp ${r.surchargePerDelivery.toLocaleString("id-ID")}`).join(", ")}.** Tell the customer the ongkir before they confirm, as a per-delivery amount. Never do the arithmetic yourself — extract_order adds it to the total and the payment message spells it out.`,
+      );
+    }
+    return out;
+  });
+  return lines.join("\n");
+}
 
 export async function buildSystemPrompt(params: {
   casual: boolean;
@@ -47,6 +78,12 @@ export async function buildSystemPrompt(params: {
   };
   servedAreas: string[];
   neighborhoods: Record<string, string[]>;
+  /**
+   * Per-kitchen exceptions inside those neighborhoods: the ones a kitchen
+   * refuses, and the ones it charges extra to reach. Empty for a kitchen that
+   * has ruled on nothing, which is most of them.
+   */
+  coverageNotes: KitchenCoverageNote[];
   activeOrder: {
     id: string;
     packageSize: number;
@@ -527,6 +564,7 @@ ${Object.entries(params.neighborhoods)
   .filter(([, names]) => names.length > 0)
   .map(([area, names]) => `- **${area}** neighborhoods: ${names.join(", ")}.`)
   .join("\n")}
+${coverageSection(params.coverageNotes)}
 - BSD Lama also includes any place with "Sektor" in the name.
 - **Match on any part of the address, not the whole line.** An address is usually a cluster plus a kecamatan plus a postcode, and only the cluster is on the lists above. If any fragment matches, that is the area — the rest of the line being unfamiliar changes nothing. "Cluster Allogio Timur 3 No.32, Pagedangan kab Tangerang" is Gading Serpong, because Allogio is: on 2026-08-10 the bot saw "Pagedangan", asked which area it was **four times in a row**, and Janice's order was never created.
 - **Area never blocks the order.** If nothing matches, ask once: "Maaf kak, [nama tempat] itu masuk area mana ya? Kami melayani: ${params.servedAreas.join(", ")}." If the customer answers something else, or answers nothing, or you have everything else you need — pick the served area nearest to their address or maps pin yourself, call extract_order with it, and say which area you used in one clause. A wrong area is one field an admin fixes in seconds; a question asked a second time is a customer who never gets an order.

@@ -37,6 +37,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
       schedule: null,
     });
@@ -71,6 +72,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
       schedule: null,
     });
@@ -117,6 +119,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
       schedule: null,
     });
@@ -147,6 +150,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
       schedule: null,
     });
@@ -175,6 +179,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: {
         id: "o1",
         packageSize: 5,
@@ -228,6 +233,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
     };
 
@@ -285,6 +291,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
       schedule: null,
     };
@@ -337,6 +344,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
       schedule: null,
     };
@@ -417,6 +425,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      coverageNotes: [],
       activeOrder: null,
       schedule: null,
     };
@@ -463,6 +472,7 @@ describe("customer chatbot system prompt", () => {
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
         neighborhoods: {},
+        coverageNotes: [],
         activeOrder: null,
         schedule: null,
       });
@@ -492,6 +502,7 @@ describe("customer chatbot system prompt", () => {
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
         neighborhoods: {},
+        coverageNotes: [],
         activeOrder: null,
         schedule: null,
         casual: false,

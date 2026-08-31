@@ -1000,6 +1000,8 @@ export type Database = {
           created_at: string | null
           custom_schedule: Json | null
           customer_id: string | null
+          delivery_surcharge_per_delivery: number
+          delivery_surcharge_total: number
           dinner_address_slot: number
           end_date: string | null
           followup_sent_at: string | null
@@ -1038,6 +1040,8 @@ export type Database = {
           created_at?: string | null
           custom_schedule?: Json | null
           customer_id?: string | null
+          delivery_surcharge_per_delivery?: number
+          delivery_surcharge_total?: number
           dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
@@ -1076,6 +1080,8 @@ export type Database = {
           created_at?: string | null
           custom_schedule?: Json | null
           customer_id?: string | null
+          delivery_surcharge_per_delivery?: number
+          delivery_surcharge_total?: number
           dinner_address_slot?: number
           end_date?: string | null
           followup_sent_at?: string | null
@@ -1219,6 +1225,51 @@ export type Database = {
           value?: string
         }
         Relationships: []
+      }
+      subcontractor_neighborhoods: {
+        Row: {
+          can_deliver: boolean
+          created_at: string
+          id: string
+          neighborhood_id: string
+          subcontractor_id: string
+          surcharge_per_delivery: number
+          updated_at: string
+        }
+        Insert: {
+          can_deliver?: boolean
+          created_at?: string
+          id?: string
+          neighborhood_id: string
+          subcontractor_id: string
+          surcharge_per_delivery?: number
+          updated_at?: string
+        }
+        Update: {
+          can_deliver?: boolean
+          created_at?: string
+          id?: string
+          neighborhood_id?: string
+          subcontractor_id?: string
+          surcharge_per_delivery?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontractor_neighborhoods_neighborhood_id_fkey"
+            columns: ["neighborhood_id"]
+            isOneToOne: false
+            referencedRelation: "area_neighborhoods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_neighborhoods_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subcontractor_off_days: {
         Row: {

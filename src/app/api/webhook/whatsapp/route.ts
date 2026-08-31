@@ -71,6 +71,7 @@ import {
 } from "@/lib/orders/record-daily-order";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { unionAreas } from "@/lib/subcontractors/areas";
+import { coverageNotes } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaTimeString } from "@/lib/time/jakarta";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -1841,6 +1842,10 @@ export async function processSavedCustomerMessage(params: {
     }));
   const servedAreas = unionAreas(rawSubs);
   const neighborhoods = await getNeighborhoods();
+  // Which of those neighborhoods each kitchen refuses, and which cost extra to
+  // reach. Read live rather than cached: a kitchen that has just said no must
+  // stop being sold to on the next message, not on the next cache refresh.
+  const kitchenCoverageNotes = await coverageNotes(db, rawSubs);
   const activeOrder = activeOrderRow
     ? {
         id: activeOrderRow.id,
@@ -1894,6 +1899,7 @@ export async function processSavedCustomerMessage(params: {
     ),
     servedAreas,
     neighborhoods,
+    coverageNotes: kitchenCoverageNotes,
     activeOrder,
     schedule,
     pendingAdminQuestion,

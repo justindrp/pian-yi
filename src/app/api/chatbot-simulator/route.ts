@@ -10,6 +10,7 @@ import { extractOrderProperties } from "@/lib/claude/extract-order";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
 import { unionAreas } from "@/lib/subcontractors/areas";
+import { coverageNotes } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { addDays } from "@/lib/time/jakarta";
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const servedAreas = unionAreas(rawSubs);
 
   const neighborhoods = await getNeighborhoods();
+  const kitchenCoverageNotes = await coverageNotes(db, rawSubs);
 
   const activeOrder = body.hasActiveOrder
     ? {
@@ -117,6 +119,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     ),
     servedAreas,
     neighborhoods,
+    coverageNotes: kitchenCoverageNotes,
     activeOrder,
     schedule,
   });

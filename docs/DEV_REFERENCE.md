@@ -225,7 +225,7 @@ pian-yi/
 │   │   │   ├── orders-client.tsx (orders table, detail slide-over, mark-paid, status changes)
 │   │   │   ├── new-order-modal.tsx (create-order modal used from orders-client / customers-client)
 │   │   │   ├── deliveries-client.tsx (Daily Sheet, proof-of-delivery uploads)
-│   │   │   ├── areas-client.tsx (delivery area management, derived from active subcontractors)
+│   │   │   ├── areas-client.tsx (delivery area management, derived from active subcontractors; a tab per kitchen edits that kitchen's `subcontractor_neighborhoods` verdicts — Bisa / Tidak bisa plus an ongkir per drop)
 │   │   │   ├── payments-client.tsx (payment tracking/reconciliation UI)
 │   │   │   ├── subcontractors-client.tsx (dapur/kitchen roster, off-days, menu images)
 │   │   │   ├── tasks-client.tsx (work queue: status chips with live counts, area filter, click-row drawer; a task linked to a customer or order deep-links into those pages)

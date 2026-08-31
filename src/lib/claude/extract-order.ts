@@ -22,6 +22,10 @@ import {
 } from "@/lib/orders/size";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import {
+  coverageFor,
+  kitchenCoverage,
+} from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatIDR, getDeliveryRoute } from "@/lib/utils/format";
 import { normalizePhone, samePhone } from "@/lib/utils/phone";
@@ -1630,7 +1634,7 @@ export async function createOrderFromExtraction(
   // or one already on the record from an earlier order.
   const { data: addressRow } = await db
     .from("customers")
-    .select("address_2, area, subcontractor_id")
+    .select("address, address_2, area, sub_area, subcontractor_id")
     .eq("id", orderCustomerId)
     .maybeSingle();
   const secondMeal =
@@ -1696,13 +1700,73 @@ export async function createOrderFromExtraction(
     }
   }
 
-  const { price_per_portion: pricePerPortion, total_price: totalPrice } =
+  // What the kitchen says about this particular address.
+  //
+  // `delivery_areas` clears the area and stops there, and a courier knows
+  // finer: on 2026-08-31 Thenie refused Apartemen Akasa and Kost Casa Living,
+  // both inside areas it carries, and charges Rp 5.000 on some BSD Lama drops.
+  // Checked here, after the kitchen is resolved, because both answers belong to
+  // the kitchen — a different kitchen may well go there.
+  const coverage = subcontractorId
+    ? coverageFor(
+        await kitchenCoverage(db, subcontractorId),
+        input.address ?? addressRow?.address,
+        input.sub_area ?? addressRow?.sub_area,
+      )
+    : { blocked: null, surchargePerDelivery: 0 };
+
+  // Refusing writes nothing and sends no bank details — creating the order is
+  // what asks for money, and we must not ask for money to deliver somewhere
+  // nobody will go. The customer is told plainly and an admin gets the thread:
+  // another kitchen may cover the address, and that is a human call.
+  //
+  // Not on the payment-proof path (`sendPaymentInfo: false`): that customer has
+  // already transferred, so the order is created and the flag is what surfaces
+  // the problem.
+  if (coverage.blocked && sendPaymentInfo) {
+    const blockedMsg = `Mohon maaf kak 🙏 Untuk alamat di ${coverage.blocked.name}, dapur partner kami belum bisa mengantar ke sana, jadi pesanannya belum kami buat ya kak. Kami cek dulu apakah ada dapur lain yang bisa, dan kami kabari kakak secepatnya.`;
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: blockedMsg,
+      modelUsed: "system",
+    });
+    const blockedMessageId = await sendTextMessage(phone, blockedMsg);
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId: blockedMessageId,
+      status: "sent",
+    });
+    await db
+      .from("customer_flags")
+      .update({
+        needs_human_review: true,
+        escalation_reason: `alamat di ${coverage.blocked.name} tidak bisa diantar dapur ini`,
+      })
+      .eq("customer_id", customerId);
+    console.log(
+      `[extract-order] order withheld for ${customerId}: ${coverage.blocked.name} is not served by dapur ${subcontractorId}`,
+    );
+    return NOTHING_TO_SEND;
+  }
+
+  const { price_per_portion: pricePerPortion, total_price: portionsPrice } =
     await getExtractedOrderPricing(
       packageSize,
       nasiMerah,
       orderCustomerId,
       portionSize,
     );
+
+  // The kitchen's per-drop surcharge is charged through to the customer, the
+  // same way the nasi merah add-on is — except this one is per delivery, not
+  // per portion: the courier makes one trip whether it carries one portion or
+  // four. How many trips is what the package divides into, which is the same
+  // arithmetic the order form collects ("Jumlah porsi per pengiriman").
+  const surchargePerDelivery = coverage.surchargePerDelivery;
+  const deliveryCount = Math.ceil(packageSize / portionsPerDay);
+  const surchargeTotal = surchargePerDelivery * deliveryCount;
+  const totalPrice = portionsPrice + surchargeTotal;
 
   // The days this order will be cooked on, settled here and stored on the
   // order. They are NOT written as delivery rows yet: rows land at mark_paid.
@@ -1739,6 +1803,10 @@ export async function createOrderFromExtraction(
     price_per_portion: pricePerPortion,
     total_price: totalPrice,
     addon_cost_per_portion: nasiMerah ? NASI_MERAH_SURCHARGE : 0,
+    // Frozen at creation like price_per_portion: what the address cost per
+    // drop when it was sold, and what that added to total_price.
+    delivery_surcharge_per_delivery: surchargePerDelivery,
+    delivery_surcharge_total: surchargeTotal,
     // NOT NULL, and the model omits it whenever the conversation never
     // discussed portions per day — Nadya's 20-porsi order was rejected on
     // it and she got nothing. One per delivery is the prompt's own default.
@@ -1962,7 +2030,13 @@ export async function createOrderFromExtraction(
       ? `\n\n📦 Ini untuk pesanan atas nama ${beneficiary.name}.`
       : "";
   const nominal = `Rp ${totalPrice.toLocaleString("id-ID")}`;
-  const paymentMsg = `Terima kasih ${greeting}! 🎉${forWhom} Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: ${nominal}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
+  // An amount that is not portions × rate has to say why, or it reads as a
+  // mistake and the customer asks — or worse, transfers the figure they worked
+  // out themselves.
+  const surchargeLine = surchargeTotal
+    ? `\n📍 Termasuk ongkir Rp ${surchargePerDelivery.toLocaleString("id-ID")} × ${deliveryCount} pengiriman (alamat kakak di luar rute biasa dapur)`
+    : "";
+  const paymentMsg = `Terima kasih ${greeting}! 🎉${forWhom} Silakan transfer ke:\n🏦 ${bankName}: ${bankAccountNumber}\n👤 a.n. ${bankAccountName}\n💰 Nominal: ${nominal}${surchargeLine}\n\nSetelah transfer, mohon kirim bukti pembayaran ya kak.\n\n${WINDOW_NOTICE_SHORT}`;
 
   // One purchase, one request for money.
   //
