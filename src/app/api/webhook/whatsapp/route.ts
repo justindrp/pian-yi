@@ -1911,6 +1911,12 @@ export async function processSavedCustomerMessage(params: {
         "Sends the menu image(s) currently on file. Which week those cover is stated in your system prompt — check it before you describe what you are sending, and do not claim a week the prompt does not say you have. Safe to call even if the menu was previously sent.",
       input_schema: { type: "object", properties: {} },
     },
+    {
+      name: "send_price_list",
+      description:
+        "Sends the price list image (harga & area pengiriman). Call it whenever the customer asks for the price list again — the welcome sequence sent it once and nothing else resends it. Safe to call more than once. Never promise the image without calling this.",
+      input_schema: { type: "object", properties: {} },
+    },
   ];
 
   // Call the conversational model (with one retry on overload)
@@ -2823,6 +2829,52 @@ async function handleToolUse(
     return {
       ok: true,
       message: `${menuSubs.length} gambar menu sudah dikirim ke customer.`,
+    };
+  } else if (tool.name === "send_price_list") {
+    // A corporate rate replaces the whole ladder, so the image is wrong for
+    // them — the prompt already says never to send it, and this is the half
+    // that holds when the model forgets.
+    const { data: rateRow } = await db
+      .from("customers")
+      .select("contract_price_per_portion")
+      .eq("id", customerId)
+      .maybeSingle();
+    if (rateRow?.contract_price_per_portion) {
+      return {
+        ok: false,
+        error:
+          "Price list tidak dikirim — customer ini punya harga kontrak, jadi daftar harga umum tidak berlaku untuknya. Sebutkan harga kontraknya, jangan janjikan gambar.",
+      };
+    }
+    const priceListUrl = await getSetting("price_list_image_url");
+    if (!priceListUrl) {
+      console.error("[webhook] send_price_list: price_list_image_url unset");
+      return {
+        ok: false,
+        error:
+          "Gambar price list tidak terkirim — belum ada gambarnya. Jangan bilang gambarnya sudah atau akan dikirim; tulis harganya sebagai teks.",
+      };
+    }
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: priceListUrl,
+      messageType: "image",
+      modelUsed: "system",
+    });
+    const whatsappMessageId = await sendImageByUrl(
+      phone,
+      priceListUrl,
+      "Harga & Area Pengiriman",
+    );
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId,
+      status: "sent",
+    });
+    return {
+      ok: true,
+      message: "Gambar price list sudah dikirim ke customer.",
     };
   }
 
