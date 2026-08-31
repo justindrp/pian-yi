@@ -25,6 +25,7 @@ import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaDateString } from "@/lib/menu/week";
 import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
+import { hoursSinceInbound } from "@/lib/whatsapp/window";
 import type { WhatsAppMessage } from "@/lib/whatsapp/types";
 
 export interface ProofCandidate {
@@ -208,23 +209,6 @@ async function todaysCustomers(): Promise<ProofCandidate[]> {
       seen.set(row.customer_id, { customerId: row.customer_id, name });
   }
   return [...seen.values()];
-}
-
-/** Hours since the customer last messaged us; Infinity if they never have. */
-async function hoursSinceInbound(customerId: string): Promise<number> {
-  const db = createAdminClient();
-  const { data } = await db
-    .from("conversations")
-    .select("created_at")
-    .eq("customer_id", customerId)
-    .eq("role", "user")
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  const at = data?.[0]?.created_at;
-  return at
-    ? (Date.now() - new Date(at).getTime()) / 3_600_000
-    : Number.POSITIVE_INFINITY;
 }
 
 /**

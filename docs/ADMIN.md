@@ -59,6 +59,10 @@ Which is why the ack checks the window itself. When that customer has not messag
 
 Both numbers are in the line because the answer is always the same two moves — open WhatsApp on the second handset, send it to that customer. The manual number is read from `settings.whatsapp_manual_number`, not typed. The photo is still sent through the API first: the ack is a prediction, not a refusal, and on the day the WABA restriction clears it starts arriving on its own.
 
+**What the customer receives is the photo with a caption on it** — `Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima, …` — as one message, sent free-form by `sendDeliveryPhotoToCustomer()`. It used to be two: a `delivery_proof` template carrying an image header and an empty body, then that sentence as a separate text. Veronica's proof on 2026-08-31 arrived as a bare photo with no word about what it was. **Out of the window it is still the template**, because a free-form image cannot leave the window and the follow-up text would have been rejected there anyway — a closed window is the one case that genuinely cannot carry a caption.
+
+The row saved for it now writes the caption to `conversations.content` and the file to `media_url`, the shape `/api/inbox/manual-image` already used. The URL used to sit in `content` with the caption saved nowhere, so the inbox drew the photo and none of the words that went with it.
+
 Every forwarded send writes a `delivery_proofs` row (`match_method: "forwarded_caption"`, `sent_by: "forward:<phone>"`) and an `edit_log` entry.
 
 ## Assistant

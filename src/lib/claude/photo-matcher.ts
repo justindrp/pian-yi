@@ -10,9 +10,10 @@ import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   fetchAndUploadImage,
+  sendImageMessageById,
   sendImageTemplate,
-  sendTextMessage,
 } from "@/lib/whatsapp/client";
+import { windowIsOpen } from "@/lib/whatsapp/window";
 import { WINDOW_NOTICE_CLAUSE } from "@/lib/whatsapp/window-notice";
 
 interface DeliveryRow {
@@ -215,31 +216,42 @@ export async function sendDeliveryPhotoToCustomer(
   if (!signedData?.signedUrl) return;
 
   const mediaId = await fetchAndUploadImage(signedData.signedUrl);
+
+  // Prompt the customer to reply so the 24h window stays open for tomorrow's
+  // proof. The ask was always here; the reason was not, so customers read the
+  // silence that followed a missed reply as us ignoring them.
+  const caption = `Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima, ${WINDOW_NOTICE_CLAUSE}.`;
+
+  // Inside the window the photo carries its own caption, as one message. It
+  // used to go as a template with an image header and no body, followed by the
+  // caption as a separate free-form text — so a customer received a bare photo
+  // with no word about what it was, and the sentence explaining it either
+  // arrived detached or, out of the window, not at all. The template is still
+  // the only shape that can leave the window, so it stays for that case, and a
+  // closed window is exactly where the follow-up text would be rejected anyway.
+  const open = await windowIsOpen(customerId);
+
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
-    content: proof.image_url,
+    // Caption in `content`, file in `media_url` — the shape
+    // `/api/inbox/manual-image` writes and `getInboxDocument` reads. The URL
+    // used to sit in `content` with no caption anywhere, which is why the
+    // inbox drew the photo and none of the words that went with it.
+    content: open ? caption : "[Foto pengiriman]",
+    mediaUrl: proof.image_url,
     messageType: "image",
     modelUsed: "human",
     sentBy: sentBy ?? null,
   });
-  const messageId = await sendImageTemplate(
-    phone,
-    "delivery_proof",
-    mediaId,
-    [],
-  );
+
+  const messageId = open
+    ? await sendImageMessageById(phone, mediaId, caption)
+    : await sendImageTemplate(phone, "delivery_proof", mediaId, []);
+
   await updateMessageReceipt({
     conversationId,
     whatsappMessageId: messageId,
     status: "sent",
   });
-
-  // Prompt customer to reply so the 24h service window stays open for tomorrow's
-  // proof. The ask was always here; the reason was not, so customers read the
-  // silence that followed a missed reply as us ignoring them.
-  await sendTextMessage(
-    phone,
-    `Makanan sudah sampai ya kak 😊 Balas *ok* kalau sudah diterima, ${WINDOW_NOTICE_CLAUSE}.`,
-  );
 }
