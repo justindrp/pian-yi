@@ -66,10 +66,13 @@ function promptFor(day: Day): string {
   const items = [...day.s, ...(day.m ? [day.m] : [])].join("; ");
   return [
     "Top-down 90-degree food photograph of one Indonesian catering lunch portion,",
-    "served in a white rectangular paper lunch box with five compartments, filled edge to edge.",
+    "served in a black glossy rectangular plastic bento tray with four moulded compartments:",
+    "one large compartment along the bottom for rice, a small well for sambal, and two for the rest.",
     `The compartments hold, each in its own compartment: ${items}.`,
-    "Sambal sits in its own small separate cup, never poured over the other food.",
-    "Rice is a plain white steamed mound with no garnish on it.",
+    "Modest everyday catering portions, not a restaurant hero shot: each item covers part of its",
+    "compartment and bare black tray stays visible around it. Never fill the tray edge to edge.",
+    "Sambal sits in its own small separate well, never poured over the other food.",
+    "Rice is one plain white steamed scoop filling about half its compartment, no garnish on it.",
     "Soft even studio light, no harsh shadow, photorealistic, sharp, appetizing, true to the named dishes.",
     "The box fills the frame. Transparent background: nothing behind or around the box —",
     "no table, no surface, no placemat, no cutlery, no drinks, no hands, no packaging, no text, no logo, no watermark.",
