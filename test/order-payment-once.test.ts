@@ -43,17 +43,25 @@ const PHONE = "+6281234567890";
 const ORDER_ID = "0d000000-0000-4000-8000-000000000001";
 const ORDER_CREATED = "2026-08-29T00:00:00.000Z";
 
+/** Every write the run made, as `${table}.${insert|update|upsert|delete}`. */
+let writes: string[] = [];
+
 /**
- * Enough of the PostgREST builder to walk `createOrderFromExtraction`, with two
- * knobs: whether an open `pending_payment` order already exists, and whether a
- * payment message for it is already on record in `conversations`.
+ * Enough of the PostgREST builder to walk `createOrderFromExtraction`, with
+ * three knobs: whether an open `pending_payment` order already exists, when it
+ * was created, and whether a payment message for it is already on record in
+ * `conversations`.
  */
 function mockDb(opts: {
   openOrder: boolean;
   paymentOnRecord: boolean | (() => boolean);
+  orderCreatedAt?: string;
 }) {
+  writes = [];
+  const orderCreatedAt = opts.orderCreatedAt ?? ORDER_CREATED;
   const from = jest.fn((table: string) => {
     const filters: Record<string, unknown> = {};
+    const greaterThan: Record<string, unknown> = {};
     let op = "select";
     const chain: Record<string, unknown> = {};
     for (const method of [
@@ -78,9 +86,16 @@ function mockDb(opts: {
       filters[col] = value;
       return chain;
     };
+    // Real: a `.gt()` narrows the result. The age cap on the open-order lookup
+    // was invisible for as long as this was a no-op like the rest of them.
+    chain.gt = (col: string, value: unknown) => {
+      greaterThan[col] = value;
+      return chain;
+    };
     for (const method of ["insert", "update", "upsert", "delete"]) {
       chain[method] = () => {
         op = method;
+        writes.push(`${table}.${method}`);
         return chain;
       };
     }
@@ -88,9 +103,10 @@ function mockDb(opts: {
       if (table === "orders" && op === "select") {
         // The open-order lookup filters on status; anything else asking about
         // orders is not what these tests are about.
-        return filters.status === "pending_payment" && opts.openOrder
-          ? { id: ORDER_ID, created_at: ORDER_CREATED }
-          : null;
+        if (filters.status !== "pending_payment" || !opts.openOrder) return null;
+        const floor = greaterThan.created_at;
+        if (typeof floor === "string" && orderCreatedAt <= floor) return null;
+        return { id: ORDER_ID, created_at: orderCreatedAt };
       }
       if (table === "orders") return { id: ORDER_ID };
       if (table === "conversations" && filters.role === "assistant") {
@@ -169,6 +185,26 @@ describe("the bank details are asked for once per purchase", () => {
     await createOrderFromExtraction(CUSTOMER_ID, PHONE, INPUT);
 
     expect(paymentMessages()).toHaveLength(1);
+  });
+
+  // The lookup used to carry a 24-hour age cap, which excluded exactly the
+  // orders most likely to need amending: the ones the bot has failed to close.
+  // Cindi's 12-porsi order sat unpaid from 2026-08-21 because six turns said
+  // "tak siapkan pesanannya" and called no tool; her 2026-08-31 downgrade to 6
+  // porsi found nothing and inserted a second order. One payment proof flipped
+  // both to payment_proof_received and she held a bill for 18 porsi against a
+  // Rp 174.000 transfer.
+  test("an open order older than a day is still amended, not duplicated", async () => {
+    mockDb({
+      openOrder: true,
+      paymentOnRecord: true,
+      orderCreatedAt: "2026-08-21T12:18:00.000Z",
+    });
+
+    await createOrderFromExtraction(CUSTOMER_ID, PHONE, INPUT);
+
+    expect(writes).toContain("orders.update");
+    expect(writes).not.toContain("orders.insert");
   });
 
   test("a first order sends the payment message", async () => {

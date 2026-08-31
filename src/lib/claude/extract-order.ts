@@ -1609,12 +1609,23 @@ export async function createOrderFromExtraction(
   // then Rp 1.040.000 within thirteen minutes on 2026-08-19, for one purchase.
   // Amend the open one instead — nothing has been drawn against an unpaid order,
   // so size, price and balance all move with it.
+  //
+  // The lookup used to carry `created_at` within the last 24 hours, added in
+  // the same change and never explained — Sherine's three orders were thirteen
+  // minutes apart and needed no window at all. It excluded exactly the orders
+  // most likely to need amending: the ones the bot has failed to close. Cindi's
+  // 12-porsi order sat unpaid from 2026-08-21 because six separate turns said
+  // "tak siapkan pesanannya" and called no tool; when she finally downgraded to
+  // 6 porsi on 2026-08-31 the open order was ten days old, so this found
+  // nothing and inserted a second. One payment proof then flipped both to
+  // payment_proof_received, and she was holding a bill for 18 porsi against a
+  // Rp 174.000 transfer. Age is not what makes an order stale — `start_date` is,
+  // and cancel-unpaid sweeps on that.
   const { data: openOrder } = await db
     .from("orders")
     .select("id, created_at")
     .eq("customer_id", orderCustomerId)
     .eq("status", "pending_payment")
-    .gt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
