@@ -138,13 +138,44 @@ const MENU_SENT_CLAIM = new RegExp(
 // told to expect it later contradicts the reply they are reading, so these
 // spans are cut before the claim is matched — cut, not used to veto the whole
 // reply, because one message can do both: promise next week's menu later and
-// claim this week's now. Only what is left counts as a claim.
-const MENU_SEND_DEFERRED =
+// claim this week's now. Only what is left counts as a claim. Shared with the
+// delivery-proof claim below, which defers the same way.
+const SEND_DEFERRED =
   /\b(nanti|besok|setelah|kalau sudah|begitu|menyusul)\b[^.!?\n]{0,60}?\b(kirim|kirimkan)\w*|\b(kirim|kirimkan)\w*[^.!?\n]{0,30}?\b(menyusul|nanti|besok)\b/gi;
 
 /** Whether the reply tells the customer an image is on its way right now. */
 export function claimsMenuSent(replyText: string): boolean {
-  return MENU_SENT_CLAIM.test(replyText.replace(MENU_SEND_DEFERRED, " "));
+  return MENU_SENT_CLAIM.test(replyText.replace(SEND_DEFERRED, " "));
+}
+
+// The model saying it sent the delivery photo. Same failure as the menu claim,
+// with the proof instead of the menu: Clairine Aurelia wrote "Uda diantar ya"
+// on 2026-08-31 and was answered "pesananmu sudah diantar hari ini, dan kami
+// sudah kirimkan foto buktinya ya kak" with no send_delivery_proof call behind
+// it. She had messaged in specifically to open the window for that photo, and
+// the reply told her it had already been sent.
+//
+// The noun has to be the proof, not any image: "bukti", or "foto" bound to
+// pengiriman/pengantaran. A bare "fotonya" is left to the menu claim, which is
+// the more common sense of it and already recovers.
+const PROOF_NOUN =
+  /(bukti\w*(\s+(pengiriman|pengantaran|antar)\w*)?|foto\s+(bukti|pengiriman|pengantaran)\w*)/
+    .source;
+const PROOF_SENT_CLAIM = new RegExp(
+  [
+    // "foto buktinya sudah kami kirim"
+    `${PROOF_NOUN}[^.!?\\n]{0,60}?\\b(kirim|kirimkan|dikirim|terkirim|share|lampirkan)\\w*`,
+    // "kami sudah kirimkan foto buktinya"
+    `\\b(kirim|kirimkan|dikirim|terkirim|share|lampirkan)\\w*[^.!?\\n]{0,40}?${PROOF_NOUN}`,
+    // presenting something not attached
+    `\\b(berikut|ini dia|terlampir|silakan (dilihat|dicek))\\b[^.!?\\n]{0,40}?${PROOF_NOUN}`,
+  ].join("|"),
+  "i",
+);
+
+/** Whether the reply tells the customer the delivery photo went out this turn. */
+export function claimsProofSent(replyText: string): boolean {
+  return PROOF_SENT_CLAIM.test(replyText.replace(SEND_DEFERRED, " "));
 }
 
 // The model saying an invoice is on its way. Same failure as the menu claim,
@@ -1981,7 +2012,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "send_delivery_proof",
       description:
-        'Sends the customer the delivery photo the kitchen took, for a delivery that has already happened. Call it whenever they ask to see proof their food arrived ("bukti pengiriman", "foto pengirimannya", "udah dikirim belum"). Optionally pass the date they mean as "date"; leave it out for their most recent one. Resolve the date yourself from Today — never send a weekday name. If the tool says there is no photo, say so plainly; do not promise one is coming.',
+        'Sends the customer the delivery photo the kitchen took, for a delivery that has already happened. Call it whenever they ask to see proof their food arrived ("bukti pengiriman", "bukti pengantaran", "foto pengirimannya", "udah dikirim belum", "uda diantar ya"). Optionally pass the date they mean as "date"; leave it out for their most recent one. Resolve the date yourself from Today — never send a weekday name. If the tool says there is no photo, say so plainly; do not promise one is coming.',
       input_schema: {
         type: "object",
         properties: {
@@ -2173,6 +2204,10 @@ export async function processSavedCustomerMessage(params: {
     replyText &&
     !toolUses.some((t) => t.name === "send_menu_image") &&
     claimsMenuSent(replyText) &&
+    // "berikut foto pengirimannya" reads as a menu claim too. The customer
+    // asked for their delivery photo; answering with the week's menu is a
+    // second wrong image, so the proof guard below owns that reply.
+    !claimsProofSent(replyText) &&
     !(await sentImageSinceLastInbound(customerId))
   ) {
     console.log(
@@ -2195,6 +2230,49 @@ export async function processSavedCustomerMessage(params: {
     if (!recovered.ok) {
       await sendPushToAllAdmins(
         `Menu dijanjikan tapi tidak terkirim — ${customerName ?? phone}`,
+        recovered.error,
+        "/inbox",
+        "high",
+      ).catch(console.error);
+    }
+  }
+
+  // The model says the delivery photo is sent and calls no tool. The customer
+  // then goes looking for a photo that never left, and this one is worse than
+  // the menu: they are usually asking because they are standing in front of a
+  // delivery they cannot find. Clairine Aurelia was written to from the second
+  // number on 2026-08-31, asked for her proof exactly as the draft told her to,
+  // and was answered "kami sudah kirimkan foto buktinya ya kak" with nothing
+  // behind it — the one turn the whole Proof Relay hand-off exists to reach.
+  //
+  // Sending it here is safe: the customer just messaged, so the window is open
+  // by definition, and a second copy of a photo they asked for is not a cost.
+  if (
+    replyText &&
+    !toolUses.some((t) => t.name === "send_delivery_proof") &&
+    claimsProofSent(replyText)
+  ) {
+    console.log(
+      `[webhook] delivery proof claimed but never sent — sending it for ${customerId}`,
+    );
+    const recovered = await handleToolUse(
+      {
+        type: "tool_use",
+        id: "proof-claim",
+        name: "send_delivery_proof",
+        input: {},
+        caller: null,
+      } as unknown as Anthropic.Messages.ToolUseBlock,
+      customerId,
+      phone,
+      customerName,
+    );
+    // The reply claiming it has already gone out. A failed recovery — no photo
+    // on file, a dead signed URL — leaves that claim standing, and only an
+    // admin can answer it.
+    if (!recovered.ok) {
+      await sendPushToAllAdmins(
+        `Bukti pengiriman dijanjikan tapi tidak terkirim — ${customerName ?? phone}`,
         recovered.error,
         "/inbox",
         "high",
