@@ -34,6 +34,10 @@ import {
 } from "@/lib/claude/extract-order";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
+import {
+  handleForwardedProof,
+  isProofForwarder,
+} from "@/lib/deliveries/forwarded-proof";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
@@ -871,6 +875,20 @@ export async function processWebhookAsync(
       subcontractor.id,
       subcontractor.name,
     );
+    await db
+      .from("processed_messages")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("message_id", message.messageId);
+    return;
+  }
+
+  // An admin forwarding a delivery photo from their own handset. Images only:
+  // the same number may be an ordinary `customers` row (it is, for Justin's),
+  // and swallowing its text as well would take that thread away from the bot
+  // for good. A photo with a customer name in the caption is unambiguous; a
+  // text message from the same number is not.
+  if (message.type === "image" && (await isProofForwarder(message.from))) {
+    await handleForwardedProof(message);
     await db
       .from("processed_messages")
       .update({ processed_at: new Date().toISOString() })

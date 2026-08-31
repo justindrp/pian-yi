@@ -41,6 +41,20 @@ Two pages, and the split matters: `/guide` ("Panduan Admin") is how to click eac
 
 The handbook states the takeover rule the way an admin experiences it: there is no Take over button for them, and a bot reply that needs correcting goes out through the Assistant, which confirms before sending and records who approved it.
 
+## Forwarding a delivery photo from your own phone
+
+Send the photo to the WABA (`+62 851-1121-4390`) with **the customer's name as the caption**, and it goes straight on to that customer. Nothing else is needed — no dashboard, no upload.
+
+Whose number may do this is `settings.proof_forwarder_phones`, a comma-separated list edited at `/settings` (migration 083). The kitchens already had this path — `handleSubcontractorMessage` recognises `subcontractors.admin_phone` — but an owner who took the photo themselves did not: their number is an ordinary `customers` row, so the image was read as a payment proof and the bot replied to it as if a transfer receipt had arrived.
+
+Only **images** from a listed number are intercepted. Text from the same number still goes to the bot, because that number may be a real customer thread and swallowing its text would take the thread away for good.
+
+The caption is matched against the names of everyone with a delivery row **today**, by `matchCaption()` in `src/lib/deliveries/forwarded-proof.ts`: exact name, then word-prefix ("clairine" → Clairine Aurelia), then substring. **A caption that fits two people sends nothing** — the reply names both and asks for the full name. That is deliberate: the kitchens' captions run through a Haiku matcher with a 0.95 confidence threshold because a kitchen writes prose in a hurry, but a name typed by an admin needs no inference, and a confident wrong guess here sends one customer a photo of another customer's food.
+
+You get a one-line reply per photo: `Terkirim ke <nama>.`, the candidate list when it could not tell, or the reason it refused. **That reply means the photo was handed to WhatsApp, not that it arrived.** A `delivery_proof` template send returns 200 `accepted` and its failure — `131042`, or a closed window — only turns up later in the status webhook. See "No payment method on the WABA" in `docs/WHATSAPP.md`.
+
+Every forwarded send writes a `delivery_proofs` row (`match_method: "forwarded_caption"`, `sent_by: "forward:<phone>"`) and an `edit_log` entry.
+
 ## Assistant
 
 - **`query_customers` returns `portions_remaining`**, summed across the customer's open orders (`active` / `paused` / `payment_proof_received`) and counted from their delivery rows — never from the dead `customers.portions_remaining` column, and no longer from `orders.portions_remaining`, which migration 075 dropped. "Sisa kuota berapa?" used to need a second tool call the model rarely made, and it could not answer for Nicholas Satria at all on 2026-08-19. `query_orders` also returns the same derived balance, and takes `customer_name` as well as `customer_phone` (matched on the last 9 digits, so the stored format no longer has to be guessed).
