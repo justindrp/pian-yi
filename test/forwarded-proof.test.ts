@@ -13,6 +13,7 @@ describe("matchCaption", () => {
       ok: true,
       customerId: "c1",
       name: "Clairine Aurelia",
+      fuzzy: false,
     });
   });
 
@@ -86,6 +87,50 @@ describe("matchCaption", () => {
       { customerId: "c1", name: "Clairine Aurelia" },
     ];
     expect(matchCaption("clairine", both)).toMatchObject({ ok: true, customerId: "c1" });
+  });
+
+  it("forgives a one-character typo and flags it as fuzzy", () => {
+    expect(matchCaption("Clarine", today)).toEqual({
+      ok: true,
+      customerId: "c1",
+      name: "Clairine Aurelia",
+      fuzzy: true,
+    });
+  });
+
+  it("forgives a typo in a full name", () => {
+    expect(matchCaption("Veronika Catherine", today)).toMatchObject({
+      ok: true,
+      customerId: "c4",
+      fuzzy: true,
+    });
+  });
+
+  it("does not reach for a typo when the caption spells someone exactly", () => {
+    expect(matchCaption("Fahmi", today)).toMatchObject({ fuzzy: false });
+  });
+
+  // Tolerance scales with length, so a short name still has to be right —
+  // otherwise "ani", "andi" and "adi" all collapse into one another.
+  it("holds short captions to an exact spelling", () => {
+    const short = [
+      { customerId: "a", name: "Ani" },
+      { customerId: "b", name: "Adi" },
+    ];
+    expect(matchCaption("ani", short)).toMatchObject({ ok: true, customerId: "a" });
+    expect(matchCaption("andi", short)).toMatchObject({ ok: false, reason: "ambiguous" });
+  });
+
+  it("takes the closer spelling when a typo is nearer one name than another", () => {
+    const two = [
+      { customerId: "a", name: "Clairine Aurelia" },
+      { customerId: "b", name: "Claudia Wijaya" },
+    ];
+    expect(matchCaption("clarine", two)).toMatchObject({
+      ok: true,
+      customerId: "a",
+      fuzzy: true,
+    });
   });
 
   it("reports no match against today's list", () => {

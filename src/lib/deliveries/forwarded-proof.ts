@@ -33,8 +33,37 @@ export interface ProofCandidate {
 }
 
 export type CaptionMatch =
-  | { ok: true; customerId: string; name: string }
+  | { ok: true; customerId: string; name: string; fuzzy: boolean }
   | { ok: false; reason: "empty" | "none" | "ambiguous"; candidates: string[] };
+
+/** Edit distance. Same routine `scripts/audit-sheet-data.ts` uses to suggest names. */
+function lev(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * How wrong a caption may be and still count. One character per four, floor 1,
+ * so "clarine" reaches "Clairine" (1) and "veronika" reaches "Veronica" (2)
+ * while a three-letter caption still has to be spelled right. Scaling matters:
+ * a flat tolerance of 2 makes "ani", "andi" and "adi" the same word.
+ */
+function typoTolerance(q: string): number {
+  return Math.max(1, Math.floor(q.length / 4));
+}
 
 /** Lowercase, strip everything that is not a letter, digit or space, collapse runs. */
 function normalize(text: string): string {
@@ -78,13 +107,67 @@ export function matchCaption(
     const hits = names.filter(pass);
     const unique = [...new Map(hits.map((h) => [h.customerId, h])).values()];
     if (unique.length === 1)
-      return { ok: true, customerId: unique[0].customerId, name: unique[0].name };
+      return {
+        ok: true,
+        customerId: unique[0].customerId,
+        name: unique[0].name,
+        fuzzy: false,
+      };
     if (unique.length > 1)
       return {
         ok: false,
         reason: "ambiguous",
         candidates: unique.map((u) => u.name),
       };
+  }
+
+  // Last pass: a misspelling. Distance is measured against the whole name and
+  // against each of its words, so "clarine" reaches "Clairine Aurelia" through
+  // its first name. Only ever reached when the exact passes found nothing, and
+  // still refuses on a tie — a typo that fits two people is not a typo we can
+  // resolve. The ack names whoever it landed on, which is the real check.
+  const tolerance = typoTolerance(q);
+  const near = names
+    .map((n) => ({
+      ...n,
+      distance: Math.min(
+        lev(q, n.norm),
+        ...n.norm.split(" ").map((w) => lev(q, w)),
+      ),
+    }))
+    .filter((n) => n.distance <= tolerance);
+
+  const byCustomer = [
+    ...new Map(
+      near
+        .sort((a, b) => a.distance - b.distance)
+        .map((n) => [n.customerId, n]),
+    ).values(),
+  ];
+
+  if (byCustomer.length === 1)
+    return {
+      ok: true,
+      customerId: byCustomer[0].customerId,
+      name: byCustomer[0].name,
+      fuzzy: true,
+    };
+
+  if (byCustomer.length > 1) {
+    const best = Math.min(...byCustomer.map((n) => n.distance));
+    const winners = byCustomer.filter((n) => n.distance === best);
+    if (winners.length === 1)
+      return {
+        ok: true,
+        customerId: winners[0].customerId,
+        name: winners[0].name,
+        fuzzy: true,
+      };
+    return {
+      ok: false,
+      reason: "ambiguous",
+      candidates: winners.map((w) => w.name),
+    };
   }
 
   return {
@@ -231,5 +314,9 @@ export async function handleForwardedProof(
     },
   });
 
-  return say(`Terkirim ke ${match.name}.`);
+  return say(
+    match.fuzzy
+      ? `Terkirim ke ${match.name} (caption "${message.imageCaption}").`
+      : `Terkirim ke ${match.name}.`,
+  );
 }
