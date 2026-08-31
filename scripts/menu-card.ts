@@ -22,7 +22,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const DIR = process.env.MENU_PHOTO_DIR ?? ".menu-photos";
 const RED = "#C0181C"; // brand primary, flat — no gradient, so every red pixel is exactly this
 const GOLD = "#F7C948";
-/** Cropped off the Batch 51 card. Stand-in until we have the real logo file. */
+/** The white-on-transparent master mark; it carries the wordmark, so the card prints no brand name of its own. */
 const LOGO = `${process.cwd()}/scripts/assets/menu-card-logo.png`;
 
 type Day = {
@@ -76,7 +76,7 @@ const CSS = `
 body{width:1080px;height:1350px;background:${RED};font-family:'Nunito',system-ui,sans-serif;color:#fff;-webkit-font-smoothing:antialiased}
 .wrap{padding:34px 40px 26px;height:100%;display:flex;flex-direction:column}
 .head{display:flex;align-items:center;gap:18px}
-.logo{width:96px;height:96px;object-fit:contain;flex:none}
+.logo{width:150px;height:auto;object-fit:contain;flex:none}
 .htext{flex:1}
 .kicker{font-family:'Poppins';font-size:14px;letter-spacing:.34em;font-weight:600;color:${GOLD};text-transform:uppercase}
 .batch{font-family:'Poppins';font-size:52px;font-weight:800;line-height:1.02;margin-top:2px}

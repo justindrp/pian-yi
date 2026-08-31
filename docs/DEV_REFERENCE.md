@@ -305,7 +305,7 @@ npx tsx --env-file=.env.local scripts/menu-card.ts
 
 **The card is flat `#C0181C`** — brand primary, no gradient and no panel fills, so every background pixel samples exactly `srgb(192,24,28)`. `magick .menu-photos/card.png -format "%[pixel:p{4,4}]" info:` is the check. Accent is `#F7C948`, type is Poppins over Nunito, both fetched from Google Fonts at render time (no system install).
 
-`scripts/assets/menu-card-logo.png` is a 150×150 crop off the old Batch 51 artwork, standing in until we have the real logo file — `public/icon-512.png` is a green "PY" placeholder, not the brand mark.
+`scripts/assets/menu-card-logo.png` is the master white-on-transparent mark, trimmed of its padding. It carries the wordmark, so the card prints no brand name of its own. `public/icon-512.png` is still a green "PY" placeholder, not the brand mark — replace it when the PWA icon next matters.
 
 ## Automated tests
 
