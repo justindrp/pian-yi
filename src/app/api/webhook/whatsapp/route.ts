@@ -556,6 +556,35 @@ async function consecutiveUnansweredQuestions(
 // typing. See the burst-coalescing block in processWebhookAsync.
 const BURST_WINDOW_MS = 15_000;
 
+/**
+ * Whether the customer has written again since the message this turn answers.
+ *
+ * Asked twice: once when the burst window closes, and again after the model
+ * has spoken. The window closes before the Sonnet call, and that call plus the
+ * validator plus the typing delay take another half-minute — so a customer
+ * typing a message every twenty seconds has each one survive its own window
+ * and land a turn on top of the last. Sharleen got five assistant messages in
+ * thirty-four seconds on 2026-08-31, two of them contradicting each other
+ * about whether she had ordered size S or M, and the bank transfer details
+ * twice; the day before, a burst of three drew a reply that opened "Maaf kak,
+ * saya balas ulang bagian sebelumnya nih".
+ */
+async function supersededByNewerMessage(
+  db: ReturnType<typeof createAdminClient>,
+  customerId: string,
+  messageId: string,
+): Promise<boolean> {
+  const { data: newest } = await db
+    .from("conversations")
+    .select("message_id")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return Boolean(newest?.message_id && newest.message_id !== messageId);
+}
+
 function normalizeWhatsAppStatus(status: string): WhatsAppMessageStatus | null {
   switch (status) {
     case "sent":
@@ -1254,17 +1283,9 @@ export async function processWebhookAsync(
   // hour without changing what the model sees.
   if (!isDemoPhone(message.from)) {
     await sleep(BURST_WINDOW_MS);
-    const { data: newest } = await db
-      .from("conversations")
-      .select("message_id")
-      .eq("customer_id", customerId)
-      .eq("role", "user")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (newest?.message_id && newest.message_id !== message.messageId) {
+    if (await supersededByNewerMessage(db, customerId, message.messageId)) {
       console.log(
-        `[webhook] ${message.messageId} superseded by ${newest.message_id}, no reply`,
+        `[webhook] ${message.messageId} superseded before the model call, no reply`,
       );
       // Still stamp it. The message was handled — the decision was to let the
       // next one answer for it — and an unstamped row is what webhook-recovery
@@ -2358,6 +2379,27 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
     // Last, so it also cleans up a validator retry or a translated reply. Saved
     // in its cleaned form too — the inbox must show what the customer got.
     replyText = sanitizeReply(replyText);
+
+    // The conversation may have moved on while this turn was thinking. If it
+    // has, the turn answering the newer message loads the whole burst as its
+    // history and covers this one too, so sending both stacks two replies on
+    // the customer — see supersededByNewerMessage.
+    //
+    // Only a turn that called no tool may be dropped. One that wrote something
+    // has an outcome to report that the later turn cannot know it produced,
+    // and silence after a booking is worse than a second message.
+    if (
+      !draft &&
+      messageId &&
+      toolUses.length === 0 &&
+      !isDemoPhone(phone) &&
+      (await supersededByNewerMessage(db, customerId, messageId))
+    ) {
+      console.log(
+        `[webhook] reply for ${messageId} superseded while generating, dropped`,
+      );
+      return null;
+    }
 
     const savedReplyId = await saveMessage({
       customerId,
