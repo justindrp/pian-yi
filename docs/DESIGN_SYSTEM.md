@@ -2,14 +2,15 @@
 
 Brand rules for anything customers see as an image: Instagram/Meta Ads creative, the weekly menu card, the price list. Lives here rather than in a Downloads folder so it can be corrected in the same commit as the code that renders it — the version that sat outside the repo described a lunch box the business stopped selling and nobody noticed for months.
 
-Two artifacts use these rules and they are built in opposite ways:
+Three artifacts use these rules and they are built in opposite ways:
 
 | Artifact | Size | How it is made |
 | --- | --- | --- |
 | Instagram / Meta Ads post | 4:5 vertical | prompted out of an image model, laid out by the model |
 | **Weekly menu card** | 1080×1350 (4:5) | `scripts/menu-card.ts` — real HTML/CSS through headless chromium, only the food photos are generated |
+| **Price list** | 1080×1350 (4:5) | `scripts/price-list.ts` — same pipeline, no photos at all; every figure comes out of the database |
 
-Anything about layout precision applies to the card automatically and to the post only as a request the model may ignore.
+Anything about layout precision applies to the two rendered sheets automatically and to the post only as a request the model may ignore.
 
 ---
 
@@ -117,6 +118,25 @@ Rendered by `scripts/menu-card.ts`, so this is a specification the output actual
 - Photos are cutouts floating on the flat red with a drop shadow — no cell boxes, no frames.
 
 **Ask the image model for transparency; never knock it out afterwards.** `background: "transparent"` gives an alpha edge with no colour of its own. Cutting a photo off a coloured background leaves anti-aliased edge pixels holding *that* colour at partial alpha, which reads as a dark halo on any other ground.
+
+---
+
+## The price list
+
+Rendered by `scripts/price-list.ts` onto the same 1080×1350 red-and-gold sheet as the menu card, so the two read as one set. It is what `send_price_list` hands a customer who asks for prices. Commands: "The price list" in `docs/DEV_REFERENCE.md`.
+
+- Header mirrors the card: logo, "DAFTAR HARGA", "PAKET PERSONAL", and the same top-right size legend.
+- One table, three columns — the package in *hari*, then Lunch **atau** Dinner, then Lunch **&** Dinner — grouped Mingguan / Bulanan / 3 Bulan.
+- **Every figure is computed from `pricing_tiers` at render time**, never typed. The row is a day count; the portions are that count, doubled for the lunch-&-dinner column; the rate is the largest listed tier at or below the portions, the same rule `createOrderFromExtraction` prices by. Change a tier and re-run — there is no second place holding these numbers.
+- Below each S price sits the M price, smaller, behind a dark `M` pill so it reads as an option rather than a competing number.
+
+**The M price is printed, not left as a sum for the customer.** The surcharge is per *porsi* while the rows are labelled in *hari*, and in the lunch-&-dinner column those differ by 2×: "20 hari" there is 40 porsi, so M is +Rp 160.000, not +80.000. A band stating the rule once would be a cleaner sheet that starts arguments — the customer halves it, quotes themselves a price, and the bot has to correct them.
+
+**M disappears entirely when no active kitchen has `offers_size_m`** — rows, legend and all. Coverage is per kitchen the same way delivery areas are, and printing a price for a dish nobody cooks is worse than printing no price.
+
+**The nasi merah surcharge is the one number on the sheet that is not in the database.** It lives in the system prompt (`src/lib/claude/prompts/system.ts`) and in `extract_order`; `NASI_MERAH` in the script has to be changed with them, or the sheet quotes one figure while the bot charges another.
+
+**The sheet it replaced pictured the S box only.** A customer who asked for prices had no way to learn size M existed — half of Naya's dispute on 2026-08-31, and unanswerable in words once she had the picture. Any future size, add-on or tier has to reach this sheet in the same commit it reaches the ladder.
 
 ---
 

@@ -316,13 +316,25 @@ npx tsx --env-file=.env.local scripts/menu-card.ts
 
 `scripts/assets/menu-card-logo.png` is the master white-on-transparent mark, trimmed of its padding. It carries the wordmark, so the card prints no brand name of its own. `public/icon-512.png` is still a green "PY" placeholder, not the brand mark — replace it when the PWA icon next matters.
 
+## The price list
+
+```
+npx tsx --env-file=.env.local scripts/price-list.ts
+```
+
+Renders 1080×1350 at 2x through the same headless chromium as the menu card and writes `.menu-photos/price-list.png` (gitignored). No image model, no photos, no cost — it is HTML and CSS all the way down.
+
+**Nothing on it is typed.** The rates come from `pricing_tiers`, the size M surcharge from `settings.size_m_surcharge`, the areas from `activeDeliveryAreas()`, and whether M appears at all from `offers_size_m` on the active kitchens. A tier change is a re-run, not a redraw. Layout rules and the reasons behind them: "The price list" in `docs/DESIGN_SYSTEM.md`.
+
+**A render nobody uploads changes nothing.** The sheet reaches customers through `settings.price_list_image_url`, which `send_price_list` reads — upload the PNG to the `menu` bucket and point the setting at the new object. Nothing deletes the old one, so an image already sent keeps resolving. Before 2026-08-31 that setting pointed at `price-list-personal-s-1787384421668.png`, a hand-drawn S-only sheet, which is why a customer asking for prices never learned size M existed.
+
 ## Automated tests
 
 Jest suite in `test/`. Uses `next/jest`, `testEnvironment: "node"`, `jest.mock()` for all externals (Supabase, Claude, WhatsApp). No real network calls.
 
 Suites: `webhook`, `orders`, `orders-post`, `customers-delete`, `customers-post`, `inbox`, `assistant`, `assistant-execute`, `assistant-history`, `delivery-proofs`, `accounting`, `accounting-accounts`, `accounting-reports`, `addable-customers`, `settings`, `tasks`, `stalled-leads`.
 
-Playwright (`@playwright/test`, chromium only) is installed for browser-level testing — `pnpm exec playwright --version` to check it, `pnpm exec playwright install chromium` to refetch the browser. `scripts/menu-card.ts` renders the weekly card with it; no *test* uses it yet, and it is the prerequisite for the deferred visual-regression work. Jest stays the suite the pre-push hook runs.
+Playwright (`@playwright/test`, chromium only) is installed for browser-level testing — `pnpm exec playwright --version` to check it, `pnpm exec playwright install chromium` to refetch the browser. `scripts/menu-card.ts` and `scripts/price-list.ts` render the weekly card and the price list with it; no *test* uses it yet, and it is the prerequisite for the deferred visual-regression work. Jest stays the suite the pre-push hook runs.
 
 `test/api/tasks.test.ts` is the pattern to copy for a new route: it tests `validate.ts` directly as a pure function (no mocks at all — that is where the input rules live) and mocks Supabase only for the handler-level behaviour a validator cannot express (the STATUS_RANK re-sort, `fetchAllRows` walking a second page, the 404 on a ghost DELETE, the allowlist, the no-op PATCH that must not write). It exists because the routes were first tested by hand — curl and browser screenshots — which found eleven real defects and then left nothing behind that would catch any of them coming back. Mutation-check a suite before trusting it: break the code on purpose, confirm the tests go red, restore.
 
