@@ -80,7 +80,9 @@ Two errors this replaces, both of which reached customers:
 
 A generated plate that holds more food than the tray does is the Batch 51 complaint in a worse form. Naya compared five printed bullets against four items in her box; she could be answered in words. A customer comparing a heaped photo against a half-full tray cannot be — there is no wording that walks a photo back, and the card footer says *"Foto menampilkan porsi size M"*, so the photo is a claim we are making.
 
-Image models cannot count. Asking for four compartments reliably yields four to six. Compartment count is worth stating and not worth re-rolling for; **fullness is worth re-rolling for**, because that is the part a customer measures against their own lunch.
+Image models cannot count. Asking for four compartments reliably yields four to six. Compartment count is worth stating and not worth re-rolling for.
+
+**Fullness is not controllable in prose at all, so stop trying.** Two rounds of wording — "modest everyday catering portions", "bare tray stays visible", "never fill edge to edge" — both came back as heaped restaurant plates. What works is passing the reference photograph itself: `scripts/menu-photos.ts` calls `/v1/images/edits` with `scripts/assets/reference-box-2026-08-18.jpg` attached and asks the model to keep the tray, the angle and *how little food is in it*, replacing only the dishes. The portion then tracks the real box, because it is being copied rather than described. Note `input_fidelity` is rejected by `gpt-image-2`; the reference conditions the output without it.
 
 ---
 

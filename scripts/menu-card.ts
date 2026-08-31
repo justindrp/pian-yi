@@ -84,9 +84,9 @@ body{width:1080px;height:1350px;background:${RED};font-family:'Nunito',system-ui
 .sizes{flex:none;text-align:right;font-family:'Poppins';font-size:14px;font-weight:500;line-height:1.65;opacity:.95}
 .sizes b{color:${GOLD};font-weight:700}
 .rule{height:2px;background:${GOLD};opacity:.55;margin:18px 0 16px}
-.grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto;align-content:space-evenly;gap:30px 14px}
+.grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto;align-content:space-evenly;gap:18px 14px}
 .cell{display:flex;flex-direction:column;align-items:center;text-align:center}
-.photo{width:100%;height:200px;object-fit:contain;object-position:center bottom;filter:drop-shadow(0 10px 14px rgba(0,0,0,.32))}
+.photo{width:100%;height:265px;object-fit:contain;object-position:center bottom;filter:drop-shadow(0 10px 14px rgba(0,0,0,.32))}
 .day{font-family:'Poppins';font-size:26px;font-weight:800;color:${GOLD};letter-spacing:.03em;text-transform:uppercase;margin-top:6px;line-height:1.1}
 .date{font-family:'Poppins';font-size:14px;font-weight:500;opacity:.85;margin-top:1px}
 ul{margin-top:9px}
