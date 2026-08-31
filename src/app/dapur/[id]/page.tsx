@@ -240,22 +240,34 @@ function DeliveryCard({ d }: { d: Delivery }) {
   );
 }
 
-type RateLine = { rate: number; portions: number };
-type RouteBill = { lines: RateLine[]; portions: number; amount: number };
+type RateLine = { size: OrderSize; rate: number; portions: number };
+type Bill = { lines: RateLine[]; portions: number; amount: number };
 
-// An order can carry an addon the kitchen charges us on top of its route rate
-// (Cindy's nasi merah, Rp 5.000/porsi), so one route can hold portions at more
-// than one rate. Group by the effective rate rather than assuming a single one —
-// the same grouping the COGS journal does.
-function billFor(deliveries: Delivery[], baseRate: number): RouteBill {
-  const byRate = new Map<number, number>();
+// What the kitchen is owed is one number for the whole day, so the bill is built
+// from every delivery of the date — both sizes, both routes — and never from the
+// size tab, which only exists to split the cook's dish list. Billing the tab paid
+// a kitchen for its S portions and left the M ones off the page.
+//
+// Portions land on more than one rate for three reasons: size (M costs the S rate
+// plus the surcharge), route, and an order's addon (Cindy's nasi merah, Rp
+// 5.000/porsi). So group by (size, effective rate) — lines that agree on both
+// merge, which is what happens now that a kitchen delivers every route itself.
+function billFor(
+  deliveries: Delivery[],
+  rateOf: (d: Delivery) => number,
+): Bill {
+  const byKey = new Map<string, RateLine>();
   for (const d of deliveries) {
-    const rate = baseRate + (d.orders?.addon_cost_per_portion ?? 0);
-    byRate.set(rate, (byRate.get(rate) ?? 0) + (d.portions ?? 0));
+    const size = normalizeSize(d.orders?.size);
+    const rate = rateOf(d);
+    const key = `${size}-${rate}`;
+    const line = byKey.get(key) ?? { size, rate, portions: 0 };
+    line.portions += d.portions ?? 0;
+    byKey.set(key, line);
   }
-  const lines = [...byRate.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([rate, portions]) => ({ rate, portions }));
+  const lines = [...byKey.values()].sort(
+    (a, b) => a.size.localeCompare(b.size) || a.rate - b.rate,
+  );
   return {
     lines,
     portions: lines.reduce((s, l) => s + l.portions, 0),
@@ -263,32 +275,23 @@ function billFor(deliveries: Delivery[], baseRate: number): RouteBill {
   };
 }
 
-function RouteRow({
-  label,
-  bill,
-  baseRate,
+function RateRow({
+  line,
+  showSize,
 }: {
-  label: string;
-  bill: RouteBill;
-  baseRate: number;
+  line: RateLine;
+  showSize: boolean;
 }) {
-  const lines =
-    bill.lines.length > 0 ? bill.lines : [{ rate: baseRate, portions: 0 }];
   return (
     <div className="flex justify-between items-baseline gap-3">
       <span className="min-w-0">
-        {label}{" "}
-        <span className="text-gray-400">
-          {lines.map((l, i) => (
-            <span key={l.rate} className="whitespace-nowrap">
-              {i > 0 ? " + " : ""}
-              {l.portions} × {l.rate.toLocaleString("id-ID")}
-            </span>
-          ))}
+        {showSize ? `Ukuran ${line.size.toUpperCase()}` : "Porsi"}{" "}
+        <span className="text-gray-400 whitespace-nowrap">
+          {line.portions} × {line.rate.toLocaleString("id-ID")}
         </span>
       </span>
       <span className="font-medium text-gray-800 whitespace-nowrap">
-        {formatIDR(bill.amount)}
+        {formatIDR(line.rate * line.portions)}
       </span>
     </div>
   );
@@ -296,39 +299,34 @@ function RouteRow({
 
 function MealSummary({
   title,
-  subName,
-  route1,
-  route2,
-  rate1,
-  rate2,
+  bill,
+  fallbackRate,
+  showSize,
 }: {
   title: string;
-  subName: string;
-  route1: RouteBill;
-  route2: RouteBill;
-  rate1: number;
-  rate2: number;
+  bill: Bill;
+  fallbackRate: number;
+  showSize: boolean;
 }) {
-  const portions = route1.portions + route2.portions;
-  const amount = route1.amount + route2.amount;
+  const lines =
+    bill.lines.length > 0
+      ? bill.lines
+      : [{ size: "s" as OrderSize, rate: fallbackRate, portions: 0 }];
   return (
     <div className="px-4 py-3 space-y-2">
       <div className="flex justify-between items-baseline gap-3">
         <span className="font-medium text-gray-800">
           {title}{" "}
-          <span className="text-sm text-gray-500">{portions} porsi</span>
+          <span className="text-sm text-gray-500">{bill.portions} porsi</span>
         </span>
         <span className="font-semibold text-gray-900 whitespace-nowrap">
-          {formatIDR(amount)}
+          {formatIDR(bill.amount)}
         </span>
       </div>
       <div className="pl-3 space-y-1 text-sm text-gray-600 border-l-2 border-gray-100">
-        <RouteRow label="Rute 1 (Pian Yi)" bill={route1} baseRate={rate1} />
-        <RouteRow
-          label={`Rute 2 (${subName})`}
-          bill={route2}
-          baseRate={rate2}
-        />
+        {lines.map((l) => (
+          <RateRow key={`${l.size}-${l.rate}`} line={l} showSize={showSize} />
+        ))}
       </div>
     </div>
   );
@@ -466,24 +464,36 @@ export default async function DapurPage({
     (d) => d.meal_type === "dinner" && (d.customers?.delivery_route ?? 1) === 2,
   );
 
-  // M is a different dish list, so the kitchen bills it at its own pair of
-  // route rates; a kitchen that does not cook M has neither and stays on S.
-  const rate1 = kitchenCostPerPortion(sub, activeSize, 1);
-  const rate2 = kitchenCostPerPortion(sub, activeSize, 2);
+  // Each row is priced on its own order: M is a different dish list and costs the
+  // S rate plus the surcharge, the route still picks a column, and the addon
+  // rides on top. The summary below runs over allDeliveries, so the amount is
+  // what the kitchen is owed for the day rather than for the open size tab.
+  const rateOf = (d: Delivery) =>
+    kitchenCostPerPortion(
+      sub,
+      normalizeSize(d.orders?.size),
+      (d.customers?.delivery_route ?? 1) === 2 ? 2 : 1,
+    ) + (d.orders?.addon_cost_per_portion ?? 0);
+  const mealBill = (meal: string) =>
+    billFor(
+      allDeliveries.filter((d) => d.meal_type === meal),
+      rateOf,
+    );
   const bills = {
-    breakfastR1: billFor(breakfastR1, rate1),
-    breakfastR2: billFor(breakfastR2, rate2),
-    lunchR1: billFor(lunchR1, rate1),
-    lunchR2: billFor(lunchR2, rate2),
-    dinnerR1: billFor(dinnerR1, rate1),
-    dinnerR2: billFor(dinnerR2, rate2),
+    breakfast: mealBill("breakfast"),
+    lunch: mealBill("lunch"),
+    dinner: mealBill("dinner"),
   };
-  const total = deliveries.reduce((s, d) => s + (d.portions ?? 0), 0);
+  const fallbackRate = kitchenCostPerPortion(sub, "s", 2);
   const countsBySize: Record<OrderSize, number> = { s: 0, m: 0 };
   for (const d of allDeliveries) {
     countsBySize[normalizeSize(d.orders?.size)] += d.portions ?? 0;
   }
   const billTotal = Object.values(bills).reduce((s, b) => s + b.amount, 0);
+  const billedPortions = Object.values(bills).reduce(
+    (s, b) => s + b.portions,
+    0,
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -515,37 +525,33 @@ export default async function DapurPage({
               <div className="text-lg font-bold text-gray-900">
                 {formatIDR(billTotal)}
               </div>
-              <div className="text-sm text-gray-500">{total} porsi</div>
+              <div className="text-sm text-gray-500">
+                {billedPortions} porsi
+              </div>
             </div>
           </div>
 
-          {breakfastR1.length + breakfastR2.length > 0 && (
+          {bills.breakfast.portions > 0 && (
             <MealSummary
               title="Makan Pagi"
-              subName={sub.name}
-              route1={bills.breakfastR1}
-              route2={bills.breakfastR2}
-              rate1={rate1}
-              rate2={rate2}
+              bill={bills.breakfast}
+              fallbackRate={fallbackRate}
+              showSize={offersM}
             />
           )}
 
           <MealSummary
             title="Makan Siang"
-            subName={sub.name}
-            route1={bills.lunchR1}
-            route2={bills.lunchR2}
-            rate1={rate1}
-            rate2={rate2}
+            bill={bills.lunch}
+            fallbackRate={fallbackRate}
+            showSize={offersM}
           />
 
           <MealSummary
             title="Makan Malam"
-            subName={sub.name}
-            route1={bills.dinnerR1}
-            route2={bills.dinnerR2}
-            rate1={rate1}
-            rate2={rate2}
+            bill={bills.dinner}
+            fallbackRate={fallbackRate}
+            showSize={offersM}
           />
         </div>
 
