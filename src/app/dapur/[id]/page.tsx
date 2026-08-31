@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { stripCompensation } from "@/lib/kitchen/compensation";
-import { splitPreferences } from "@/lib/kitchen/preferences";
+import { safeManualNote, splitPreferences } from "@/lib/kitchen/preferences";
 import {
   kitchenCostPerPortion,
   normalizeSize,
@@ -163,7 +163,8 @@ function kitchenPreferences(notes: string | null): string | null {
   // Manual notes get the same strip: an admin who typed the note in by hand
   // copied it from the same sentence the model reads.
   const manual = manualNotesOnly(notes);
-  return (manual && stripCompensation(manual)) || aiPreferences(notes);
+  const safe = manual && safeManualNote(stripCompensation(manual));
+  return safe || aiPreferences(notes);
 }
 
 type Customer = {

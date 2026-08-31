@@ -43,3 +43,42 @@ export function splitPreferences(preference: string | null): {
     delivery: delivery.join(", ") || null,
   };
 }
+
+// A phone number has no reader on the kitchen card. The page is unauthenticated
+// and shared with the subcontractor, the card deliberately carries no customer
+// number, and the one that showed up was somebody else's: Cila's note named the
+// WhatsApp of the person who buys for her. Redacted rather than dropped, so a
+// clause that also carries a dietary request keeps the request.
+const PHONE = /(?:\+?62|\b0)\d[\d\s().-]{7,}\d/g;
+
+// Who bought the package, whose number it was arranged on, what the system does
+// and does not hold — all true, and none of the kitchen's business. Same rule as
+// "no protein +25% in a kitchen note": the sheet carries what the customer asked
+// for, never our internal answer to it.
+const INTERNAL_NOTE =
+  /\b(dikoordinasi\w*|dibeli\s+(?:lewat|oleh|via|melalui)|belum\s+punya\s+nomor|nomor\s+sendiri|di\s+sistem|didaftarkan|atas\s+nama\s+pembeli)\b/i;
+
+/**
+ * A hand-typed note is not automatically safe to print. It reaches the kitchen
+ * on the same unauthenticated page as everything else here, and the two things
+ * that must never land there — a phone number, and how the order was arranged
+ * internally — are exactly what an admin writes down for their own colleagues.
+ * Everything else a human typed still prints verbatim: the AI block's other
+ * filters are not applied here, because an admin who wrote "langganan lama,
+ * porsi besar" meant both halves.
+ */
+export function safeManualNote(manual: string): string | null {
+  const clauses = manual
+    .split(/[\n;,]+/)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  const kept = clauses
+    .map((clause) => clause.replace(PHONE, "").replace(/\s{2,}/g, " ").trim())
+    .filter((clause) => clause && !INTERNAL_NOTE.test(clause));
+  // Nothing was removed: hand back what the admin typed, newlines and
+  // semicolons and all. Re-joining an untouched note only mangles its layout.
+  if (kept.length === clauses.length && kept.every((clause, i) => clause === clauses[i])) {
+    return manual;
+  }
+  return kept.join(", ").trim() || null;
+}
