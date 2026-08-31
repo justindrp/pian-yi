@@ -303,10 +303,15 @@ export async function sendInvoice(params: {
     data: { publicUrl },
   } = db.storage.from("menu-images").getPublicUrl(storagePath);
 
+  const caption = `Invoice ${number} — Pian Yi Catering`;
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
-    content: publicUrl,
+    // What the customer sees on the document, with the file beside it rather
+    // than instead of it: a row whose content is the URL draws in the inbox as
+    // a bare link and says nothing about what was invoiced.
+    content: caption,
+    mediaUrl: publicUrl,
     messageType: "document",
     modelUsed: "system",
   });
@@ -315,7 +320,7 @@ export async function sendInvoice(params: {
     phone,
     mediaId,
     filename,
-    `Invoice ${number} — Pian Yi Catering`,
+    caption,
   );
   await updateMessageReceipt({
     conversationId,

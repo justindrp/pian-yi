@@ -5,6 +5,11 @@ import {
   filterThreads,
   type InboxFilter,
 } from "@/components/dashboard/inbox-filters";
+import {
+  getInboxDocument,
+  getInboxDocumentCaption,
+  getStoragePath,
+} from "@/components/dashboard/inbox-media";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -89,60 +94,6 @@ function getInboxImageCaption(
   const text = msg.content?.trim();
   if (!text || text.startsWith("https://") || text === "[Image]") return null;
   return text;
-}
-
-// Pulls the object path out of a Supabase storage URL, encoded for use in our
-// proxy route. Returns null when the URL is not for that bucket.
-function getStoragePath(content: string | null | undefined, bucket: string) {
-  if (!content?.startsWith("https://")) return null;
-  const path = content.split(`/${bucket}/`)[1];
-  if (!path) return null;
-  return path
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-}
-
-function getInboxDocument(
-  msg: Conversation & {
-    message_type?: string | null;
-    media_id?: string | null;
-    media_url?: string | null;
-  },
-) {
-  if (msg.message_type !== "document") return null;
-
-  const storedPath =
-    getStoragePath(msg.media_url, "chat-media") ??
-    getStoragePath(msg.content, "chat-media");
-  if (storedPath) {
-    return {
-      href: `/api/inbox/chat-media/${storedPath}`,
-      label: decodeURIComponent(storedPath.split("/").pop() ?? "") || "Dokumen",
-    };
-  }
-
-  if (msg.media_id) {
-    return {
-      href: `/api/inbox/media/${msg.media_id}`,
-      label: msg.content?.replace(/^\[Dokumen: (.+?)\]\s*/, "$1") ?? "Dokumen",
-    };
-  }
-  // media_url first, then content — the image path above already reads both,
-  // this one only read content. An outbound document keeps its caption in
-  // content and the file URL in media_url, so a PDF sent from a script was
-  // invisible: Carolin's invoice went out on 2026-08-30, WhatsApp marked it
-  // read, and the inbox showed the caption bubble with no attachment under it.
-  // Any bucket counts. The two proxied buckets are handled above; a file
-  // uploaded anywhere else is still a public URL we can link straight to.
-  for (const candidate of [msg.media_url, msg.content]) {
-    if (!candidate?.startsWith("https://")) continue;
-    const filename = decodeURIComponent(
-      candidate.split("/").pop() ?? "",
-    ).replace(/^\d+-/, "");
-    return { href: candidate, label: filename || "Dokumen" };
-  }
-  return null;
 }
 
 // Rows saved before the webhook stored media (migration 060) carry only a
@@ -1440,6 +1391,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
               const imageSrc = getInboxImageSrc(msgWithExtras);
               const imageCaption = getInboxImageCaption(msgWithExtras);
               const docLink = getInboxDocument(msgWithExtras);
+              const docCaption = getInboxDocumentCaption(msgWithExtras);
               const receiptLabel = !isUser
                 ? getReceiptLabel(msgWithExtras.whatsapp_status ?? null)
                 : null;
@@ -1477,19 +1429,28 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                         ) : null}
                       </>
                     ) : msgWithExtras.message_type === "document" ? (
-                      docLink ? (
-                        <a
-                          href={docLink.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 underline break-all"
-                        >
-                          <span>📄</span>
-                          <span>{docLink.label}</span>
-                        </a>
-                      ) : (
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                      )
+                      <>
+                        {docLink ? (
+                          <a
+                            href={docLink.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 underline break-all"
+                          >
+                            <span>📄</span>
+                            <span>{docLink.label}</span>
+                          </a>
+                        ) : (
+                          <div className="text-xs italic opacity-70">
+                            [Dokumen]
+                          </div>
+                        )}
+                        {docCaption ? (
+                          <p className="whitespace-pre-wrap mt-1.5">
+                            {docCaption}
+                          </p>
+                        ) : null}
+                      </>
                     ) : (
                       <p className="whitespace-pre-wrap">
                         {renderContentWithLinks(msg.content)}

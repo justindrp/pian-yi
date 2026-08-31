@@ -125,7 +125,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     .insert({
       customer_id: customerId,
       role: "assistant",
-      content: publicUrl,
+      // The caption is the message; the file lives in media_url. Storing the
+      // URL as content threw the caption away — it reached the customer's
+      // phone and was never in the inbox.
+      content: caption || publicUrl,
+      media_url: publicUrl,
       message_id: messageId,
       message_type: "document",
       model_used: "human",
