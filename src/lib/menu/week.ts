@@ -90,6 +90,20 @@ export function formatMenuWeekRange(weekStart: string): string {
   return `${head} – Sabtu ${end.getUTCDate()} ${endMonth} ${end.getUTCFullYear()}`;
 }
 
+/**
+ * The last day the menu on file covers — its Saturday, since delivery runs
+ * Senin–Sabtu.
+ *
+ * A week is named to customers by its span, but questions do not arrive in
+ * week-shaped units: "menu bulan September apa ya?" is a question about dates.
+ * Answering it needs the boundary as a date, not as a label.
+ */
+export function menuWeekLastDay(weekStart: string): string {
+  const d = new Date(`${weekStart}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 5);
+  return d.toISOString().slice(0, 10);
+}
+
 /** The Monday one week on — the first week we do NOT have a menu for. */
 export function weekAfter(weekStart: string): string {
   const d = new Date(`${weekStart}T00:00:00Z`);

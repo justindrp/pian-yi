@@ -3,6 +3,7 @@ import { describeUpcomingHolidays, formatHolidayDate } from "@/lib/holidays/id";
 import {
   formatMenuWeekRange,
   jakartaDateString,
+  menuWeekLastDay,
   weekAfter,
 } from "@/lib/menu/week";
 import { sizeMSurcharge } from "@/lib/orders/size";
@@ -189,7 +190,18 @@ Kalau customer minta ubah atau skip salah satu tanggal di atas, konfirmasi hanya
     const beyond = params.menuWeek.weekStart
       ? formatMenuWeekRange(weekAfter(params.menuWeek.weekStart))
       : null;
-    const beyondRule = `The furthest week that exists is ${week}. Anything past it — "minggu depannya lagi", "dua minggu lagi", ${beyond} — has NOT been published: say so plainly, name that week by its own span, and do not send this image as an answer to it.`;
+    // A week has a label and it has dates, and customers ask in dates. Cindi
+    // asked "kak menu bulan september apa ya??" on 2026-08-31, while the image
+    // on file covered Senin 31 Agustus – Sabtu 5 September: five of the days she
+    // asked about were on the picture the bot was holding. It answered "menu
+    // September belum terbit belum kak" and offered her "menu minggu ini"
+    // instead, as if the two were different menus.
+    const lastDay = params.menuWeek.weekStart
+      ? formatHolidayDate(menuWeekLastDay(params.menuWeek.weekStart))
+      : null;
+    const beyondRule = `The menu we hold runs to ${lastDay} inclusive, and only dates AFTER that are unpublished: ${beyond} onwards, "minggu depannya lagi", "dua minggu lagi". Say that plainly, name the unpublished week by its own span, and do not send this image as an answer to it.
+
+Judge every menu question by the dates it covers, never by the word it uses. A question about a month or a date range that reaches into ${week} is already answered in part by this image: say which of those dates you do have, offer to send it, and call unpublished only the dates past ${lastDay}. Never tell a customer a month's menu is not out when the image on file covers days inside that month.`;
     switch (params.menuWeek.relation) {
       case "next":
         return `The menu image on file is for NEXT week, covering ${week} — next week's menu is already out. If a customer asks for next week's menu, send it with send_menu_image. If they ask what today's or tomorrow's menu is, this image does not answer that: say the current week's menu is the one already sent earlier and offer next week's instead. Never describe this image as the current week's. When you name the week, always give the full span (${week}) — never only its first day, which reads as if the menu stops there. ${beyondRule}`;
@@ -559,9 +571,13 @@ Portion deduction rules:
 
 Insufficient quota: if the customer requests keduanya but fewer than ${params.activeOrder.portionsPerDelivery * 2} portions are still without a date, explain they can only schedule ${params.schedule?.unbooked ?? 0} more portion(s) — enough for ${(params.schedule?.unbooked ?? 0) >= params.activeOrder.portionsPerDelivery ? "one meal (siang or malam, not both)" : "no further dates"}. Never call record_daily_order if it would overdraft. The same applies to a multi-day run: with ${params.schedule?.unbooked ?? 0} portion(s) still undated, never agree to more days than that covers — say how many days can still be scheduled and offer a new package for the rest.
 
-${(params.schedule?.remainingToday ?? 0) <= 0 ? `Quota exhausted: offer the same size again — "Mau lanjut paket ${params.activeOrder.packageSize} porsi lagi kak?" If they say yes, ask which days and which meal they want before you place it. Never carry their last package's schedule over: a renewal that names no days is a renewal with no days, and an order created on a schedule they did not say puts food on a kitchen sheet nobody asked for. Only call extract_order once they have told you the days.
+${
+  (params.schedule?.remainingToday ?? 0) <= 0
+    ? `Quota exhausted: offer the same size again — "Mau lanjut paket ${params.activeOrder.packageSize} porsi lagi kak?" If they say yes, ask which days and which meal they want before you place it. Never carry their last package's schedule over: a renewal that names no days is a renewal with no days, and an order created on a schedule they did not say puts food on a kitchen sheet nobody asked for. Only call extract_order once they have told you the days.
 
-**The days are the only thing a renewal is waiting for, and the turn they arrive is the turn that calls extract_order.** A returning customer's name, address, price and portions per delivery are all already on file — nothing else is outstanding, so there is no second field to collect and no summary to send first. "Senin–Jumat seperti biasa" plus a meal is a complete answer: resolve it into real dates from the start day they gave, skipping every date marked TUTUP above, and call the tool in that same message. Do not print the package back and ask "sudah benar semua kan kak?" — you already asked once when you offered the renewal, and a returning customer who answers with days has confirmed. Do not re-confirm the address, and never end the turn with "saya buatkan ordernya sekarang ya kak" and no tool call. Julian S asked to renew 5 porsi on 2026-08-30, gave dinner, Senin–Jumat and a 31 August start across four messages, and was asked to confirm three more times before the bot promised to create an order it never created.` : ""}`
+**The days are the only thing a renewal is waiting for, and the turn they arrive is the turn that calls extract_order.** A returning customer's name, address, price and portions per delivery are all already on file — nothing else is outstanding, so there is no second field to collect and no summary to send first. "Senin–Jumat seperti biasa" plus a meal is a complete answer: resolve it into real dates from the start day they gave, skipping every date marked TUTUP above, and call the tool in that same message. Do not print the package back and ask "sudah benar semua kan kak?" — you already asked once when you offered the renewal, and a returning customer who answers with days has confirmed. Do not re-confirm the address, and never end the turn with "saya buatkan ordernya sekarang ya kak" and no tool call. Julian S asked to renew 5 porsi on 2026-08-30, gave dinner, Senin–Jumat and a 31 August start across four messages, and was asked to confirm three more times before the bot promised to create an order it never created.`
+    : ""
+}`
     : "This customer has no active quota-based order. If they mention wanting to order for tomorrow without an existing package, direct them through the normal order flow."
 }
 

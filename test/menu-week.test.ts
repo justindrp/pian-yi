@@ -3,6 +3,7 @@ import {
   describeMenuWeek,
   describeMenuWeeks,
   formatMenuWeekRange,
+  menuWeekLastDay,
   mondayOf,
   weekAfter,
 } from "@/lib/menu/week";
@@ -102,6 +103,13 @@ describe("describeMenuWeeks", () => {
       "unknown",
     );
     expect(describeMenuWeeks([], "2026-08-15").relation).toBe("unknown");
+  });
+});
+
+describe("menuWeekLastDay", () => {
+  test("the Saturday the menu runs to, which can fall in the next month", () => {
+    expect(menuWeekLastDay("2026-08-31")).toBe("2026-09-05");
+    expect(menuWeekLastDay("2026-08-17")).toBe("2026-08-22");
   });
 });
 
