@@ -58,6 +58,7 @@ Rules for it:
 - **Anything it changes must still be written to the system by hand** — the row, the quota, the `edit_log` entry. A reply on that number is the *only* record until someone does, and the daily sheet cannot see it.
 - **A reply there does not open the WABA window.** The customer has to message `+62 851-1121-4390` for that. If a thread needs to continue on the API, ask them to write to the business number.
 - Never quote it as a general contact channel to customers, and never let the bot mention it — one person answers it, and it has none of the guards the API path has.
+- **Both numbers are in `settings` as of migration 081** — `whatsapp_manual_number` and `whatsapp_business_number` — because they lived only in this file and every session that needed one grepped for it or dug it out of an old transcript. Nothing in code reads either key, and the prompt builder reads settings **by name**, so adding `whatsapp_manual_number` to `src/lib/claude/prompts/system.ts` is what would break the rule above. Don't.
 
 ## Idempotency strategy
 
