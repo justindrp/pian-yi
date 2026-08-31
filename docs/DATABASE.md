@@ -372,6 +372,42 @@ Coverage as of 2026-08-21: orders (create/update/status/size/mark_paid/reject/de
 
 ---
 
+## invoice_sequences
+
+Last used sequence number per calendar month, for `next_invoice_number()`. Mirrors `journal_sequences`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| period | text | Primary key, `YYYY-MM` |
+| last_seq | integer | Last number issued in this month |
+
+`next_invoice_number(p_period text)` does the `insert … on conflict do update … returning` in one statement and returns `INV/PY/2026-09/0001`. Allocation lives in the database on purpose: two concurrent sends reading `last_seq` in Node would collide on the unique constraint on `invoices.number` *after* both PDFs had been rendered.
+
+---
+
+## invoices
+
+One row per order, written by `sendInvoice()` (`src/lib/invoices/send.ts`) — the bot's `send_invoice` tool. Both invoices sent before this table existed were rendered by hand and left no record of the number, the amount, or that they had been sent.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| order_id | uuid | FK → orders, **unique**. One invoice per order; a second package is a second invoice |
+| customer_id | uuid | FK → customers. Who is **billed** — the payer (`orders.paid_by_customer_id`) on a package bought for someone else, not the person who eats it |
+| number | text | Unique, `INV/PY/YYYY-MM/NNNN`, allocated once and reused on every resend |
+| issued_on | date | |
+| total | integer | IDR, as printed. Not re-read from `orders.total_price`, which can be edited after the PDF was sent |
+| pdf_url | text | The PDF in the `menu-images` bucket. Null only between allocating the number and the upload landing |
+| sent_count | integer | |
+| last_sent_at | timestamptz | A resend inside ten minutes is refused |
+| created_at | timestamptz | |
+
+The number is never re-allocated, but the **PDF is re-rendered on every send**: the paid state on it may have changed since. `orders.paid_at` is the only thing that prints the LUNAS stamp — `payment_proof_received` is a claim, not a receipt.
+
+RLS: service role only. The browser client never touches either table.
+
+---
+
 ## journal_lines
 
 Individual debit/credit lines within a journal entry.

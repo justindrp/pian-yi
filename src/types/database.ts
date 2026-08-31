@@ -811,6 +811,75 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_sequences: {
+        Row: {
+          last_seq: number
+          period: string
+        }
+        Insert: {
+          last_seq?: number
+          period: string
+        }
+        Update: {
+          last_seq?: number
+          period?: string
+        }
+        Relationships: []
+      }
+      invoices: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          issued_on: string
+          last_sent_at: string | null
+          number: string
+          order_id: string
+          pdf_url: string | null
+          sent_count: number
+          total: number
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          issued_on: string
+          last_sent_at?: string | null
+          number: string
+          order_id: string
+          pdf_url?: string | null
+          sent_count?: number
+          total: number
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          issued_on?: string
+          last_sent_at?: string | null
+          number?: string
+          order_id?: string
+          pdf_url?: string | null
+          sent_count?: number
+          total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       journal_lines: {
         Row: {
           account_id: string
@@ -1378,6 +1447,7 @@ export type Database = {
       }
     }
     Functions: {
+      next_invoice_number: { Args: { p_period: string }; Returns: string }
       next_journal_reference: { Args: { p_year: number }; Returns: string }
     }
     Enums: {

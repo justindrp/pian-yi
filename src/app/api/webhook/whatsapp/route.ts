@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
-import { logEdit } from "@/lib/audit/log-edit";
+import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import {
   getNeighborhoods,
   getSetting,
@@ -58,6 +58,7 @@ import {
 } from "@/lib/customers/lifecycle";
 import { shouldAutoResume } from "@/lib/customers/takeover";
 import { formatHolidayDate } from "@/lib/holidays/id";
+import { sendInvoice } from "@/lib/invoices/send";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
@@ -140,6 +141,23 @@ const MENU_SEND_DEFERRED =
 /** Whether the reply tells the customer an image is on its way right now. */
 export function claimsMenuSent(replyText: string): boolean {
   return MENU_SENT_CLAIM.test(replyText.replace(MENU_SEND_DEFERRED, " "));
+}
+
+// The model saying an invoice is on its way. Same failure as the menu claim,
+// with a document instead of an image: Carolin was told twice on 2026-08-30
+// that her invoice was being prepared, by a bot that had no way to make one,
+// and both invoices she eventually got were rendered by hand.
+const INVOICE_CLAIM =
+  /\b(invoice|faktur|kwitansi|nota)\w*\b[^.!?\n]{0,60}?\b(kirim|dikirim|terkirim|saya kirim|attach|lampir)\w*|\b(kirim|dikirim|terkirim|lampir)\w*[^.!?\n]{0,40}?\b(invoice|faktur|kwitansi|nota)\w*/i;
+
+// "invoice-nya menyusul ya kak" promises a later turn. Cut before matching, for
+// the same reason the menu claim cuts its deferrals.
+const INVOICE_DEFERRED =
+  /\b(nanti|besok|setelah|kalau sudah|begitu|menyusul)\b[^.!?\n]{0,60}?\b(invoice|faktur|kirim)\w*|\b(invoice|faktur)\w*[^.!?\n]{0,30}?\b(menyusul|nanti|besok)\b/gi;
+
+/** Whether the reply tells the customer an invoice is attached to this turn. */
+export function claimsInvoiceSent(replyText: string): boolean {
+  return INVOICE_CLAIM.test(replyText.replace(INVOICE_DEFERRED, " "));
 }
 
 // The model saying it will check with the team. It writes this instead of
@@ -1940,6 +1958,21 @@ export async function processSavedCustomerMessage(params: {
       },
     },
     {
+      name: "send_invoice",
+      description:
+        'Sends the customer their invoice as a PDF. Call it whenever they ask for one ("minta invoice", "invoice dong", "kwitansi", "nota", "bukti pembayaran resmi", "buat laporan kantor"). The document is built from their order — number, portions, price, paid or unpaid — so you never type any of those figures yourself. Never say an invoice is coming without calling this. It covers a plain invoice only: a faktur pajak or anything needing NPWP is still ask_admin_for_help.',
+      input_schema: {
+        type: "object",
+        properties: {
+          start_date: {
+            type: "string",
+            description:
+              "ISO date (YYYY-MM-DD) of the first delivery of the package they mean, when they hold more than one and have said which. Omit for their most recent order.",
+          },
+        },
+      },
+    },
+    {
       name: "send_price_list",
       description:
         "Sends the price list image (harga & area pengiriman). Call it whenever the customer asks for the price list again — the welcome sequence sent it once and nothing else resends it. Safe to call more than once. Never promise the image without calling this.",
@@ -2123,6 +2156,43 @@ export async function processSavedCustomerMessage(params: {
     if (!recovered.ok) {
       await sendPushToAllAdmins(
         `Menu dijanjikan tapi tidak terkirim — ${customerName ?? phone}`,
+        recovered.error,
+        "/inbox",
+        "high",
+      ).catch(console.error);
+    }
+  }
+
+  // The model says the invoice is on its way and calls no tool. The customer
+  // then waits for a document nobody built — which is exactly how Carolin's
+  // request sat for a day. Sending it here costs nothing: the PDF is derived
+  // from an order that already exists, no money moves, and a second copy of an
+  // invoice is not a problem the way a second order would be.
+  if (
+    replyText &&
+    !toolUses.some((t) => t.name === "send_invoice") &&
+    claimsInvoiceSent(replyText)
+  ) {
+    console.log(
+      `[webhook] invoice claimed but never sent — sending it for ${customerId}`,
+    );
+    const recovered = await handleToolUse(
+      {
+        type: "tool_use",
+        id: "invoice-claim",
+        name: "send_invoice",
+        input: {},
+        caller: null,
+      } as unknown as Anthropic.Messages.ToolUseBlock,
+      customerId,
+      phone,
+      customerName,
+    );
+    // The reply claiming it has already gone out, so a failure here is a
+    // promise nobody can keep unless a person sees it.
+    if (!recovered.ok) {
+      await sendPushToAllAdmins(
+        `Invoice dijanjikan tapi tidak terkirim — ${customerName ?? phone}`,
         recovered.error,
         "/inbox",
         "high",
@@ -3008,6 +3078,32 @@ async function handleToolUse(
       ok: true,
       message: "Gambar price list sudah dikirim ke customer.",
     };
+  } else if (tool.name === "send_invoice") {
+    const input = tool.input as { start_date?: string };
+    try {
+      const result = await sendInvoice({
+        db,
+        customerId,
+        phone,
+        startDate: input.start_date,
+        actor: systemActor("bot-invoice"),
+      });
+      if (!result.ok) return { ok: false, error: result.error };
+      return {
+        ok: true,
+        message: `Invoice ${result.number} sudah dikirim ke customer sebagai PDF, total Rp ${result.total.toLocaleString("id-ID")}. Boleh sebut nomor invoice-nya; jangan tulis ulang nomor rekening.`,
+      };
+    } catch (err) {
+      // The PDF, the upload and the WhatsApp send are three things that can
+      // fail, and the model must not tell the customer to look for a document
+      // that never arrived.
+      console.error("[webhook] send_invoice failed:", err);
+      return {
+        ok: false,
+        error:
+          "Invoice gagal dibuat, jadi tidak ada dokumen yang terkirim. Jangan bilang invoice sudah atau sedang dikirim — bilang saja sedang dicek tim dan akan menyusul.",
+      };
+    }
   }
 
   console.error(`[webhook] handleToolUse: unknown tool ${tool.name}`);

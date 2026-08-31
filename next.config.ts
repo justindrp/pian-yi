@@ -23,6 +23,15 @@ function supabaseImageHost() {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // pdfkit reads its font metrics off disk at runtime (js/data/*.afm). Bundling
+  // it inlines the code and leaves the .afm files behind, so the first invoice
+  // render in production would throw ENOENT — on a path that exists on every
+  // developer's laptop. Kept external, and the data directory traced into the
+  // standalone output by hand.
+  serverExternalPackages: ["pdfkit"],
+  outputFileTracingIncludes: {
+    "/*": ["./node_modules/pdfkit/js/data/**"],
+  },
   images: {
     remotePatterns: supabaseImageHost(),
   },

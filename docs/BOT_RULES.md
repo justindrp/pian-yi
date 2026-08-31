@@ -112,7 +112,22 @@ What survives is the arithmetic that needs no schedule: `statedWeeks()` still re
 
 "Bayar tanggal 1 bisa nggak kak?" got "saya perlu konfirmasi ke tim admin dulu" on 2026-08-21, from a customer whose package starts 2 September. Nothing expires a `pending_payment` order and no rule requires paying on the day of ordering, so the answer was yes and the bot had everything it needed to say so. The cost is not the wrong answer, it is the park: `customer_flags.pending_bot_response` went true, the bot then refused to answer anything else on the thread, and it stayed that way until a human cleared the flag by hand. The existing escalation rules only covered a side question asked *alongside* order details — this one was the whole message, so nothing caught it.
 
-The prompt now answers payment timing from the order's own dates and escalates only a payment question about something we do not offer (cicilan, faktur, a channel other than transfer).
+The prompt now answers payment timing from the order's own dates and escalates only a payment question about something we do not offer (cicilan, faktur pajak, a channel other than transfer).
+
+## `send_invoice` builds the document the bot used to promise
+
+Carolin asked for an invoice on 2026-08-30. The bot had no tool for it, so it said the invoice was being prepared — twice — and nothing prepared one. Both invoices she eventually received were rendered by hand: the first by a throwaway script that was deleted the same day, so when she asked for a correction the layout had to be rebuilt from a screenshot of the PDF. Nothing recorded the number, the amount, or that an invoice existed at all.
+
+`send_invoice` (`src/lib/invoices/send.ts`) renders the PDF and sends it in the same turn. **Every figure on it is read from the order** — number, porsi, `price_per_portion`, `total_price`, paid or unpaid — so a contract rate and a size-M surcharge come out right for the same reason the order does: nothing is re-derived from the ladder. The model types none of it.
+
+- **The number is allocated once, by the database.** `next_invoice_number()` bumps `invoice_sequences` inside the insert, because two concurrent sends would otherwise both read the same `last_seq` and the second would fail its unique constraint *after* rendering. The row lives in `invoices`, one per order; a customer who asks twice gets the same number on a freshly rendered PDF, since an unpaid invoice becomes a paid one.
+- **`paid_at` is the only thing that prints LUNAS.** `payment_proof_received` means a screenshot arrived, which is a different claim; a stamp on it would be us confirming money we have not seen.
+- **An unpaid invoice is due at the cutoff on H-1, written as that date and that hour** — the same deadline `cancel-unpaid` sweeps against, and the hour comes from `settings.order_deadline_hour`. Never "sebelum pengiriman pertama": Clairine read that as the delivery morning and hers was due the day before.
+- **The invoice follows the money.** It is billed to `paid_by_customer_id` and shipped to `customer_id`, so a buyer asking for an invoice gets the package they paid for even though someone else eats it.
+- **A resend inside ten minutes is refused**, with a tool result that tells the model to point at the document already in the thread rather than send a second copy.
+- **The bank account number is on the invoice and still not in the prompt.** The document is composed by code, like the payment message `createOrderFromExtraction` sends; the model has never needed the number and still does not have it.
+- **A faktur pajak is not this.** Anything needing our NPWP is still `ask_admin_for_help`.
+- **Claiming an invoice without calling the tool sends it anyway.** `claimsInvoiceSent()` matches the reply after cutting deferrals ("invoice-nya menyusul ya kak" promises a later turn and is left alone), and the webhook runs the tool for it — the same recovery the menu claim gets. A second copy of an invoice is harmless where a second order would not be: the PDF is derived from an order that already exists and no money moves. If the recovery fails, admins are pushed, because the customer has already been told it is coming.
 
 ## A dapur the model omits is resolved, not left null
 
