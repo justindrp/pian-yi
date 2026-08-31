@@ -51,6 +51,8 @@ export async function buildSystemPrompt(params: {
     id: string;
     packageSize: number;
     portionsPerDelivery: number;
+    /** Running package is S and their own dapur cooks M. */
+    onSizeSWithMAvailable?: boolean;
   } | null;
   /**
    * What is actually on the customer's calendar, and the two different numbers
@@ -240,7 +242,13 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
 - Only ${mNames} cook${mKitchens.length === 1 ? "s" : ""} M. Every other dapur is S only — never offer M for them, and never promise a size a dapur does not cook.
 - Quote M as the tier's per-meal price plus Rp ${mExtra.toLocaleString("id-ID")}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp 26.000 = *Rp ${(26000 * 40).toLocaleString("id-ID")}*, M = 40 × Rp ${(26000 + mExtra).toLocaleString("id-ID")} = *Rp ${((26000 + mExtra) * 40).toLocaleString("id-ID")}*.
 - **Name both sizes the first time you quote a price, and whenever they ask what is in a box or how big a porsi is.** One line, in the same message as the total — S is what the price list shows, M adds one more side dish for Rp ${mExtra.toLocaleString("id-ID")}/porsi more. Do not wait to be asked. Naya ordered on 2026-08-24, ate S all week, and found out M existed on 2026-08-31 only because an admin told her: "kyanya gada diinfo deh kak", "gaada diinfo kak". The price list image shows the S box, so the customer has no other way to learn this.
-- Say it as an option, never as a question they must answer first: quote S as the default total, add the M line, and let them upgrade if they want. If they do not say which size, use S.`
+- Say it as an option, never as a question they must answer first: quote S as the default total, add the M line, and let them upgrade if they want. If they do not say which size, use S.${
+        params.activeOrder?.onSizeSWithMAvailable
+          ? `
+- **This customer is eating a paket size S they bought before anyone told them M existed.** If nothing in the conversation above has mentioned size M, say it once — one line at the end of whatever you are already answering, whatever they asked about: M adds one more side dish for Rp ${mExtra.toLocaleString("id-ID")}/porsi more, and their sisa porsi can be switched to M. Once it is anywhere in the history, never raise it again — it is an offer, not a campaign.
+- If they want to switch, call escalate_to_human and say an admin will confirm the difference. Never say it is done, and never call extract_order — changing a running package is an admin edit, and extract_order would sell them a second paket.`
+          : ""
+      }`
     : "- Only size S is available. Never ask whether the customer wants S or M.";
 
   const pricingSection = contract

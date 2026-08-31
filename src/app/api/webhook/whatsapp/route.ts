@@ -1719,7 +1719,7 @@ export async function processSavedCustomerMessage(params: {
       .not("customer_nickname", "is", null),
     db
       .from("orders")
-      .select("id, package_size, portions_per_delivery")
+      .select("id, package_size, portions_per_delivery, size, subcontractor_id")
       .eq("customer_id", customerId)
       .eq("status", "active")
       .order("created_at", { ascending: false })
@@ -1760,6 +1760,17 @@ export async function processSavedCustomerMessage(params: {
         id: activeOrderRow.id,
         packageSize: activeOrderRow.package_size,
         portionsPerDelivery: activeOrderRow.portions_per_delivery,
+        // A running S package whose own dapur cooks M. The prompt tells these
+        // customers M exists — they bought before the bot volunteered it, and
+        // nothing else will ever reach them: 120 of the 129 holding one have a
+        // closed 24h window, so a broadcast cannot be sent.
+        onSizeSWithMAvailable:
+          activeOrderRow.size !== "m" &&
+          rawSubs.some(
+            (s) =>
+              s.id === activeOrderRow.subcontractor_id &&
+              s.offers_size_m === true,
+          ),
       }
     : null;
 

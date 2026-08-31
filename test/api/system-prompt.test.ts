@@ -354,6 +354,43 @@ describe("customer chatbot system prompt", () => {
       expect(prompt).toContain("gaada diinfo kak");
     });
 
+    test("a customer already eating S is told once, unprompted", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
+      );
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+        activeOrder: {
+          id: "o1",
+          packageSize: 20,
+          portionsPerDelivery: 1,
+          onSizeSWithMAvailable: true,
+        },
+      });
+
+      expect(prompt).toContain("bought before anyone told them M existed");
+      expect(prompt).toContain("call escalate_to_human");
+    });
+
+    test("a customer whose dapur is S only never hears the offer", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
+      );
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+        activeOrder: {
+          id: "o1",
+          packageSize: 20,
+          portionsPerDelivery: 1,
+          onSizeSWithMAvailable: false,
+        },
+      });
+
+      expect(prompt).not.toContain("bought before anyone told them M existed");
+    });
+
     test("says nothing about M when no active kitchen cooks it", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
