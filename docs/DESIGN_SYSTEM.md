@@ -57,7 +57,7 @@ The card fetches both families from Google Fonts at render time, so nothing depe
 
 ### What actually ships
 
-`scripts/assets/reference-box-2026-08-18.jpg` is the photograph this section is written from — a real delivery, 18 Agustus 2026, cropped to the tray and stripped of its EXIF (the original carried GPS to the metre). It is checked in so the claims below can be checked against something rather than trusted. **When the packaging changes, replace it and rewrite this section in the same commit**, and date the new filename the same way; a reference photo whose date nobody can see is a reference photo nobody knows to distrust.
+`scripts/assets/reference-box-2026-08-18.jpg` is the photograph this section is written from — a real delivery, 18 Agustus 2026, **deskewed** (the handheld original leans 21°), cropped to the whole tray with a small margin, and stripped of its EXIF (the original carried GPS to the metre). It is checked in so the claims below can be checked against something rather than trusted. **When the packaging changes, replace it and rewrite this section in the same commit**, and date the new filename the same way; a reference photo whose date nobody can see is a reference photo nobody knows to distrust.
 
 
 - **Black glossy plastic tray**, moulded compartments. Not paper, no lid in frame, no inner liner.
@@ -83,6 +83,8 @@ A generated plate that holds more food than the tray does is the Batch 51 compla
 Image models cannot count. Asking for four compartments reliably yields four to six. Compartment count is worth stating and not worth re-rolling for.
 
 **Fullness is not controllable in prose at all, so stop trying.** Two rounds of wording — "modest everyday catering portions", "bare tray stays visible", "never fill edge to edge" — both came back as heaped restaurant plates. What works is passing the reference photograph itself: `scripts/menu-photos.ts` calls `/v1/images/edits` with `scripts/assets/reference-box-2026-08-18.jpg` attached and asks the model to keep the tray, the angle and *how little food is in it*, replacing only the dishes. The portion then tracks the real box, because it is being copied rather than described. Note `input_fidelity` is rejected by `gpt-image-2`; the reference conditions the output without it.
+
+**The model copies the reference's geometry too, so the reference has to be straight — and the output is straightened anyway.** The first reference was the handheld original, tilted 21° and cropped so the tray ran off the top and bottom of the frame; every generated tray came back at its own angle and the card read as five snapshots rather than one set. Prompt wording ("zero tilt", "edges parallel to the frame") does not fix it. Two changes did: the reference is deskewed and shows the whole tray, and `deskew()` in `scripts/menu-photos.ts` rotates each generated PNG upright before it is written. That last step does not ask the model anything — with a transparent background the alpha channel *is* the tray silhouette, so the angle whose bounding box is smallest is the angle the tray stands upright at (searched over ±25°, then trimmed). Keep "the whole tray is inside the frame" in the prompt: a tray clipped by the frame deskews into a diagonal cut edge.
 
 ---
 
@@ -154,7 +156,7 @@ Ticks are plain `✓` marks — not emoji, not coloured boxes — in a single le
 
 ## Generator notes
 
-Current image model is **OpenAI `gpt-image-2`**, called directly over `fetch` from `scripts/menu-photos.ts` with `background: "transparent"`, `output_format: "png"`, `size: "1536x1024"`. About $0.041 per image at medium quality, ~$0.21 for a week.
+Current image model is **OpenAI `gpt-image-2`**, called directly over `fetch` from `scripts/menu-photos.ts` with `background: "transparent"`, `output_format: "png"`, `size: "1024x1536"` (portrait, because the tray is). About $0.041 per image at medium quality, ~$0.21 for a week.
 
 Two rules inherited from the previous Gemini/Nano Banana workflow no longer apply and should not be carried into new prompts: there is **no unavoidable watermark** to work around, and transparency is a parameter rather than something to ask for in prose and then repair.
 
