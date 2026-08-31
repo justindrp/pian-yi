@@ -124,9 +124,7 @@ describe("customer chatbot system prompt", () => {
     expect(prompt).toContain("do not call extract_order");
     // The old rule stays for the case it was written for.
     expect(prompt).toContain("Area never blocks the order");
-    expect(prompt).toContain(
-      "check the address is reachable before you quote",
-    );
+    expect(prompt).toContain("check the address is reachable before you quote");
   });
 
   // The kabupaten rule above assumed the address arrives as words. Sarah
@@ -152,7 +150,9 @@ describe("customer chatbot system prompt", () => {
       activeOrder: null,
       schedule: null,
     });
-    expect(prompt).toContain("A Google Maps link is not an address you can read");
+    expect(prompt).toContain(
+      "A Google Maps link is not an address you can read",
+    );
     expect(prompt).toContain("never let a link end the area question");
     expect(prompt).toContain(
       "do not quote a price or call extract_order until they answer",
@@ -237,7 +237,9 @@ describe("customer chatbot system prompt", () => {
         schedule: { unbooked: 1, remainingToday: 1, upcoming: [] },
       } as never);
 
-      expect(prompt).toContain("Sisa itu dipakai dulu sebelum menjual paket baru");
+      expect(prompt).toContain(
+        "Sisa itu dipakai dulu sebelum menjual paket baru",
+      );
       expect(prompt).toContain("− 1 porsi sisa");
       expect(prompt).toContain("7 − 1 = paket 6 porsi");
     });
@@ -317,6 +319,36 @@ describe("customer chatbot system prompt", () => {
       const prompt = await buildSystemPrompt({ ...base, casual: false });
 
       expect(prompt).not.toContain("This is your first reply to this customer");
+    });
+  });
+
+  // Three tools send images and each was added after a turn that claimed an
+  // image without one: the menu (2026-08-26), the price list and the delivery
+  // proof (both 2026-08-31). The prompt has to name all three, or the model
+  // falls back to promising the picture in prose.
+  describe("image tools", () => {
+    test("names every tool that can send an image", async () => {
+      const prompt = await buildSystemPrompt({
+        customerState: "ordering",
+        customerName: null,
+        customerNotes: null,
+        detectedMapsLink: null,
+        menuShown: true,
+        dapurOptions: [],
+        dapurMenuTexts: [],
+        menuWeek: { relation: "unknown" as const, weekStart: null },
+        servedAreas: ["BSD Baru"],
+        neighborhoods: {},
+        activeOrder: null,
+        schedule: null,
+        casual: false,
+      });
+
+      expect(prompt).toContain("send_price_list");
+      expect(prompt).toContain("send_delivery_proof");
+      expect(prompt).toContain(
+        "Images go out only through send_menu_image, send_price_list and send_delivery_proof",
+      );
     });
   });
 });

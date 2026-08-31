@@ -56,6 +56,7 @@ import {
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
 import { shouldAutoResume } from "@/lib/customers/takeover";
+import { formatHolidayDate } from "@/lib/holidays/id";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
@@ -1912,6 +1913,21 @@ export async function processSavedCustomerMessage(params: {
       input_schema: { type: "object", properties: {} },
     },
     {
+      name: "send_delivery_proof",
+      description:
+        'Sends the customer the delivery photo the kitchen took, for a delivery that has already happened. Call it whenever they ask to see proof their food arrived ("bukti pengiriman", "foto pengirimannya", "udah dikirim belum"). Optionally pass the date they mean as "date"; leave it out for their most recent one. Resolve the date yourself from Today — never send a weekday name. If the tool says there is no photo, say so plainly; do not promise one is coming.',
+      input_schema: {
+        type: "object",
+        properties: {
+          date: {
+            type: "string",
+            description:
+              "ISO date (YYYY-MM-DD) of the delivery the customer is asking about. Omit for the most recent photo we hold.",
+          },
+        },
+      },
+    },
+    {
       name: "send_price_list",
       description:
         "Sends the price list image (harga & area pengiriman). Call it whenever the customer asks for the price list again — the welcome sequence sent it once and nothing else resends it. Safe to call more than once. Never promise the image without calling this.",
@@ -2829,6 +2845,100 @@ async function handleToolUse(
     return {
       ok: true,
       message: `${menuSubs.length} gambar menu sudah dikirim ke customer.`,
+    };
+  } else if (tool.name === "send_delivery_proof") {
+    // The photo lives in a private bucket and is linked to the customer by
+    // delivery_proofs.matched_customer_id — matched_delivery_id and
+    // daily_deliveries.delivery_proof_id are NULL on all 587 rows, so the
+    // customer is the only join that exists. Date filtering is therefore done
+    // on received_at, which is when the kitchen sent it to us: the same day it
+    // was delivered.
+    const wanted = (tool.input as { date?: string }).date?.trim();
+    let q = db
+      .from("delivery_proofs")
+      .select("id, image_url, received_at")
+      .eq("matched_customer_id", customerId)
+      .not("image_url", "is", null)
+      .order("received_at", { ascending: false })
+      .limit(1);
+    if (wanted) {
+      q = q
+        .gte("received_at", `${wanted}T00:00:00+07:00`)
+        .lt("received_at", `${wanted}T23:59:59.999+07:00`);
+    }
+    const { data: proof } = await q.maybeSingle();
+    if (!proof?.image_url) {
+      return {
+        ok: false,
+        error: wanted
+          ? `Tidak ada foto pengiriman untuk tanggal ${wanted} — belum pernah dikirim dapur ke kami. Bilang apa adanya, jangan janjikan fotonya menyusul; tawarkan cek ke tim lewat ask_admin_for_help.`
+          : "Belum ada foto pengiriman sama sekali untuk customer ini. Bilang apa adanya, jangan janjikan fotonya menyusul; tawarkan cek ke tim lewat ask_admin_for_help.",
+      };
+    }
+
+    const storagePath = proof.image_url.split("/delivery-proofs/")[1];
+    const { data: signed } = storagePath
+      ? await db.storage
+          .from("delivery-proofs")
+          // Long enough for Meta to fetch it, short enough that the link in the
+          // logs is dead by the time anyone reads them.
+          .createSignedUrl(storagePath, 600)
+      : { data: null };
+    if (!signed?.signedUrl) {
+      console.error(
+        `[webhook] send_delivery_proof: cannot sign ${proof.image_url.slice(0, 120)}`,
+      );
+      return {
+        ok: false,
+        error:
+          "Foto pengirimannya gagal diambil dari penyimpanan. Jangan bilang sudah dikirim; minta bantuan tim lewat ask_admin_for_help.",
+      };
+    }
+
+    // The customer asked, so their 24h window is open by definition and this
+    // goes as a plain image. The Proofs tab uses the delivery_proof template
+    // because it fires unprompted, and a template send is what 131042 blocks
+    // once a window has closed — the free-form path has no such problem.
+    // received_at is nullable in the schema and filled on every row; a null
+    // one still has a sendable photo, so the caption drops the date rather
+    // than the send.
+    const day = proof.received_at?.slice(0, 10) ?? null;
+    const caption = day
+      ? `Ini foto pengiriman kakak tanggal ${formatHolidayDate(day)} 😊`
+      : "Ini foto pengiriman kakak ya 😊";
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: proof.image_url,
+      messageType: "image",
+      modelUsed: "system",
+    });
+    const whatsappMessageId = await sendImageByUrl(
+      phone,
+      signed.signedUrl,
+      caption,
+    );
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId,
+      status: "sent",
+    });
+    // The proof row keeps the record of the send the kitchen's photo was
+    // originally pushed with; a resend on request is a different event and
+    // must not overwrite it.
+    await logEdit({
+      db,
+      actor: "system:webhook:send_delivery_proof",
+      entityType: "delivery_proofs",
+      entityId: proof.id,
+      action: "resend_on_request",
+      changes: { customer_id: customerId, delivery_date: day },
+    });
+    return {
+      ok: true,
+      message: day
+        ? `Foto pengiriman tanggal ${day} sudah dikirim ke customer.`
+        : "Foto pengiriman sudah dikirim ke customer.",
     };
   } else if (tool.name === "send_price_list") {
     // A corporate rate replaces the whole ladder, so the image is wrong for
