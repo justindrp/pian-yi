@@ -65,6 +65,8 @@ function parseMenu(text: string): Day[] {
 function promptFor(day: Day): string {
   const items = [...day.s, ...(day.m ? [day.m] : [])].join("; ");
   return [
+    // The tray is described from scripts/assets/reference-box-2026-08-18.jpg, a real
+    // delivery. Check any change to these lines against that photo, or a newer one.
     "Top-down 90-degree food photograph of one Indonesian catering lunch portion,",
     "served in a black glossy rectangular plastic bento tray with four moulded compartments:",
     "one large compartment along the bottom for rice, a small well for sambal, and two for the rest.",

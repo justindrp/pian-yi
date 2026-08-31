@@ -57,6 +57,9 @@ The card fetches both families from Google Fonts at render time, so nothing depe
 
 ### What actually ships
 
+`scripts/assets/reference-box-2026-08-18.jpg` is the photograph this section is written from — a real delivery, 18 Agustus 2026, cropped to the tray and stripped of its EXIF (the original carried GPS to the metre). It is checked in so the claims below can be checked against something rather than trusted. **When the packaging changes, replace it and rewrite this section in the same commit**, and date the new filename the same way; a reference photo whose date nobody can see is a reference photo nobody knows to distrust.
+
+
 - **Black glossy plastic tray**, moulded compartments. Not paper, no lid in frame, no inner liner.
 - **Four compartments:** one large along the bottom for rice, a small well for sambal, two more for the lauk and the sayur.
 - **Modest portions.** Bare black tray stays visible around every item. The rice is one scoop filling about half its compartment — not a dome rising above the walls.
