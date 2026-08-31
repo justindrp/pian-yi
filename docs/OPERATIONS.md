@@ -105,6 +105,8 @@ Area names that appear in older docs are not evidence of coverage. On 2026-08-21
 
 Dapur 1 is the worked example, from the evening of 2026-08-31: it refused Kost Casa Living outright, refused Apartemen Akasa, then re-priced Akasa at Rp 10.000 a drop when asked again an hour later (migration 086). Three customers already held paid orders at those two addresses — 65, 10 and 5 portions — with 31 delivery rows on the calendar from 1 September onwards. **A coverage rule stops the next order; it does nothing to the rows already written.** Those were deleted by hand (`edit_log`, `delete_delivery`, actor `script:hold-rows`), because the kitchen sheet keys on the date alone and would otherwise have sent a courier to an address the kitchen had refused. Whoever adds a refusal has to go looking for the rows behind it.
 
+The `/dapur/[id]` bill carries it too, as its own **Ongkir** line under each meal — `n × Rp 10.000`, counted in drops and never folded into a porsi rate, because three portions to one door is one fee and lunch plus dinner to the same door is two. We owe the kitchen the same fee we charge the customer for it, so a surcharge that is missing from this page is money we collected and did not pass on.
+
 **Everything derived from an area, however, is still hardcoded, and a new area silently gets nothing.** `getDeliveryRoute()` (`src/lib/utils/format.ts`) maps five specific area names to Route 1 or 2 and returns `null` for anything else; the Route labels in `deliveries-client.tsx` name the same areas; and the BSD Baru/BSD Lama split in the webhook is a longitude comparison. Adding an area to a kitchen therefore makes it orderable but unrouteable. That is open work, not a rule — see the queue (`pnpm tasks`).
 
 ### Deadlines, assignment and data rules

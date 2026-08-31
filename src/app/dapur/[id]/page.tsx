@@ -8,6 +8,10 @@ import {
   normalizeSize,
   type OrderSize,
 } from "@/lib/orders/size";
+import {
+  coverageFor,
+  kitchenCoverage,
+} from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatIDR } from "@/lib/utils/format";
 import { DatePicker } from "./date-picker";
@@ -241,7 +245,16 @@ function DeliveryCard({ d }: { d: Delivery }) {
 }
 
 type RateLine = { size: OrderSize; rate: number; portions: number };
-type Bill = { lines: RateLine[]; portions: number; amount: number };
+// Ongkir is charged per drop, not per portion, so it cannot fold into a rate
+// line: a customer taking 3 porsi to one door pays one fee, and the same
+// customer taking lunch and dinner pays two. Counted in deliveries.
+type FeeLine = { rate: number; drops: number };
+type Bill = {
+  lines: RateLine[];
+  fees: FeeLine[];
+  portions: number;
+  amount: number;
+};
 
 // What the kitchen is owed is one number for the whole day, so the bill is built
 // from every delivery of the date — both sizes, both routes — and never from the
@@ -255,8 +268,10 @@ type Bill = { lines: RateLine[]; portions: number; amount: number };
 function billFor(
   deliveries: Delivery[],
   rateOf: (d: Delivery) => number,
+  feeOf: (d: Delivery) => number,
 ): Bill {
   const byKey = new Map<string, RateLine>();
+  const byFee = new Map<number, FeeLine>();
   for (const d of deliveries) {
     const size = normalizeSize(d.orders?.size);
     const rate = rateOf(d);
@@ -264,14 +279,25 @@ function billFor(
     const line = byKey.get(key) ?? { size, rate, portions: 0 };
     line.portions += d.portions ?? 0;
     byKey.set(key, line);
+
+    const fee = feeOf(d);
+    if (fee > 0) {
+      const feeLine = byFee.get(fee) ?? { rate: fee, drops: 0 };
+      feeLine.drops += 1;
+      byFee.set(fee, feeLine);
+    }
   }
   const lines = [...byKey.values()].sort(
     (a, b) => a.size.localeCompare(b.size) || a.rate - b.rate,
   );
+  const fees = [...byFee.values()].sort((a, b) => a.rate - b.rate);
   return {
     lines,
+    fees,
     portions: lines.reduce((s, l) => s + l.portions, 0),
-    amount: lines.reduce((s, l) => s + l.rate * l.portions, 0),
+    amount:
+      lines.reduce((s, l) => s + l.rate * l.portions, 0) +
+      fees.reduce((s, f) => s + f.rate * f.drops, 0),
   };
 }
 
@@ -292,6 +318,24 @@ function RateRow({
       </span>
       <span className="font-medium text-gray-800 whitespace-nowrap">
         {formatIDR(line.rate * line.portions)}
+      </span>
+    </div>
+  );
+}
+
+// Named "Ongkir" rather than folded into the porsi line so the kitchen can see
+// what it is being paid for the extra distance separately from the food.
+function FeeRow({ fee }: { fee: FeeLine }) {
+  return (
+    <div className="flex justify-between items-baseline gap-3">
+      <span className="min-w-0">
+        Ongkir{" "}
+        <span className="text-gray-400 whitespace-nowrap">
+          {fee.drops} × {fee.rate.toLocaleString("id-ID")}
+        </span>
+      </span>
+      <span className="font-medium text-gray-800 whitespace-nowrap">
+        {formatIDR(fee.rate * fee.drops)}
       </span>
     </div>
   );
@@ -326,6 +370,9 @@ function MealSummary({
       <div className="pl-3 space-y-1 text-sm text-gray-600 border-l-2 border-gray-100">
         {lines.map((l) => (
           <RateRow key={`${l.size}-${l.rate}`} line={l} showSize={showSize} />
+        ))}
+        {bill.fees.map((f) => (
+          <FeeRow key={f.rate} fee={f} />
         ))}
       </div>
     </div>
@@ -407,7 +454,7 @@ export default async function DapurPage({
 
   const db = createAdminClient();
 
-  const [{ data: sub }, { data: rows }] = await Promise.all([
+  const [{ data: sub }, { data: rows }, coverage] = await Promise.all([
     db
       .from("subcontractors")
       .select(
@@ -422,6 +469,7 @@ export default async function DapurPage({
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date),
+    kitchenCoverage(db, id),
   ]);
 
   if (!sub) notFound();
@@ -474,10 +522,24 @@ export default async function DapurPage({
       normalizeSize(d.orders?.size),
       (d.customers?.delivery_route ?? 1) === 2 ? 2 : 1,
     ) + (d.orders?.addon_cost_per_portion ?? 0);
+  // The ongkir this kitchen charges to reach a neighborhood it has priced —
+  // Rp 10.000 to Apartemen Akasa, and nothing anywhere it has not ruled on. Read
+  // off the address the courier is actually given, which is the second one when
+  // the row carries slot 2, and matched the same way the bot matches it.
+  const feeOf = (d: Delivery) => {
+    const c = d.customers;
+    const slot = d.address_slot ?? 1;
+    return coverageFor(
+      coverage,
+      slot === 2 ? (c?.address_2 ?? c?.address) : c?.address,
+      slot === 2 ? (c?.sub_area_2 ?? c?.sub_area) : c?.sub_area,
+    ).surchargePerDelivery;
+  };
   const mealBill = (meal: string) =>
     billFor(
       allDeliveries.filter((d) => d.meal_type === meal),
       rateOf,
+      feeOf,
     );
   const bills = {
     breakfast: mealBill("breakfast"),
