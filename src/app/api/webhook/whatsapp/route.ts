@@ -410,6 +410,13 @@ const BUY_EVIDENCE_WINDOW_MS = 48 * 60 * 60 * 1000;
  * because the messages that produced that order are exactly what recovery would
  * rebuild, and inside the last 48 hours, because a month-old thread is not this
  * turn.
+ *
+ * A third bound is the message type. An image row keeps its URL in `content`,
+ * and a wamid is base64 — digits with letters either side, which is exactly
+ * what TYPED_NUMBER matches. Julian S sent a payment proof and its URL offered
+ * up a "3", so an extraction that had invented "6 porsi" read as a size he had
+ * typed himself, and an admin got a push about an order he had already placed
+ * and paid. Only text the customer actually wrote counts.
  */
 async function customerStatedSize(
   customerId: string,
@@ -424,6 +431,7 @@ async function customerStatedSize(
     .select("content")
     .eq("customer_id", customerId)
     .eq("role", "user")
+    .eq("message_type", "text")
     .gt("created_at", since)
     .order("created_at", { ascending: false })
     .limit(40);
@@ -505,16 +513,26 @@ async function flagOrderAtRisk(
     }
 
     // An extraction that reproduces an order already on file is the old
-    // conversation echoing, never a new purchase. Same size and same start, or
-    // the same size on anything bought in this same window — Nicholas's phantom
-    // matched his active package on size and differed only on a start date the
-    // extraction had invented.
+    // conversation echoing, never a new purchase. Two shapes of echo:
+    //
+    // Same size, same start — Nicholas's phantom matched his active package on
+    // size and differed only on a start date the extraction had invented.
+    //
+    // And any order bought inside the same 48-hour window, whatever its size:
+    // the chat that produced it is the chat being re-extracted, so the
+    // extraction is reading back the purchase that already happened. Julian S,
+    // Carolin, Rachel and Veronica were all flagged for an order they had
+    // placed and paid for a day earlier, only with a size the model had drifted
+    // by one or two. A customer buying a genuinely second package inside two
+    // days loses a push and nothing else — extract_order amends their open
+    // order anyway.
+    const boughtRecently = new Date(
+      Date.now() - BUY_EVIDENCE_WINDOW_MS,
+    ).toISOString();
     const echoesExistingOrder = (orders ?? []).some(
       (o) =>
-        o.package_size === raw.package_size &&
-        (o.start_date === raw.start_date ||
-          (o.created_at ?? "") >
-            new Date(Date.now() - BUY_EVIDENCE_WINDOW_MS).toISOString()),
+        (o.created_at ?? "") > boughtRecently ||
+        (o.package_size === raw.package_size && o.start_date === raw.start_date),
     );
     if (echoesExistingOrder) return false;
 
@@ -2137,11 +2155,14 @@ export async function processSavedCustomerMessage(params: {
       customerId,
       phone,
       customerName,
+      // Indonesian, because this string is interpolated straight into the push
+      // body and into customer_flags.escalation_reason, both of which an admin
+      // reads in the dashboard alongside Indonesian text.
       promised
-        ? "an unkept promise"
+        ? "bot menjanjikan order tapi tidak membuatnya"
         : looping
-          ? "a clarification loop"
-          : "a turn that created no order",
+          ? "bot berputar-putar bertanya"
+          : "balasan tanpa order dibuat",
     );
   }
 
