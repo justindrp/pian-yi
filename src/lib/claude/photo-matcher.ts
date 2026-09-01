@@ -7,6 +7,7 @@ import {
 } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { sendPushToAllAdmins } from "@/lib/push/send";
+import { pickDeliveryForPhoto } from "@/lib/deliveries/windows";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   fetchAndUploadImage,
@@ -107,6 +108,16 @@ If no match is confident, return { "customer_id": null, "confidence": 0, "reason
   const thresholdRaw = await getSetting("photo_match_confidence_threshold");
   const threshold = Number.parseFloat(thresholdRaw) || 0.95;
 
+  // Which delivery the photo is of, not just whose. Without it the sheet can
+  // only tick a customer for the whole day, so on 2026-09-01 a lunch photo
+  // ticked the dinner rows of the three customers who eat both meals.
+  const matchedDelivery = match.customer_id
+    ? pickDeliveryForPhoto(
+        todayDeliveries.filter((d) => d.customer_id === match.customer_id),
+        new Date(proof.received_at ?? Date.now()),
+      )
+    : null;
+
   if (match.confidence >= threshold && match.customer_id) {
     await sendDeliveryPhotoToCustomer(
       proofId,
@@ -117,6 +128,7 @@ If no match is confident, return { "customer_id": null, "confidence": 0, "reason
       .from("delivery_proofs")
       .update({
         matched_customer_id: match.customer_id,
+        matched_delivery_id: matchedDelivery?.id ?? null,
         match_confidence: match.confidence,
         match_method: "auto",
         status: "auto_sent",
@@ -129,6 +141,7 @@ If no match is confident, return { "customer_id": null, "confidence": 0, "reason
       .from("delivery_proofs")
       .update({
         matched_customer_id: match.customer_id,
+        matched_delivery_id: matchedDelivery?.id ?? null,
         match_confidence: match.confidence,
         match_method: "auto",
         status: "needs_review",

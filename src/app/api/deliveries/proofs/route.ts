@@ -124,6 +124,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const file = formData.get("file") as File | null;
   const customerId = formData.get("customer_id") as string | null;
   const subcontractorId = formData.get("subcontractor_id") as string | null;
+  const mealType = formData.get("meal_type") as string | null;
   const date =
     (formData.get("date") as string | null) ??
     new Date().toISOString().slice(0, 10);
@@ -169,11 +170,25 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("delivery-proofs")
     .getPublicUrl(storagePath);
 
+  // Uploaded from a row on the sheet, so the meal is known exactly rather than
+  // inferred — this is the one path that never has to guess which delivery the
+  // photo is of.
+  const { data: uploadedFor } = mealType
+    ? await db
+        .from("daily_deliveries")
+        .select("id")
+        .eq("customer_id", customerId)
+        .eq("delivery_date", date)
+        .eq("meal_type", mealType)
+        .maybeSingle()
+    : { data: null };
+
   const { data: proof, error: insertErr } = await db
     .from("delivery_proofs")
     .insert({
       image_url: urlData.publicUrl,
       matched_customer_id: customerId,
+      matched_delivery_id: uploadedFor?.id ?? null,
       subcontractor_id: subcontractorId ?? null,
       match_method: "admin_upload",
       status: "admin_uploaded",

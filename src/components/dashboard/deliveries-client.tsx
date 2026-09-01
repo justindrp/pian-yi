@@ -78,6 +78,7 @@ interface Proof {
   subcontractors: { name: string } | null;
   customers: { name: string | null; phone_number: string } | null;
   matched_customer_id: string | null;
+  matched_delivery_id: string | null;
 }
 
 interface Sub {
@@ -839,9 +840,32 @@ export default function DeliveriesClient() {
   const needsReview = (proofs ?? []).filter((p) => p.status === "needs_review");
   const unmatched = (proofs ?? []).filter((p) => p.status === "unmatched");
 
+  // A photo documents one delivery, and a customer eating both meals has two of
+  // them that day. Keying the tick on the customer alone made a lunch photo
+  // tick the dinner row too: on 2026-09-01 Julie, Kurniadi Tan and Sherine
+  // Fayola all showed as photographed for dinner off their lunch proofs.
+  //
+  // matched_delivery_id is the exact answer and is null on every row written
+  // before it existed, so the customer-level test survives for the one case it
+  // cannot get wrong — a customer with a single delivery that day.
+  const proofDeliveryIds = new Set(
+    (proofs ?? [])
+      .map((p) => p.matched_delivery_id)
+      .filter((id): id is string => Boolean(id)),
+  );
   const proofCustomerIds = new Set(
     (proofs ?? []).map((p) => p.matched_customer_id),
   );
+  const mealsPerCustomer = new Map<string, number>();
+  for (const r of rows)
+    mealsPerCustomer.set(
+      r.customer_id,
+      (mealsPerCustomer.get(r.customer_id) ?? 0) + 1,
+    );
+  const hasProof = (r: DeliveryRow) =>
+    (r.id != null && proofDeliveryIds.has(r.id)) ||
+    ((mealsPerCustomer.get(r.customer_id) ?? 0) <= 1 &&
+      proofCustomerIds.has(r.customer_id));
 
   const activeSubs = (subs ?? []).filter(
     (s: Sub & { is_active?: boolean }) => s.is_active !== false,
@@ -861,6 +885,7 @@ export default function DeliveriesClient() {
       fd.append("customer_id", customerId);
       if (subcontractorId) fd.append("subcontractor_id", subcontractorId);
       fd.append("date", date);
+      fd.append("meal_type", mealType);
       const res = await fetch("/api/deliveries/proofs", {
         method: "POST",
         body: fd,
@@ -1059,9 +1084,7 @@ export default function DeliveriesClient() {
                                         uploadStates[
                                           `${r.customer_id}-${r.meal_type}`
                                         ] ??
-                                        (proofCustomerIds.has(r.customer_id)
-                                          ? "done"
-                                          : "idle")
+                                        (hasProof(r) ? "done" : "idle")
                                       }
                                       onUploadProof={(file) =>
                                         handleUploadProof(
@@ -1244,9 +1267,7 @@ export default function DeliveriesClient() {
                                 <UploadButton
                                   uploadState={
                                     uploadStates[`${r.customer_id}-${meal}`] ??
-                                    (proofCustomerIds.has(r.customer_id)
-                                      ? "done"
-                                      : "idle")
+                                    (hasProof(r) ? "done" : "idle")
                                   }
                                   onUpload={(file) =>
                                     handleUploadProof(

@@ -85,6 +85,10 @@ The row saved for it now writes the caption to `conversations.content` and the f
 
 Every forwarded send writes a `delivery_proofs` row (`match_method: "forwarded_caption"`, `sent_by: "forward:<phone>"`) and an `edit_log` entry.
 
+**A proof documents one delivery, not a customer's whole day.** `delivery_proofs.matched_delivery_id` is what says which, and the camera tick on the daily sheet reads it. The tick used to key on `matched_customer_id` alone, so on 2026-09-01 the three customers who eat both meals — Julie, Kurniadi Tan, Sherine Fayola — showed as photographed for dinner off proofs sent at lunchtime, on a sheet where the dinner food had not left the kitchen. The column existed and was null on every one of the 587 rows.
+
+Each path fills it as well as it can. An upload from the sheet is exact: the button knows its own row, so `POST /api/deliveries/proofs` now takes `meal_type` and resolves the delivery from `(customer, date, meal)`. The kitchen matcher and the forwarded-caption path get a name and a photo and no meal, so they use `pickDeliveryForPhoto()` (`src/lib/deliveries/windows.ts`): one row that day is not a question, and two are settled by the clock, since nothing shot before 16:00 can be a dinner drop. That last part is a guess, made only for the both-meals customers. Historical rows stay null, and the sheet still falls back to the customer-level test for anyone with a single delivery that day — the one case it cannot get wrong.
+
 ## Assistant
 
 - **`query_customers` returns `portions_remaining`**, summed across the customer's open orders (`active` / `paused` / `payment_proof_received`) and counted from their delivery rows — never from the dead `customers.portions_remaining` column, and no longer from `orders.portions_remaining`, which migration 075 dropped. "Sisa kuota berapa?" used to need a second tool call the model rarely made, and it could not answer for Nicholas Satria at all on 2026-08-19. `query_orders` also returns the same derived balance, and takes `customer_name` as well as `customer_phone` (matched on the last 9 digits, so the stored format no longer has to be guessed).

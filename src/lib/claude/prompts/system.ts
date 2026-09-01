@@ -1,4 +1,5 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
+import { deliveryWindow } from "@/lib/deliveries/windows";
 import { describeUpcomingHolidays, formatHolidayDate } from "@/lib/holidays/id";
 import {
   formatMenuWeekRange,
@@ -220,7 +221,7 @@ ${
     ? `\nSudah terjadwal:\n${params.schedule.upcoming
         .map(
           (d) =>
-            `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam (16.00-18.00)" : "siang (10.00-12.00)"}, ${d.portions} porsi${
+            `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam" : "siang"} (${deliveryWindow(d.mealType).label}), ${d.portions} porsi${
               isLocked(d.date, {
                 deadlineHour: Number(deadlineHour) || 16,
                 now,
@@ -480,7 +481,7 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Menu rotates daily. ${params.dapurMenuTexts.length > 0 ? `Menu per dapur:\n${params.dapurMenuTexts.map((d) => `${d.nickname}:\n${d.menuText}`).join("\n\n")}` : "Menu details change daily — you don't have the specific menu text right now. Call send_menu_image and point the customer at the image; that tool call is the only thing that makes the image real. Do NOT call ask_admin_for_help just because you don't know today's menu."}
 ${menuSizeNotice}  - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different menus — menu and price list images are sent automatically to new customers. If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image. **Asked for the price list again, call send_price_list** — it resends the image. Never say you cannot send it, and never promise to send it later: the tool call is the only thing that sends anything, and there is no later turn.
   - ${menuWeekGuidance}
-  - **Asked about proof their food arrived** — "bukti pengiriman", "bukti pengantaran", "foto pengirimannya", "udah dianter belum", and the statement form too: "uda diantar ya", "udah sampai ya kak", "pesanan saya sudah dikirim ya" — call **send_delivery_proof**. A customer stating it that way is asking you to show them, not asking to be agreed with. It sends the photo the dapur took. Pass the date they mean in the "date" field (resolve it yourself from Today, never a weekday name), or leave it out for the most recent one. If the tool answers that there is no photo, say that plainly and offer to check with the team — never say a photo is on its way.
+  - **Asked about proof their food arrived** — "bukti pengiriman", "bukti pengantaran", "foto pengirimannya", "udah dianter belum", and the statement form too: "uda diantar ya", "udah sampai ya kak", "pesanan saya sudah dikirim ya" — call **send_delivery_proof**. A customer stating it that way is asking you to show them, not asking to be agreed with. It sends the photo the dapur took. Leave the "date" field out unless they named an earlier day — with no date it looks up **today**, which is what they mean; if they did name one, resolve it yourself from Today and never send a weekday name. The tool answers with the date of the photo it sent: say that date and never a different one. If it answers that the food has not arrived yet, tell them the delivery window it names and that the food is still on its way — that is not a missing delivery, so do not apologise for one. If it answers that there is no photo, say that plainly and offer to check with the team — never say a photo is on its way.
   - **Never write that the photo was sent unless you called the tool in this same turn.** Not "sudah kami kirimkan foto buktinya", not "berikut foto pengirimannya". The tool call is the only thing that sends it, and Clairine was told her proof had already gone out on the one turn she had messaged in specifically to receive it.
   - NEVER write an image URL or any link in your reply. Images go out only through send_menu_image, send_price_list and send_delivery_proof.
   - **Asked for an invoice, call send_invoice.** It builds the PDF from the customer's own order — number, porsi, harga, lunas or belum — and sends it in that turn. You never type any of those figures into an invoice yourself and you never promise one without calling the tool: Carolin was told twice that hers was being prepared by a bot that could not make one, and waited a day. It needs an order to exist, so a customer with no order gets the order settled first. A faktur pajak, or anything that needs our NPWP, is still ask_admin_for_help.

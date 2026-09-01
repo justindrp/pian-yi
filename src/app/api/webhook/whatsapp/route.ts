@@ -62,6 +62,7 @@ import {
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
 import { RESUMED_FLAGS, shouldAutoResume } from "@/lib/customers/takeover";
+import { deliveryWindow } from "@/lib/deliveries/windows";
 import { formatHolidayDate } from "@/lib/holidays/id";
 import { sendInvoice } from "@/lib/invoices/send";
 import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
@@ -74,7 +75,10 @@ import { sendPushToAllAdmins } from "@/lib/push/send";
 import { unionAreas } from "@/lib/subcontractors/areas";
 import { coverageNotes } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { jakartaTimeString } from "@/lib/time/jakarta";
+import {
+  jakartaHour,
+  jakartaTimeString,
+} from "@/lib/time/jakarta";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
 import {
   downloadMedia,
@@ -2014,14 +2018,14 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "send_delivery_proof",
       description:
-        'Sends the customer the delivery photo the kitchen took, for a delivery that has already happened. Call it whenever they ask to see proof their food arrived ("bukti pengiriman", "bukti pengantaran", "foto pengirimannya", "udah dikirim belum", "uda diantar ya"). Optionally pass the date they mean as "date"; leave it out for their most recent one. Resolve the date yourself from Today — never send a weekday name. If the tool says there is no photo, say so plainly; do not promise one is coming.',
+        'Sends the customer the delivery photo the kitchen took. Call it whenever they ask whether their food arrived or to see proof of it ("bukti pengiriman", "bukti pengantaran", "foto pengirimannya", "udah dikirim belum", "uda diantar ya"). Leave "date" out for today, which is what they almost always mean; pass it only when they named an earlier day, resolved yourself from Today and never as a weekday name. It answers with the date of the photo it sent — say that date and no other. If it answers that the food has not arrived yet it names the delivery window: tell them that window and that the food is on its way. If it says there is no photo, say so plainly; do not promise one is coming.',
       input_schema: {
         type: "object",
         properties: {
           date: {
             type: "string",
             description:
-              "ISO date (YYYY-MM-DD) of the delivery the customer is asking about. Omit for the most recent photo we hold.",
+              "ISO date (YYYY-MM-DD) of the delivery the customer is asking about. Omit for today.",
           },
         },
       },
@@ -2881,6 +2885,50 @@ type ToolResult =
     }
   | { ok: false; error: string };
 
+/**
+ * What to tell the model when we hold no photo for a date.
+ *
+ * "Belum ada fotonya" is the wrong answer while the courier is still out: the
+ * food has not arrived yet, and a customer hearing we have no proof of it hears
+ * that their delivery is missing. So a scheduled date whose window has not
+ * closed gets the window quoted back instead. Clairine and Julian S both asked
+ * on 2026-09-01 shortly after 16:00, with their dinner rows on the sheet and
+ * the 16.00-18.00 window still running.
+ */
+async function noProofReason(
+  customerId: string,
+  date: string,
+): Promise<string> {
+  const db = createAdminClient();
+  const { data: rows } = await db
+    .from("daily_deliveries")
+    .select("meal_type")
+    .eq("customer_id", customerId)
+    .eq("delivery_date", date);
+
+  if (!rows?.length)
+    return `Tidak ada pengiriman terjadwal untuk tanggal ${date}, jadi tidak ada fotonya. Bilang apa adanya dan sebutkan tanggal itu memang tidak ada kirimannya; jangan janjikan foto menyusul.`;
+
+  const today = jakartaDateString();
+  const stillOut = rows.filter(
+    (r) =>
+      date > today ||
+      (date === today && jakartaHour() < deliveryWindow(r.meal_type).endHour),
+  );
+
+  if (stillOut.length > 0) {
+    const windows = stillOut
+      .map(
+        (r) =>
+          `${r.meal_type === "dinner" ? "makan malam" : "makan siang"} jam ${deliveryWindow(r.meal_type).label}`,
+      )
+      .join(" dan ");
+    return `Belum ada fotonya karena kirimannya memang belum sampai — jam antarnya ${windows} dan sekarang baru jam ${jakartaTimeString()} WIB. Bilang makanannya masih dalam perjalanan dan sebutkan jam antar itu. Jangan bilang tidak ada bukti pengiriman, dan jangan janjikan fotonya menyusul.`;
+  }
+
+  return `Tidak ada foto pengiriman untuk tanggal ${date} — belum pernah dikirim dapur ke kami. Bilang apa adanya, jangan janjikan fotonya menyusul; tawarkan cek ke tim lewat ask_admin_for_help.`;
+}
+
 async function handleToolUse(
   tool: Anthropic.Messages.ToolUseBlock,
   customerId: string,
@@ -3070,27 +3118,26 @@ async function handleToolUse(
     // customer is the only join that exists. Date filtering is therefore done
     // on received_at, which is when the kitchen sent it to us: the same day it
     // was delivered.
-    const wanted = (tool.input as { date?: string }).date?.trim();
-    let q = db
+    // A customer asking whether their food arrived means today, so the lookup
+    // is always date-bounded. It used to fall back to the newest photo we hold
+    // when the model passed no date: on 2026-09-01 at 16:22, inside the
+    // 16.00-18.00 dinner window and before tonight's food had left, Clairine
+    // asked "Apa uda diantar kak" and was sent 31 Agustus's photo as if it were
+    // hers.
+    const wanted =
+      (tool.input as { date?: string }).date?.trim() || jakartaDateString();
+    const { data: proof } = await db
       .from("delivery_proofs")
       .select("id, image_url, received_at")
       .eq("matched_customer_id", customerId)
       .not("image_url", "is", null)
+      .gte("received_at", `${wanted}T00:00:00+07:00`)
+      .lt("received_at", `${wanted}T23:59:59.999+07:00`)
       .order("received_at", { ascending: false })
-      .limit(1);
-    if (wanted) {
-      q = q
-        .gte("received_at", `${wanted}T00:00:00+07:00`)
-        .lt("received_at", `${wanted}T23:59:59.999+07:00`);
-    }
-    const { data: proof } = await q.maybeSingle();
+      .limit(1)
+      .maybeSingle();
     if (!proof?.image_url) {
-      return {
-        ok: false,
-        error: wanted
-          ? `Tidak ada foto pengiriman untuk tanggal ${wanted} — belum pernah dikirim dapur ke kami. Bilang apa adanya, jangan janjikan fotonya menyusul; tawarkan cek ke tim lewat ask_admin_for_help.`
-          : "Belum ada foto pengiriman sama sekali untuk customer ini. Bilang apa adanya, jangan janjikan fotonya menyusul; tawarkan cek ke tim lewat ask_admin_for_help.",
-      };
+      return { ok: false, error: await noProofReason(customerId, wanted) };
     }
 
     const storagePath = proof.image_url.split("/delivery-proofs/")[1];
@@ -3119,10 +3166,8 @@ async function handleToolUse(
     // received_at is nullable in the schema and filled on every row; a null
     // one still has a sendable photo, so the caption drops the date rather
     // than the send.
-    const day = proof.received_at?.slice(0, 10) ?? null;
-    const caption = day
-      ? `Ini foto pengiriman kakak tanggal ${formatHolidayDate(day)} 😊`
-      : "Ini foto pengiriman kakak ya 😊";
+    const day = proof.received_at?.slice(0, 10) ?? wanted;
+    const caption = `Ini foto pengiriman kakak tanggal ${formatHolidayDate(day)} 😊`;
     const conversationId = await saveMessage({
       customerId,
       role: "assistant",
@@ -3151,11 +3196,11 @@ async function handleToolUse(
       action: "resend_on_request",
       changes: { customer_id: customerId, delivery_date: day },
     });
+    // The date goes back to the model as well as onto the photo, so a reply
+    // that names a day cannot name a different one from the picture.
     return {
       ok: true,
-      message: day
-        ? `Foto pengiriman tanggal ${day} sudah dikirim ke customer.`
-        : "Foto pengiriman sudah dikirim ke customer.",
+      message: `Foto pengiriman tanggal ${day} sudah dikirim ke customer.`,
     };
   } else if (tool.name === "send_price_list") {
     // A corporate rate replaces the whole ladder, so the image is wrong for

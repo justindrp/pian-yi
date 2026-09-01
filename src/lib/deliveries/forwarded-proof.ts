@@ -23,6 +23,7 @@
 import { getSetting } from "@/lib/cache/settings";
 import { sendDeliveryPhotoToCustomer } from "@/lib/claude/photo-matcher";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
+import { pickDeliveryForPhoto } from "@/lib/deliveries/windows";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaDateString } from "@/lib/menu/week";
 import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
@@ -190,6 +191,17 @@ export async function proofForwarders(): Promise<string[]> {
 
 export async function isProofForwarder(phone: string): Promise<boolean> {
   return (await proofForwarders()).includes(phone);
+}
+
+/** The delivery row today's forwarded photo belongs to, if we can tell. */
+async function deliveryRowFor(customerId: string): Promise<string | null> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("daily_deliveries")
+    .select("id, meal_type")
+    .eq("customer_id", customerId)
+    .eq("delivery_date", jakartaDateString());
+  return pickDeliveryForPhoto(data ?? [], new Date())?.id ?? null;
 }
 
 /** Every customer with a delivery row today, across all kitchens, deduped. */
@@ -365,10 +377,14 @@ export async function handleForwardedProof(
 
   const sentBy = `forward:${message.from}`;
   await sendDeliveryPhotoToCustomer(proof.id, match.customerId, undefined, sentBy);
+  // The caption names a person, not a meal, so the row is resolved separately —
+  // the sheet ticks a delivery, and a customer eating both meals has two.
+  const matchedDeliveryId = await deliveryRowFor(match.customerId);
   await db
     .from("delivery_proofs")
     .update({
       matched_customer_id: match.customerId,
+      matched_delivery_id: matchedDeliveryId,
       match_confidence: 1,
       match_method: "forwarded_caption",
       status: "auto_sent",
