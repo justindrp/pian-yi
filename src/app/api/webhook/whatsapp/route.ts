@@ -2235,17 +2235,28 @@ export async function processSavedCustomerMessage(params: {
     );
   }
 
+  // The three claim guards below ask what the customer will *read*, not what
+  // the model wrote. sanitizeReply strips the stage directions and the meta
+  // brackets the model addresses to itself, and a claim inside one of those
+  // never reaches anybody, so recovering from it sends an image nobody was
+  // promised. Clairine Aurelia asked "Apa uda diantar kak" on 2026-09-01, was
+  // sent her delivery photo, and then got this week's menu image on top of it:
+  // her reply carried no visible claim at all — the whole match lived in a
+  // bracket the sanitizer had already deleted. The customer-visible text is the
+  // only thing that can be a lie.
+  const visibleReply = replyText ? sanitizeReply(replyText) : "";
+
   // The model claims to have sent the menu instead of calling the tool, and the
   // customer is left looking for an image that does not exist. Sending it twice
   // costs nothing; telling someone to check an image we never sent does.
   if (
-    replyText &&
+    visibleReply &&
     !toolUses.some((t) => t.name === "send_menu_image") &&
-    claimsMenuSent(replyText) &&
+    claimsMenuSent(visibleReply) &&
     // "berikut foto pengirimannya" reads as a menu claim too. The customer
     // asked for their delivery photo; answering with the week's menu is a
     // second wrong image, so the proof guard below owns that reply.
-    !claimsProofSent(replyText) &&
+    !claimsProofSent(visibleReply) &&
     !(await sentImageSinceLastInbound(customerId))
   ) {
     console.log(
@@ -2286,9 +2297,9 @@ export async function processSavedCustomerMessage(params: {
   // Sending it here is safe: the customer just messaged, so the window is open
   // by definition, and a second copy of a photo they asked for is not a cost.
   if (
-    replyText &&
+    visibleReply &&
     !toolUses.some((t) => t.name === "send_delivery_proof") &&
-    claimsProofSent(replyText)
+    claimsProofSent(visibleReply)
   ) {
     console.log(
       `[webhook] delivery proof claimed but never sent — sending it for ${customerId}`,
@@ -2324,9 +2335,9 @@ export async function processSavedCustomerMessage(params: {
   // from an order that already exists, no money moves, and a second copy of an
   // invoice is not a problem the way a second order would be.
   if (
-    replyText &&
+    visibleReply &&
     !toolUses.some((t) => t.name === "send_invoice") &&
-    claimsInvoiceSent(replyText)
+    claimsInvoiceSent(visibleReply)
   ) {
     console.log(
       `[webhook] invoice claimed but never sent — sending it for ${customerId}`,

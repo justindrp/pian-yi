@@ -1,4 +1,5 @@
 import { claimsMenuSent } from "@/app/api/webhook/whatsapp/route";
+import { sanitizeReply } from "@/lib/claude/sanitize-reply";
 
 // The route module pulls in the whole webhook dependency graph. Nothing here
 // calls into it — `claimsMenuSent` is pure — so the mocks only need to exist.
@@ -67,5 +68,29 @@ describe("claimsMenuSent", () => {
     expect(claimsMenuSent(reply)).toBe(true);
     expect(claimsMenuSent(reply)).toBe(true);
     expect(claimsMenuSent(reply)).toBe(true);
+  });
+
+  // The webhook runs this guard on sanitizeReply(replyText), not on the raw
+  // model output, so these are the pairs that decide whether an image goes out.
+  describe("what the customer actually reads", () => {
+    it("does not fire on a claim the sanitizer deleted", () => {
+      // Clairine Aurelia, 2026-09-01: she asked whether today's delivery had
+      // arrived, got her delivery photo, and then this week's menu on top of
+      // it. The visible reply claims nothing about a menu — the match lived
+      // entirely in a bracket the customer never saw.
+      const raw =
+        "Maaf kak, aku salah bilang kalau kiriman hari ini udah sampai.\n\n[Internal: gambar menu terkirim]\n\nKalau kakak mau aku carikan bukti fotonya, aku bantu cek ya.";
+      expect(claimsMenuSent(raw)).toBe(true);
+      expect(claimsMenuSent(sanitizeReply(raw))).toBe(false);
+    });
+
+    it("still fires when the visible text carries the claim too", () => {
+      // The ****7277 reply: the stage direction goes, the sentence stays, and
+      // the customer is still looking for an image. Recovery must survive the
+      // sanitizer.
+      const raw =
+        "Tentu kak. Berikut menu gambar untuk minggu ini saya kirimkan ya.\n\n[gambar menu terkirim]";
+      expect(claimsMenuSent(sanitizeReply(raw))).toBe(true);
+    });
   });
 });
