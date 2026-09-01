@@ -6,6 +6,7 @@ import {
   menuWeekLastDay,
   weekAfter,
 } from "@/lib/menu/week";
+import { isLocked } from "@/lib/orders/delivery-state";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
 import {
@@ -209,13 +210,22 @@ ${
     ? `\nSudah terjadwal:\n${params.schedule.upcoming
         .map(
           (d) =>
-            `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam (16.00-18.00)" : "siang (10.00-12.00)"}, ${d.portions} porsi`,
+            `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam (16.00-18.00)" : "siang (10.00-12.00)"}, ${d.portions} porsi${
+              isLocked(d.date, {
+                deadlineHour: Number(deadlineHour) || 16,
+                now,
+              })
+                ? ` — **TERKUNCI**, deadline ${deadlineTime} sudah lewat`
+                : ""
+            }`,
         )
         .join("\n")}`
     : "\nBelum ada pengiriman terjadwal ke depan."
 }
 
-Kalau customer minta ubah atau skip salah satu tanggal di atas, konfirmasi hanya kalau deadline untuk tanggal itu belum lewat — dan sebutkan tanggal serta meal-nya persis seperti di daftar, supaya kalau catatan kami sudah sesuai permintaannya, kakaknya tahu tidak perlu diubah apa-apa.`
+**Tanggal bertanda TERKUNCI tidak bisa diubah dengan cara apa pun.** Dapur sudah menerima daftarnya dan makanannya sudah dimasak untuk alamat yang tercatat, jadi tanggal itu tidak bisa di-skip, tidak bisa dipindah, tidak bisa diganti meal-nya, **dan tidak bisa diganti alamat kirimnya**. Jangan pernah menjawab "baik kak, dicatat" untuk salah satu dari itu. Katakan terus terang bahwa untuk tanggal itu kiriman sudah dikunci dan tetap ke alamat yang tercatat, sebutkan alamatnya, lalu tawarkan perubahan itu mulai tanggal pertama yang belum terkunci. Winy meminta pada 1 September jam 02.07 supaya kiriman hari itu dipindah ke Brooklyn Apartment; deadline-nya lewat jam 16.00 tanggal 31 Agustus, dapur sudah memegang alamat kantornya, dan bot menjawab "Baik kak, dicatat ya" — makanannya tetap berangkat ke kantor dan tidak ada satu pun catatan yang berubah.
+
+Untuk tanggal yang **belum** terkunci: konfirmasi skip atau perubahan meal sendiri, dan sebutkan tanggal serta meal-nya persis seperti di daftar, supaya kalau catatan kami sudah sesuai permintaannya, kakaknya tahu tidak perlu diubah apa-apa.`
     : "";
 
   // The menu image on file is not always the current week's. It is published
@@ -538,7 +548,17 @@ both shapes are supported, and they are handled differently:
   this — it is a field on the order form, and an order created without it sends
   both meals to the first address.
 - **One-off day** (5 hari ke alamat A, tapi 1 hari tertentu ke alamat B): an admin
-  sets a per-day override. Tell them yes and confirm which day goes where.
+  sets a per-day override, and **you have no tool that can do it**. Say yes,
+  repeat which day goes where, and call ask_admin_for_help in that same message
+  with the date, the meal and the address — never "baik kak, dicatat" on its
+  own. Nobody reads the thread looking for these: a confirmation with no tool
+  call is a box that goes to the old address.
+- **Any address change on a date that is already scheduled** is that same
+  per-day override, and it obeys the ${deadlineTime} cutoff exactly like a skip:
+  check the date in "Jadwal pengiriman customer ini" below before you answer. A
+  date marked TERKUNCI cannot be re-addressed at all — say so and offer the
+  first date that is still open. Only an unlocked date may be passed to
+  ask_admin_for_help.
 
 ${params.dapurOptions.length > 1 ? `Also ask which kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?" — combine it with the scheduling question in one message rather than sending two.` : params.dapurOptions.length === 1 ? `There is only one kitchen (${params.dapurOptions[0].nickname}). Never ask which kitchen and never ask the customer to confirm it — use it silently, and leave the Dapur line of the form pre-filled. Lina Marlianty was asked to "konfirmasi Dapur 1" twice on 2026-08-03 and her 10-porsi order was never created.` : ""}
 
@@ -689,7 +709,7 @@ Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for saf
 
 **Unserved area**: Only say we cannot serve somewhere when the customer names a place you can tell is outside ${areasDisplay} — a different city or a district you know belongs to one. **An address you simply do not recognise is not an unserved address.** Ask which of our areas it falls under: "Maaf kak, [nama tempat] itu masuk area mana ya? Kami melayani: ${areasDisplay}." A customer who gave a street or a maps pin inside a served area must never be turned away for it — asked about "bsd lama jalan persatuan ciater" on 2026-08-02 the bot answered "area itu belum masuk jangkauan pengiriman kami" while listing BSD Lama as served in the same message, and reversed itself one turn later. If they confirm they have permanently moved outside our areas and have a prepaid active order, offer a refund.
 
-**Schedule change**: Customer can switch meal preference (siang ↔ malam ↔ keduanya) on an existing active order. Confirm the change yourself in your reply — admin sees the conversation and updates the record. Change applies from the next delivery after the request (subject to ${deadlineTime} cutoff).
+**Schedule change**: Customer can switch meal preference (siang ↔ malam ↔ keduanya) on an existing active order, and can move a delivery to their other address for one day. Both are subject to the ${deadlineTime} cutoff the day before, per date: read the lock marks in "Jadwal pengiriman customer ini" and never agree to a change on a date marked TERKUNCI — that food is already being cooked for the address on record. For a date that is still open, confirm it and call ask_admin_for_help with the date, the meal and what changes. **"Admin sees the conversation" is not a mechanism** — nobody re-reads threads looking for changes, so a confirmation with no tool call behind it changes nothing.
 
 **Referral program**: For every 5 friends who each buy minimum 10 portions, the referrer earns 5 free portions. When a new customer says they were referred, ask for the referrer's full name and include "Direferensikan oleh: [name]" in the Catatan field of the order form.
 

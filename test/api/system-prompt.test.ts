@@ -1,5 +1,7 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
+import { jakartaDateString } from "@/lib/menu/week";
+import { addDays } from "@/lib/time/jakarta";
 
 jest.mock("@/lib/cache/settings", () => ({
   getActiveInstructions: jest.fn(),
@@ -513,6 +515,80 @@ describe("customer chatbot system prompt", () => {
       expect(prompt).toContain(
         "Images go out only through send_menu_image, send_price_list and send_delivery_proof",
       );
+    });
+  });
+
+  // The bot was handed the change rule and never the reading it needed to apply
+  // it. "Sudah terjadwal" listed every upcoming date flat, so on 2026-09-01 at
+  // 02.07 Winy asked for that day's lunch to go to Brooklyn Apartment instead
+  // of her office and was told "Baik kak, dicatat ya" — nine hours after the
+  // kitchen had taken the sheet with her office address on it, and with no tool
+  // behind the confirmation. Same shape as the cutoff bug in jakarta.ts: the
+  // lock is computed here, not left to the model.
+  describe("locked dates on the customer schedule", () => {
+    const withSchedule = (upcoming: { date: string; mealType: string; portions: number }[]) =>
+      buildSystemPrompt({
+        casual: false,
+        customerState: "ordering" as const,
+        customerName: "Winy",
+        customerNotes: null,
+        detectedMapsLink: null,
+        menuShown: true,
+        dapurOptions: [],
+        dapurMenuTexts: [],
+        menuWeek: { relation: "unknown" as const, weekStart: null },
+        servedAreas: ["Alam Sutera"],
+        neighborhoods: {},
+        coverageNotes: [],
+        activeOrder: {
+          id: "o1",
+          packageSize: 6,
+          portionsPerDelivery: 1,
+          pricePerPortion: 29000,
+        },
+        schedule: { unbooked: 0, remainingToday: 4, upcoming },
+      } as never);
+
+    test("marks today locked and leaves a later date open", async () => {
+      const today = jakartaDateString();
+      const later = addDays(today, 4);
+      const prompt = await withSchedule([
+        { date: today, mealType: "lunch", portions: 1 },
+        { date: later, mealType: "lunch", portions: 1 },
+      ]);
+
+      const lines = prompt
+        .split("\n")
+        .filter((l) => l.startsWith("- ") && l.includes("(10.00-12.00), 1 porsi"));
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain("TERKUNCI");
+      expect(lines[1]).not.toContain("TERKUNCI");
+    });
+
+    test("says a locked date cannot have its address changed either", async () => {
+      const prompt = await withSchedule([
+        { date: jakartaDateString(), mealType: "lunch", portions: 1 },
+      ]);
+
+      expect(prompt).toContain("tidak bisa diubah dengan cara apa pun");
+      expect(prompt).toContain("tidak bisa diganti alamat kirimnya");
+      expect(prompt).toContain('Jangan pernah menjawab "baik kak, dicatat"');
+    });
+
+    // An admin is the only thing that can move one day's address, and nothing
+    // makes an admin look. "Admin sees the conversation and updates the record"
+    // was the standing instruction for every schedule change.
+    test("routes an unlocked change through ask_admin_for_help", async () => {
+      const prompt = await withSchedule([]);
+
+      expect(prompt).toContain(
+        "call ask_admin_for_help with the date, the meal and what changes",
+      );
+      expect(prompt).toContain('"Admin sees the conversation" is not a mechanism');
+      expect(prompt).not.toContain(
+        "Confirm the change yourself in your reply — admin sees the conversation",
+      );
+      expect(prompt).toContain("you have no tool that can do it");
     });
   });
 });

@@ -144,7 +144,7 @@ The bot has been telling customers yes to "makan siang ke kampus, makan malam ke
 
 `extract_order` now takes `address_2`, `area_2` (same served-area enum as `area`), `sub_area_2`, `maps_link_2` and `address_2_meal` (`lunch` | `dinner`). The order stores the two slots, every delivery row stamps its slot from its own `meal_type`, and the second address is written to the customer record under the same rule as the primary one — only when this order actually carried it, so a renewal extracted from chat alone cannot blank it. A slot 2 is only assigned when there is an address to put in it, from this order or already on the record; `address_2_meal` alone sets nothing.
 
-**This is the standing per-meal split only.** A one-off day at a different address is still a per-day flip on the daily sheet, and the prompt now names the two shapes separately so the bot stops routing a standing split through "nanti admin set".
+**This is the standing per-meal split only.** A one-off day at a different address is still a per-day flip on the daily sheet, and the prompt now names the two shapes separately so the bot stops routing a standing split through "nanti admin set". The one-off has no tool behind it, so the prompt says so and requires `ask_admin_for_help` in the same turn — see "A locked delivery cannot be re-addressed" below.
 
 ## The bot is told the time, not just the deadline
 
@@ -174,6 +174,20 @@ Nothing in the prompt ever said what a customer actually had booked, so the mode
 `loadCustomerSchedule()` (`src/lib/orders/customer-schedule.ts`) now supplies a **Jadwal pengiriman customer ini** block: every booked delivery from today forward with its date and meal, plus both quota numbers, and an instruction to answer schedule questions from that list and not from the chat history. It also tells the model to name the exact date and meal back when confirming a change, so a customer whose record already matches their request learns nothing needs changing.
 
 The two quota numbers are stated separately and deliberately — `remainingToday` (paid for, not yet delivered) and `unbooked` (not yet on the calendar). Both are counted from the delivery rows; `orders.portions_remaining` cached the second one and was dropped in migration 075. Quoting `unbooked` as the balance tells a customer with twelve meals coming that they have none; see the "Sisa kuota" rule in `OPERATIONS.md`.
+
+## A locked delivery cannot be re-addressed, and the bot is told which ones are locked
+
+The schedule block listed every booked delivery from today forward as one flat list, and closed with "konfirmasi hanya kalau deadline untuk tanggal itu belum lewat" — a rule with no reading to apply it to. Working out which of those dates were past their own H-1 16:00 was left to the model, which is the same arithmetic it had already been caught doing badly for the cutoff line (see "The bot is told the time, not just the deadline").
+
+On 2026-09-01 at 02.07 WIB Winy asked for that day's lunch to go to Brooklyn Apartment instead of her office — "karna aku gk ke kantor" — and was answered **"Baik kak, dicatat ya — hari ini kiriman dikirim ke Brooklyn Apartment unit B19G, titip satpam."** The deadline for 1 September had passed at 16.00 on 31 Agustus, Dapur 1 already held the sheet with `address_slot: 1`, and no tool ran: the row still reads slot 1 and the food went to Synergy Building. Her own learned context, printed in the same prompt, said weekday deliveries always go to Synergy after an earlier mis-delivery to Brooklyn.
+
+Three defects, all in the prompt, all now fixed:
+
+- **Each scheduled date carries its lock state**, computed by `isLocked()` (`src/lib/orders/delivery-state.ts`) rather than derived by the model — the same function the dashboard and the skip path ask, so the prompt and the sheet cannot disagree. A locked row prints **TERKUNCI** with the deadline that has passed.
+- **A locked date is immutable in every direction.** The prompt used to name only skips. It now says a TERKUNCI date cannot be skipped, moved, have its meal changed, **or have its address changed** — the kitchen is cooking it for the address on record — and that the answer is to say so plainly, name that address, and offer the change from the first date still open.
+- **"Admin sees the conversation and updates the record" is gone.** That was the standing instruction for every schedule change, and for the one-off address override, which no bot tool can perform. Nobody re-reads threads looking for changes. An unlocked change is confirmed *and* passed to `ask_admin_for_help` with the date, the meal and what changes.
+
+Tests in `test/api/system-prompt.test.ts`.
 
 ## An event order is gathered, not priced — and never billed early
 
