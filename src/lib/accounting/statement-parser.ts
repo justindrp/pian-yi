@@ -93,9 +93,12 @@ const RULES: { re: RegExp; account: AccountCode }[] = [
   { re: /ANDREAS KURNI|LILI ANGGRAINI/i, account: "2001" },
   { re: /Dnid Sal\w*\s+Put|Dnid Donx Kur/i, account: "1201" },
   // Delivery bought from outside. The two masked Superbank payees are
-  // Lalamove drivers hired on 27 and 28 Juli 2026, the two days our own
-  // courier did not ride; Daevin Thomas is a courier who worked a five-day
-  // trial. Superbank masks external payees, so these read as strangers.
+  // Lalamove drivers hired on 27 and 28 Juli 2026, one ride each — the two
+  // drops our own courier did not make. He is paid by the drop, not the day
+  // (Rp 3.000.000 a month over 22 days at 2 deliveries a day), so those two
+  // rides cost his wage 2 x Rp 68.181,82, not two days' pay. Daevin Thomas is
+  // a courier who worked a five-day trial. Superbank masks external payees,
+  // so all three read as strangers.
   {
     re: /LALAMOVE|GOJEK|GRAB ?BIKE|Dnid Sxx Asrx|Dnid Als\w*\s+Ros|DAEVIN THOMAS/i,
     account: "5002",

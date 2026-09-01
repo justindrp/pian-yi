@@ -28,7 +28,7 @@
 -- 5002 sits beside 5001 Subcontractor Cost rather than in Operating
 -- Expenses: getting the food to the customer is part of delivering the
 -- service, not overhead. It carries the courier's wage, a trial courier's
--- wage, and the Lalamove rides bought on days the courier did not ride.
+-- wage, and the Lalamove rides bought to cover drops the courier missed.
 --
 -- 2002 sits between 2001 Accounts Payable and 2100 Unearned Revenue in the
 -- liability block. It swings both directions; the natural balance is credit
