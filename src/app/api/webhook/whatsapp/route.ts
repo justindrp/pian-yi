@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
+import { findMapsLink } from "@/lib/maps/link";
 import {
   getNeighborhoods,
   getSetting,
@@ -1776,9 +1777,7 @@ export async function processSavedCustomerMessage(params: {
   const casual = Math.random() < casualProb;
 
   // Detect Maps link in current message or history so we can inject it explicitly
-  const mapsLinkRegex =
-    /https?:\/\/(?:maps\.app\.goo\.gl|maps\.google\.com\/maps|goo\.gl\/maps)\S*/;
-  let detectedMapsLink: string | null = text.match(mapsLinkRegex)?.[0] ?? null;
+  let detectedMapsLink: string | null = findMapsLink(text);
   if (!detectedMapsLink) {
     for (const msg of history) {
       if (msg.role !== "user") continue;
@@ -1787,13 +1786,46 @@ export async function processSavedCustomerMessage(params: {
             .map((b) => (typeof b === "object" && "text" in b ? b.text : ""))
             .join(" ")
         : String(msg.content);
-      const found = msgText.match(mapsLinkRegex)?.[0];
+      const found = findMapsLink(msgText);
       if (found) {
         detectedMapsLink = found;
         break;
       }
     }
   }
+
+  // A pin in the chat is only worth having if it reaches the record the kitchen
+  // sheet reads. It used to sit in the thread and nowhere else: `maps_link` on
+  // `extract_order` is filled only when the model passes one, and 266 of 416
+  // customers had no link at all on 2026-09-01 — Clairine and Sharleen among
+  // them, both of whom typed their address in full and were never asked for a
+  // pin. Written once, when the column is empty: an admin who has corrected a
+  // link by hand outranks anything found in a chat.
+  const { data: storedLinkRow } = await db
+    .from("customers")
+    .select("google_maps_link")
+    .eq("id", customerId)
+    .maybeSingle();
+  let storedMapsLink = storedLinkRow?.google_maps_link ?? null;
+  if (!draft && detectedMapsLink && !storedMapsLink) {
+    const { error: linkErr } = await db
+      .from("customers")
+      .update({ google_maps_link: detectedMapsLink })
+      .eq("id", customerId);
+    if (!linkErr) {
+      storedMapsLink = detectedMapsLink;
+      await logEdit({
+        db,
+        actor: systemActor("webhook-maps-link"),
+        entityType: "customer",
+        entityId: customerId,
+        action: "update",
+        changes: { google_maps_link: { from: null, to: detectedMapsLink } },
+      });
+    }
+  }
+  // What the prompt is told: the pin on file, else one seen in this thread.
+  const mapsLinkOnFile = storedMapsLink ?? detectedMapsLink;
 
   // Load active dapurs and active order quota in parallel
   const [{ data: activeSubs }, { data: activeOrderRow }] = await Promise.all([
@@ -1888,7 +1920,7 @@ export async function processSavedCustomerMessage(params: {
     customerState: stateRow?.state ?? "new",
     customerName,
     customerNotes,
-    detectedMapsLink,
+    detectedMapsLink: mapsLinkOnFile,
     justWelcomed,
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,
