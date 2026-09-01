@@ -177,6 +177,19 @@ Import with `pnpm tsx --env-file=.env.local scripts/import-bank-statements.ts <f
 
 ---
 
+
+**A USD charge draws on 1006, not on 1002.** A BCA PDF holds an IDR section and a
+separate "Poket Valas" section, and they are stored as two `bank_statements` rows
+— 1002/IDR and 1006/USD — because they close on their own control totals. The
+top-up appears in both, and that is one journal, not two: the IDR debit facing
+1006 and the USD credit facing 1002 are the two sides of the same transfer. The
+vendor charges (Anthropic, DeepSeek, Railway, OpenAI) appear **only** on the USD
+statement, so nothing is counted twice. `amount` on those rows is dollars, which
+is why anything reading `bank_transactions` must read `bank_statements.currency`
+with it — the dashboard printed USD 89,73 as "Rp 90" until it did. Posting them
+to the ledger needs the rate they were bought at (each top-up line states both
+legs, e.g. Rp 1.422.080 for USD 80), never the raw figure.
+
 ## broadcast_recipients
 
 One row per customer per broadcast — tracks delivery status for each recipient.

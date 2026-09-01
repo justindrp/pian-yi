@@ -41,6 +41,18 @@ function formatRp(n: number) {
   return `Rp ${n.toLocaleString("id-ID")}`;
 }
 
+// A statement is not always in rupiah: the BCA PDF carries a USD "Poket Valas"
+// section, stored as its own statement on account 1006. Rendering USD 89,73
+// through formatRp printed "Rp 90" — wrong unit and the sen rounded away, on
+// the one account where the sen are the whole point.
+function formatMoney(n: number, currency: string) {
+  if (currency === "IDR") return formatRp(Math.round(n));
+  return `${currency} ${n.toLocaleString("id-ID", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 type Tab =
   | "jurnal"
   | "buku-besar"
@@ -1631,6 +1643,53 @@ function monthLabel(start: string, end: string) {
   return same ? m : `${start} → ${end}`;
 }
 
+// The statement's own account, on whichever side the direction puts it. Not a
+// dropdown: a bank line cannot face away from the bank.
+function BankSide({ code, name }: { code: string | null; name: string }) {
+  return (
+    <span className="block px-2 py-1 text-gray-500">
+      {code ? `${code} — ${name}` : "—"}
+    </span>
+  );
+}
+
+function ContraSelect({
+  line,
+  accounts,
+  saving,
+  onChange,
+}: {
+  line: BankTransaction;
+  accounts: Account[];
+  saving: boolean;
+  onChange: (code: string) => void;
+}) {
+  return (
+    <>
+      <select
+        value={line.contra_account_code ?? ""}
+        disabled={saving}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full border rounded-lg px-2 py-1 text-xs ${
+          line.contra_account_code
+            ? "border-gray-200 text-gray-900"
+            : "border-amber-300 text-amber-700"
+        }`}
+      >
+        <option value="">Belum ditentukan</option>
+        {accounts.map((a) => (
+          <option key={a.code} value={a.code}>
+            {a.code} — {a.name}
+          </option>
+        ))}
+      </select>
+      {line.matched_by && (
+        <span className="block text-gray-300 mt-1">diubah manual</span>
+      )}
+    </>
+  );
+}
+
 function BankStatementsTab() {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -1735,6 +1794,11 @@ function BankStatementsTab() {
     );
 
   const lines = detail.data?.lines ?? [];
+  const currency = detail.data?.statement.currency ?? "IDR";
+  // The bank side of every line on this statement. A credit debits it, a debit
+  // credits it; the dropdown names whichever leg is left. Showing only the
+  // contra account made the reader do that flip in their head on every row.
+  const bankCode = detail.data?.statement.account_code ?? null;
   const needle = filter.trim().toLowerCase();
   const shown = lines.filter((l) => {
     if (onlyOpen && l.contra_account_code) return false;
@@ -1796,8 +1860,8 @@ function BankStatementsTab() {
                 {monthLabel(s.period_start, s.period_end)} · {s.account_number}
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                Masuk {formatRp(Math.round(Number(s.total_credit)))} · Keluar{" "}
-                {formatRp(Math.round(Number(s.total_debit)))}
+                Masuk {formatMoney(Number(s.total_credit), s.currency)} · Keluar{" "}
+                {formatMoney(Number(s.total_debit), s.currency)}
               </div>
               <div className="text-xs mt-1">
                 <span className="text-gray-400">{s.line_count} transaksi</span>
@@ -1836,6 +1900,11 @@ function BankStatementsTab() {
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
             <div className="px-3 py-2 border-b border-gray-100 text-xs text-gray-500">
               Ringkasan per akun lawan
+              {bankCode && (
+                <span className="text-gray-400 font-normal ml-2">
+                  sisi bank selalu {bankCode} — {accountName(bankCode)}
+                </span>
+              )}
             </div>
             <table className="w-full text-xs">
               <thead>
@@ -1866,13 +1935,13 @@ function BankStatementsTab() {
                       {g.inCount || ""}
                     </td>
                     <td className="p-3 text-right text-gray-700">
-                      {g.inSum ? formatRp(Math.round(g.inSum)) : ""}
+                      {g.inSum ? formatMoney(g.inSum, currency) : ""}
                     </td>
                     <td className="p-3 text-right text-gray-400">
                       {g.outCount || ""}
                     </td>
                     <td className="p-3 text-right text-gray-700">
-                      {g.outSum ? formatRp(Math.round(g.outSum)) : ""}
+                      {g.outSum ? formatMoney(g.outSum, currency) : ""}
                     </td>
                   </tr>
                 ))}
@@ -1913,7 +1982,8 @@ function BankStatementsTab() {
                   <th className="text-left p-3 font-normal">Keterangan</th>
                   <th className="text-right p-3 font-normal w-28">Masuk</th>
                   <th className="text-right p-3 font-normal w-28">Keluar</th>
-                  <th className="text-left p-3 font-normal w-64">Akun lawan</th>
+                  <th className="text-left p-3 font-normal w-64">Debit</th>
+                  <th className="text-left p-3 font-normal w-64">Kredit</th>
                 </tr>
               </thead>
               <tbody>
@@ -1935,36 +2005,36 @@ function BankStatementsTab() {
                     </td>
                     <td className="p-3 text-right align-top text-gray-700">
                       {l.direction === "CR"
-                        ? formatRp(Math.round(Number(l.amount)))
+                        ? formatMoney(Number(l.amount), currency)
                         : ""}
                     </td>
                     <td className="p-3 text-right align-top text-gray-700">
                       {l.direction === "DB"
-                        ? formatRp(Math.round(Number(l.amount)))
+                        ? formatMoney(Number(l.amount), currency)
                         : ""}
                     </td>
                     <td className="p-3 align-top">
-                      <select
-                        value={l.contra_account_code ?? ""}
-                        disabled={saving === l.id}
-                        onChange={(e) => setAccount(l.id, e.target.value)}
-                        className={`w-full border rounded-lg px-2 py-1 text-xs ${
-                          l.contra_account_code
-                            ? "border-gray-200 text-gray-900"
-                            : "border-amber-300 text-amber-700"
-                        }`}
-                      >
-                        <option value="">Belum ditentukan</option>
-                        {accounts.map((a) => (
-                          <option key={a.code} value={a.code}>
-                            {a.code} — {a.name}
-                          </option>
-                        ))}
-                      </select>
-                      {l.matched_by && (
-                        <span className="block text-gray-300 mt-1">
-                          diubah manual
-                        </span>
+                      {l.direction === "CR" ? (
+                        <BankSide code={bankCode} name={accountName(bankCode)} />
+                      ) : (
+                        <ContraSelect
+                          line={l}
+                          accounts={accounts}
+                          saving={saving === l.id}
+                          onChange={(code) => setAccount(l.id, code)}
+                        />
+                      )}
+                    </td>
+                    <td className="p-3 align-top">
+                      {l.direction === "CR" ? (
+                        <ContraSelect
+                          line={l}
+                          accounts={accounts}
+                          saving={saving === l.id}
+                          onChange={(code) => setAccount(l.id, code)}
+                        />
+                      ) : (
+                        <BankSide code={bankCode} name={accountName(bankCode)} />
                       )}
                     </td>
                   </tr>
