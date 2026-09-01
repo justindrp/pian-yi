@@ -30,6 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  type DiffEntry,
+  diffSheets,
+  previousDeliveryDay,
+} from "@/lib/deliveries/diff";
 
 interface DeliveryRow {
   id?: string;
@@ -260,6 +265,160 @@ function buildRouteMealSummary(
     text += `${r.portions} porsi\n\n`;
   });
   return text.trim();
+}
+
+const MEAL_LABEL: Record<string, string> = {
+  lunch: "siang",
+  dinner: "malam",
+};
+
+function longDate(ymd: string) {
+  return new Date(`${ymd}T00:00:00`).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
+function DiffLine({
+  entry,
+  kind,
+}: {
+  entry: DiffEntry;
+  kind: "add" | "remove" | "change";
+}) {
+  const color =
+    kind === "add"
+      ? "text-emerald-700"
+      : kind === "remove"
+        ? "text-red-700"
+        : "text-amber-700";
+  const amount =
+    kind === "add"
+      ? `+${entry.after}`
+      : kind === "remove"
+        ? `-${entry.before}`
+        : `${entry.before} → ${entry.after}`;
+  return (
+    <div className="flex justify-between gap-3 py-0.5">
+      <span className="text-gray-700 truncate">
+        {entry.name}{" "}
+        <span className="text-gray-400">
+          {MEAL_LABEL[entry.mealType] ?? entry.mealType}
+        </span>
+      </span>
+      <span className={`shrink-0 tabular-nums ${color}`}>{amount} porsi</span>
+    </div>
+  );
+}
+
+/**
+ * What changed between this date's sheet and the last day we cooked.
+ *
+ * The question it answers is the one asked every afternoon before the sheet
+ * goes out: who stopped, who is new, whose portions moved. Compared against
+ * the previous *delivery* day rather than the calendar day before, or a Senin
+ * reads as the whole book cancelling over Minggu.
+ *
+ * Diffed against the rows on screen rather than the saved ones, so unticking a
+ * row shows up here before the save lands.
+ */
+function DiffPanel({
+  date,
+  rows,
+  loading,
+}: {
+  date: string;
+  rows: DeliveryRow[];
+  loading: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const prevDate = previousDeliveryDay(date);
+
+  const { data: prevRows, isLoading: prevLoading } = useQuery({
+    queryKey: ["daily-sheet", prevDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/deliveries/daily-sheet?date=${prevDate}`);
+      const json = (await res.json()) as { ok: boolean; data: DeliveryRow[] };
+      return json.data;
+    },
+  });
+
+  if (loading || prevLoading || !prevRows) return null;
+
+  const diff = diffSheets(prevRows, rows);
+  const moved = diff.added.length + diff.removed.length + diff.changed.length;
+
+  return (
+    <div className="mb-4 bg-white border border-gray-100 rounded-lg text-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 rounded-lg"
+      >
+        <span className="text-gray-500 text-xs shrink-0">
+          Dibanding {longDate(prevDate)}
+        </span>
+        <span className="text-gray-900 truncate">
+          {moved === 0 ? (
+            "tidak ada perubahan"
+          ) : (
+            <>
+              {diff.added.length > 0 && (
+                <span className="text-emerald-700">
+                  {diff.added.length} baru
+                </span>
+              )}
+              {diff.added.length > 0 &&
+                (diff.removed.length > 0 || diff.changed.length > 0) &&
+                ", "}
+              {diff.removed.length > 0 && (
+                <span className="text-red-700">
+                  {diff.removed.length} berhenti
+                </span>
+              )}
+              {diff.removed.length > 0 && diff.changed.length > 0 && ", "}
+              {diff.changed.length > 0 && (
+                <span className="text-amber-700">
+                  {diff.changed.length} berubah
+                </span>
+              )}
+            </>
+          )}
+        </span>
+        <span className="ml-auto shrink-0 text-gray-500 tabular-nums">
+          {diff.beforePortions} → {diff.afterPortions} porsi
+        </span>
+        <span className="shrink-0 text-gray-400">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && moved > 0 && (
+        <div className="px-4 pb-3 border-t border-gray-100 pt-2 space-y-0.5">
+          {diff.added.map((e) => (
+            <DiffLine
+              key={`a-${e.customerId}-${e.mealType}`}
+              entry={e}
+              kind="add"
+            />
+          ))}
+          {diff.changed.map((e) => (
+            <DiffLine
+              key={`c-${e.customerId}-${e.mealType}`}
+              entry={e}
+              kind="change"
+            />
+          ))}
+          {diff.removed.map((e) => (
+            <DiffLine
+              key={`r-${e.customerId}-${e.mealType}`}
+              entry={e}
+              kind="remove"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function UploadButton({
@@ -1002,6 +1161,12 @@ export default function DeliveriesClient() {
               </Button>
             </div>
           </div>
+
+          <DiffPanel
+            date={date}
+            rows={rows.filter((r) => !r.skip)}
+            loading={sheetLoading}
+          />
 
           {sheetLoading ? (
             <div className="text-gray-400 text-sm">Loading...</div>
