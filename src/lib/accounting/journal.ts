@@ -9,7 +9,14 @@ interface JournalLine {
 interface CreateJournalOptions {
   description: string;
   date: string; // YYYY-MM-DD
-  sourceType: "order_payment" | "delivery" | "delivery_cogs" | "delivery_ongkir";
+  sourceType:
+    | "order_payment"
+    | "delivery"
+    | "delivery_cogs"
+    | "delivery_ongkir"
+    // A refund reverses the payment journal. Keyed on the order, so an order
+    // can only be refunded into the books once.
+    | "refund";
   sourceId: string;
   notes?: string;
   lines: JournalLine[];
