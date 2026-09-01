@@ -532,6 +532,30 @@ describe("PATCH /api/orders", () => {
     );
   });
 
+  // The money leaving is not what ends the order — the status is. Pane's
+  // Rp 280.000 went out on 2026-09-01 against an order the dashboard could only
+  // leave `active`, still holding the 10 porsi she had been refunded for.
+  test("T6b — update_status to refunded stamps cancelled_at", async () => {
+    const db = makeDbMock({ orders: { data: null, error: null } });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await PATCH(
+      patchRequest({
+        id: "order-1",
+        action: "update_status",
+        status: "refunded",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(db.chains.orders.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "refunded",
+        cancelled_at: expect.any(String),
+      }),
+    );
+  });
+
   test("T7 — update_status with unsafe value (active) returns 400", async () => {
     const db = makeDbMock();
     (createAdminClient as jest.Mock).mockReturnValue(db);

@@ -549,7 +549,16 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   }
 
   if (body.action === "update_status") {
-    const SAFE_STATUSES = ["paused", "completed", "cancelled_by_admin"];
+    // `refunded` is here because the money moving is not what ends an order —
+    // the status is. Pane's Rp 280.000 went out on 2026-09-01 against an order
+    // the dashboard could only leave `active`, holding 10 porsi she no longer
+    // owned, and it took a script to close.
+    const SAFE_STATUSES = [
+      "paused",
+      "completed",
+      "cancelled_by_admin",
+      "refunded",
+    ];
     if (!body.status || !SAFE_STATUSES.includes(body.status))
       return NextResponse.json(
         { ok: false, error: "Invalid status" },
@@ -561,7 +570,8 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       updated_at: now,
     };
     if (body.status === "completed") update.completed_at = now;
-    if (body.status === "cancelled_by_admin") update.cancelled_at = now;
+    if (body.status === "cancelled_by_admin" || body.status === "refunded")
+      update.cancelled_at = now;
     const { error } = await db.from("orders").update(update).eq("id", body.id);
     if (error)
       return NextResponse.json(

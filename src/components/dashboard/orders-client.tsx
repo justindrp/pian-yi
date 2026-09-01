@@ -835,6 +835,7 @@ export default function OrdersClient() {
                     <option value="cancelled_by_admin">
                       Cancelled (Admin)
                     </option>
+                    <option value="refunded">Refunded</option>
                   </select>
                 </div>
               </div>
