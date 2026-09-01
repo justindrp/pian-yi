@@ -140,6 +140,35 @@ function stripStageDirections(text: string): string {
 }
 
 /**
+ * Drops a bracketed aside the model addressed to us instead of the customer.
+ *
+ * On 2026-09-01 Clairine asked whether her food had arrived and the reply
+ * opened with a sentence to her, then shipped this on its own line:
+ * "[Warning: bagian ini aku tulis ulang tanpa klaim data pelanggan, karena
+ * memang belum aku lihat catatannya — kalau mau aku diverifikasi dulu, aku
+ * tanya langsung ya]". It is the model narrating its compliance with the
+ * validator's corrective instruction, in Indonesian, so neither `looksEnglish`
+ * nor `REASONING_OPENERS` sees it and it is not a stage direction about an
+ * image.
+ *
+ * Keyed on the label rather than on the brackets, because the webhook writes
+ * bracketed labels of its own into the history — `[Bukti pembayaran dikirim]`
+ * — and those are real descriptions of what happened. Only a bracket that
+ * opens by naming itself as commentary is ours.
+ */
+const META_BRACKET =
+  /\[\s*(warning|caution|peringatan|note|disclaimer|internal|sistem|system)\b[^\]]{0,400}\]/gi;
+
+function stripMetaBrackets(text: string): string {
+  return text
+    .replace(META_BRACKET, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * WhatsApp bold is `*one asterisk*`. Markdown `**two**` renders literally, and
  * the model mixes the two within a single conversation — the 2026-08-16 pricing
  * run sent `*Rp 420.000*` and `**Rp 1.300.000**` two replies apart.
@@ -150,7 +179,7 @@ function normalizeBold(text: string): string {
 
 export function sanitizeReply(text: string): string {
   const paragraphs = stripReasoning(
-    stripStageDirections(stripRetraction(unquote(text)))
+    stripMetaBrackets(stripStageDirections(stripRetraction(unquote(text))))
       .split(/\n{2,}/)
       .map((p) => unquote(p))
       .filter((p) => p.length > 0),

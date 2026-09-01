@@ -148,3 +148,27 @@ describe("sanitizeReply — image stage directions", () => {
     expect(sanitizeReply(t)).toBe(t);
   });
 });
+
+describe("sanitizeReply — bracketed asides meant for us", () => {
+  it("drops a [Warning: ...] block the model wrote to itself", () => {
+    const reply =
+      "Boleh kakak, aku cek dulu ya bukti pengantarannya buat dipastikan.\n\n" +
+      "[Warning: bagian ini aku tulis ulang tanpa klaim data pelanggan, karena memang belum aku lihat catatannya — kalau mau aku diverifikasi dulu, aku tanya langsung ya]\n\n" +
+      "Kak, soal status pengantaran hari ini aku mau pastikan dulu ya.";
+    expect(sanitizeReply(reply)).toBe(
+      "Boleh kakak, aku cek dulu ya bukti pengantarannya buat dipastikan.\n\n" +
+        "Kak, soal status pengantaran hari ini aku mau pastikan dulu ya.",
+    );
+  });
+
+  it("cuts an inline meta bracket without eating the sentence", () => {
+    expect(
+      sanitizeReply("Pengiriman malam ini jam 16.00-18.00 [Note: belum diverifikasi] ya kak."),
+    ).toBe("Pengiriman malam ini jam 16.00-18.00 ya kak.");
+  });
+
+  it("leaves the webhook's own bracketed labels alone", () => {
+    const label = "[Bukti pembayaran dikirim]";
+    expect(sanitizeReply(label)).toBe(label);
+  });
+});
