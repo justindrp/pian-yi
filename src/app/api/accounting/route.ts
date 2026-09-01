@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { logEdit } from "@/lib/audit/log-edit";
+import { paymentProofsByJournal } from "@/lib/accounting/payment-proof";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   let query = db
     .from("journals")
     .select(
-      "id, reference, description, date, source_type, notes, created_at",
+      "id, reference, description, date, source_type, source_id, notes, created_at",
       { count: "exact" },
     )
     .order("date", { ascending: false })
@@ -70,9 +71,12 @@ export async function GET(req: NextRequest): Promise<Response> {
     linesByJournal[line.journal_id].push(line);
   }
 
+  const proofs = await paymentProofsByJournal(db, journals ?? []);
+
   const result = (journals ?? []).map((j) => ({
     ...j,
     lines: linesByJournal[j.id] ?? [],
+    proof: proofs.get(j.id) ?? null,
   }));
 
   return NextResponse.json({

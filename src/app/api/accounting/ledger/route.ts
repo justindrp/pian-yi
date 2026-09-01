@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { paymentProofsByJournal } from "@/lib/accounting/payment-proof";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
@@ -12,6 +13,8 @@ interface RawLine {
     reference: string;
     description: string;
     date: string;
+    source_type: string;
+    source_id: string | null;
   } | null;
 }
 
@@ -81,7 +84,9 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const { data, error } = await db
     .from("journal_lines")
-    .select("debit, credit, journals!inner(id, reference, description, date)")
+    .select(
+      "debit, credit, journals!inner(id, reference, description, date, source_type, source_id)",
+    )
     .eq("account_id", account.id)
     .lte("journals.date", to)
     .gte("journals.date", from ?? "0001-01-01")
@@ -142,6 +147,11 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
   }
 
+  const proofs = await paymentProofsByJournal(
+    db,
+    lines.map((l) => l.journals as NonNullable<RawLine["journals"]>),
+  );
+
   let running = opening;
   const rows = lines.map((l) => {
     running += sign * (l.debit - l.credit);
@@ -157,6 +167,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       entries: (entriesByJournal.get(j.id) ?? []).sort(
         (a, b) => b.debit - a.debit || a.code.localeCompare(b.code),
       ),
+      proof: proofs.get(j.id) ?? null,
     };
   });
 

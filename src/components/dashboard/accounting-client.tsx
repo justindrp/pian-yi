@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useState } from "react";
+import type { PaymentProof } from "@/lib/accounting/payment-proof";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -190,6 +191,39 @@ interface Journal {
   notes: string | null;
   created_at: string;
   lines: JournalLine[];
+  proof: PaymentProof | null;
+}
+
+// The customer's transfer screenshot, on the entry it paid for.
+//
+// A journal is two account codes and a number, which is exactly what a bank
+// line is too, so neither one can confirm the other. The proof is what settles
+// it, and it was already stored on the order — this only shows it here, so
+// checking an entry stops meaning opening the inbox in another tab.
+//
+// Absent for about a third of paid orders: imports, anything paid before the
+// webhook banked the image, anything an admin marked paid by hand. Render
+// nothing in that case rather than an empty frame.
+function PaymentProofLink({ proof }: { proof: PaymentProof }) {
+  return (
+    <a
+      href={proof.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-3 flex items-center gap-3 rounded-lg border border-gray-100 p-2 hover:bg-gray-50"
+    >
+      {/* biome-ignore lint/performance/noImgElement: Supabase storage URL — next/image impractical */}
+      <img
+        src={proof.url}
+        alt="Bukti transfer"
+        className="h-16 w-16 rounded object-cover bg-gray-50"
+      />
+      <span className="text-xs text-gray-500">
+        Bukti transfer{proof.customer ? ` — ${proof.customer}` : ""}
+        <span className="block text-gray-400">Klik untuk ukuran penuh</span>
+      </span>
+    </a>
+  );
 }
 
 function JournalTab({ from, to }: { from: string; to: string }) {
@@ -448,6 +482,7 @@ function JournalTab({ from, to }: { from: string; to: string }) {
                       </tr>
                     </tfoot>
                   </table>
+                  {j.proof && <PaymentProofLink proof={j.proof} />}
                 </div>
               )}
             </div>
@@ -500,6 +535,7 @@ interface LedgerRow {
   // included. A ledger row is half a journal entry; the other half is the
   // only thing that says whether the posting was right.
   entries: { code: string; name: string; debit: number; credit: number }[];
+  proof: PaymentProof | null;
 }
 
 function LedgerTab({ from, to }: { from: string; to: string }) {
@@ -655,6 +691,7 @@ function LedgerTab({ from, to }: { from: string; to: string }) {
                               ))}
                             </tbody>
                           </table>
+                          {r.proof && <PaymentProofLink proof={r.proof} />}
                         </td>
                       </tr>
                     )}
