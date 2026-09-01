@@ -30,7 +30,9 @@ to see what production actually has.
 
 ## accounts
 
-Chart of accounts for double-entry bookkeeping. Key accounts: 1001–1004 (Cash/Banks), 1200 Subcontractor Advance, **1201 Courier Cash Advance (Kasbon Kurir)**, 2001 Accounts Payable, 2100 Unearned Revenue, 2101 Unearned Delivery Fee, 4001 Catering Revenue, 5001 Subcontractor Cost.
+Chart of accounts for double-entry bookkeeping. Key accounts: 1001–1004 (Cash/Banks), **1005 E-Wallet ShopeePay**, **1006 Bank BCA Valas (USD)**, 1200 Subcontractor Advance, **1201 Courier Cash Advance (Kasbon Kurir)**, 2001 Accounts Payable, **2002 Owner Current Account**, 2100 Unearned Revenue, 2101 Unearned Delivery Fee, 4001 Catering Revenue, **4900 Other Income**, 5001 Subcontractor Cost, **5002 Courier & Delivery Cost**.
+
+**The five accounts added by migration 091 exist because a third of the bank statements had nothing to land in.** Reconciling July and August 2026 on 2026-09-01 found Rp 26,9jt moving through ShopeePay, Rp 3,8jt into the USD pocket and Rp 12,9jt of loans Justin took out personally, none of which the chart could name. 5002 sits in Cost of Services beside 5001, not in Operating Expenses: getting the food to the customer is part of delivering the service. **2002 Owner Current Account is the one to understand** — BCA 4971805760 is Justin's personal account and the business banks in it, so every personal line books to 2002 rather than being filtered away. A Flazz top-up is a drawing, his salary landing there is money lent to the business, and the account balance is the running net either way. There is deliberately **no Loan Payable account**: a loan Justin takes out in his own name and puts in is owed by him to the lender and by the business to him, so it is a 2002 credit. Booking it to a loan account would put a debt on the balance sheet that the business is not party to.
 
 **2100 holds food, 2101 holds ongkir, and the difference is that ongkir is never ours.** Revenue recognition (`PUT /api/deliveries/daily-sheet`) draws 2100 down by `portions × price_per_portion` and nothing else, so a delivery surcharge credited there has nothing that will ever debit it — it becomes a liability the books carry for good. A surcharge is collected from the customer and owed to the kitchen at the same Rp 10.000 a drop, so it is held in 2101 at payment and moved to 2001 Accounts Payable one delivery day at a time, as the drops actually happen; it never touches 4001 or 5001, because a zero-margin pass-through belongs on neither side of the P&L. Sharleen's Rp 220.000 was posted to 2100 on 2026-08-31 and corrected the same day (JV-2026-634, JV-2026-635).
 
@@ -114,6 +116,64 @@ The guard used to be `localStorage`, which is per-browser — opening the assist
 | claimed_at | timestamptz | Default `now()`; when the claim landed |
 
 ---
+
+---
+
+## bank_statements
+
+One bank e-statement, screenshot batch, or hand-typed period. Added by migration 091 on 2026-09-01, after a by-hand reconciliation of July and August found the ledger and the bank describing two different businesses: Rp 17.267.000 was paid to kitchens over the two months and 2001 was never once debited, Agnes's Superbank float moved Rp 16,3jt with 1003 empty, and every Facebook charge, kasbon and admin fee sat outside the books. None of it was discoverable from inside the app, because the app had never seen a statement.
+
+Balances are stored to the sen, not rounded to whole rupiah like the rest of the system, because a statement's whole purpose is the control totals it closes on and rounding breaks them.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| account_code | text | FK `accounts.code` — which ledger account this is evidence for (1002, 1003, 1006) |
+| account_number | text | As the bank prints it |
+| account_label | text | Account holder name |
+| currency | text | Default 'IDR'. A BCA PDF holds an IDR section **and** a separate USD "Poket Valas" section; they are two statements in one file and reconcile independently |
+| period_start / period_end | date | |
+| opening_balance / closing_balance | numeric(14,2) | |
+| total_credit / total_debit | numeric(14,2) | Parsed, and checked against the statement's own printed totals before anything is stored |
+| credit_count / debit_count | int | |
+| source | text | `estatement` \| `screenshot` \| `manual`. Only an e-statement carries control totals |
+| file_path / file_type | text | |
+| uploaded_by | text | |
+| notes | text | |
+| created_at / updated_at | timestamptz | |
+
+Unique on `(account_number, currency, period_start, period_end)` **where `source = 'estatement'`** — a bank issues one statement per account per period, but several partial screenshots of one month is the normal case.
+
+---
+
+## bank_transactions
+
+Every line of a statement, stored whether or not we know what it is.
+
+**`contra_account_code` is the whole design.** A bank line has two sides and one of them is already known — it is the statement's own `account_code` — so the only open question about any line is which account the other side faces. A kitchen payment is 2001, a customer transfer in is 2100, a Flazz top-up is 2002. This was first written as a closed `category` enum (`customer_payment`, `kitchen`, `courier`, …) and that is a second chart of accounts standing beside the real one: every bucket needs a mapping to an account anyway, the two lists drift, and a bucket with no account is a line that can never be journalised. Null means nobody has decided yet, which is the honest state for an unrecognised debit and is exactly what the reconcile queue lists.
+
+`matched_by` being set is what tells a re-import that a human decided this line, so a parser fix re-run does not overwrite the correction with its own guess.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| statement_id | uuid | FK `bank_statements.id`, ON DELETE CASCADE |
+| row_index | int | Position in the statement. Unique with `statement_id`, so a re-parse overwrites rather than duplicates and two identical lines on one day stay distinguishable |
+| txn_date | date | |
+| txn_time | text | Superbank prints a clock time, BCA does not |
+| direction | text | `CR` \| `DB` |
+| amount | numeric(14,2) | |
+| balance_after | numeric(14,2) | |
+| counterparty | text | As the bank spells it, which is not how the customer spells it |
+| description | text | |
+| raw_text | text | The matched block, for when a parse looks wrong |
+| contra_account_code | text | FK `accounts.code`, nullable — see above |
+| journal_id | uuid | FK `journals.id` ON DELETE SET NULL. Null means the money moved and the books do not know it |
+| matched_at / matched_by | timestamptz / text | |
+| notes | text | |
+| created_at | timestamptz | |
+
+Import with `pnpm tsx --env-file=.env.local scripts/import-bank-statements.ts <file.pdf>`. The parser (`src/lib/accounting/statement-parser.ts`) refuses to store a statement whose control totals do not tie — a half-parsed statement reconciles against nothing while looking like it did. That guard earned itself immediately: the Superbank row regex required a newline between the description and the amount, and the extractor emits both forms in the same file, so 18 of 49 July rows were being dropped silently.
 
 ---
 

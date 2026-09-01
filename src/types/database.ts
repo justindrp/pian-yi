@@ -185,6 +185,165 @@ export type Database = {
           },
         ]
       }
+      bank_statements: {
+        Row: {
+          account_code: string
+          account_label: string | null
+          account_number: string
+          closing_balance: number | null
+          created_at: string
+          credit_count: number | null
+          currency: string
+          debit_count: number | null
+          file_path: string | null
+          file_type: string | null
+          id: string
+          notes: string | null
+          opening_balance: number | null
+          period_end: string
+          period_start: string
+          source: string
+          total_credit: number | null
+          total_debit: number | null
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          account_code: string
+          account_label?: string | null
+          account_number: string
+          closing_balance?: number | null
+          created_at?: string
+          credit_count?: number | null
+          currency?: string
+          debit_count?: number | null
+          file_path?: string | null
+          file_type?: string | null
+          id?: string
+          notes?: string | null
+          opening_balance?: number | null
+          period_end: string
+          period_start: string
+          source?: string
+          total_credit?: number | null
+          total_debit?: number | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          account_code?: string
+          account_label?: string | null
+          account_number?: string
+          closing_balance?: number | null
+          created_at?: string
+          credit_count?: number | null
+          currency?: string
+          debit_count?: number | null
+          file_path?: string | null
+          file_type?: string | null
+          id?: string
+          notes?: string | null
+          opening_balance?: number | null
+          period_end?: string
+          period_start?: string
+          source?: string
+          total_credit?: number | null
+          total_debit?: number | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_statements_account_code_fkey"
+            columns: ["account_code"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      bank_transactions: {
+        Row: {
+          amount: number
+          balance_after: number | null
+          contra_account_code: string | null
+          counterparty: string | null
+          created_at: string
+          description: string
+          direction: string
+          id: string
+          journal_id: string | null
+          matched_at: string | null
+          matched_by: string | null
+          notes: string | null
+          raw_text: string | null
+          row_index: number
+          statement_id: string
+          txn_date: string
+          txn_time: string | null
+        }
+        Insert: {
+          amount: number
+          balance_after?: number | null
+          contra_account_code?: string | null
+          counterparty?: string | null
+          created_at?: string
+          description: string
+          direction: string
+          id?: string
+          journal_id?: string | null
+          matched_at?: string | null
+          matched_by?: string | null
+          notes?: string | null
+          raw_text?: string | null
+          row_index: number
+          statement_id: string
+          txn_date: string
+          txn_time?: string | null
+        }
+        Update: {
+          amount?: number
+          balance_after?: number | null
+          contra_account_code?: string | null
+          counterparty?: string | null
+          created_at?: string
+          description?: string
+          direction?: string
+          id?: string
+          journal_id?: string | null
+          matched_at?: string | null
+          matched_by?: string | null
+          notes?: string | null
+          raw_text?: string | null
+          row_index?: number
+          statement_id?: string
+          txn_date?: string
+          txn_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_contra_account_code_fkey"
+            columns: ["contra_account_code"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "bank_transactions_journal_id_fkey"
+            columns: ["journal_id"]
+            isOneToOne: false
+            referencedRelation: "journals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "bank_statements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broadcast_recipients: {
         Row: {
           broadcast_id: string

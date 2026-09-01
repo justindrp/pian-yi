@@ -7,7 +7,12 @@ export const dynamic = "force-dynamic";
 interface RawLine {
   debit: number;
   credit: number;
-  journals: { reference: string; description: string; date: string } | null;
+  journals: {
+    id: string;
+    reference: string;
+    description: string;
+    date: string;
+  } | null;
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -76,7 +81,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const { data, error } = await db
     .from("journal_lines")
-    .select("debit, credit, journals!inner(reference, description, date)")
+    .select("debit, credit, journals!inner(id, reference, description, date)")
     .eq("account_id", account.id)
     .lte("journals.date", to)
     .gte("journals.date", from ?? "0001-01-01")
@@ -97,17 +102,61 @@ export async function GET(req: NextRequest): Promise<Response> {
         : j.date.localeCompare(k.date);
     });
 
+  // The other side of each entry, so a ledger row can be opened to see the
+  // whole double entry rather than only the half that touches this account.
+  // A ledger that shows Rp 145.000 debited to the bank and nothing about what
+  // was credited cannot be checked against anything.
+  const journalIds = [
+    ...new Set(
+      lines.map((l) => (l.journals as NonNullable<RawLine["journals"]>).id),
+    ),
+  ];
+  const entriesByJournal = new Map<
+    string,
+    { code: string; name: string; debit: number; credit: number }[]
+  >();
+  if (journalIds.length > 0) {
+    const { data: entries, error: entryErr } = await db
+      .from("journal_lines")
+      .select("journal_id, debit, credit, accounts(code, name)")
+      .in("journal_id", journalIds);
+    if (entryErr)
+      return NextResponse.json(
+        { ok: false, error: entryErr.message },
+        { status: 500 },
+      );
+    for (const e of (entries ?? []) as unknown as {
+      journal_id: string;
+      debit: number;
+      credit: number;
+      accounts: { code: string; name: string } | null;
+    }[]) {
+      const list = entriesByJournal.get(e.journal_id) ?? [];
+      list.push({
+        code: e.accounts?.code ?? "",
+        name: e.accounts?.name ?? "",
+        debit: e.debit,
+        credit: e.credit,
+      });
+      entriesByJournal.set(e.journal_id, list);
+    }
+  }
+
   let running = opening;
   const rows = lines.map((l) => {
     running += sign * (l.debit - l.credit);
     const j = l.journals as NonNullable<RawLine["journals"]>;
     return {
+      journalId: j.id,
       reference: j.reference,
       description: j.description,
       date: j.date,
       debit: l.debit,
       credit: l.credit,
       balance: running,
+      entries: (entriesByJournal.get(j.id) ?? []).sort(
+        (a, b) => b.debit - a.debit || a.code.localeCompare(b.code),
+      ),
     };
   });
 

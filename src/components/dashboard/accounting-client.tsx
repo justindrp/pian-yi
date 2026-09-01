@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Fragment, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +47,7 @@ type Tab =
   | "neraca-saldo"
   | "laba-rugi"
   | "neraca"
+  | "rekening-koran"
   | "akun";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -54,18 +56,47 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "neraca-saldo", label: "Neraca Saldo" },
   { id: "laba-rugi", label: "Laba Rugi" },
   { id: "neraca", label: "Neraca" },
+  { id: "rekening-koran", label: "Rekening Koran" },
   { id: "akun", label: "Akun" },
 ];
+
+const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 
 export default function AccountingClient() {
   const today = new Date().toISOString().slice(0, 10);
   const firstOfMonth = `${today.slice(0, 8)}01`;
 
-  const [tab, setTab] = useState<Tab>("jurnal");
-  const [from, setFrom] = useState(firstOfMonth);
-  const [to, setTo] = useState(today);
+  // Tab, date range and selected account live in the URL. A ledger view worth
+  // looking at is worth sending to someone, and a reload that silently resets
+  // to "Jurnal, this month" loses the thing you had just found.
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
 
-  const showRange = tab !== "neraca" && tab !== "akun";
+  const tabParam = params.get("tab") ?? "";
+  const tab: Tab = TAB_IDS.has(tabParam) ? (tabParam as Tab) : "jurnal";
+  const from = params.get("from") ?? firstOfMonth;
+  const to = params.get("to") ?? today;
+
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(params.toString());
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "") next.delete(k);
+        else next.set(k, v);
+      }
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [params, pathname, router],
+  );
+
+  const setTab = (id: Tab) => setParams({ tab: id === "jurnal" ? null : id });
+  const setFrom = (v: string) => setParams({ from: v });
+  const setTo = (v: string) => setParams({ to: v });
+
+  const showRange =
+    tab !== "neraca" && tab !== "akun" && tab !== "rekening-koran";
   const showAsOf = tab === "neraca";
 
   return (
@@ -121,6 +152,7 @@ export default function AccountingClient() {
       {tab === "neraca-saldo" && <TrialBalanceTab from={from} to={to} />}
       {tab === "laba-rugi" && <PnlTab from={from} to={to} />}
       {tab === "neraca" && <BalanceSheetTab to={to} />}
+      {tab === "rekening-koran" && <BankStatementsTab />}
       {tab === "akun" && <AccountsTab />}
     </div>
   );
@@ -445,16 +477,31 @@ function JournalTab({ from, to }: { from: string; to: string }) {
 // ---------------------------------------------------------------------------
 
 interface LedgerRow {
+  journalId: string;
   reference: string;
   description: string;
   date: string;
   debit: number;
   credit: number;
   balance: number;
+  // Every line of the journal this row belongs to, this account's own
+  // included. A ledger row is half a journal entry; the other half is the
+  // only thing that says whether the posting was right.
+  entries: { code: string; name: string; debit: number; credit: number }[];
 }
 
 function LedgerTab({ from, to }: { from: string; to: string }) {
-  const [account, setAccount] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const account = params.get("account") ?? "";
+  const [openRow, setOpenRow] = useState<string | null>(null);
+  const setAccount = (code: string) => {
+    const next = new URLSearchParams(params.toString());
+    if (code) next.set("account", code);
+    else next.delete("account");
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  };
 
   const { data: accountsData } = useQuery({
     queryKey: ["accounting-accounts"],
@@ -465,21 +512,28 @@ function LedgerTab({ from, to }: { from: string; to: string }) {
   });
   const accounts = accountsData?.data ?? [];
 
-  const { data, isLoading } = useQuery({
+  // A failed request used to be indistinguishable from a slow one: the tab
+  // rendered "Memuat..." while the query was pending and nothing at all once
+  // it had failed, so a 500 read as an eternal spinner. Fail loudly instead.
+  const { data, isLoading, error } = useQuery({
     enabled: account.length > 0,
     queryKey: ["accounting-ledger", account, from, to],
     queryFn: async () => {
       const params = new URLSearchParams({ account, from, to });
       const res = await fetch(`/api/accounting/ledger?${params}`);
-      return (await res.json()) as {
+      const json = (await res.json().catch(() => null)) as {
         ok: boolean;
+        error?: string;
         data: {
           account: { code: string; name: string; type: string };
           opening: number;
           rows: LedgerRow[];
           closing: number;
         };
-      };
+      } | null;
+      if (!json) throw new Error(`Server balas ${res.status} tanpa JSON`);
+      if (!json.ok) throw new Error(json.error ?? `Gagal memuat (${res.status})`);
+      return json;
     },
   });
 
@@ -513,6 +567,12 @@ function LedgerTab({ from, to }: { from: string; to: string }) {
         </div>
       )}
 
+      {account && error && (
+        <div className="bg-white rounded-xl border border-red-100 p-8 text-center text-red-600 text-sm">
+          {error.message}
+        </div>
+      )}
+
       {account && data?.ok && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full text-xs">
@@ -535,26 +595,60 @@ function LedgerTab({ from, to }: { from: string; to: string }) {
                   {formatRp(data.data.opening)}
                 </td>
               </tr>
-              {data.data.rows.map((r, i) => (
-                <tr
-                  // biome-ignore lint/suspicious/noArrayIndexKey: ledger rows have no stable unique id
-                  key={`${r.reference}-${i}`}
-                  className="border-b border-gray-50"
-                >
-                  <td className="p-3 text-gray-500">{r.date}</td>
-                  <td className="p-3 font-mono text-gray-400">{r.reference}</td>
-                  <td className="p-3 text-gray-700">{r.description}</td>
-                  <td className="p-3 text-right text-gray-700">
-                    {r.debit > 0 ? formatRp(r.debit) : "—"}
-                  </td>
-                  <td className="p-3 text-right text-gray-700">
-                    {r.credit > 0 ? formatRp(r.credit) : "—"}
-                  </td>
-                  <td className="p-3 text-right text-gray-700">
-                    {formatRp(r.balance)}
-                  </td>
-                </tr>
-              ))}
+              {data.data.rows.map((r, i) => {
+                const rowKey = `${r.journalId}-${i}`;
+                const isOpen = openRow === rowKey;
+                return (
+                  <Fragment key={rowKey}>
+                    <tr
+                      className={`border-b border-gray-50 cursor-pointer hover:bg-gray-50 ${
+                        isOpen ? "bg-gray-50" : ""
+                      }`}
+                      onClick={() => setOpenRow(isOpen ? null : rowKey)}
+                    >
+                      <td className="p-3 text-gray-500">{r.date}</td>
+                      <td className="p-3 font-mono text-gray-400">
+                        {r.reference}
+                      </td>
+                      <td className="p-3 text-gray-700">{r.description}</td>
+                      <td className="p-3 text-right text-gray-700">
+                        {r.debit > 0 ? formatRp(r.debit) : "—"}
+                      </td>
+                      <td className="p-3 text-right text-gray-700">
+                        {r.credit > 0 ? formatRp(r.credit) : "—"}
+                      </td>
+                      <td className="p-3 text-right text-gray-700">
+                        {formatRp(r.balance)}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <td colSpan={6} className="px-3 pb-3">
+                          <table className="w-full">
+                            <tbody>
+                              {r.entries.map((e) => (
+                                <tr key={`${rowKey}-${e.code}-${e.debit}-${e.credit}`}>
+                                  <td className="py-1 pl-3 text-gray-500 w-64">
+                                    <span className="font-mono">{e.code}</span>{" "}
+                                    {e.name}
+                                  </td>
+                                  <td className="py-1 text-right text-gray-700 w-28">
+                                    {e.debit > 0 ? formatRp(e.debit) : ""}
+                                  </td>
+                                  <td className="py-1 text-right text-gray-700 w-28">
+                                    {e.credit > 0 ? formatRp(e.credit) : ""}
+                                  </td>
+                                  <td />
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
               {data.data.rows.length === 0 && (
                 <tr>
                   <td className="p-3 text-gray-400 text-center" colSpan={6}>
@@ -1479,6 +1573,407 @@ function EditJournalModal({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rekening Koran tab
+//
+// The reconcile view. A bank line has two sides and one of them is already
+// known — it is the statement's own account — so the only open question about
+// any line is which account the other side faces. This tab is where that
+// question gets answered and, more often, where a wrong answer gets caught:
+// the summary groups the statement by contra account so a kitchen payment
+// filed as a personal drawing shows up as a number in the wrong row.
+// ---------------------------------------------------------------------------
+
+interface BankStatement {
+  id: string;
+  account_code: string;
+  account_number: string;
+  account_label: string | null;
+  currency: string;
+  period_start: string;
+  period_end: string;
+  opening_balance: number | null;
+  closing_balance: number | null;
+  total_credit: number;
+  total_debit: number;
+  credit_count: number;
+  debit_count: number;
+  source: string;
+  file_path: string | null;
+  line_count: number;
+  unclassified_count: number;
+}
+
+interface BankTransaction {
+  id: string;
+  row_index: number;
+  txn_date: string;
+  txn_time: string | null;
+  direction: "CR" | "DB";
+  amount: number;
+  balance_after: number | null;
+  counterparty: string | null;
+  description: string;
+  contra_account_code: string | null;
+  journal_id: string | null;
+  matched_by: string | null;
+  notes: string | null;
+}
+
+function monthLabel(start: string, end: string) {
+  const d = new Date(`${start}T00:00:00`);
+  const same = start.slice(0, 7) === end.slice(0, 7);
+  const m = d.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  return same ? m : `${start} → ${end}`;
+}
+
+function BankStatementsTab() {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const selected = params.get("statement");
+  const setSelected = (id: string | null) => {
+    const next = new URLSearchParams(params.toString());
+    if (id) next.set("statement", id);
+    else next.delete("statement");
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  };
+  const [filter, setFilter] = useState("");
+  const [onlyOpen, setOnlyOpen] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const { data: accountsData } = useQuery({
+    queryKey: ["accounting-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/accounting/accounts");
+      return (await res.json()) as { ok: boolean; data: Account[] };
+    },
+  });
+  const accounts = accountsData?.data ?? [];
+  const accountName = (code: string | null) =>
+    code ? (accounts.find((a) => a.code === code)?.name ?? code) : "Belum ditentukan";
+
+  const statements = useQuery({
+    queryKey: ["bank-statements"],
+    queryFn: async () => {
+      const res = await fetch("/api/accounting/bank");
+      const json = (await res.json()) as {
+        ok: boolean;
+        data?: BankStatement[];
+        error?: string;
+      };
+      if (!json.ok) throw new Error(json.error ?? "Gagal memuat");
+      return json.data ?? [];
+    },
+  });
+
+  const detail = useQuery({
+    enabled: selected !== null,
+    queryKey: ["bank-statement", selected],
+    queryFn: async () => {
+      const res = await fetch(`/api/accounting/bank/${selected}`);
+      const json = (await res.json()) as {
+        ok: boolean;
+        data?: { statement: BankStatement; lines: BankTransaction[] };
+        error?: string;
+      };
+      if (!json.ok) throw new Error(json.error ?? "Gagal memuat");
+      return json.data;
+    },
+  });
+
+  async function setAccount(txnId: string, code: string) {
+    setSaving(txnId);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/accounting/bank/transactions/${txnId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contra_account_code: code || null }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Gagal menyimpan");
+      await queryClient.invalidateQueries({ queryKey: ["bank-statement", selected] });
+      await queryClient.invalidateQueries({ queryKey: ["bank-statements"] });
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Gagal menyimpan");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (statements.isLoading)
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+        Memuat...
+      </div>
+    );
+
+  if (statements.error)
+    return (
+      <div className="bg-white rounded-xl border border-red-100 p-8 text-center text-red-600 text-sm">
+        {statements.error.message}
+      </div>
+    );
+
+  const list = statements.data ?? [];
+
+  if (list.length === 0)
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+        Belum ada rekening koran. Import dengan{" "}
+        <code className="text-gray-600">
+          pnpm tsx --env-file=.env.local scripts/import-bank-statements.ts &lt;file.pdf&gt;
+        </code>
+      </div>
+    );
+
+  const lines = detail.data?.lines ?? [];
+  const needle = filter.trim().toLowerCase();
+  const shown = lines.filter((l) => {
+    if (onlyOpen && l.contra_account_code) return false;
+    if (!needle) return true;
+    return (
+      l.description.toLowerCase().includes(needle) ||
+      (l.counterparty ?? "").toLowerCase().includes(needle) ||
+      (l.contra_account_code ?? "").includes(needle)
+    );
+  });
+
+  // Grouped by contra account: the answer to "is this in the right account?"
+  const groups = new Map<
+    string,
+    { code: string | null; inCount: number; inSum: number; outCount: number; outSum: number }
+  >();
+  for (const l of lines) {
+    const key = l.contra_account_code ?? "";
+    const g =
+      groups.get(key) ??
+      { code: l.contra_account_code, inCount: 0, inSum: 0, outCount: 0, outSum: 0 };
+    if (l.direction === "CR") {
+      g.inCount++;
+      g.inSum += Number(l.amount);
+    } else {
+      g.outCount++;
+      g.outSum += Number(l.amount);
+    }
+    groups.set(key, g);
+  }
+  const grouped = [...groups.values()].sort((a, b) =>
+    (a.code ?? "zzzz").localeCompare(b.code ?? "zzzz"),
+  );
+
+  return (
+    <div>
+      {/* Statement picker */}
+      <div className="grid gap-2 mb-4 sm:grid-cols-2 lg:grid-cols-3">
+        {list.map((s) => {
+          const active = s.id === selected;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSelected(active ? null : s.id)}
+              className={`text-left rounded-xl border p-3 transition-colors ${
+                active
+                  ? "border-gray-900 bg-white"
+                  : "border-gray-100 bg-white hover:border-gray-300"
+              }`}
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium text-gray-900">
+                  {s.account_code} — {accountName(s.account_code)}
+                </span>
+                <span className="text-xs text-gray-400">{s.currency}</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {monthLabel(s.period_start, s.period_end)} · {s.account_number}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                Masuk {formatRp(Math.round(Number(s.total_credit)))} · Keluar{" "}
+                {formatRp(Math.round(Number(s.total_debit)))}
+              </div>
+              <div className="text-xs mt-1">
+                <span className="text-gray-400">{s.line_count} transaksi</span>
+                {s.unclassified_count > 0 && (
+                  <span className="text-amber-600 ml-2">
+                    {s.unclassified_count} belum berakun
+                  </span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {!selected && (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+          Pilih rekening koran untuk memeriksa akunnya.
+        </div>
+      )}
+
+      {selected && detail.isLoading && (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
+          Memuat...
+        </div>
+      )}
+
+      {selected && detail.error && (
+        <div className="bg-white rounded-xl border border-red-100 p-8 text-center text-red-600 text-sm">
+          {detail.error.message}
+        </div>
+      )}
+
+      {selected && detail.data && (
+        <>
+          {/* Per-account summary */}
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
+            <div className="px-3 py-2 border-b border-gray-100 text-xs text-gray-500">
+              Ringkasan per akun lawan
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 border-b border-gray-100">
+                  <th className="text-left p-3 font-normal">Akun</th>
+                  <th className="text-right p-3 font-normal w-20">Masuk</th>
+                  <th className="text-right p-3 font-normal w-32">Nilai</th>
+                  <th className="text-right p-3 font-normal w-20">Keluar</th>
+                  <th className="text-right p-3 font-normal w-32">Nilai</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grouped.map((g) => (
+                  <tr
+                    key={g.code ?? "none"}
+                    className="border-b border-gray-50 last:border-0"
+                  >
+                    <td className="p-3">
+                      <span
+                        className={
+                          g.code ? "text-gray-900" : "text-amber-600 font-medium"
+                        }
+                      >
+                        {g.code ? `${g.code} — ${accountName(g.code)}` : "Belum berakun"}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right text-gray-400">
+                      {g.inCount || ""}
+                    </td>
+                    <td className="p-3 text-right text-gray-700">
+                      {g.inSum ? formatRp(Math.round(g.inSum)) : ""}
+                    </td>
+                    <td className="p-3 text-right text-gray-400">
+                      {g.outCount || ""}
+                    </td>
+                    <td className="p-3 text-right text-gray-700">
+                      {g.outSum ? formatRp(Math.round(g.outSum)) : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Line filter */}
+          <div className="flex flex-wrap gap-3 items-end mb-3">
+            <div className="flex-1 min-w-48">
+              <Label className="block text-xs text-gray-500 mb-1">Cari</Label>
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Nama, keterangan, kode akun…"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-600 pb-2">
+              <input
+                type="checkbox"
+                checked={onlyOpen}
+                onChange={(e) => setOnlyOpen(e.target.checked)}
+              />
+              Hanya yang belum berakun
+            </label>
+            <span className="text-xs text-gray-400 pb-2">
+              {shown.length} dari {lines.length}
+            </span>
+          </div>
+
+          {saveError && <p className="text-sm text-red-600 mb-2">{saveError}</p>}
+
+          <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 border-b border-gray-100">
+                  <th className="text-left p-3 font-normal w-24">Tanggal</th>
+                  <th className="text-left p-3 font-normal">Keterangan</th>
+                  <th className="text-right p-3 font-normal w-28">Masuk</th>
+                  <th className="text-right p-3 font-normal w-28">Keluar</th>
+                  <th className="text-left p-3 font-normal w-64">Akun lawan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((l) => (
+                  <tr key={l.id} className="border-b border-gray-50 last:border-0">
+                    <td className="p-3 text-gray-500 whitespace-nowrap align-top">
+                      {l.txn_date.slice(5)}
+                      {l.txn_time && (
+                        <span className="block text-gray-300">{l.txn_time}</span>
+                      )}
+                    </td>
+                    <td className="p-3 align-top">
+                      <span className="text-gray-900">
+                        {l.counterparty ?? l.description}
+                      </span>
+                      {l.counterparty && (
+                        <span className="block text-gray-400">{l.description}</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right align-top text-gray-700">
+                      {l.direction === "CR"
+                        ? formatRp(Math.round(Number(l.amount)))
+                        : ""}
+                    </td>
+                    <td className="p-3 text-right align-top text-gray-700">
+                      {l.direction === "DB"
+                        ? formatRp(Math.round(Number(l.amount)))
+                        : ""}
+                    </td>
+                    <td className="p-3 align-top">
+                      <select
+                        value={l.contra_account_code ?? ""}
+                        disabled={saving === l.id}
+                        onChange={(e) => setAccount(l.id, e.target.value)}
+                        className={`w-full border rounded-lg px-2 py-1 text-xs ${
+                          l.contra_account_code
+                            ? "border-gray-200 text-gray-900"
+                            : "border-amber-300 text-amber-700"
+                        }`}
+                      >
+                        <option value="">Belum ditentukan</option>
+                        {accounts.map((a) => (
+                          <option key={a.code} value={a.code}>
+                            {a.code} — {a.name}
+                          </option>
+                        ))}
+                      </select>
+                      {l.matched_by && (
+                        <span className="block text-gray-300 mt-1">
+                          diubah manual
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
