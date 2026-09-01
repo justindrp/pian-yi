@@ -1965,7 +1965,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "ask_admin_for_help",
       description:
-        "Called when the bot is uncertain about the answer. Pauses the bot, asks Annie for input, then the bot will send a polished version of Annie's answer to the customer. Use this by default for uncertainty. Do NOT use escalate_to_human unless the customer needs a human to take over entirely.",
+        "Called when the bot is uncertain about the answer. Pauses the bot, asks an admin for input, then the bot will send a polished version of that answer to the customer. Use this by default for uncertainty. Do NOT use escalate_to_human unless the customer needs a human to take over entirely. Never name the admin to the customer — the system prompt says which name, if any, may be used.",
       input_schema: {
         type: "object",
         properties: {
@@ -1981,7 +1981,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "escalate_to_human",
       description:
-        "Called when the conversation must be fully handed off to Annie — use only for complaints, refund requests, or clearly frustrated customers.",
+        "Called when the conversation must be fully handed off to an admin — use only for complaints, refund requests, or clearly frustrated customers. Never name the admin to the customer — the system prompt says which name, if any, may be used.",
       input_schema: {
         type: "object",
         properties: { reason: { type: "string" } },

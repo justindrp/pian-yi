@@ -175,6 +175,16 @@ Nothing in the prompt ever said what a customer actually had booked, so the mode
 
 The two quota numbers are stated separately and deliberately — `remainingToday` (paid for, not yet delivered) and `unbooked` (not yet on the calendar). Both are counted from the delivery rows; `orders.portions_remaining` cached the second one and was dropped in migration 075. Quoting `unbooked` as the balance tells a customer with twelve meals coming that they have none; see the "Sisa kuota" rule in `OPERATIONS.md`.
 
+## The bot names one admin, and which one is a setting
+
+"Annie" was written into the system prompt twice and into two tool descriptions, so every hand-off the bot made promised a specific person by name. She is not on the inbox. Pane cancelled her order on 2026-08-31 over the Akasa ongkir and was told **"Kak Annie akan mengurus refundnya sampai selesai"**; at 11.07 the next morning she asked "apakah sudah diproses refundnya?" — the refund had not moved and the person named for it was never going to see the thread.
+
+`settings.admin_display_name` (migration 087) holds the name, seeded to `Justin`. `buildSystemPrompt` reads it into `adminRef` — `Kak <name>`, or **"tim admin kami"** when the setting is empty, so an unstaffed inbox drops the name instead of falling back to whoever was hardcoded last. The prompt also now says outright that no other person may be named to a customer: a name is a promise that a specific human is on it. The two tool descriptions say "an admin" and defer the name to the prompt.
+
+The one surviving "Annie" in the prompt is inside Fahmi's own quoted words in an incident note ("double check dulu ama Kak Annie"), and stays as he said it. Tests in `test/api/system-prompt.test.ts` assert there is exactly one.
+
+Still hardcoded and out of scope of this change: the admin-facing surfaces — `assistant-prompt.ts` (which also lists Agnes, who is not on the team), the training chat, the handbook and the reports label.
+
 ## A locked delivery cannot be re-addressed, and the bot is told which ones are locked
 
 The schedule block listed every booked delivery from today forward as one flat list, and closed with "konfirmasi hanya kalau deadline untuk tanggal itu belum lewat" — a rule with no reading to apply it to. Working out which of those dates were past their own H-1 16:00 was left to the model, which is the same arithmetic it had already been caught doing badly for the cutoff line (see "The bot is told the time, not just the deadline").

@@ -148,12 +148,22 @@ export async function buildSystemPrompt(params: {
   // order, no agreed price and no confirmation asked "rekeningnya berapa kak?"
   // and got the full BCA number, because this prompt listed it as plain
   // business info. Only the bank's name is safe to state.
-  const [businessName, , bankName, escalationKeywords] = await Promise.all([
-    getSetting("business_name"),
-    getSetting("instagram_handle"),
-    getSetting("bank_name"),
-    getSetting("escalation_keywords"),
-  ]);
+  const [businessName, , bankName, escalationKeywords, adminNameSetting] =
+    await Promise.all([
+      getSetting("business_name"),
+      getSetting("instagram_handle"),
+      getSetting("bank_name"),
+      getSetting("escalation_keywords"),
+      getSetting("admin_display_name"),
+    ]);
+
+  // Who the customer is handed to. It used to be the literal "Annie" in three
+  // places, and she is not on the inbox any more: Pane was told on 2026-08-31
+  // that "Kak Annie akan mengurus refundnya sampai selesai" and was still
+  // chasing it the next morning. An empty setting drops the name rather than
+  // inventing one.
+  const adminName = adminNameSetting?.trim() || "";
+  const adminRef = adminName ? `Kak ${adminName}` : "tim admin kami";
 
   const activeInstructions = await getActiveInstructions();
 
@@ -741,7 +751,9 @@ If the customer sends a short affirmative ("sudah", "iya", "ok", "baik", "ya", "
 **A customer's own past order is never something to check with the team.** What they bought before, what schedule it ran on and what it cost are in the conversation above and on their record — that is the answer. A renewal is a fresh order that needs nothing from the old one anyway: take the size they just named and call extract_order. Julian S said "mau ambil yg 5 ka, tf kemana kaa?" on 2026-08-04, and the bot answered "aku cek dulu detil pesanan sebelumnya ke tim ya" three turns running, then took his transfer without ever creating the order.
 
 **Default for uncertainty — use ask_admin_for_help:**
-Call ask_admin_for_help whenever you are unsure of the answer or the question goes beyond routine ordering and FAQ. The customer will be told to wait; Annie will provide a concise answer; the bot will send a polished version to the customer. This keeps the bot in the loop and the customer unaware of the handoff.
+Call ask_admin_for_help whenever you are unsure of the answer or the question goes beyond routine ordering and FAQ. The customer will be told to wait; ${adminRef} will provide a concise answer; the bot will send a polished version to the customer. This keeps the bot in the loop and the customer unaware of the handoff.
+
+**Never name anyone else.** If you name a person to the customer, name ${adminRef} and nobody else — a name is a promise that a specific human is on it, and the wrong name is a promise nobody will keep.
 
 **Full takeover — use escalate_to_human only for:**
 - Customer complaints about food quality or refund requests
@@ -749,7 +761,7 @@ Call ask_admin_for_help whenever you are unsure of the answer or the question go
 - Customer is clearly frustrated after multiple failed attempts
 
 ## Honest about AI
-If asked "apakah ini bot?": "Iya kak, saya AI assistant ${businessName}. Tapi tenang, Kak Annie selalu standby untuk hal-hal yang butuh bantuan langsung."
+If asked "apakah ini bot?": "Iya kak, saya AI assistant ${businessName}. Tapi tenang, ${adminRef} selalu standby untuk hal-hal yang butuh bantuan langsung."
 
 ## Minors
 If customer is under 18, ask for parent or guardian involvement before proceeding.
@@ -771,7 +783,7 @@ ${cutoffLine}
       : ""
   }${params.activeOrder ? `\n- Active order: paket ${params.activeOrder.packageSize} porsi, ${params.schedule?.unbooked ?? 0} porsi belum dijadwalkan tanggalnya (bukan sisa makanan — lihat Jadwal pengiriman di bawah)` : ""}${params.detectedMapsLink ? `\n- Maps link already shared: ${params.detectedMapsLink} — use this when filling in the form summary; the customer does not need to re-paste it.` : ""}${
     activeInstructions.length > 0
-      ? `\n\n## Annie's custom instructions\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
+      ? `\n\n## Custom instructions from the owner\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
   }\n\n## Kalender pengiriman\nThe only place a date comes from. Read a day word off this list; never work one out.\n${calendar}${scheduleBlock}${justWelcomedBlock}`;
 }

@@ -174,7 +174,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     {
       name: "escalate_to_human",
       description:
-        "Called when the conversation must be fully handed off to Annie.",
+        "Called when the conversation must be fully handed off to an admin.",
       input_schema: {
         type: "object",
         properties: { reason: { type: "string" } },

@@ -591,4 +591,62 @@ describe("customer chatbot system prompt", () => {
       expect(prompt).toContain("you have no tool that can do it");
     });
   });
+
+  // The bot told Pane on 2026-08-31 that "Kak Annie akan mengurus refundnya
+  // sampai selesai". Annie is not on the inbox, so nobody did, and Pane chased
+  // it the next morning. The name was hardcoded in the prompt and in two tool
+  // descriptions; it is a setting now.
+  describe("the admin the bot names to customers", () => {
+    const build = () =>
+      buildSystemPrompt({
+        casual: false,
+        customerState: "ordering" as const,
+        customerName: "Pane",
+        customerNotes: null,
+        detectedMapsLink: null,
+        menuShown: true,
+        dapurOptions: [],
+        dapurMenuTexts: [],
+        menuWeek: { relation: "unknown" as const, weekStart: null },
+        servedAreas: ["BSD Lama"],
+        neighborhoods: {},
+        coverageNotes: [],
+        activeOrder: null,
+        schedule: null,
+      } as never);
+
+    test("comes from admin_display_name, and never says Annie", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(
+          key === "admin_display_name"
+            ? "Justin"
+            : key === "escalation_keywords"
+              ? "[]"
+              : key === "order_deadline_hour" ||
+                  key === "order_deadline_daily_hour"
+                ? "20"
+                : "X",
+        ),
+      );
+
+      const prompt = await build();
+
+      expect(prompt).toContain("Kak Justin selalu standby");
+      expect(prompt).toContain("Kak Justin will provide a concise answer");
+      expect(prompt).toContain("If you name a person to the customer, name Kak Justin");
+      // Fahmi's own words are quoted in an incident note and stay as he said
+      // them; nothing else may name her.
+      expect(prompt.split("Annie")).toHaveLength(2);
+      expect(prompt).toContain('Fahmi said "double check dulu ama Kak Annie"');
+    });
+
+    // Nobody standing by is a real state — the name should drop, not fall back
+    // to whoever was hardcoded last.
+    test("falls back to an unnamed admin when the setting is empty", async () => {
+      const prompt = await build();
+
+      expect(prompt).toContain("tim admin kami selalu standby");
+      expect(prompt).not.toContain("Kak Annie selalu standby");
+    });
+  });
 });
