@@ -183,6 +183,26 @@ describe("windowWarning", () => {
     );
   });
 
+  // The manual number forwards proofs too (migration 088), so the warning was
+  // telling the handset in someone's hand to send from itself.
+  it("says \"nomor ini\" when the forwarder is the manual number", () => {
+    const w = windowWarning({
+      ...base,
+      hours: 26,
+      forwarder: "+6285128024390",
+    });
+    expect(w).toContain("Kirim manual dari nomor ini ke +628126619952");
+  });
+
+  it("still names the manual number to any other forwarder", () => {
+    const w = windowWarning({
+      ...base,
+      hours: 26,
+      forwarder: "+6281213098656",
+    });
+    expect(w).toContain("Kirim manual dari +6285128024390");
+  });
+
   it("carries the ready-to-paste draft once the window is closed", () => {
     const w = windowWarning({ ...base, hours: 26 });
     expect(w).toContain("Draft, tinggal copy:");

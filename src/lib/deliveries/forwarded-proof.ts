@@ -232,6 +232,8 @@ export function windowWarning(params: {
   hours: number;
   manualNumber: string;
   mainNumber: string;
+  /** Who forwarded the photo, when it is known. */
+  forwarder?: string;
 }): string {
   if (params.hours < 24) return "";
 
@@ -241,7 +243,15 @@ export function windowWarning(params: {
       : `${Math.floor(params.hours / 24)} hari lalu`
     : "belum pernah chat ke nomor ini";
 
-  return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari ${params.manualNumber} ke ${params.phone}.\n\nDraft, tinggal copy:\n\n${manualDraft({ name: params.name, mainNumber: params.mainNumber })}`;
+  // The manual number is itself an allowlisted forwarder, so "kirim dari
+  // +6285128024390" is sometimes addressed to the handset already holding the
+  // photo. Same instruction, phrased from where they are standing.
+  const from =
+    params.forwarder && params.forwarder === params.manualNumber
+      ? "nomor ini"
+      : params.manualNumber;
+
+  return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari ${from} ke ${params.phone}.\n\nDraft, tinggal copy:\n\n${manualDraft({ name: params.name, mainNumber: params.mainNumber })}`;
 }
 
 /** The words that reach `send_delivery_proof`. See `src/lib/claude/prompts/system.ts`. */
@@ -406,6 +416,7 @@ export async function handleForwardedProof(
         hours,
         manualNumber: manualNumber || "nomor kedua",
         mainNumber: mainNumber || "nomor utama kami",
+        forwarder: message.from,
       }),
   );
 }

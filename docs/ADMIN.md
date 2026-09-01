@@ -47,7 +47,7 @@ The handbook states the takeover rule the way an admin experiences it: there is 
 
 Send the photo to the WABA (`+62 851-1121-4390`) with **the customer's name as the caption**, and it goes straight on to that customer. Nothing else is needed — no dashboard, no upload.
 
-Whose number may do this is `settings.proof_forwarder_phones`, a comma-separated list edited at `/settings` (migration 083). The kitchens already had this path — `handleSubcontractorMessage` recognises `subcontractors.admin_phone` — but an owner who took the photo themselves did not: their number is an ordinary `customers` row, so the image was read as a payment proof and the bot replied to it as if a transfer receipt had arrived.
+Whose number may do this is `settings.proof_forwarder_phones`, a comma-separated list edited at `/settings` (migration 083). **The manual second number is on that list too** (migration 088) — it is the handset actually carried to a drop, and its photos used to fall through to the bot as payment proofs like anyone else's. The kitchens already had this path — `handleSubcontractorMessage` recognises `subcontractors.admin_phone` — but an owner who took the photo themselves did not: their number is an ordinary `customers` row, so the image was read as a payment proof and the bot replied to it as if a transfer receipt had arrived.
 
 Only **images** from a listed number are intercepted. Text from the same number still goes to the bot, because that number may be a real customer thread and swallowing its text would take the thread away for good.
 
@@ -59,7 +59,7 @@ Which is why the ack checks the window itself. When that customer has not messag
 
 > ⚠️ Window 24 jam Clairine Aurelia sudah tutup (3 hari lalu), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari +6285128024390 ke +628126619952.
 
-Both numbers are in the line because the answer is always the same two moves — open WhatsApp on the second handset, send it to that customer. The manual number is read from `settings.whatsapp_manual_number`, not typed. The photo is still sent through the API first: the ack is a prediction, not a refusal, and on the day the WABA restriction clears it starts arriving on its own.
+Both numbers are in the line because the answer is always the same two moves — open WhatsApp on the second handset, send it to that customer. The manual number is read from `settings.whatsapp_manual_number`, not typed — and when the forwarder **is** that number the line says "Kirim manual dari nomor ini" instead, since the phone being told to send is the one already holding the photo. The photo is still sent through the API first: the ack is a prediction, not a refusal, and on the day the WABA restriction clears it starts arriving on its own.
 
 **And the message to send is written for you**, under `Draft, tinggal copy:` — `manualDraft()`, ready to paste into the second number's chat with no editing:
 
