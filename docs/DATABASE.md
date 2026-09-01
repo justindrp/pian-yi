@@ -510,7 +510,7 @@ No address/area columns here — `area`, `delivery_address`, `maps_link` were dr
 | abandoned_recovery_sent_at | timestamp | When the re-engagement message was sent |
 | followup_sent_at | timestamp | When the post-delivery satisfaction follow-up was sent |
 | confirmed_at | timestamp | When the customer confirmed the order with "YA" |
-| paid_at | timestamp | When payment was verified |
+| paid_at | timestamp | When payment was verified. **Only `mark_paid` writes it, and only `mark_paid` posts the `order_payment` journal** — `POST /api/orders`, the dashboard's own new-order form, writes the delivery rows and even posts revenue and COGS journals for past slots, but neither stamps this column nor books the money. So an admin who types up an order the customer has already paid for (which is what a takeover does) leaves no timestamp and no journal, while the food goes on the sheet: Fahmi `35093d5c`, Vania `11b8b86d`, Nadya `0e20e551` and Febby `19aabe69` were all found that way on 2026-09-01 and backfilled from their threads (actor `system:paid-at-backfill`, the admin's own acknowledgement of the transfer proof, since verified is what this column means). The books are the larger half of it — see the P1 accounting task in `pnpm tasks` |
 | completed_at | timestamp | When the order was marked complete |
 | cancelled_at | timestamp | When the order was cancelled |
 | created_at | timestamp | |
