@@ -29,9 +29,14 @@
  *                                    The float routed BCA -> ShopeePay ->
  *                                    Superbank in August.
  *   Daniel Rahardyan (DB)   -> 1002  the closing sweep back to BCA.
- *   Dnid Donx Kurxxxxxx     -> null  unrecognised payee, 15.000, one row.
- *                                    Left for the reconcile queue rather than
- *                                    guessed into 5002.
+ *   Dnid Donx Kurxxxxxx     -> 5002  the Lalamove ride bought on 10 Agustus to
+ *                                    collect the food and take it to the right
+ *                                    address after the courier delivered to the
+ *                                    wrong one. Imported null and confirmed by
+ *                                    Justin the same day. The Rp 20.000 denda
+ *                                    charged to the courier for that incident is
+ *                                    a deduction from his August salary, so it
+ *                                    is not a bank line and appears nowhere here.
  *
  * Run: tsx --env-file=.env.local scripts/import-superbank-august-screenshots.ts [--apply]
  */
@@ -47,7 +52,7 @@ type Row = {
   dir: "CR" | "DB";
   amount: number;
   who: string;
-  contra: string | null;
+  contra: string;
 };
 
 /** Chronological, oldest first, matching the July statement's row_index. */
@@ -65,7 +70,7 @@ const ROWS: Row[] = [
   { date: "2026-08-09", time: "05:24 PM", dir: "DB", amount: 21000, who: "R Bg Andreas Kurnianto", contra: "2001" },
   { date: "2026-08-09", time: "08:04 PM", dir: "DB", amount: 19500, who: "R Bg Andreas Kurnianto", contra: "2001" },
   { date: "2026-08-10", time: "05:04 PM", dir: "DB", amount: 854000, who: "R Bg Andreas Kurnianto", contra: "2001" },
-  { date: "2026-08-10", time: "06:30 PM", dir: "DB", amount: 15000, who: "Dnid Donx Kurxxxxxx", contra: null },
+  { date: "2026-08-10", time: "06:30 PM", dir: "DB", amount: 15000, who: "Dnid Donx Kurxxxxxx", contra: "5002" },
   { date: "2026-08-11", time: "11:07 AM", dir: "DB", amount: 50000, who: "Dnid Salxxxxxx Putxx", contra: "1201" },
   { date: "2026-08-11", time: "04:55 PM", dir: "CR", amount: 1500000, who: "Daniel Rahardyan Pramadyo", contra: "1005" },
   { date: "2026-08-11", time: "05:08 PM", dir: "DB", amount: 812000, who: "R Bg Andreas Kurnianto", contra: "2001" },
@@ -107,7 +112,7 @@ async function main() {
 
   if (!apply) {
     for (const [i, r] of ROWS.entries())
-      console.log(`  ${String(i).padStart(2)} ${r.date} ${r.time} ${r.dir} ${String(r.amount).padStart(9)} [${r.contra ?? "-"}] ${r.who}`);
+      console.log(`  ${String(i).padStart(2)} ${r.date} ${r.time} ${r.dir} ${String(r.amount).padStart(9)} [${r.contra}] ${r.who}`);
     console.log("\nDRY RUN. Re-run with --apply.");
     return;
   }
