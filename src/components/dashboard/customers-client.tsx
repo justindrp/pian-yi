@@ -375,7 +375,7 @@ function parseFilters(raw: string | null): Record<string, ColumnFilter> {
 
 export default function CustomersClient() {
   // Filters, sort, page and visible columns all live in the URL, so a filtered
-  // view is a link an admin can send to Annie rather than a list of clicks.
+  // view is a link one admin can send another rather than a list of clicks.
   const router = useRouter();
   const params = useSearchParams();
   const sortKey = params.get("sort") ?? "customer_number";

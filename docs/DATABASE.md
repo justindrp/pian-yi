@@ -141,7 +141,7 @@ A bulk WhatsApp send campaign, targeting a filtered subset of customers.
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
-| instruction | text | Natural-language instruction Annie typed (e.g. "remind active customers about weekend menu") |
+| instruction | text | Natural-language instruction an admin typed (e.g. "remind active customers about weekend menu") |
 | message_template | text | Personalized message template Haiku generated |
 | filter | json | Criteria used to select recipients |
 | recipient_count | integer | How many customers were targeted |
@@ -153,7 +153,7 @@ A bulk WhatsApp send campaign, targeting a filtered subset of customers.
 
 ## chatbot_instructions
 
-Custom instructions Annie adds via the Chatbot Training page. Active ones are appended to the system prompt at runtime.
+Custom instructions an admin adds via the Chatbot Training page. Active ones are appended to the system prompt at runtime.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -217,11 +217,11 @@ The dashboard Inbox `Unanswered` filter is derived from this table: a thread is 
 | Column | Type | Notes |
 |--------|------|-------|
 | customer_id | uuid | Primary key, FK → customers |
-| escalated_to_human | boolean | True when Annie needs to take over the conversation |
+| escalated_to_human | boolean | True when an admin needs to take over the conversation |
 | escalation_reason | text | Why it was escalated |
 | last_human_activity_at | timestamptz | Stamped on takeover and each manual reply; bot auto-resumes after 30 min of admin inactivity (`TAKEOVER_INACTIVITY_MINUTES`). NULL means never auto-resume |
-| pending_bot_response | boolean | True when bot is waiting for Annie's answer via Inbox |
-| pending_bot_question | text | The question the bot needs Annie to answer |
+| pending_bot_response | boolean | True when bot is waiting for an admin's answer via Inbox |
+| pending_bot_question | text | The question the bot needs an admin to answer |
 | is_blacklisted | boolean | Bot ignores all messages from blacklisted customers |
 | is_suspicious | boolean | Flagged by injection detection |
 | needs_human_review | boolean | General review flag |
@@ -678,7 +678,7 @@ The work queue, replacing the old `TASKS.md` on 2026-08-25. A file only Claude c
 | status | text | `open` (default), `in_progress`, `blocked`, `done` |
 | priority | integer | 1 = highest, 2 = default, 3 = lowest |
 | area | text | Free label (`bot`, `calendar`, `deferred`, …) — the section headings the old file had |
-| assignee | text | Email, or a name. Not FK'd to `admin_users` — a task can be on Annie before she has a login row |
+| assignee | text | Email, or a name. Not FK'd to `admin_users` — a task can name someone before they have a login row |
 | customer_id | uuid | FK `customers(id)` `on delete set null` — the task links to a real record, so `/tasks` shows a live link |
 | order_id | uuid | FK `orders(id)` `on delete set null` |
 | blocked_on | text | What the task is waiting for. Shown in red on the row when `status = 'blocked'` |

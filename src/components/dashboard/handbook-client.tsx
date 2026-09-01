@@ -64,7 +64,7 @@ function contentId(f: Facts): Section[] {
       title: "Peranmu: admin, bukan owner",
       blocks: [
         p(
-          "Ada dua peran. Owner (Justin, Annie) bisa semuanya. Admin bisa semuanya kecuali dua hal: halaman Accounting, dan mengetik langsung ke pelanggan.",
+          "Ada dua peran. Owner (Justin, Annie, Friska) bisa semuanya. Admin bisa semuanya kecuali dua hal: halaman Accounting, dan mengetik langsung ke pelanggan.",
         ),
         p(
           "Batasan itu dijaga server, bukan cuma disembunyikan di tampilan. Menekan tombol yang tidak seharusnya akan ditolak, bukan diam-diam jalan.",
@@ -204,7 +204,7 @@ function contentId(f: Facts): Section[] {
           "Baca Inbox dari atas sampai bawah sekali sehari. Cari pelanggan yang bertanya dan belum dijawab.",
           "Cek halaman Deliveries untuk besok sebelum batas waktu sore. Yang harus ada tapi belum ada, itu yang bikin masalah.",
           "Bukti transfer masuk? Cek nominal dan nama di halaman Payments sebelum menandai lunas.",
-          "Ragu soal harga, jadwal, atau keluhan? Tanya Justin atau Annie. Menebak lebih mahal daripada bertanya.",
+          "Ragu soal harga, jadwal, atau keluhan? Tanya Justin. Menebak lebih mahal daripada bertanya.",
         ]),
       ],
     },
@@ -247,7 +247,7 @@ function contentEn(f: Facts): Section[] {
       title: "Your role: admin, not owner",
       blocks: [
         p(
-          "Two roles. Owners (Justin, Annie) can do everything. Admins can do everything except two things: the Accounting page, and typing directly to a customer.",
+          "Two roles. Owners (Justin, Annie, Friska) can do everything. Admins can do everything except two things: the Accounting page, and typing directly to a customer.",
         ),
         p(
           "Those limits are enforced on the server, not merely hidden in the UI. Pressing something you should not have runs into a refusal, not a silent success.",
@@ -385,7 +385,7 @@ function contentEn(f: Facts): Section[] {
           "Read the Inbox top to bottom once a day. Look for customers who asked something and got nothing.",
           "Check tomorrow's Deliveries page before the afternoon cutoff. What should be there and isn't is what causes trouble.",
           "A transfer proof arrived? Check the amount and the sender name on the Payments page before marking it paid.",
-          "Unsure about a price, a schedule or a complaint? Ask Justin or Annie. Guessing costs more than asking.",
+          "Unsure about a price, a schedule or a complaint? Ask Justin. Guessing costs more than asking.",
         ]),
       ],
     },

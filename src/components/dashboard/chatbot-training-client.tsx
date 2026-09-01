@@ -365,7 +365,7 @@ function GlobalContext() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-700">
-            Instruksi Custom Annie
+            Instruksi Custom
           </h2>
           {!adding && (
             <Button
@@ -825,8 +825,8 @@ type SimItem =
 const TOOL_LABELS: Record<string, string> = {
   extract_order: "Bot would create an order",
   record_daily_order: "Bot would record a daily delivery",
-  ask_admin_for_help: "Bot would ask Annie for help",
-  escalate_to_human: "Bot would escalate to Annie",
+  ask_admin_for_help: "Bot would ask an admin for help",
+  escalate_to_human: "Bot would escalate to an admin",
   mark_payment_proof_received: "Bot would mark payment proof received",
 };
 

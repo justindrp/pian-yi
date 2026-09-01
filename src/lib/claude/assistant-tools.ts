@@ -1179,7 +1179,7 @@ export async function runTool(
 
       return {
         dates: results,
-        note: "A date past its cutoff can still be taken if Annie overrides the deadline — offer it as an override, not a refusal.",
+        note: "A date past its cutoff can still be taken if an owner overrides the deadline — offer it as an override, not a refusal.",
       };
     }
 
