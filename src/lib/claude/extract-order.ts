@@ -80,18 +80,14 @@ const LEARNED_CONTEXT_START = "[AI learned context]";
 const LEARNED_CONTEXT_END = "[/AI learned context]";
 
 /**
- * Merge an accepted custom request into `customers.notes` as a manual note.
+ * Merge an accepted custom request into `customers.kitchen_notes`.
  *
- * The kitchen sheet (`/dapur/[id]`) prints `manualNotesOnly()` — everything
- * before the [AI learned context] block — and only falls back to that block's
- * `Preferensi:` bullets when there is no manual note at all. Writing here is
- * therefore the one path that does not depend on the summarizer having noticed
- * the request in the chat: on 2026-08-25 Surya's "tanpa nasi" reached the
- * kitchen only because someone typed it into this column by hand.
- *
- * The note goes above any existing manual text and always above the AI block,
- * because that block must stay last for `manualNotesOnly()` to keep cutting it
- * off — the sheet is unauthenticated and the block carries prices.
+ * That column is the whole of what `/dapur/[id]` prints, and this is the only
+ * automated path into it: on 2026-08-25 Surya's "tanpa nasi" reached the
+ * kitchen only because someone typed it in by hand. The summarizer cannot
+ * write here — it used to reach the sheet through the `Preferensi:` bullet in
+ * `customers.notes`, and on 2026-09-01 that cooked Carolin six portions without
+ * rice off a restriction she had never given.
  *
  * Returns null when there is nothing to change, so the caller leaves the column
  * alone instead of rewriting it on every amendment.
@@ -106,18 +102,13 @@ export function mergeKitchenNote(
   const clean = stripCompensation(note.trim());
   if (!clean) return null;
 
-  const notes = existing ?? "";
-  const aiAt = notes.indexOf(LEARNED_CONTEXT_START);
-  const manual = (aiAt === -1 ? notes : notes.slice(0, aiAt)).trim();
-  const aiBlock = aiAt === -1 ? "" : notes.slice(aiAt).trim();
-
+  const current = (existing ?? "").trim();
   // extract_order runs again on every amendment and every renewal, so an
   // unconditional prepend would stack the same line up the sheet until it
   // pushed the drop-off instructions out of sight.
-  if (manual.toLowerCase().includes(clean.toLowerCase())) return null;
+  if (current.toLowerCase().includes(clean.toLowerCase())) return null;
 
-  const merged = manual ? `${clean}\n${manual}` : clean;
-  return aiBlock ? `${merged}\n\n${aiBlock}` : merged;
+  return current ? `${clean}\n${current}` : clean;
 }
 
 // One shared property schema. The webhook used to carry its own copy and it had
@@ -1903,7 +1894,7 @@ export async function createOrderFromExtraction(
 
   const { data: existingCustomer } = await db
     .from("customers")
-    .select("name, notes, portions_remaining, avg_price_per_portion")
+    .select("name, notes, kitchen_notes, portions_remaining, avg_price_per_portion")
     .eq("id", orderCustomerId)
     .single();
   const oldRemaining = existingCustomer?.portions_remaining ?? 0;
@@ -1938,7 +1929,7 @@ export async function createOrderFromExtraction(
   // nothing that materialises a delivery row writes a per-row note, and the AI
   // summary is written later and only sometimes mentions it.
   const kitchenNote = mergeKitchenNote(
-    existingCustomer?.notes ?? null,
+    existingCustomer?.kitchen_notes ?? null,
     input.catatan ?? "",
   );
   // Someone else's record is not ours to rewrite. Every field below is taken
@@ -1972,7 +1963,7 @@ export async function createOrderFromExtraction(
           : {}),
         portions_remaining: newRemaining,
         avg_price_per_portion: newAvg,
-        ...(kitchenNote ? { notes: kitchenNote } : {}),
+        ...(kitchenNote ? { kitchen_notes: kitchenNote } : {}),
         ...(input.maps_link ? { google_maps_link: input.maps_link } : {}),
         // Same rule as the primary address: only written when this order
         // carried one, so a renewal extracted from chat alone cannot blank it.

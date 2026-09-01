@@ -43,10 +43,14 @@ function makeDb(messages: { role: string; content: string }[]) {
       eq: jest.fn().mockResolvedValue({ error: null }),
     }),
   };
+  // learnCustomerContext writes an edit_log row for what it overwrote.
+  const editLog = { insert: jest.fn().mockResolvedValue({ error: null }) };
   return {
-    from: jest.fn((table: string) =>
-      table === "customers" ? customers : conversations,
-    ),
+    from: jest.fn((table: string) => {
+      if (table === "customers") return customers;
+      if (table === "edit_log") return editLog;
+      return conversations;
+    }),
   } as never;
 }
 
@@ -94,14 +98,7 @@ describe("learnCustomerContext prompt", () => {
     expect(instructions).toContain("Preferensi: tidak ada permintaan khusus.");
   });
 
-  test("still pins the Preferensi label the kitchen page filters on", async () => {
-    // PREF_BULLET in src/app/dapur/[id]/page.tsx matches this label and only
-    // this one; changing it here silently empties the kitchen sheet.
-    const instructions = (await capturePrompt()).split("Transcript:")[0];
-    expect(instructions).toContain('"Preferensi:"');
-  });
-
-  test("still forbids putting our internal protein arrangement on the sheet", async () => {
+  test("still forbids recording our internal protein arrangement", async () => {
     const instructions = (await capturePrompt()).split("Transcript:")[0];
     expect(instructions).toMatch(/protein/i);
   });

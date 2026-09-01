@@ -521,6 +521,7 @@ export type Database = {
           google_maps_link: string | null
           google_maps_link_2: string | null
           id: string
+          kitchen_notes: string | null
           linked_order_id: string | null
           meal_time_preference: string | null
           name: string | null
@@ -557,6 +558,7 @@ export type Database = {
           google_maps_link?: string | null
           google_maps_link_2?: string | null
           id?: string
+          kitchen_notes?: string | null
           linked_order_id?: string | null
           meal_time_preference?: string | null
           name?: string | null
@@ -593,6 +595,7 @@ export type Database = {
           google_maps_link?: string | null
           google_maps_link_2?: string | null
           id?: string
+          kitchen_notes?: string | null
           linked_order_id?: string | null
           meal_time_preference?: string | null
           name?: string | null

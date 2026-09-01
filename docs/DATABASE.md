@@ -295,7 +295,8 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | total_payment | integer | Total amount paid in IDR across conversion orders |
 | promo_used | text | Promo code or campaign description (manual) |
 | converted_to_subscription | boolean | Whether customer converted to a recurring subscription (default false) |
-| notes | text | Internal notes about this customer |
+| notes | text | Internal notes about this customer, plus the `[AI learned context]` block `learnCustomerContext()` rewrites wholesale. Dashboard and chatbot only — **the kitchen never reads this column** |
+| kitchen_notes | text | What the cook must do differently, in the customer's own terms ("tanpa nasi", "tidak ada kacang"). The only customer text printed on the unauthenticated `/dapur/[id]` sheet. Written by an admin (Customers → Catatan dapur) or by `extract_order`'s `catatan` via `mergeKitchenNote()`; **never by the summarizer** — it used to reach the sheet through the `Preferensi:` bullet in `notes` and cooked Carolin six portions without rice on 2026-09-01 off a restriction she had never given (migration 089) |
 | linked_order_id | uuid | FK → orders, nullable. If set, this customer's daily draws come from someone else's order/quota instead of their own (e.g. a kid drawing from a parent's package) |
 | contract_price_per_portion | integer | Negotiated per-portion rate for a corporate customer, in IDR. When set it replaces the `pricing_tiers` lookup entirely and lifts the 5/6 divisibility rule — a company buys box counts, not packages. Read via `contractPrice()` by pricing, payment-size matching and the system prompt. NULL = ordinary tier pricing, which is every customer but PT Bintang Lautan |
 | created_at | timestamp | |

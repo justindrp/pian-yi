@@ -49,127 +49,24 @@ function formatDateID(dateStr: string): string {
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// customers.notes mixes two things: manual admin notes (dietary/drop-off
-// instructions the kitchen needs) and an [AI learned context] block written by
-// the chatbot, which also summarizes pricing and service coverage. This page is
-// unauthenticated and shared with the subcontractor, so nothing from the AI
-// block reaches it except what the two helpers below explicitly allow through.
-
-const AI_BLOCK = /\[AI learned context\][\s\S]*?\[\/AI learned context\]/g;
-
-function manualNotesOnly(notes: string): string | null {
-  const stripped = notes.replace(AI_BLOCK, "");
-  // An unterminated opening tag would otherwise survive the replace and print
-  // the whole block; drop everything from it.
-  const open = stripped.indexOf("[AI learned context]");
-  return (open === -1 ? stripped : stripped.slice(0, open)).trim() || null;
-}
-
-// Some customers have no manual notes at all — everything the kitchen needs
-// ("tidak ada seafood", "diambil di security") is inside the AI block. Pull the
-// "Preferensi*" bullets back out of it, and only those: the sibling labels
-// (Catatan, Pesanan, Area layanan, Harga…) carry cutoffs, bank details, and
-// price points that the subcontractor has no reason to see.
-const PREF_BULLET = /^[-•*]\s*\**\s*(Preferensi[^:*]{0,30})\**\s*:\s*(.+)$/i;
-// Belt-and-braces: the model sometimes writes prices into a Preferensi bullet
-// anyway ("Halal, harga terjangkau mulai 27RB, gratis ongkir"). Drop any line
-// that mentions money — a dropped preference is recoverable, a leaked price
-// list is not.
-const MONEY = /\bRp\b|\d\s*(?:rb|ribu|k)\b|harga|ongkir|bayar|transfer|bca/i;
-// A preference can also record that the customer is shopping around ("tertarik
-// mencoba dapur berbeda untuk membandingkan menu dan kualitas"). True, but not
-// something to hand the kitchen being compared. Matches comparison intent, not
-// the word "dapur" on its own — "perlu konfirmasi ke dapur" is a normal note.
-const COMPARISON =
-  /bandingk|perbandingan|kompetitor|pesaing|beralih|pindah\s+ke|(?:dapur|catering|katering|vendor|penyedia)\s+(?:lain|berbeda|sebelah|baru)/i;
-// The model also files our own ordering model under "Preferensi" ("sistem
-// fleksibel, porsi bisa dipakai kapan saja"). That is how our packages work,
-// not something the customer wants cooked differently — noise to the kitchen.
-// Matched narrowly: "per porsi" and "paket" are excluded on purpose, because
-// they show up in real food notes like "nasi + 3 lauk per porsi".
-const ORDERING_MODEL =
-  /pesan\s+bebas|jadwal\s+tetap|sistem\s+(?:pesan|fleksibel|pemesanan)|kuota|berturut-turut|porsi\s+bisa\s+dipakai|langganan/i;
-// "Makan siang saja" tells the kitchen nothing: the card is already under the
-// MAKAN SIANG heading. Anchored at both ends so only a clause that is nothing
-// but a meal-time reference is dropped — "siang ayam-malam daging" stays.
-const MEAL_ONLY =
-  /^(?:hanya\s+|khusus\s+)?(?:untuk\s+)?(?:pengiriman\s+|makan(?:an)?\s+)?(?:siang|malam|lunch|dinner)(?:\s*\([^)]*\))?(?:\s+saja)?$/i;
-
-// Filtering runs per clause, not per bullet: one line usually mixes something
-// the kitchen needs with something it shouldn't see ("Makan siang saja, porsi
-// kecil, sistem fleksibel …"), and dropping the whole line loses the useful
-// half.
-function usefulClauses(value: string): string[] {
-  return (
-    value
-      .split(/[;,]/)
-      .map((clause) => clause.trim())
-      // "tanpa nasi (harga tetap sama)" is a single clause, and dropping it whole
-      // for the price inside took the dietary request off the sheet with it.
-      // Drop just the parenthetical, then judge what is left — the price never
-      // prints either way, and a parenthetical that is not about money
-      // ("(diganti ayam)") is untouched.
-      .map((clause) =>
-        clause.replace(/\s*\(([^)]*)\)/g, (whole, inner: string) =>
-          MONEY.test(inner) ? "" : whole,
-        ),
-      )
-      .filter(
-        (clause) =>
-          clause &&
-          !MONEY.test(clause) &&
-          !COMPARISON.test(clause) &&
-          !ORDERING_MODEL.test(clause) &&
-          !MEAL_ONLY.test(clause),
-      )
-  );
-}
-
-function aiPreferences(notes: string): string | null {
-  const prefs: string[] = [];
-  for (const block of notes.match(AI_BLOCK) ?? []) {
-    for (const line of block.split("\n")) {
-      const match = line.trim().match(PREF_BULLET);
-      if (!match) continue;
-      // Stripped before splitting: the compensation is a parenthetical hanging
-      // off the request ("tanpa nasi (protein +25%)"), so a clause-level filter
-      // would drop the request with it.
-      const kept = usefulClauses(
-        stripCompensation(match[2].replace(/\*\*/g, "")),
-      );
-      // Splitting can strand an opening paren whose closing half was in a
-      // dropped clause; balance it rather than printing "porsi kecil (".
-      const joined = kept.join(", ").replace(/\s*\($/, "");
-      // Dropping a leading clause leaves the rest starting lowercase
-      // ("porsi kecil"), so restore sentence case.
-      const text = balanceParens(joined).replace(/^./, (c) => c.toUpperCase());
-      if (text) prefs.push(text);
-    }
-  }
-  return prefs.join("; ") || null;
-}
-
-function balanceParens(text: string): string {
-  const opens = (text.match(/\(/g) ?? []).length;
-  const closes = (text.match(/\)/g) ?? []).length;
-  if (opens === closes) return text.trim();
-  // Unbalanced either way means the sentence was cut mid-parenthetical; strip
-  // the parens rather than leaving a dangling one.
-  return text.replace(/[()]/g, "").trim();
-}
-
-function kitchenPreferences(notes: string | null): string | null {
-  if (!notes) return null;
-  // Manual notes get the same strip: an admin who typed the note in by hand
-  // copied it from the same sentence the model reads.
-  const manual = manualNotesOnly(notes);
-  const safe = manual && safeManualNote(stripCompensation(manual));
-  return safe || aiPreferences(notes);
+// The kitchen prints `customers.kitchen_notes` and nothing else. That column is
+// written by an admin or by extract_order's `catatan` — never by the
+// summarizer, whose [AI learned context] block used to feed this page through a
+// `Preferensi:` bullet. It cooked Carolin six portions without rice on
+// 2026-09-01 off a restriction she had never given and had cancelled the day
+// before, and the same block carries prices and coverage this page must never
+// show: it is unauthenticated and shared with the subcontractor.
+function kitchenPreferences(kitchenNotes: string | null): string | null {
+  if (!kitchenNotes) return null;
+  // Still filtered, not because a human is untrusted but because the page is
+  // public: `safeManualNote` strips phone numbers and internal arrangements,
+  // and `stripCompensation` strips the "(protein +25%)" we add ourselves.
+  return safeManualNote(stripCompensation(kitchenNotes));
 }
 
 type Customer = {
   name: string | null;
-  notes: string | null;
+  kitchen_notes: string | null;
   area: string | null;
   sub_area: string | null;
   address: string | null;
@@ -202,7 +99,9 @@ function DeliveryCard({ d }: { d: Delivery }) {
       ? (c?.google_maps_link_2 ?? c?.google_maps_link)
       : c?.google_maps_link;
   const location = [area, subArea].filter(Boolean).join(" · ");
-  const preference = splitPreferences(kitchenPreferences(c?.notes ?? null));
+  const preference = splitPreferences(
+    kitchenPreferences(c?.kitchen_notes ?? null),
+  );
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
@@ -466,7 +365,7 @@ export default async function DapurPage({
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion, size), customers(name, notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion, size), customers(name, kitchen_notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date),

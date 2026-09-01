@@ -194,6 +194,7 @@ export async function PATCH(
     "ad_creative",
     "promo_used",
     "notes",
+    "kitchen_notes",
     "address_2",
     "area_2",
     "sub_area_2",

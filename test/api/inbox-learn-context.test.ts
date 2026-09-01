@@ -16,7 +16,7 @@ function makeChain(
   result: { data: unknown; error: unknown } = { data: null, error: null },
 ) {
   const chain: Record<string, unknown> = {};
-  const methods = ["select", "update", "eq", "order", "limit"];
+  const methods = ["select", "update", "insert", "eq", "order", "limit"];
   for (const m of methods) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }

@@ -434,6 +434,7 @@ export default function CustomersClient() {
     promo_used: "",
     converted_to_subscription: false,
     notes: "",
+    kitchen_notes: "",
     address_2: "",
     area_2: "",
     sub_area_2: "",
@@ -858,6 +859,7 @@ export default function CustomersClient() {
       promo_used: string;
       converted_to_subscription: boolean;
       notes: string;
+      kitchen_notes: string;
       address_2: string;
       area_2: string;
       sub_area_2: string;
@@ -886,6 +888,7 @@ export default function CustomersClient() {
           promo_used: form.promo_used || null,
           converted_to_subscription: form.converted_to_subscription,
           notes: form.notes || null,
+          kitchen_notes: form.kitchen_notes || null,
           address_2: form.address_2 || null,
           area_2: form.area_2 || null,
           sub_area_2: form.sub_area_2 || null,
@@ -1076,6 +1079,7 @@ export default function CustomersClient() {
       promo_used?: string | null;
       converted_to_subscription?: boolean | null;
       notes?: string | null;
+      kitchen_notes?: string | null;
     };
     setEditForm({
       phone_number: customer.phone_number ?? "",
@@ -1092,6 +1096,7 @@ export default function CustomersClient() {
       promo_used: c.promo_used ?? "",
       converted_to_subscription: c.converted_to_subscription ?? false,
       notes: c.notes ?? "",
+      kitchen_notes: c.kitchen_notes ?? "",
       address_2:
         (customer as unknown as { address_2?: string | null }).address_2 ?? "",
       area_2: (customer as unknown as { area_2?: string | null }).area_2 ?? "",
@@ -2350,6 +2355,28 @@ export default function CustomersClient() {
                 >
                   Converted to subscription
                 </Label>
+              </div>
+
+              <div>
+                <Label className="text-xs text-gray-500 block mb-1">
+                  Catatan dapur
+                </Label>
+                <Textarea
+                  value={editForm.kitchen_notes}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, kitchen_notes: e.target.value })
+                  }
+                  rows={2}
+                  className="resize-none"
+                  placeholder="tanpa nasi, tidak ada kacang, titip ke security"
+                />
+                {/* The only text the kitchen sees. Everything else on this form
+                    stays inside the dashboard, and the chatbot's summary no
+                    longer reaches them at all. */}
+                <p className="text-xs text-gray-400 mt-1">
+                  Tampil di halaman dapur. Tulis permintaan customer apa adanya,
+                  bukan kompensasi kita (bukan &quot;protein +25%&quot;).
+                </p>
               </div>
 
               <div>

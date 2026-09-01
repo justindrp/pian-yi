@@ -1,12 +1,7 @@
 import { mergeKitchenNote } from "@/lib/claude/extract-order";
 
-const AI_BLOCK = `[AI learned context]
-- Preferensi: tidak pedas
-- Harga: Rp 420.000
-[/AI learned context]`;
-
 describe("mergeKitchenNote", () => {
-  test("writes the request as a manual note when there are none", () => {
+  test("writes the request when the column is empty", () => {
     expect(mergeKitchenNote(null, "tanpa nasi")).toBe("tanpa nasi");
     expect(mergeKitchenNote("", "tanpa nasi")).toBe("tanpa nasi");
   });
@@ -16,24 +11,10 @@ describe("mergeKitchenNote", () => {
     expect(mergeKitchenNote("diambil di security", "   ")).toBeNull();
   });
 
-  // The kitchen sheet cuts everything from [AI learned context] onwards, so the
-  // block has to stay last. A note appended after it would be invisible, and
-  // worse, would drag the block's price lines onto an unauthenticated page.
-  test("keeps the AI block last so manualNotesOnly still cuts it off", () => {
-    const merged = mergeKitchenNote(AI_BLOCK, "tanpa nasi");
-    expect(merged).not.toBeNull();
-    const cut = (merged as string).indexOf("[AI learned context]");
-    expect(cut).toBeGreaterThan(0);
-    expect((merged as string).slice(0, cut).trim()).toBe("tanpa nasi");
-    expect(merged).toContain("[/AI learned context]");
-  });
-
-  test("keeps existing manual notes, with the new request above them", () => {
-    const merged = mergeKitchenNote(
-      `diambil di security\n\n${AI_BLOCK}`,
-      "tanpa nasi",
+  test("keeps existing notes, with the new request above them", () => {
+    expect(mergeKitchenNote("diambil di security", "tanpa nasi")).toBe(
+      "tanpa nasi\ndiambil di security",
     );
-    expect(merged).toBe(`tanpa nasi\ndiambil di security\n\n${AI_BLOCK}`);
   });
 
   // extract_order re-runs on every amendment and every renewal.
@@ -41,13 +22,6 @@ describe("mergeKitchenNote", () => {
     const once = mergeKitchenNote(null, "tanpa nasi") as string;
     expect(mergeKitchenNote(once, "tanpa nasi")).toBeNull();
     expect(mergeKitchenNote(once, "TANPA NASI")).toBeNull();
-    expect(mergeKitchenNote(`${once}\n\n${AI_BLOCK}`, "tanpa nasi")).toBeNull();
-  });
-
-  test("a request already in the AI block is still written manually", () => {
-    // aiPreferences() only surfaces `Preferensi:` bullets, and only when there
-    // is no manual note at all — so presence in the block is not coverage.
-    expect(mergeKitchenNote(AI_BLOCK, "tidak pedas")).toContain("tidak pedas");
   });
 
   test("records several requests as one line", () => {

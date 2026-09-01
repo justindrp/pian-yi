@@ -6,6 +6,7 @@ import {
   NO_THINKING,
 } from "@/lib/claude/client";
 import { updateTokenCount } from "@/lib/claude/safety";
+import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
 
@@ -78,18 +79,20 @@ Rules:
   fact in that bullet, and never put a price, a total, a discount or a bank
   detail in it. Record only what the customer asked for, never what we do about
   it internally: write their request as they made it, never the protein
-  increase we arrange with the kitchen in return for it. Only bullets carrying
-  this exact label are shown to the kitchen; the same fact written under any
-  other label is invisible to them.
+  increase we arrange with the kitchen in return for it. This bullet does not
+  reach the kitchen — customers.kitchen_notes does, and only an admin or an
+  accepted order writes that — so a request recorded here still has to be acted
+  on by a person.
 - A restriction goes in that bullet ONLY if the customer stated it themselves,
   in their own message, in this transcript. Use their words. If they stated
   none, the bullet must read exactly "Preferensi: tidak ada permintaan khusus."
   — never a list of plausible restrictions, never a restriction because it is
   common, and never one lifted from these instructions rather than the
   transcript. A customer who is told about a restriction, or asked whether they
-  have one and says no, has not stated one. This bullet is printed on the
-  kitchen sheet and cooked from: an invented restriction sends someone a meal
-  they never ordered, and it buries the real request underneath.
+  have one and says no, has not stated one. The chatbot is handed this bullet
+  on every turn and answers from it: on 2026-08-31 Carolin asked "ini tanpa
+  nasi?" about a restriction she had never given, and the bot confirmed it back
+  to her because the bullet said so.
 - Do not invent facts.
 - Do not include temporary chatter, greetings, or exact payment/card details.
 
@@ -123,6 +126,21 @@ ${transcript}`,
   if (error) {
     throw new Error(error.message);
   }
+
+  // This overwrites a whole block of a customer's record from a model output,
+  // and until now left no trace of what it replaced. When Carolin's kitchen
+  // card said "tanpa nasi" on 2026-09-01 there was no way to prove what the
+  // summarizer had written the night before, only to infer it from the label on
+  // the bag. The block no longer reaches the kitchen, but it still feeds the
+  // bot, so what it said and when has to be reconstructable.
+  await logEdit({
+    db,
+    actor: systemActor("learn-context"),
+    entityType: "customers",
+    entityId: customerId,
+    action: "learn_context",
+    changes: { before: customer.notes ?? null, after: notes },
+  });
 
   return { summary, notes };
 }
