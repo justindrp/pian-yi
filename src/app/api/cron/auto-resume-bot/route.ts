@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
-import { takeoverCutoff } from "@/lib/customers/takeover";
+import { RESUMED_FLAGS, takeoverCutoff } from "@/lib/customers/takeover";
 import { replayLatestCustomerMessage } from "@/lib/inbox/replay-latest";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -15,6 +15,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const db = createAdminClient();
   const cutoff = takeoverCutoff();
+  const now = new Date().toISOString();
 
   // Capped per run because each candidate costs up to two Claude calls —
   // learning the context the admin handled, then generating the reply the
@@ -32,6 +33,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     .eq("escalated_to_human", true)
     .lt("last_human_activity_at", cutoff)
     .not("last_human_activity_at", "is", null)
+    // A deliberate hold outranks the silence: the admin is waiting on something
+    // off WhatsApp, not neglecting the thread. It always carries an expiry, so
+    // the sweep picks the thread up on the first run after it passes.
+    .or(`hold_until.is.null,hold_until.lt.${now}`)
     .order("last_human_activity_at", { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -57,11 +62,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         await tryLearnCustomerContext(customer_id, db);
         const { error } = await db
           .from("customer_flags")
-          .update({
-            escalated_to_human: false,
-            escalation_reason: null,
-            last_human_activity_at: null,
-          })
+          .update(RESUMED_FLAGS)
           .eq("customer_id", customer_id);
         if (error) throw new Error(error.message);
 

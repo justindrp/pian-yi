@@ -385,6 +385,7 @@ export type Database = {
           customer_id: string
           escalated_to_human: boolean | null
           escalation_reason: string | null
+          hold_until: string | null
           is_blacklisted: boolean | null
           is_suspicious: boolean | null
           last_human_activity_at: string | null
@@ -398,6 +399,7 @@ export type Database = {
           customer_id: string
           escalated_to_human?: boolean | null
           escalation_reason?: string | null
+          hold_until?: string | null
           is_blacklisted?: boolean | null
           is_suspicious?: boolean | null
           last_human_activity_at?: string | null
@@ -411,6 +413,7 @@ export type Database = {
           customer_id?: string
           escalated_to_human?: boolean | null
           escalation_reason?: string | null
+          hold_until?: string | null
           is_blacklisted?: boolean | null
           is_suspicious?: boolean | null
           last_human_activity_at?: string | null

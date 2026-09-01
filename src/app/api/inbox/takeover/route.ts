@@ -1,4 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  HOLD_CHOICES_MINUTES,
+  holdUntil,
+  TAKEOVER_INACTIVITY_MINUTES,
+} from "@/lib/customers/takeover";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
@@ -26,12 +31,27 @@ export async function POST(req: NextRequest): Promise<Response> {
   const body = (await req.json()) as {
     customer_id: string;
     escalated: boolean;
+    hold_minutes?: number;
   };
-  const { customer_id, escalated } = body;
+  const { customer_id, escalated, hold_minutes } = body;
 
   if (!customer_id || typeof escalated !== "boolean") {
     return NextResponse.json(
       { ok: false, error: "Missing customer_id or escalated" },
+      { status: 400 },
+    );
+  }
+
+  // How long the thread is held for is a choice off a short menu, not a number
+  // the caller invents: a hold long enough to be forgotten is the state the
+  // auto-resume sweep exists to clear.
+  const minutes = hold_minutes ?? TAKEOVER_INACTIVITY_MINUTES;
+  if (!(HOLD_CHOICES_MINUTES as readonly number[]).includes(minutes)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `hold_minutes must be one of ${HOLD_CHOICES_MINUTES.join(", ")}`,
+      },
       { status: 400 },
     );
   }
@@ -49,6 +69,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     escalated_to_human: escalated,
     escalation_reason: escalated ? "Manual takeover" : null,
     last_human_activity_at: escalated ? new Date().toISOString() : null,
+    // The bot stays off until this passes even if nobody types again. Cleared
+    // on the way back so it cannot silence the next conversation.
+    hold_until: escalated ? holdUntil(minutes) : null,
     pending_bot_response: false,
     pending_bot_question: null,
   });

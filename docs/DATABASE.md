@@ -219,7 +219,8 @@ The dashboard Inbox `Unanswered` filter is derived from this table: a thread is 
 | customer_id | uuid | Primary key, FK → customers |
 | escalated_to_human | boolean | True when an admin needs to take over the conversation |
 | escalation_reason | text | Why it was escalated |
-| last_human_activity_at | timestamptz | Stamped on takeover and each manual reply; bot auto-resumes after 30 min of admin inactivity (`TAKEOVER_INACTIVITY_MINUTES`). NULL means never auto-resume |
+| last_human_activity_at | timestamptz | Stamped on takeover and each manual reply (including `scripts/manual-send.ts`); bot auto-resumes after 30 min of admin inactivity (`TAKEOVER_INACTIVITY_MINUTES`). NULL means never auto-resume |
+| hold_until | timestamptz | Migration 090. While in the future, neither resume path hands the thread back however quiet the admin has been. NULL = the ordinary 30-minute rule, which is what every pre-090 row has. Always finite — set from a short menu (30 min / 2 jam / 24 jam) and cleared on resume |
 | pending_bot_response | boolean | True when bot is waiting for an admin's answer via Inbox |
 | pending_bot_question | text | The question the bot needs an admin to answer |
 | is_blacklisted | boolean | Bot ignores all messages from blacklisted customers |

@@ -19,6 +19,10 @@ import type {
 } from "@/lib/claude/extract-order";
 import { modelRole } from "@/lib/claude/model-tag";
 import { normalizeCustomerState } from "@/lib/customers/lifecycle";
+import {
+  HOLD_CHOICES_MINUTES,
+  TAKEOVER_INACTIVITY_MINUTES,
+} from "@/lib/customers/takeover";
 import { createClient } from "@/lib/supabase/client";
 import {
   formatDateTime,
@@ -188,6 +192,12 @@ function getReceiptClass(status: string | null) {
 // `canTakeOver` is owner-only (see POST /api/inbox/takeover for why). Non-owners
 // keep "Resume bot" on a thread a human already holds — handing work back to the
 // bot is the safe direction and must never need an owner present.
+const HOLD_LABELS: Record<number, string> = {
+  30: "Hold 30 min",
+  120: "Hold 2 jam",
+  1440: "Hold 24 jam",
+};
+
 export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
@@ -521,6 +531,12 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     ]);
   }
 
+  // How long the next takeover holds the bot off. 30 minutes is the old
+  // behaviour — the thread comes back on its own once the admin goes quiet.
+  const [holdMinutes, setHoldMinutes] = useState<number>(
+    TAKEOVER_INACTIVITY_MINUTES,
+  );
+
   async function toggleEscalation() {
     if (!selectedCustomerId || !flags) return;
     const newVal = !flags.escalated_to_human;
@@ -533,6 +549,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       body: JSON.stringify({
         customer_id: selectedCustomerId,
         escalated: newVal,
+        hold_minutes: holdMinutes,
       }),
     });
     if (!res.ok) {
@@ -1211,6 +1228,20 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
                   {applyingStage ? "Applying..." : "Save stage"}
                 </Button>
               </div>
+              {!flags?.escalated_to_human && canTakeOver && (
+                <select
+                  value={holdMinutes}
+                  onChange={(e) => setHoldMinutes(Number(e.target.value))}
+                  className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-700"
+                  aria-label="Hold the bot off for"
+                >
+                  {HOLD_CHOICES_MINUTES.map((m) => (
+                    <option key={m} value={m}>
+                      {HOLD_LABELS[m]}
+                    </option>
+                  ))}
+                </select>
+              )}
               {(flags?.escalated_to_human || canTakeOver) && (
                 <Button
                   type="button"

@@ -96,10 +96,25 @@ describe("POST /api/inbox/takeover", () => {
         escalated_to_human: true,
         escalation_reason: "Manual takeover",
         last_human_activity_at: expect.any(String),
+        hold_until: expect.any(String),
         pending_bot_response: false,
         pending_bot_question: null,
       }),
     );
+  });
+
+  // The menu is the whole of it: a hold long enough to be forgotten is the
+  // state the auto-resume sweep exists to clear.
+  test("rejects a hold duration that is not on the menu", async () => {
+    const db = makeDbMock();
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const res = await POST(
+      postRequest({ customer_id: "cust-1", escalated: true, hold_minutes: 90 }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(db.from).not.toHaveBeenCalled();
   });
 
   test("rejects takeover by a non-owner", async () => {
@@ -133,6 +148,7 @@ describe("POST /api/inbox/takeover", () => {
         escalated_to_human: false,
         escalation_reason: null,
         last_human_activity_at: null,
+        hold_until: null,
       }),
     );
   });
