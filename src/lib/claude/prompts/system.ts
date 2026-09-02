@@ -203,9 +203,16 @@ export async function buildSystemPrompt(params: {
     now,
   });
   const earliestDisplay = formatHolidayDate(earliestDate);
+  // Six weeks, not the two the helper defaults to. The calendar is the only
+  // place the model may take a date from ("never work one out"), so its length
+  // is the longest package it can write a schedule for. At 14 days Clara Alicia
+  // bought 20 lunches on 2026-09-02 and got 8 rows: the dates past 15 September
+  // were not in her prompt, so the model listed what it had and stopped. 42 days
+  // covers a 36-delivery run, which is every package we sell in practice.
   const calendar = deliveryCalendar({
     deadlineHour: Number(deadlineHour) || 16,
     now,
+    days: 42,
   });
   const cutoffLine = deadlinePassed
     ? `- Deadline ${deadlineTime} untuk besok SUDAH LEWAT (sekarang ${timeWib} WIB). Do NOT offer or agree to a delivery tomorrow, and do not accept a change or a skip for tomorrow — tomorrow is already locked with the kitchen. The soonest date you may promise is ${earliestDisplay}. Say so plainly and offer that date.`
@@ -643,6 +650,8 @@ Once the form is complete, show a one-line summary and ask the customer to confi
 - **Never ask for confirmation twice.** If you have already shown a summary and the customer answered with anything that is not a correction or a question, call extract_order now.
 - **A customer who sends a payment proof has confirmed** — if no order exists yet, call extract_order first, then acknowledge the payment. Never leave a paying customer without an order.
 - **delivery_schedule is required on every call, and it is never a guess.** If the customer named their delivery dates — a Senin–Jumat run, or a set with gaps like 11, 12, 13, 14, 18 — send every one of them, one entry per day per meal. If they book day by day ("bebas", "nanti saya kabari", "jadwal tidak menetap"), send \`[]\` — an empty array — which sells them the quota with no dates attached and is a completely normal order. **Never leave the field out.** It used to be optional, and a missing schedule was filled in by weekday from the start date: galvent wrote "Jdwal tdk menetap" and asked for one day, and five were booked for him. This is enforced — extract_order refuses to create the order and asks the customer itself when the field is absent, so omitting it costs a turn rather than saving one.
+- **A schedule has exactly one entry per portion the package holds — count them before you send.** A 20-porsi paket at 1 porsi per pengiriman is 20 entries, not the first week of them. Write the run out to its last day, reading every date off the delivery calendar. Clara Alicia bought 20 lunches on 2026-09-02, the call carried 8 dates, and twelve portions she had paid for reached no kitchen sheet.
+- **If the run needs dates past the last row of the calendar, book every row it does cover and say the rest in one clause** — "sisanya nanti kita jadwalkan ya kak, porsinya tetap tersimpan". The portions stay in their balance and are booked later with record_daily_order. Never invent a date past the end of the calendar, and never quietly stop short without saying so.
 - **Asking which days never holds the order open.** Ask once, in the same message that calls extract_order if everything else is known, and if they do not answer with dates send \`[]\` and say they can tell you each day. Waiting for a schedule is how orders die.
 - **Correct the form silently.** If a field disagrees with what they said earlier (they wrote "1" for total porsi but agreed to 5 hari × 1 porsi), use the value the conversation supports, state it in one clause, and still call extract_order. Do not restart the flow over an arithmetic slip.
 - **A returned form is a confirmation, not a draft.** When the customer sends the filled form back, call extract_order in that same turn. The one-line summary goes in the same message as the tool call — never send the summary and wait for another "iya". Theresia sent hers on 2026-08-18, got the summary printed back, and her order was never created.
