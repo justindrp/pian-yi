@@ -67,7 +67,7 @@ function kitchenPreferences(kitchenNotes: string | null): string | null {
 
 type Customer = {
   name: string | null;
-  phone_number: string | null;
+  delivery_phone: string | null;
   kitchen_notes: string | null;
   area: string | null;
   sub_area: string | null;
@@ -105,11 +105,16 @@ function DeliveryCard({ d }: { d: Delivery }) {
     kitchenPreferences(c?.kitchen_notes ?? null),
   );
   // Buildings that refuse a lobby drop — Synergy among them — make the courier
-  // someone who has to reach the customer, not only the address. This is
-  // `customers.phone_number`, the record's own identity: never a number found
-  // in a note, which is how Cila's card came to print the WhatsApp of the
-  // person who buys for her. `safeManualNote` still redacts those.
-  const phone = displayPhone(c?.phone_number);
+  // someone who has to reach the customer, not only the address. Only the
+  // customers who need it carry a number, because the page is unauthenticated:
+  // this is `customers.delivery_phone`, set per customer from the Customers
+  // screen, and blank for everyone else. It is deliberately not
+  // `phone_number` — that would print the whole book on a shared link, and it
+  // has no way to say "call Naya" for a customer like Cila, who is reachable
+  // only through the person who buys for her. Never a number found in a note:
+  // that is how Cila's card once printed Naya's WhatsApp under "Makanan:", and
+  // `safeManualNote` still redacts those.
+  const phone = displayPhone(c?.delivery_phone);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
@@ -381,7 +386,7 @@ export default async function DapurPage({
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion, size), customers(name, phone_number, kitchen_notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion, size), customers(name, delivery_phone, kitchen_notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date),

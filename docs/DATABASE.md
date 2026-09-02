@@ -349,7 +349,7 @@ Every person who has messaged the business on WhatsApp. Phone number is the prim
 | sub_area | text | Sub-location within the area: district name for houses, apartment name for apartments, building name for offices |
 | address_type | text | "house", "apartment", or "office" — classified by Sonnet at order time |
 | google_maps_link | text | Google Maps URL for the delivery address |
-| delivery_phone | text | Alternative phone number for delivery if different |
+| delivery_phone | text | Who the courier calls on arrival, and the **only** customer number printed on the unauthenticated `/dapur/[id]` sheet — set per customer (Customers → Delivery Phone) for the ones a courier actually has to call, blank for everyone else. Not `phone_number`: that would put every customer's number behind a link shared with the kitchen, and it cannot express "call someone else" — Cila has no number of her own (`IMPORT_cila`) and carries Naya's, who buys for her. Set for Naya, Cila and Winy on 2026-09-02, after Synergy Building refused a lobby drop |
 | meal_time_preference | text | Display-only. Null for 381 of 384 customers, read by no decision path, rendered in one panel of the chatbot-training screen. The order-level column of the same name was dropped in migration 077 and the code that expanded these values into dates was deleted on 2026-08-28. Do not wire anything new to it. |
 | custom_schedule | json | Per-weekday schedule if preference is "custom_schedule" |
 | subcontractor_id | uuid | FK → subcontractors — which kitchen serves this customer |
