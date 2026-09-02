@@ -175,6 +175,8 @@ Every line of a statement, stored whether or not we know what it is.
 
 Import with `pnpm tsx --env-file=.env.local scripts/import-bank-statements.ts <file.pdf>`. The parser (`src/lib/accounting/statement-parser.ts`) refuses to store a statement whose control totals do not tie — a half-parsed statement reconciles against nothing while looking like it did. That guard earned itself immediately: the Superbank row regex required a newline between the description and the amount, and the extractor emits both forms in the same file, so 18 of 49 July rows were being dropped silently.
 
+**A null `journal_id` on a 2100 credit does not mean the payment is unbooked.** `order_payment` journals are posted from the `orders` table and never wrote the link back, so 31 of the 64 unjournalised credits already had a journal when the statements were first imported. Posting a journal for every unlinked row would have double-counted Rp 14M+ of revenue. Linking is therefore its own pass and runs first: `scripts/link-bank-journals.ts` (dry run by default, `--apply` writes) stamps `journal_id` on rows whose journal already exists and creates nothing. It links only where the amount, the date within three days, **and the name** all agree — uniqueness inside the candidate set is not proof, because a deposit whose own journal is still missing can be the sole amount-and-date match for someone else's, and a draft of the script duly offered to file Dessy's Rp 174.000 against Veronica's JV. A sole candidate whose name disagrees is printed for review, not linked; several of those are genuine proxy payers. Posting the genuinely-missing journals is a separate pass.
+
 ---
 
 
