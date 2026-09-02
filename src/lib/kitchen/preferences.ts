@@ -44,11 +44,14 @@ export function splitPreferences(preference: string | null): {
   };
 }
 
-// A phone number has no reader on the kitchen card. The page is unauthenticated
-// and shared with the subcontractor, the card deliberately carries no customer
-// number, and the one that showed up was somebody else's: Cila's note named the
-// WhatsApp of the person who buys for her. Redacted rather than dropped, so a
-// clause that also carries a dietary request keeps the request.
+// A number inside a note is not the customer's number. The one that showed up
+// was somebody else's — Cila's note named the WhatsApp of the person who buys
+// for her — and the page is unauthenticated and shared with the subcontractor,
+// so an unverified number printed as an instruction is the worst of both. The
+// card carries `customers.phone_number` on its own line instead (buildings such
+// as Synergy refuse a lobby drop, so the courier has to call), which is the
+// record's identity and is right by construction. Redacted rather than dropped,
+// so a clause that also carries a dietary request keeps the request.
 const PHONE = /(?:\+?62|\b0)\d[\d\s().-]{7,}\d/g;
 
 // Who bought the package, whose number it was arranged on, what the system does

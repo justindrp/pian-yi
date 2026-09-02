@@ -47,3 +47,15 @@ export function samePhone(
   const right = normalizePhone(b);
   return left !== null && left === right;
 }
+
+/**
+ * The number as an Indonesian reads it back: `+6281213098656` → `081213098656`.
+ * Storage is `+62…` because that is what WhatsApp hands us, but nobody dials it
+ * from a printed sheet in that form. A foreign number is handed back unchanged —
+ * its `+` is the only thing that makes it dialable.
+ */
+export function displayPhone(phone: string | null | undefined): string | null {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  return normalized.startsWith("+62") ? `0${normalized.slice(3)}` : normalized;
+}

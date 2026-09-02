@@ -14,6 +14,7 @@ import {
 } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatIDR } from "@/lib/utils/format";
+import { displayPhone } from "@/lib/utils/phone";
 import { DatePicker } from "./date-picker";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,7 @@ function kitchenPreferences(kitchenNotes: string | null): string | null {
 
 type Customer = {
   name: string | null;
+  phone_number: string | null;
   kitchen_notes: string | null;
   area: string | null;
   sub_area: string | null;
@@ -102,6 +104,12 @@ function DeliveryCard({ d }: { d: Delivery }) {
   const preference = splitPreferences(
     kitchenPreferences(c?.kitchen_notes ?? null),
   );
+  // Buildings that refuse a lobby drop — Synergy among them — make the courier
+  // someone who has to reach the customer, not only the address. This is
+  // `customers.phone_number`, the record's own identity: never a number found
+  // in a note, which is how Cila's card came to print the WhatsApp of the
+  // person who buys for her. `safeManualNote` still redacts those.
+  const phone = displayPhone(c?.phone_number);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-1">
@@ -124,6 +132,14 @@ function DeliveryCard({ d }: { d: Delivery }) {
         >
           Lihat di Maps
         </a>
+      )}
+      {phone && (
+        <div className="text-sm text-gray-700">
+          Telp:{" "}
+          <a href={`tel:${phone}`} className="text-blue-600 underline">
+            {phone}
+          </a>
+        </div>
       )}
       {preference.food && (
         <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded mt-1">
@@ -365,7 +381,7 @@ export default async function DapurPage({
     db
       .from("daily_deliveries")
       .select(
-        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion, size), customers(name, kitchen_notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
+        "id, meal_type, portions, notes, address_slot, orders(addon_cost_per_portion, size), customers(name, phone_number, kitchen_notes, area, sub_area, address, google_maps_link, area_2, sub_area_2, address_2, google_maps_link_2, delivery_route)",
       )
       .eq("subcontractor_id", id)
       .eq("delivery_date", date),
