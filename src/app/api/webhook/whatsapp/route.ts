@@ -69,6 +69,10 @@ import { sendInvoice } from "@/lib/invoices/send";
 import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
 import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
+  type DeleteDeliveriesInput,
+  deleteDeliveries,
+} from "@/lib/orders/delete-deliveries";
+import {
   type RecordDailyOrderInput,
   recordDailyOrder,
 } from "@/lib/orders/record-daily-order";
@@ -2059,6 +2063,34 @@ export async function processSavedCustomerMessage(params: {
       },
     },
     {
+      name: "delete_deliveries",
+      description:
+        'Removes dates from the customer\'s delivery schedule — a skip ("besok saya libur dulu ya"), a cancellation of one day, or the first half of moving a meal. The portions go straight back into their balance and can be booked again, so a skip costs the customer nothing. Pass EVERY date the customer named in one call. To MOVE a delivery — siang jadi malam, or hari lain — call this for the old date and record_daily_order for the new one in the same message; this tool only removes. A date marked TERKUNCI in the schedule is refused and nothing on it changes, so never promise a skip for one. Never say a date has been cancelled without calling this: nobody re-reads the thread, and the row stays on the kitchen sheet.',
+      input_schema: {
+        type: "object",
+        properties: {
+          delivery_dates: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Every date to remove as ISO YYYY-MM-DD, resolved yourself from Today. Never a weekday name.",
+          },
+          meal_type: {
+            type: "string",
+            enum: ["lunch", "dinner", "both"],
+            description:
+              'Which meal to remove on those dates. Omit, or "both", to remove everything scheduled that day — which is what a plain skip means. Pass "lunch" or "dinner" only when the customer has both meals that day and is keeping one.',
+          },
+          reason: {
+            type: "string",
+            description:
+              "Why the customer asked, in their own words. Stored with the deleted row so an admin can put it back.",
+          },
+        },
+        required: ["delivery_dates"],
+      },
+    },
+    {
       name: "ask_admin_for_help",
       description:
         "Called when the bot is uncertain about the answer. Pauses the bot, asks an admin for input, then the bot will send a polished version of that answer to the customer. Use this by default for uncertainty. Do NOT use escalate_to_human unless the customer needs a human to take over entirely. Never name the admin to the customer — the system prompt says which name, if any, may be used.",
@@ -3177,6 +3209,14 @@ async function handleToolUse(
       phone,
       customerName,
       input: tool.input as RecordDailyOrderInput,
+    });
+  } else if (tool.name === "delete_deliveries") {
+    return deleteDeliveries({
+      db,
+      customerId,
+      phone,
+      customerName,
+      input: tool.input as DeleteDeliveriesInput,
     });
   } else if (tool.name === "ask_admin_for_help") {
     const input = tool.input as { question: string };

@@ -592,12 +592,17 @@ describe("customer chatbot system prompt", () => {
 
     // An admin is the only thing that can move one day's address, and nothing
     // makes an admin look. "Admin sees the conversation and updates the record"
-    // was the standing instruction for every schedule change.
-    test("routes an unlocked change through ask_admin_for_help", async () => {
+    // was the standing instruction for every schedule change. A day or meal
+    // move is the bot's own work now — delete_deliveries then
+    // record_daily_order — and only the address still needs a person.
+    test("routes an unlocked change through the tools that can carry it", async () => {
       const prompt = await withSchedule([]);
 
       expect(prompt).toContain(
-        "call ask_admin_for_help with the date, the meal and what changes",
+        "delete_deliveries for what is on the calendar now, then record_daily_order",
+      );
+      expect(prompt).toContain(
+        "call ask_admin_for_help with the date, the meal and the address",
       );
       expect(prompt).toContain('"Admin sees the conversation" is not a mechanism');
       expect(prompt).not.toContain(

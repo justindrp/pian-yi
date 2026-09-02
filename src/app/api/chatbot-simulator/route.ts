@@ -174,6 +174,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       },
     },
     {
+      name: "delete_deliveries",
+      description:
+        "Removes dates from the customer's delivery schedule — a skip, a cancellation, or the first half of moving a meal (call record_daily_order for the new date in the same message). The portions go back into their balance. A TERKUNCI date is refused.",
+      input_schema: {
+        type: "object",
+        properties: {
+          delivery_dates: { type: "array", items: { type: "string" } },
+          meal_type: { type: "string", enum: ["lunch", "dinner", "both"] },
+          reason: { type: "string" },
+        },
+        required: ["delivery_dates"],
+      },
+    },
+    {
       name: "ask_admin_for_help",
       description: "Called when the bot is uncertain about the answer.",
       input_schema: {

@@ -199,9 +199,27 @@ Three defects, all in the prompt, all now fixed:
 
 - **Each scheduled date carries its lock state**, computed by `isLocked()` (`src/lib/orders/delivery-state.ts`) rather than derived by the model — the same function the dashboard and the skip path ask, so the prompt and the sheet cannot disagree. A locked row prints **TERKUNCI** with the deadline that has passed.
 - **A locked date is immutable in every direction.** The prompt used to name only skips. It now says a TERKUNCI date cannot be skipped, moved, have its meal changed, **or have its address changed** — the kitchen is cooking it for the address on record — and that the answer is to say so plainly, name that address, and offer the change from the first date still open.
-- **"Admin sees the conversation and updates the record" is gone.** That was the standing instruction for every schedule change, and for the one-off address override, which no bot tool can perform. Nobody re-reads threads looking for changes. An unlocked change is confirmed *and* passed to `ask_admin_for_help` with the date, the meal and what changes.
+- **"Admin sees the conversation and updates the record" is gone.** That was the standing instruction for every schedule change, and for the one-off address override, which no bot tool can perform. Nobody re-reads threads looking for changes. An unlocked address change is confirmed *and* passed to `ask_admin_for_help` with the date, the meal and the address; an unlocked skip or day/meal move is the bot's own work now — see "A skip is a tool call, not a confirmation" below.
 
 Tests in `test/api/system-prompt.test.ts`.
+
+## A skip is a tool call, not a confirmation
+
+The prompt told the bot to "konfirmasi skip atau perubahan meal sendiri" for any date not marked TERKUNCI, and there was no tool behind that sentence. So a skip was a reply and nothing else: the row stayed on the kitchen sheet, the food was cooked, the courier drove it out, and the portion was spent against a package the customer thought they still held. It is the same empty confirmation as "saya jadwalkan pengiriman mulai Senin" (see "The schedule promise") and "saya cek foto pengirimannya dulu", except that this one had no recovery guard behind it either, because nothing existed for a guard to call. Nadya asked on 2026-09-02 for the next day's lunch to become dinner; the bot could have carried out neither half.
+
+`delete_deliveries` (`src/lib/orders/delete-deliveries.ts`) is that tool. It takes the dates, an optional `meal_type` and the customer's own words as `reason`, and removes each matching row through `deleteDelivery()` — which copies the whole row into `edit_log` first, because nothing else can rebuild it. Nothing else is written: the balance is `package_size` minus the rows that exist, so removing the row **is** the refund (migration 075). The result names the dates it removed and quotes the new unbooked balance back, so the model can tell the customer how many dates they may re-book.
+
+What it refuses, each with a sentence saying so rather than a silent drop:
+
+- **A date past its H-1 16:00 deadline**, asked of `isLocked()` with `loadDeadlineHour()` — the same pair the dashboard and the prompt's TERKUNCI marks ask, so the three cannot disagree. The kitchen holds the sheet and we owe them the portion; the model is told to say that plainly and offer the first open date.
+- **A date with nothing scheduled on it** — "sudah dibatalkan" over a calendar that never held the row is the same lie in the other direction.
+- **Half of a `meal_type: "both"` row.** One row carrying two meals cannot have one of them deleted, and deleting it would cancel the meal the customer is keeping, so it goes to `ask_admin_for_help` instead.
+
+A partial run is still `ok: true` and names what it dropped, per "A tool result says what the tool actually did".
+
+**Moving a delivery is two calls in one message** — `delete_deliveries` for what is on the calendar now, then `record_daily_order` for the new date and meal. The prompt says so in both places a move can come up (the schedule block and the "Schedule change" policy), because doing only the first leaves the customer with nothing scheduled and doing only the second double-books the day. There is deliberately no single "move" tool: the two halves have different guards — the delete obeys the lock on the old date, the booking obeys the quota gate and the closures list on the new one — and a combined tool would have to re-implement both.
+
+Tests in `test/delete-deliveries.test.ts`.
 
 ## An event order is gathered, not priced — and never billed early
 

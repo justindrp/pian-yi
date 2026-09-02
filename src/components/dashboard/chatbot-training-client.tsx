@@ -825,6 +825,7 @@ type SimItem =
 const TOOL_LABELS: Record<string, string> = {
   extract_order: "Bot would create an order",
   record_daily_order: "Bot would record a daily delivery",
+  delete_deliveries: "Bot would remove dates from the schedule",
   ask_admin_for_help: "Bot would ask an admin for help",
   escalate_to_human: "Bot would escalate to an admin",
   mark_payment_proof_received: "Bot would mark payment proof received",
