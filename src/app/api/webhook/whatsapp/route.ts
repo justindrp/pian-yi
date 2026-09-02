@@ -63,7 +63,7 @@ import {
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
 import { RESUMED_FLAGS, shouldAutoResume } from "@/lib/customers/takeover";
-import { deliveryWindow } from "@/lib/deliveries/windows";
+import { deliveryWindow, loadKitchenWindows } from "@/lib/deliveries/windows";
 import { formatHolidayDate } from "@/lib/holidays/id";
 import { sendInvoice } from "@/lib/invoices/send";
 import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
@@ -76,10 +76,7 @@ import { sendPushToAllAdmins } from "@/lib/push/send";
 import { unionAreas } from "@/lib/subcontractors/areas";
 import { coverageNotes } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  jakartaHour,
-  jakartaTimeString,
-} from "@/lib/time/jakarta";
+import { jakartaMinuteOfDay, jakartaTimeString } from "@/lib/time/jakarta";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
 import {
   downloadMedia,
@@ -3057,11 +3054,30 @@ async function noProofReason(
   date: string,
 ): Promise<{ model: string; customer: string; needsAdmin: boolean }> {
   const db = createAdminClient();
-  const { data: rows } = await db
-    .from("daily_deliveries")
-    .select("meal_type")
-    .eq("customer_id", customerId)
-    .eq("delivery_date", date);
+  const [{ data: rows }, { data: customer }] = await Promise.all([
+    db
+      .from("daily_deliveries")
+      .select("meal_type, subcontractor_id")
+      .eq("customer_id", customerId)
+      .eq("delivery_date", date),
+    db
+      .from("customers")
+      .select("collects_from_courier")
+      .eq("id", customerId)
+      .maybeSingle(),
+  ]);
+  // The window is the kitchen's, not the meal's: Dapur 1 finishes lunch at
+  // 12.30 and the default says 12.00, which is the half hour Naya spent being
+  // told her food was late.
+  const kitchens = await loadKitchenWindows(
+    db,
+    (rows ?? []).map((r) => r.subcontractor_id),
+  );
+  const windowOf = (r: { meal_type: string; subcontractor_id: string | null }) =>
+    deliveryWindow(
+      r.meal_type,
+      r.subcontractor_id ? kitchens.get(r.subcontractor_id) : null,
+    );
 
   if (!rows?.length)
     return {
@@ -3074,14 +3090,14 @@ async function noProofReason(
   const stillOut = rows.filter(
     (r) =>
       date > today ||
-      (date === today && jakartaHour() < deliveryWindow(r.meal_type).endHour),
+      (date === today && jakartaMinuteOfDay() < windowOf(r).endMin),
   );
 
   if (stillOut.length > 0) {
     const windows = stillOut
       .map(
         (r) =>
-          `${r.meal_type === "dinner" ? "makan malam" : "makan siang"} jam ${deliveryWindow(r.meal_type).label}`,
+          `${r.meal_type === "dinner" ? "makan malam" : "makan siang"} jam ${windowOf(r).label}`,
       )
       .join(" dan ");
     return {
@@ -3090,6 +3106,18 @@ async function noProofReason(
       needsAdmin: false,
     };
   }
+
+  // A customer who meets the courier is never told the food did not come.
+  // Synergy Building refuses a lobby drop, so Naya, Cila and Winy take the box
+  // from the courier's hand; he photographs what he leaves and not what he
+  // hands over, so 2 of Naya's first 3 deliveries have no photo and both were
+  // eaten. All we can say is that we hold no picture of it.
+  if (customer?.collects_from_courier)
+    return {
+      model: `Tidak ada foto pengiriman untuk tanggal ${date}, tapi customer ini mengambil makanannya langsung dari kurir jadi fotonya sering memang tidak ada — jangan bilang makanannya belum diantar. Bilang kita belum terima fotonya, tanyakan apakah kurirnya sudah menghubungi, dan tawarkan cek ke tim lewat ask_admin_for_help.`,
+      customer: `Kak, aku belum terima foto pengirimannya untuk tanggal ${formatHolidayDate(date)} — kurirnya memang nggak selalu foto kalau serah terima langsung ke kakak. Kurirnya sudah menghubungi kakak belum? Sudah aku teruskan ke tim kami juga ya.`,
+      needsAdmin: true,
+    };
 
   // Plainly not delivered, in those words. What a customer standing in a lobby
   // needs is the state of their food, and the two facts behind why we cannot

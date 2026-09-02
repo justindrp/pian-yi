@@ -670,6 +670,7 @@ export type Database = {
           area: string | null
           area_2: string | null
           avg_price_per_portion: number
+          collects_from_courier: boolean
           contract_price_per_portion: number | null
           converted_at: string | null
           converted_to_subscription: boolean
@@ -707,6 +708,7 @@ export type Database = {
           area?: string | null
           area_2?: string | null
           avg_price_per_portion?: number
+          collects_from_courier?: boolean
           contract_price_per_portion?: number | null
           converted_at?: string | null
           converted_to_subscription?: boolean
@@ -744,6 +746,7 @@ export type Database = {
           area?: string | null
           area_2?: string | null
           avg_price_per_portion?: number
+          collects_from_courier?: boolean
           contract_price_per_portion?: number | null
           converted_at?: string | null
           converted_to_subscription?: boolean
@@ -1482,9 +1485,13 @@ export type Database = {
           created_at: string | null
           customer_nickname: string | null
           delivery_areas: Json | null
+          dinner_window_end_min: number | null
+          dinner_window_start_min: number | null
           id: string
           is_active: boolean | null
           late_delivery_count: number | null
+          lunch_window_end_min: number | null
+          lunch_window_start_min: number | null
           menu_image_url: string | null
           menu_text: string | null
           menu_week_start: string | null
@@ -1504,9 +1511,13 @@ export type Database = {
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null
+          dinner_window_end_min?: number | null
+          dinner_window_start_min?: number | null
           id?: string
           is_active?: boolean | null
           late_delivery_count?: number | null
+          lunch_window_end_min?: number | null
+          lunch_window_start_min?: number | null
           menu_image_url?: string | null
           menu_text?: string | null
           menu_week_start?: string | null
@@ -1526,9 +1537,13 @@ export type Database = {
           created_at?: string | null
           customer_nickname?: string | null
           delivery_areas?: Json | null
+          dinner_window_end_min?: number | null
+          dinner_window_start_min?: number | null
           id?: string
           is_active?: boolean | null
           late_delivery_count?: number | null
+          lunch_window_end_min?: number | null
+          lunch_window_start_min?: number | null
           menu_image_url?: string | null
           menu_text?: string | null
           menu_week_start?: string | null

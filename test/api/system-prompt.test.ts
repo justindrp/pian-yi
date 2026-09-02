@@ -526,7 +526,17 @@ describe("customer chatbot system prompt", () => {
   // behind the confirmation. Same shape as the cutoff bug in jakarta.ts: the
   // lock is computed here, not left to the model.
   describe("locked dates on the customer schedule", () => {
-    const withSchedule = (upcoming: { date: string; mealType: string; portions: number }[]) =>
+    // The window comes off the kitchen that cooks the row (migration 093), so
+    // the prompt prints whatever loadCustomerSchedule resolved rather than
+    // deriving one from the meal.
+    const withSchedule = (
+      upcoming: {
+        date: string;
+        mealType: string;
+        portions: number;
+        window: string;
+      }[],
+    ) =>
       buildSystemPrompt({
         casual: false,
         customerState: "ordering" as const,
@@ -553,13 +563,13 @@ describe("customer chatbot system prompt", () => {
       const today = jakartaDateString();
       const later = addDays(today, 4);
       const prompt = await withSchedule([
-        { date: today, mealType: "lunch", portions: 1 },
-        { date: later, mealType: "lunch", portions: 1 },
+        { date: today, mealType: "lunch", portions: 1, window: "11.30-12.30" },
+        { date: later, mealType: "lunch", portions: 1, window: "11.30-12.30" },
       ]);
 
       const lines = prompt
         .split("\n")
-        .filter((l) => l.startsWith("- ") && l.includes("(10.00-12.00), 1 porsi"));
+        .filter((l) => l.startsWith("- ") && l.includes("(11.30-12.30), 1 porsi"));
       expect(lines).toHaveLength(2);
       expect(lines[0]).toContain("TERKUNCI");
       expect(lines[1]).not.toContain("TERKUNCI");
@@ -567,7 +577,12 @@ describe("customer chatbot system prompt", () => {
 
     test("says a locked date cannot have its address changed either", async () => {
       const prompt = await withSchedule([
-        { date: jakartaDateString(), mealType: "lunch", portions: 1 },
+        {
+          date: jakartaDateString(),
+          mealType: "lunch",
+          portions: 1,
+          window: "11.30-12.30",
+        },
       ]);
 
       expect(prompt).toContain("tidak bisa diubah dengan cara apa pun");

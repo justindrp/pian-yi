@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  deliveryWindow,
+  loadKitchenWindows,
+} from "@/lib/deliveries/windows";
 import { jakartaDateString } from "@/lib/menu/week";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { Database } from "@/types/database";
@@ -19,7 +23,18 @@ type Db = SupabaseClient<Database>;
  * package is finished. Both are counted from the rows now; the column is gone.
  */
 export type CustomerSchedule = {
-  upcoming: { date: string; mealType: string; portions: number }[];
+  /**
+   * `window` is the arrival window of the kitchen that cooks that row, as the
+   * customer reads it ("11.30-12.30"). It is per kitchen, so it cannot be
+   * derived from `mealType` where the prompt prints it — Dapur 1's lunch ends
+   * at 12.30 and the default says 12.00.
+   */
+  upcoming: {
+    date: string;
+    mealType: string;
+    portions: number;
+    window: string;
+  }[];
   remainingToday: number;
   unbooked: number;
 };
@@ -42,7 +57,7 @@ export async function loadCustomerSchedule(
       .in("status", PAID_STATUSES),
     db
       .from("daily_deliveries")
-      .select("delivery_date, meal_type, portions")
+      .select("delivery_date, meal_type, portions, subcontractor_id")
       .eq("customer_id", customerId)
       .order("delivery_date"),
   ]);
@@ -59,17 +74,24 @@ export async function loadCustomerSchedule(
     .reduce((s, r) => s + (r.portions ?? 0), 0);
   const drawnAll = all.reduce((s, r) => s + (r.portions ?? 0), 0);
 
+  const upcoming = all.filter((r) => (r.delivery_date ?? "") >= today).slice(0, 12);
+  const kitchens = await loadKitchenWindows(
+    db,
+    upcoming.map((r) => r.subcontractor_id),
+  );
+
   return {
     remainingToday: bought - drawnToDate,
     unbooked: bought - drawnAll,
-    upcoming: all
-      .filter((r) => (r.delivery_date ?? "") >= today)
-      .slice(0, 12)
-      .map((r) => ({
-        date: (r.delivery_date ?? "").slice(0, 10),
-        mealType: r.meal_type ?? "lunch",
-        portions: r.portions ?? 0,
-      })),
+    upcoming: upcoming.map((r) => ({
+      date: (r.delivery_date ?? "").slice(0, 10),
+      mealType: r.meal_type ?? "lunch",
+      portions: r.portions ?? 0,
+      window: deliveryWindow(
+        r.meal_type ?? "lunch",
+        r.subcontractor_id ? kitchens.get(r.subcontractor_id) : null,
+      ).label,
+    })),
   };
 }
 

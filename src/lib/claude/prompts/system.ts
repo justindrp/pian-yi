@@ -1,5 +1,4 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
-import { deliveryWindow } from "@/lib/deliveries/windows";
 import { describeUpcomingHolidays, formatHolidayDate } from "@/lib/holidays/id";
 import {
   formatMenuWeekRange,
@@ -126,7 +125,13 @@ export async function buildSystemPrompt(params: {
    * Quoting it as the first told a customer with 12 meals coming she had none.
    */
   schedule: {
-    upcoming: { date: string; mealType: string; portions: number }[];
+    upcoming: {
+      date: string;
+      mealType: string;
+      portions: number;
+      /** Arrival window of the kitchen cooking that row, e.g. "11.30-12.30". */
+      window: string;
+    }[];
     remainingToday: number;
     unbooked: number;
   } | null;
@@ -221,7 +226,7 @@ ${
     ? `\nSudah terjadwal:\n${params.schedule.upcoming
         .map(
           (d) =>
-            `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam" : "siang"} (${deliveryWindow(d.mealType).label}), ${d.portions} porsi${
+            `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam" : "siang"} (${d.window}), ${d.portions} porsi${
               isLocked(d.date, {
                 deadlineHour: Number(deadlineHour) || 16,
                 now,

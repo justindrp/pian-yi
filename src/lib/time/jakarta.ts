@@ -25,6 +25,17 @@ export function jakartaHour(at: Date = new Date()): number {
   return Number(jakartaTimeString(at).slice(0, 2));
 }
 
+/**
+ * Minutes since midnight in Jakarta, 0–1439.
+ *
+ * Delivery windows are per kitchen and Dapur 1's lunch ends at 12.30, so an
+ * hour is no longer fine enough to say whether the courier is still out.
+ */
+export function jakartaMinuteOfDay(at: Date = new Date()): number {
+  const [h, m] = jakartaTimeString(at).split(":");
+  return Number(h) * 60 + Number(m);
+}
+
 /** `ymd` shifted by `n` days, still as Y-m-d. */
 export function addDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);

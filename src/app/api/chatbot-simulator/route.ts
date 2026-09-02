@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest, NextResponse } from "next/server";
+import { DELIVERY_WINDOWS, windowLabel } from "@/lib/deliveries/windows";
 import { getNeighborhoods } from "@/lib/cache/settings";
 import {
   getAnthropicClient,
@@ -95,11 +96,21 @@ export async function POST(req: NextRequest): Promise<Response> {
             date: addDays(jakartaDateString(), 1),
             mealType: "lunch",
             portions: 1,
+            // The window is per kitchen and this schedule belongs to no
+            // kitchen, so training mode shows the fallback.
+            window: windowLabel(
+              DELIVERY_WINDOWS.lunch.startMin,
+              DELIVERY_WINDOWS.lunch.endMin,
+            ),
           },
           {
             date: addDays(jakartaDateString(), 2),
             mealType: "dinner",
             portions: 1,
+            window: windowLabel(
+              DELIVERY_WINDOWS.dinner.startMin,
+              DELIVERY_WINDOWS.dinner.endMin,
+            ),
           },
         ],
       }
