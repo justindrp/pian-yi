@@ -185,6 +185,74 @@ export function claimsProofSent(replyText: string): boolean {
   return PROOF_SENT_CLAIM.test(replyText.replace(SEND_DEFERRED, " "));
 }
 
+// Only what the reply asserts. A question ("apakah makanannya sudah sampai
+// kak?") and a condition ("kalau sudah sampai, kabari ya") are built out of the
+// same words as the claim and assert nothing.
+function assertedSentences(replyText: string): string {
+  return replyText
+    .split(/(?<=[.!?\n])/)
+    .filter(
+      (s) => !s.includes("?") && !/\b(kalau|kalo|jika|apabila|bila)\b/i.test(s),
+    )
+    .join(" ");
+}
+
+// The model announcing that it will go and look for the delivery photo — "saya
+// cek foto pengirimannya dulu ya" — and calling no tool. claimsProofSent leaves
+// it alone because nothing was said to have been sent, and ESCALATION_CLAIM
+// leaves it alone because no addressee is named, so nothing recovers it and
+// nothing schedules the second turn the promise implies. The check it announces
+// is one query: there is nothing to go away and do, so a reply that says it is
+// checking is always a stall.
+//
+// Naya asked at 11:09 on 2026-09-02 whether her food had arrived and was told
+// five times across 46 minutes that the photo was being looked for — once with
+// "anterannya udah sampai kak" invented on top of it — before a person took the
+// thread over. The food had not been delivered.
+const PROOF_CHECK_CLAIM = new RegExp(
+  [
+    `\\b(cek|ngecek|dicek|cekin|cari|nyari|dicari|cariin|carikan|lihat|liat|dilihat|periksa|pastikan)\\w*\\b[^.!?\\n]{0,40}?${PROOF_NOUN}`,
+    `${PROOF_NOUN}[^.!?\\n]{0,40}?\\b(cek|dicek|cari|dicari|lihat|liat|dilihat|periksa|diperiksa)\\w*`,
+  ].join("|"),
+  "i",
+);
+
+// The model telling the customer their food arrived. The photo is the only
+// thing that says a delivery happened, so an arrival asserted without one is
+// the model answering with what the customer wants to hear.
+const ARRIVED_CLAIM =
+  /\b(pesanan|pesenan|makanan|makanannya|anteran|antaran|kiriman|catering|paket|order)\w*\b[^.!?\n]{0,30}?\b(sudah|udah|udh|telah)\s+(sampai|sampe|nyampe|tiba|diantar|dianter|dikirim|terkirim)/i;
+
+// An arrival is only worth contradicting when the customer is the one asking.
+// Someone who has just written "udah sampai kak, makasih" must never be
+// answered "makanannya belum sampai" off a photo the kitchen simply never
+// uploaded — the photo is our record of the delivery, not the customer's.
+const ARRIVAL_WORD =
+  /\b(sampai|sampe|nyampe|nyampai|dianter|diantar|dianterin|dikirim|anterannya|kurir|driver|lobby|telat|lama)\b/i;
+// "udah" is not one of these. "kak cateringnya udh dianter?" is a question and
+// "udah sampai kak makasih" is the opposite of one, and the only thing that
+// separates them is the question mark and the complaint words around it.
+const ASKING =
+  /\?|\b(blm|belum|kok|masa|kenapa|napa|mana|gimana|gmn|kapan|telat|lama)\b/i;
+
+/**
+ * Whether the reply stalls on the delivery photo, or asserts a delivery it
+ * never checked. Either way the answer was one query away and the turn ended
+ * without it, so the guard runs the query the reply promised.
+ */
+export function claimsProofPending(
+  replyText: string,
+  inbound: string,
+): boolean {
+  const asserted = assertedSentences(replyText);
+  if (PROOF_CHECK_CLAIM.test(asserted)) return true;
+  return (
+    ARRIVED_CLAIM.test(asserted) &&
+    ARRIVAL_WORD.test(inbound) &&
+    ASKING.test(inbound)
+  );
+}
+
 // The model saying an invoice is on its way. Same failure as the menu claim,
 // with a document instead of an image: Carolin was told twice on 2026-08-30
 // that her invoice was being prepared, by a bot that had no way to make one,
@@ -2296,10 +2364,16 @@ export async function processSavedCustomerMessage(params: {
   //
   // Sending it here is safe: the customer just messaged, so the window is open
   // by definition, and a second copy of a photo they asked for is not a cost.
+  //
+  // The same guard answers the stall, which is the far more common shape: the
+  // model says it is going to look for the photo, or that the food has landed,
+  // and ends the turn. Both are claims about a lookup that never happened, both
+  // are settled by running it, and running it twice is what a second guard
+  // would do — so there is one.
   if (
     visibleReply &&
     !toolUses.some((t) => t.name === "send_delivery_proof") &&
-    claimsProofSent(visibleReply)
+    (claimsProofSent(visibleReply) || claimsProofPending(visibleReply, text))
   ) {
     console.log(
       `[webhook] delivery proof claimed but never sent — sending it for ${customerId}`,
@@ -2316,16 +2390,41 @@ export async function processSavedCustomerMessage(params: {
       phone,
       customerName,
     );
-    // The reply claiming it has already gone out. A failed recovery — no photo
-    // on file, a dead signed URL — leaves that claim standing, and only an
-    // admin can answer it.
+    // The reply has already gone out, so a failed recovery leaves its claim
+    // standing — and the claim is the thing that hurts. Answer it in the same
+    // turn: `customerReply` is the truth about the food, written for the
+    // customer rather than for the model, and it is the whole point of the
+    // guard. Naya was never told the food had not arrived; she was told five
+    // times that someone was looking, which is what a stall sounds like from
+    // the other end. Only a real malfunction — a dead signed URL — has no text
+    // to send, and that is what an admin has to see.
     if (!recovered.ok) {
-      await sendPushToAllAdmins(
-        `Bukti pengiriman dijanjikan tapi tidak terkirim — ${customerName ?? phone}`,
-        recovered.error,
-        "/inbox",
-        "high",
-      ).catch(console.error);
+      const answer = recovered.customerReply;
+      if (answer) {
+        const conversationId = await saveMessage({
+          customerId,
+          role: "assistant",
+          content: answer.text,
+          modelUsed: "system",
+        });
+        const whatsappMessageId = await sendTextMessage(phone, answer.text);
+        await updateMessageReceipt({
+          conversationId,
+          whatsappMessageId,
+          status: "sent",
+        });
+      }
+      // A photo still inside its delivery window is not news to anybody: the
+      // sentence above answers it in full, and pushing every early "sudah
+      // sampai belum kak" is how a notification stops being read.
+      if (!answer || answer.needsAdmin) {
+        await sendPushToAllAdmins(
+          `Bukti pengiriman belum ada — ${customerName ?? phone}`,
+          recovered.error,
+          "/inbox",
+          "high",
+        ).catch(console.error);
+      }
     }
   }
 
@@ -2926,7 +3025,22 @@ type ToolResult =
        */
       sendPayment?: (() => Promise<void>) | null;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * What to say to the customer, when the failure is an answer rather than
+       * a malfunction. `error` is written for the model and carries stage
+       * directions it must never repeat ("jangan janjikan fotonya menyusul"),
+       * so a guard recovering a reply that has already gone out cannot forward
+       * it; only send_delivery_proof fills this, because "we hold no photo" is
+       * the answer to the customer's question, not a broken tool.
+       * `needsAdmin` is false while the answer is complete on its own — the
+       * food is simply still in its delivery window — and true when a person
+       * has to go and ask the kitchen.
+       */
+      customerReply?: { text: string; needsAdmin: boolean };
+    };
 
 /**
  * What to tell the model when we hold no photo for a date.
@@ -2941,7 +3055,7 @@ type ToolResult =
 async function noProofReason(
   customerId: string,
   date: string,
-): Promise<string> {
+): Promise<{ model: string; customer: string; needsAdmin: boolean }> {
   const db = createAdminClient();
   const { data: rows } = await db
     .from("daily_deliveries")
@@ -2950,7 +3064,11 @@ async function noProofReason(
     .eq("delivery_date", date);
 
   if (!rows?.length)
-    return `Tidak ada pengiriman terjadwal untuk tanggal ${date}, jadi tidak ada fotonya. Bilang apa adanya dan sebutkan tanggal itu memang tidak ada kirimannya; jangan janjikan foto menyusul.`;
+    return {
+      model: `Tidak ada pengiriman terjadwal untuk tanggal ${date}, jadi tidak ada fotonya. Bilang apa adanya dan sebutkan tanggal itu memang tidak ada kirimannya; jangan janjikan foto menyusul.`,
+      customer: `Kak, di tanggal ${formatHolidayDate(date)} tidak ada jadwal pengiriman untuk kakak, jadi tidak ada makanan yang diantar hari itu. Kalau menurut kakak seharusnya ada, tulis di sini ya — sudah aku teruskan ke tim kami juga.`,
+      needsAdmin: true,
+    };
 
   const today = jakartaDateString();
   const stillOut = rows.filter(
@@ -2966,10 +3084,23 @@ async function noProofReason(
           `${r.meal_type === "dinner" ? "makan malam" : "makan siang"} jam ${deliveryWindow(r.meal_type).label}`,
       )
       .join(" dan ");
-    return `Belum ada fotonya karena kirimannya memang belum sampai — jam antarnya ${windows} dan sekarang baru jam ${jakartaTimeString()} WIB. Bilang makanannya masih dalam perjalanan dan sebutkan jam antar itu. Jangan bilang tidak ada bukti pengiriman, dan jangan janjikan fotonya menyusul.`;
+    return {
+      model: `Belum ada fotonya karena kirimannya memang belum sampai — jam antarnya ${windows} dan sekarang baru jam ${jakartaTimeString()} WIB. Bilang makanannya masih dalam perjalanan dan sebutkan jam antar itu. Jangan bilang tidak ada bukti pengiriman, dan jangan janjikan fotonya menyusul.`,
+      customer: `Kak, makanannya belum sampai — masih dalam perjalanan. Jam antarnya ${windows}, sekarang jam ${jakartaTimeString()} WIB.`,
+      needsAdmin: false,
+    };
   }
 
-  return `Tidak ada foto pengiriman untuk tanggal ${date} — belum pernah dikirim dapur ke kami. Bilang apa adanya, jangan janjikan fotonya menyusul; tawarkan cek ke tim lewat ask_admin_for_help.`;
+  // Plainly not delivered, in those words. What a customer standing in a lobby
+  // needs is the state of their food, and the two facts behind why we cannot
+  // just look: there is no live tracking, and the courier is the partner
+  // kitchen's, reachable only through that kitchen's admin. Naming the kitchen
+  // is never allowed, so it stays "dapur partner kami".
+  return {
+    model: `Tidak ada foto pengiriman untuk tanggal ${date} — belum pernah dikirim dapur ke kami. Bilang apa adanya: makanannya belum diantar. Jangan janjikan fotonya menyusul dan jangan bilang sedang dicek dulu; tawarkan cek ke tim lewat ask_admin_for_help.`,
+    customer: `Kak, makanannya belum sampai ya — belum ada foto pengiriman dari dapur partner kami untuk tanggal ${formatHolidayDate(date)}. Kami belum punya pelacakan langsung, dan kurirnya kurir dapur partner kami, jadi aku nggak bisa menghubungi kurirnya sendiri — harus lewat admin dapur partner dulu. Sudah aku teruskan ke tim kami sekarang ya, maaf banget kak.`,
+    needsAdmin: true,
+  };
 }
 
 async function handleToolUse(
@@ -3180,7 +3311,12 @@ async function handleToolUse(
       .limit(1)
       .maybeSingle();
     if (!proof?.image_url) {
-      return { ok: false, error: await noProofReason(customerId, wanted) };
+      const reason = await noProofReason(customerId, wanted);
+      return {
+        ok: false,
+        error: reason.model,
+        customerReply: { text: reason.customer, needsAdmin: reason.needsAdmin },
+      };
     }
 
     const storagePath = proof.image_url.split("/delivery-proofs/")[1];
