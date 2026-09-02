@@ -252,6 +252,23 @@ describe("customer chatbot system prompt", () => {
       expect(prompt).toContain("7 − 1 = paket 6 porsi");
     });
 
+    // Febby said "boleh lanjut untuk 40 porsi ya" on 2026-09-02 holding 2
+    // porsi already scheduled for Jumat. The netting rule fired on a number she
+    // had named herself, and the bot asked whether the 40 was "di luar" the 2
+    // or "digabung" — a question with no meaning, and no order.
+    test("does not net off a size the customer named, and forbids the merge question", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        schedule: { unbooked: 0, remainingToday: 2, upcoming: [] },
+      } as never);
+
+      expect(prompt).toContain(
+        "hanya berlaku kalau angkanya kamu turunkan sendiri dari rangkaian hari",
+      );
+      expect(prompt).toContain("jual persis segitu, jangan dikurangi sisanya");
+      expect(prompt).toContain('"di luar" sisa itu atau "digabung"');
+    });
+
     // The renewal branch that carries "never promise an order you do not
     // create" fires only once quota hits 0, so her 1 leftover porsi switched it
     // off. She agreed to the 6-porsi package and confirmed her address; the bot

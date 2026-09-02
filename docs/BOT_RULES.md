@@ -463,6 +463,19 @@ price — it was bought at the old rate and is not re-quoted. Pinned by "a
 customer whose leftover quota is smaller than what they want" in
 `test/api/system-prompt.test.ts`.
 
+**The netting only applies to a number the bot derived itself.** When the
+customer names the package size — "lanjut 40 porsi", "tambah 30 porsi" — that is
+the package they are buying, and subtracting the leftover from it re-prices an
+order they already stated. On 2026-09-02 Febby said "Okk kak, boleh lanjut untuk
+40 porsi ya" holding 2 porsi scheduled for Jumat 4 September, and the rule fired
+on her own number: she was asked "Apakah 40 porsi ini paket baru *di luar* 2
+porsi itu, atau mau digabung sekalian ya kak?" — a distinction that means nothing
+to a customer (the old porsi run out on their own dates either way), and the
+order was not created. The block now scopes the arithmetic to a day-run the bot
+sized itself and forbids the in-or-out question outright; a named size is sold at
+that size, with the leftover mentioned once as still coming. Pinned by "does not
+net off a size the customer named" in `test/api/system-prompt.test.ts`.
+
 **The leftover is spent on the calendar too, not just in the arithmetic.** A
 6-porsi top-up with a 7-day schedule writes 7 rows at `mark_paid`, and those
 rows used to be stamped with the new order: it sat 1 over its own package while
