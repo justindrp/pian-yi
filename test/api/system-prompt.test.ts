@@ -222,6 +222,43 @@ describe("customer chatbot system prompt", () => {
   // sized the new package at the full 7 — her porsi sold to her twice, and 7 is
   // not a size we sell. The renewal block only fires once quota is exhausted, so
   // a customer with quota left but not enough of it had no rule at all.
+  // Febby gave 40 porsi, S, lunch 2 pax, "mulai senin depan" and confirmed her
+  // address on 2026-09-02. The bot assumed the run ended at the end of that
+  // week — "Senin 7 sampai Sabtu 12 = 6 hari x 2 porsi = 12 porsi... tapi itu
+  // 40 porsi kak?" — wrote the correct arithmetic out one sentence later, and
+  // still asked how many days she wanted instead of calling extract_order.
+  describe("the length of the run", () => {
+    test("is arithmetic the bot does, never a question", async () => {
+      const prompt = await buildSystemPrompt({
+        casual: false,
+        customerState: "ordering" as const,
+        customerName: "Febby",
+        customerNotes: null,
+        detectedMapsLink: null,
+        menuShown: true,
+        dapurOptions: [],
+        dapurMenuTexts: [],
+        menuWeek: { relation: "unknown" as const, weekStart: null },
+        servedAreas: ["BSD Baru"],
+        neighborhoods: {},
+        coverageNotes: [],
+        activeOrder: null,
+        schedule: null,
+      } as never);
+
+      expect(prompt).toContain(
+        "Jumlah hari pengiriman = total porsi ÷ porsi per pengiriman",
+      );
+      expect(prompt).toContain(
+        "tidak berhenti di akhir minggu tanggal mulainya",
+      );
+      expect(prompt).toContain('"berapa hari yang diinginkan"');
+      expect(prompt).toContain(
+        "Tanggal selesai: (kamu yang hitung sendiri, jangan ditanyakan)",
+      );
+    });
+  });
+
   describe("a customer whose leftover quota is smaller than what they want", () => {
     const base = {
       casual: false,
