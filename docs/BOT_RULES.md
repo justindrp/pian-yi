@@ -19,7 +19,7 @@ Nearly every rule here is the residue of a real conversation that cost a real or
 
 - All customer-facing messages in Indonesian only. Enforced, not just asked for: `looksEnglish()` (`src/lib/claude/language.ts`) checks every outbound webhook reply after the hallucination validator, and an English one is translated by Haiku rather than regenerated — the reply is usually correct and already matches whatever tool was called alongside it. The model slips mainly on the short sentence accompanying a tool call ("I'll send the menu image for you to check." in a 2026-08-15 simulator run). The check needs zero Indonesian markers and two English ones, so borrowed words customers use anyway ("next week", "cancel") never trigger a rewrite.
 - **The hallucination validator (`src/lib/claude/validate-reply.ts`) is given the tail of the conversation, not only the database.** It asks Haiku whether the draft states a customer-specific fact — name, quota, package size, order or payment status — that the verified CONTEXT does not support, and a rejected draft is regenerated once, then replaced by a canned line while the thread is parked with `pending_bot_response: true`. With only DB facts in CONTEXT, the one turn where the bot reads an order back **before it exists** is unsupported by construction: on 2026-08-18 a new customer agreeing to 8 porsi from Rabu 19 Agustus had two drafts blocked in a row and got "Bentar ya kak, aku cek dulu sama admin" instead of an answer, with the order never created. The last 10 history messages plus the incoming one now go in as CONVERSATION SO FAR, and the prompt states that anything the customer said there is supported. An invented quota ("sisa kuota kakak masih 12 porsi") is still blocked — the transcript is what separates reading back from making up.
-- **The pin is asked for once and saved by code, not by the model.** `customers.google_maps_link` was null for 266 of 416 customers on 2026-09-01, Clairine Aurelia and Sharleen among them: both typed their address in full, neither was ever asked for a pin, and their kitchen-sheet lines carried no link. `extract_order`'s `maps_link` is filled only when the model passes one, so a link that arrived any other way was lost. Two halves fix it. **The webhook saves any Maps link it finds** in the message or the thread onto the customer, once, only while the column is empty — an admin who corrected a link by hand outranks anything found in a chat — and stamps `system:webhook-maps-link` in `edit_log`. **`findMapsLink()` (`src/lib/maps/link.ts`) matches the link we write ourselves**: a shared WhatsApp location has no text, so `formatLocationMessage()` renders it as `https://www.google.com/maps?q=lat,lng`, and the old inline pattern knew only the three forms a customer pastes by hand — the easiest thing to ask for was the one thing detection could not see. **The prompt asks only when there is nothing on file**: the context block says `Titik Maps: belum ada`, and the rule folds the request into a message already being sent, naming the gesture rather than the word "pin". It never holds `extract_order`, never repeats, and a photo, a shared location or a pasted link all count as given.
+- **The pin is asked for once and saved by code, not by the model.** `customers.google_maps_link` was null for 266 of 416 customers on 2026-09-01, Clairine Aurelia and Sharleen among them: both typed their address in full, neither was ever asked for a pin, and their kitchen-sheet lines carried no link. `extract_order`'s `maps_link` is filled only when the model passes one, so a link that arrived any other way was lost. Two halves fix it. **The webhook saves any Maps link it finds** in the message or the thread onto the customer, once, only while the column is empty — an admin who corrected a link by hand outranks anything found in a chat — and stamps `system:webhook-maps-link` in `edit_log`. **`findMapsLink()` (`src/lib/maps/link.ts`) matches the link we write ourselves**: a shared WhatsApp location has no text, so `formatLocationMessage()` renders it as `https://www.google.com/maps?q=lat,lng`, and the old inline pattern knew only the three forms a customer pastes by hand — the easiest thing to ask for was the one thing detection could not see. **The prompt asks only when there is nothing on file**: the context block says `Titik Maps: belum ada`, and the rule folds the request into a message already being sent, naming the gesture rather than the word "pin". It never repeats, and a photo, a shared location or a pasted link all count as given. It **does** hold `extract_order` now — see "The Maps link is required, and a share-location is not it" below.
 
 - `sanitizeReply()` (`src/lib/claude/sanitize-reply.ts`) runs last on every outbound webhook reply — after the validator, after the language guard — and the cleaned text is what gets saved, so the inbox shows what the customer actually received. It strips quotes wrapping the whole reply, drops a paragraph repeated verbatim, and cuts a leaked reasoning preamble. The leak is the serious one: `NO_THINKING` stops DeepSeek emitting a `thinking` block but not its deliberation landing in the text block, glued to the answer with no space after the full stop ("…no more than 200 words.Betul kak, …", 2026-08-16 simulator). `looksEnglish()` cannot classify those paragraphs — it returns `false` on any Indonesian marker and the deliberation quotes the customer's own words ("minggu", "kak") — so detection also matches the model talking to itself (`REASONING_OPENERS`: "Hmm", "Let me", "I should", …). If nothing survives as an answer the reply is returned untouched, leaving a genuinely English reply for the language guard. It also drops a **retracted false start** — the Indonesian sibling of that leak, which `REASONING_OPENERS` cannot see: asked for 13 porsi on 2026-08-16 the bot sent a wrong package list, cut itself off mid-number ("atau 14..."), then wrote "Sebentar, izinkan saya cek lagi." and answered again. Only unambiguous self-corrections match, and only with an answer after them — "Sebentar ya kak, saya cek dulu" is a real thing to say while asking an admin. It also drops a **bracketed aside the model addressed to us** — on 2026-09-01 Clairine asked whether her food had arrived and got, on its own line, "[Warning: bagian ini aku tulis ulang tanpa klaim data pelanggan, karena memang belum aku lihat catatannya …]": the model narrating its compliance with the validator's corrective instruction, in Indonesian, so neither `looksEnglish()` nor `REASONING_OPENERS` sees it and it is not a stage direction about an image. `META_BRACKET` keys on the label, not on the brackets — `Warning`, `Note`, `Peringatan`, `Disclaimer`, `Internal`, `Sistem`/`System` — because the webhook writes bracketed labels of its own into the history (`[Bukti pembayaran dikirim]`) and those are true descriptions of what happened. A bracket is ours only when it opens by naming itself commentary. Last, `**markdown bold**` is rewritten to WhatsApp's `*bold*`; the prompt has forbidden `**` since the formatting section was written and the model still emitted `**Rp 1.300.000**` two replies after `*Rp 420.000*`, so this is enforcement, not instruction.
 - Use "kak" as honorific
@@ -351,6 +351,48 @@ So: never fill `area` from a link, never write an address whose whole content is
 "sesuai titik maps", and never quote a price or call `extract_order` on a
 link-only address. Ask which area the place is in, in words, and wait. Pinned by
 "does not let a maps link settle the area" in `test/api/system-prompt.test.ts`.
+
+## The Maps link is required, and a share-location is not it
+
+The bullet above asked once, folded into a message already going out, and let
+the order through either way. That was written when the link was a nicety. It is
+not: the courier navigates by it, and 266 of 416 customers had none on
+2026-09-01. On 2026-09-02 the model went further than lenient and said the
+opposite out loud — asked for a location by +6281299221430, who answered that
+their share-lok lands in the neighbouring kampung because the house sits on the
+boundary ("gak bisa sesuai titik ka"), the bot replied **"Kalau titik Maps-nya
+nggak bisa pas, nggak apa apa kak — alamat tulisannya yang penting"**. Written
+prose gets a courier to a gate and no further.
+
+Three things changed together.
+
+**The ask names Google Maps, not WhatsApp.** The prompt used to describe the
+attachment gesture — "klik ikon lampiran lalu Location" — which produces a pin
+at wherever the phone thinks it is standing, exactly the failure that customer
+described. The gesture asked for now is Google Maps' own: open Maps, drag the
+point onto the house, *Bagikan → Salin link*, paste. A customer can correct a
+Maps link before sending it; they cannot correct a share-location.
+
+**A missing link is never fine.** The prompt says so in those words, quoting the
+message above, because the model reached for reassurance when the customer
+sounded apologetic. The link is listed with the total porsi and the alamat as
+required before `extract_order`.
+
+**`extract_order` withholds the order when there is no link** — in the call or
+already on the customer — and sends the ask instead, the same shape as the name
+and schedule gates and for the same reason: creating the order is what sends the
+bank details, so a delivery nobody can find must not reach the point of asking
+for money. Not on the payment-proof path, where the customer has already
+transferred.
+
+A shared WhatsApp location **passes the code gate**: `formatLocationMessage()`
+writes it as `google.com/maps?q=lat,lng`, a pin in roughly the right kampung
+still beats prose, and blocking there would hold up every customer whose link on
+file arrived that way. It does not satisfy the prompt, which keeps asking for a
+dragged link — `isSharedPinLink()` (`src/lib/maps/link.ts`) tells the two apart
+and the context block says which of the three states the customer is in (a real
+link, only a pin, nothing). Pinned by `test/order-maps-link-required.test.ts`
+and the `isSharedPinLink` tests in `test/maps-link.test.ts`.
 
 ## A renewal is waiting on the days, and nothing else
 

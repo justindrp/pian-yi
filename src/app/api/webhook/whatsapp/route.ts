@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
-import { findMapsLink } from "@/lib/maps/link";
+import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
 import {
   getNeighborhoods,
   getSetting,
@@ -1990,6 +1990,9 @@ export async function processSavedCustomerMessage(params: {
     customerName,
     customerNotes,
     detectedMapsLink: mapsLinkOnFile,
+    mapsLinkIsSharedPin: mapsLinkOnFile
+      ? isSharedPinLink(mapsLinkOnFile)
+      : false,
     justWelcomed,
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,

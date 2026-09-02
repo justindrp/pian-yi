@@ -90,7 +90,10 @@ function mockDb(byPhone: Record<string, { id: string; name: string | null }>) {
     const result = () => {
       if (table === "customers" && op === "select") {
         const key = (filters.phone_number ?? filters.id) as string | undefined;
-        return key ? (people[key] ?? null) : null;
+        const person = key ? people[key] : undefined;
+        // Everyone here already has a link on file; the maps-link gate is
+        // covered in its own suite.
+        return person ? { ...person, google_maps_link: "https://maps.app.goo.gl/testlink" } : null;
       }
       if (table === "customers" && op === "insert") {
         const inserted = payload as { phone_number: string; name: string };

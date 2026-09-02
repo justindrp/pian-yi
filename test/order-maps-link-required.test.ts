@@ -22,10 +22,10 @@ jest.mock("@/lib/claude/conversation", () => ({
 }));
 
 const CUSTOMER_ID = "c0000000-0000-4000-8000-000000000001";
-const PHONE = "+6281234567890";
+const PHONE = "+6281299221430";
 
-/** Same permissive stub as order-name-required: only the gate is under test. */
-function mockDb() {
+/** Same permissive stub as order-schedule-required: only the gate is tested. */
+function mockDb(linkOnFile: string | null) {
   const touched: string[] = [];
   const row = {
     id: "00000000-0000-4000-8000-0000000000ff",
@@ -33,7 +33,7 @@ function mockDb() {
     portions: 5,
     price_per_portion: 29000,
     delivery_areas: ["Gading Serpong"],
-    google_maps_link: "https://maps.app.goo.gl/testlink",
+    google_maps_link: linkOnFile,
   };
   const from = jest.fn((table: string) => {
     touched.push(table);
@@ -84,22 +84,25 @@ const BASE = {
   address: "Cluster Michelia, Jl. Michelia 10 No 35",
   maps_link: "",
   area: "Gading Serpong",
+  delivery_schedule: [],
 };
 
-describe("createOrderFromExtraction — the days are required before payment", () => {
-  // The field used to be optional, and a missing schedule was filled in from a
-  // meal-preference enum: Senin–Jumat, both meals, from tomorrow. galvent said
-  // "Jdwal tdk menetap" and asked for one day; five were booked for him.
-  it("creates no order and asks which days when the schedule is absent", async () => {
-    const touched = mockDb();
+describe("createOrderFromExtraction — the maps link is required before payment", () => {
+  // 266 of 416 customers had no link on 2026-09-01, and the bot was telling
+  // them it did not matter: +6281299221430 was answered "nggak apa apa kak —
+  // alamat tulisannya yang penting" on 2026-09-02.
+  it("creates no order and asks for the link when there is none anywhere", async () => {
+    const touched = mockDb(null);
 
     await createOrderFromExtraction(CUSTOMER_ID, PHONE, { ...BASE });
 
     expect(sendTextMessage).toHaveBeenCalledTimes(1);
     const [to, text] = (sendTextMessage as jest.Mock).mock.calls[0];
     expect(to).toBe(PHONE);
-    expect(text).toMatch(/hari apa saja/i);
-    // The whole point: no bank details for an order with no days behind it.
+    expect(text).toMatch(/link Google Maps/i);
+    // The gesture is Google Maps' own share, not WhatsApp's location button.
+    expect(text).toMatch(/Salin link/i);
+    // The whole point: creating the order is what sends the bank details.
     expect(text).not.toMatch(/transfer|BCA|Nominal/i);
     expect(touched).not.toContain("orders");
     expect(touched).not.toContain("daily_deliveries");
@@ -109,45 +112,50 @@ describe("createOrderFromExtraction — the days are required before payment", (
     expect(updateMessageReceipt).toHaveBeenCalled();
   });
 
-  // An empty array is a real answer, not a missing one: it sells the quota with
-  // no dates attached, which is how most of the book buys.
-  it("creates the order when the customer books day by day", async () => {
-    const touched = mockDb();
+  it("creates the order when the link arrives in the call", async () => {
+    const touched = mockDb(null);
 
     await createOrderFromExtraction(CUSTOMER_ID, PHONE, {
       ...BASE,
-      delivery_schedule: [],
+      maps_link: "https://maps.app.goo.gl/aBcD1234",
     });
 
     const asked = (sendTextMessage as jest.Mock).mock.calls.some(
-      ([, text]: [string, string]) => /hari apa saja/i.test(text),
+      ([, text]: [string, string]) => /link Google Maps/i.test(text),
     );
     expect(asked).toBe(false);
     expect(touched).toContain("orders");
   });
 
-  it("creates the order when the days are named", async () => {
-    const touched = mockDb();
+  it("creates the order when the customer already has a link on file", async () => {
+    const touched = mockDb("https://maps.app.goo.gl/onFile99");
 
-    await createOrderFromExtraction(CUSTOMER_ID, PHONE, {
-      ...BASE,
-      delivery_schedule: [
-        { date: "2026-09-01", meal_type: "lunch", portions: 1 },
-        { date: "2026-09-02", meal_type: "lunch", portions: 1 },
-      ],
-    });
+    await createOrderFromExtraction(CUSTOMER_ID, PHONE, { ...BASE });
 
     const asked = (sendTextMessage as jest.Mock).mock.calls.some(
-      ([, text]: [string, string]) => /hari apa saja/i.test(text),
+      ([, text]: [string, string]) => /link Google Maps/i.test(text),
     );
     expect(asked).toBe(false);
     expect(touched).toContain("orders");
   });
 
-  // The payment-proof path is a customer who has already transferred. Blocking
-  // there would throw away the order behind real money.
+  // A pin in the right kampung still beats prose, so it passes the gate. The
+  // prompt keeps asking for a dragged-and-copied link; the order is not held.
+  it("accepts a shared WhatsApp location rather than holding the order", async () => {
+    const touched = mockDb("https://www.google.com/maps?q=-6.2417,106.6339");
+
+    await createOrderFromExtraction(CUSTOMER_ID, PHONE, { ...BASE });
+
+    const asked = (sendTextMessage as jest.Mock).mock.calls.some(
+      ([, text]: [string, string]) => /link Google Maps/i.test(text),
+    );
+    expect(asked).toBe(false);
+    expect(touched).toContain("orders");
+  });
+
+  // The payment-proof path is a customer who has already transferred.
   it("still creates the order when we are not the ones asking for money", async () => {
-    const touched = mockDb();
+    const touched = mockDb(null);
 
     await createOrderFromExtraction(
       CUSTOMER_ID,

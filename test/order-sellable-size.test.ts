@@ -36,6 +36,7 @@ function mockDb() {
     portions: 5,
     price_per_portion: 29000,
     delivery_areas: ["Gading Serpong"],
+    google_maps_link: "https://maps.app.goo.gl/testlink",
   };
   const from = jest.fn((table: string) => {
     touched.push(table);

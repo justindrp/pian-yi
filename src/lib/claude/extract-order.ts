@@ -15,6 +15,7 @@ import {
 } from "@/lib/claude/conversation";
 import { isDeliveryDay } from "@/lib/holidays/id";
 import { stripCompensation } from "@/lib/kitchen/compensation";
+import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
 import {
   normalizeSize,
   type OrderSize,
@@ -1401,6 +1402,59 @@ export async function createOrderFromExtraction(
         `[extract-order] order withheld for ${customerId}: no name on record and none given`,
       );
       return NOTHING_TO_SEND;
+    }
+  }
+
+  // Never sell a package we cannot find the door for.
+  //
+  // A written address gets a courier to a gate and no further, and 266 of 416
+  // customers had no link at all on 2026-09-01. The link is required now, and
+  // the model was telling customers the opposite: +6281299221430 said their
+  // share-location lands in the neighbouring kampung and was answered "nggak
+  // apa apa kak — alamat tulisannya yang penting" on 2026-09-02.
+  //
+  // A WhatsApp share-location counts here — a pin in the right kampung still
+  // beats prose — but it does not stop the prompt asking for a proper Google
+  // Maps link, which the customer drags onto the house before copying. The
+  // link may arrive in this call or already be on the customer; either is
+  // enough, and only a customer with neither is asked.
+  //
+  // Withheld like the name and the schedule, and for the same reason: creating
+  // the order is what sends the bank details, so a half-known delivery must not
+  // reach the point of asking for money. Not on the payment-proof path — that
+  // customer has already transferred.
+  if (sendPaymentInfo && beneficiary.kind === "self") {
+    const givenLink = findMapsLink(input.maps_link ?? "");
+    const { data: linked } = await db
+      .from("customers")
+      .select("google_maps_link")
+      .eq("id", customerId)
+      .maybeSingle();
+    const onFile = findMapsLink(linked?.google_maps_link ?? "");
+    if (!givenLink && !onFile) {
+      const askMsg =
+        "Sebelum saya siapkan pesanannya, boleh minta link Google Maps rumah kakak? 🙏 Caranya: buka Google Maps, geser titiknya pas ke rumah kakak, lalu *Bagikan → Salin link*, tinggal paste di sini ya kak. Ini yang dipakai kurir buat nyari alamatnya, jadi alamat tulisan aja belum cukup.";
+      const conversationId = await saveMessage({
+        customerId,
+        role: "assistant",
+        content: askMsg,
+        modelUsed: "system",
+      });
+      const askMessageId = await sendTextMessage(phone, askMsg);
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: askMessageId,
+        status: "sent",
+      });
+      console.log(
+        `[extract-order] order withheld for ${customerId}: no maps link given or on file`,
+      );
+      return NOTHING_TO_SEND;
+    }
+    if (givenLink && isSharedPinLink(givenLink) && !onFile) {
+      console.log(
+        `[extract-order] ${customerId} has only a shared-location pin, not a Maps link`,
+      );
     }
   }
 

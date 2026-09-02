@@ -117,7 +117,11 @@ function mockDb(opts: {
         return onRecord ? { id: "conv-old" } : null;
       }
       if (table === "customers" && op === "select") {
-        return { id: CUSTOMER_ID, name: "Rian" };
+        return {
+          id: CUSTOMER_ID,
+          name: "Rian",
+          google_maps_link: "https://maps.app.goo.gl/testlink",
+        };
       }
       if (table === "pricing_tiers") {
         return { portions: 5, price_per_portion: 29000 };

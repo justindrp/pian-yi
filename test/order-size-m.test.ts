@@ -72,7 +72,11 @@ function mockDb(offersM: Record<string, boolean>) {
     }
     const result = () => {
       if (table === "customers" && op === "select")
-        return { id: CUSTOMER_ID, name: "Naya" };
+        return {
+          id: CUSTOMER_ID,
+          name: "Naya",
+          google_maps_link: "https://maps.app.goo.gl/testlink",
+        };
       if (table === "orders")
         return { id: "0d000000-0000-4000-8000-000000000001", created_at: NOW };
       if (table === "subcontractors")
