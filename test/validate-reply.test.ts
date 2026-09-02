@@ -51,6 +51,29 @@ describe("validateReply", () => {
     });
   });
 
+  test("context carries the bought-not-delivered balance, not only the unbooked count", async () => {
+    // Febby held 2 portions still to eat and 0 without a date on 2026-09-02.
+    // With only the unbooked number in context, "sisa 2 porsi" — the answer the
+    // system prompt tells the model to give — was rejected as a hallucination
+    // twice and she got the fallback template instead.
+    const create = jest
+      .fn()
+      .mockResolvedValue({ content: [{ type: "text", text: '{"valid": true}' }] });
+    (getAnthropicClient as jest.Mock).mockReturnValue({
+      messages: { create },
+    });
+
+    await validateReply({
+      ...baseParams,
+      reply: "Sisa kuota kakak 2 porsi ya",
+      activeOrder: { unbooked: 0, packageSize: 30, remainingToday: 2 },
+    });
+
+    const prompt = create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain("2 portions bought and not yet delivered");
+    expect(prompt).toContain("0 have no delivery date booked yet");
+  });
+
   test("malformed JSON fails open (valid: true)", async () => {
     mockCreate({ content: [{ type: "text", text: "not json" }] });
 

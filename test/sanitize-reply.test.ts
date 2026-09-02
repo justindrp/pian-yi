@@ -70,6 +70,32 @@ describe("sanitizeReply — leaked reasoning", () => {
     const reply = "Oke kak, menu sudah saya kirim ya.";
     expect(sanitizeReply(reply)).toBe(reply);
   });
+
+  it("drops deliberation that follows the answer, and the restatement after it", () => {
+    // Verbatim from what Febby was sent on 2026-09-02. The leak came after the
+    // answer, not before it, so slicing from the first answer kept all of it.
+    const leaked = [
+      "Baik kak, selamat menikmati ya 😊 sampai besok ya 🍱",
+      "",
+      'Wait, let me review carefully. The user said "ok ok". The previous assistant message was about a delivery arriving.',
+      "",
+      "Also note there's no size M message needed since menu already mentioned. Keep it short.",
+      "",
+      "Selamat menikmati kak 🍱 sampai besok ya!",
+    ].join("\n");
+    expect(sanitizeReply(leaked)).toBe(
+      "Baik kak, selamat menikmati ya 😊 sampai besok ya 🍱",
+    );
+  });
+
+  it("keeps a multi-paragraph Indonesian reply whole", () => {
+    const reply = [
+      "Bisa banget kak, masih sempat kok karena sekarang masih sebelum jam 16.00.",
+      "",
+      "Pengiriman Jumat 4 September tetap jalan seperti biasa ya.",
+    ].join("\n");
+    expect(sanitizeReply(reply)).toBe(reply);
+  });
 });
 
 describe("sanitizeReply — retracted false start", () => {

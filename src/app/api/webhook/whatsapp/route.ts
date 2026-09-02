@@ -299,6 +299,38 @@ const SCHEDULE_PROMISE = new RegExp(
   "i",
 );
 
+// The model confirming a skip, a move or a cancellation of a scheduled day, in
+// a turn that called no delete_deliveries. A skip is a DELETE and nothing else
+// performs one, so a confirmation with no tool behind it changes nothing at all:
+// the row stays on the kitchen sheet and the food is cooked. Febby asked on
+// 2026-09-02 to skip Kamis and resume Jumat and was answered "Saya skip
+// pengiriman Kamis besok dan lanjut lagi Jumat seperti biasa ya. Saya proses
+// sekarang" — no tool call, and in her case no row on that Kamis either, so the
+// reply was a confirmation of work that was neither done nor needed.
+const SKIP_CLAIM = new RegExp(
+  [
+    // "saya skip pengiriman Kamis" / "aku hapus jadwal Jumat besok"
+    /(saya|aku|kami)\s+(sudah\s+)?(skip|hapus|hapuskan|batalkan|pindahkan|geser)\w*/
+      .source,
+    // "Kamis di-skip ya kak" / "pengirimannya dibatalkan"
+    /\b(di-?skip|dihapus|dibatalkan|dipindah\w*|digeser)\b/.source,
+    // "skip Kamis, lanjut Jumat" — the customer's own words agreed to verbatim.
+    /\bskip\w*\b[\s\S]{0,40}?\b(lanjut|dilanjut\w*)\b/.source,
+  ].join("|"),
+  "i",
+);
+
+// A refusal names the same verbs as a confirmation — "Kamis tidak bisa di-skip,
+// pengirimannya sudah terkunci" is the correct answer past the cutoff, and it
+// must not be read as a claim that something was deleted.
+const SKIP_REFUSED =
+  /\b(tidak|nggak|ga|gak|belum|tak)\s+(bisa|dapat|boleh|sempat)\b|terkunci|sudah\s+dikunci|sudah\s+(masuk|diproses)\s+dapur/i;
+
+/** Whether the reply told a customer a scheduled day was skipped or moved. */
+export function claimsSkipDone(replyText: string): boolean {
+  return SKIP_CLAIM.test(replyText) && !SKIP_REFUSED.test(replyText);
+}
+
 /**
  * Whether the reply told a customer their dates are booked.
  *
@@ -2555,6 +2587,60 @@ export async function processSavedCustomerMessage(params: {
     }
   }
 
+  // The model confirms a skip or a move and calls no delete_deliveries. Nothing
+  // is deleted, so the row stays on the kitchen sheet, the food is cooked, and
+  // the portion is spent on a day the customer was told they had back.
+  //
+  // Flagged rather than recovered, unlike the guards above: every one of those
+  // fixes itself by *sending* something, and a second menu image or a second
+  // invoice costs nothing. This one would fix itself by deleting a delivery
+  // row, and a date read back out of a reply the model already got wrong is not
+  // a good enough reason to destroy the only record of a meal — deleteDelivery
+  // copies the row to edit_log because nothing else can rebuild it. An admin
+  // decides.
+  if (
+    replyText &&
+    !toolUses.some((t) => t.name === "delete_deliveries") &&
+    claimsSkipDone(replyText)
+  ) {
+    const { data: flags } = await db
+      .from("customer_flags")
+      .select("needs_human_review")
+      .eq("customer_id", customerId)
+      .maybeSingle();
+    // One push per unresolved flag, as flagOrderAtRisk does: an admin who has
+    // already been told does not need telling again on the customer's next
+    // message.
+    if (flags?.needs_human_review !== true) {
+      const scheduled =
+        schedule && schedule.upcoming.length > 0
+          ? schedule.upcoming
+              .map(
+                (d) =>
+                  `${d.date} ${d.mealType === "dinner" ? "malam" : "siang"}`,
+              )
+              .join(", ")
+          : "tidak ada pengiriman terjadwal";
+      const note = `Bot menyanggupi skip/pindah jadwal tanpa memanggil delete_deliveries. Jadwal yang masih tercatat: ${scheduled}`;
+      console.warn(
+        `[webhook] skip confirmed but never deleted for ${customerId} — ${scheduled}`,
+      );
+      await db
+        .from("customer_flags")
+        .update({
+          needs_human_review: true,
+          escalation_reason: note,
+        })
+        .eq("customer_id", customerId);
+      await sendPushToAllAdmins(
+        `Skip dijanjikan tapi tidak dihapus — ${customerName ?? phone}`,
+        note,
+        "/inbox",
+        "high",
+      ).catch(console.error);
+    }
+  }
+
   // The model says it is checking with the team and calls no tool. Nothing is
   // flagged and no admin is pushed, so the customer is waiting on a question
   // that was never asked. Park it ourselves and push, using the customer's own
@@ -2666,6 +2752,7 @@ export async function processSavedCustomerMessage(params: {
         ? {
             unbooked: schedule?.unbooked ?? 0,
             packageSize: activeOrder.packageSize,
+            remainingToday: schedule?.remainingToday ?? 0,
           }
         : null,
     };

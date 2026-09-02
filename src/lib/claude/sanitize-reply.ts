@@ -75,7 +75,17 @@ function stripReasoning(paragraphs: string[]): string[] {
   // Nothing left that reads as an answer: a plain English reply, which the
   // language guard translates. Not ours to cut.
   if (firstAnswer === -1) return paragraphs;
-  return unglued.slice(firstAnswer);
+  // The leak is not always a preamble. Febby replied "ok" to her delivery photo
+  // on 2026-09-02 and was sent "Baik kak, selamat menikmati ya 😊 sampai besok
+  // ya 🍱" followed by three paragraphs of the model arguing with itself in
+  // English ("Wait, let me review carefully. The user said "ok ok"...") and then
+  // the same answer again in different words. Slicing from the first answer kept
+  // every word of it. So the answer is the run that starts there and ends at the
+  // next paragraph that reads as deliberation — anything after that is either
+  // more leak or the restatement it leads to, and neither is for the customer.
+  const rest = unglued.slice(firstAnswer);
+  const nextLeak = rest.findIndex((p) => isReasoning(p));
+  return nextLeak === -1 ? rest : rest.slice(0, nextLeak);
 }
 
 /**

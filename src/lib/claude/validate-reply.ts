@@ -10,7 +10,21 @@ export interface ValidateReplyParams {
   customerName: string | null;
   customerNotes: string | null;
   customerState: string;
-  activeOrder: { unbooked: number; packageSize: number } | null;
+  /**
+   * Both halves of "sisa kuota", because the prompt hands the model both and a
+   * validator that only knows one of them rejects the other by construction.
+   * Febby asked "untuk quota masih sisa berapa yaa?" on 2026-09-02 holding 2
+   * portions bought-not-delivered and 0 unbooked. The correct answer — 2 — was
+   * unsupported against a context that said only "0 of 30 portions not yet
+   * scheduled", so it was blocked, regenerated, blocked again, and she got the
+   * fallback template while an admin was pushed about a hallucination that
+   * never happened. See `remainingToday` in loadCustomerSchedule.
+   */
+  activeOrder: {
+    unbooked: number;
+    packageSize: number;
+    remainingToday: number;
+  } | null;
   /**
    * The tail of the conversation, oldest first. Without it the validator sees
    * only what the database already knows, so the one turn where the bot reads
@@ -32,7 +46,11 @@ export async function validateReply(
   const context = `Customer state: ${params.customerState}
 Customer name (if known): ${params.customerName ?? "unknown"}
 Customer notes / learned context: ${params.customerNotes?.trim() || "none"}
-Active order quota: ${params.activeOrder ? `${params.activeOrder.unbooked} of ${params.activeOrder.packageSize} portions not yet scheduled` : "no active order"}`;
+Active order quota: ${
+    params.activeOrder
+      ? `${params.activeOrder.remainingToday} portions bought and not yet delivered — this is the number a customer means by "sisa kuota" and it is a supported fact. Of those, ${params.activeOrder.unbooked} have no delivery date booked yet. Package size ${params.activeOrder.packageSize} portions.`
+      : "no active order"
+  }`;
 
   const transcript = (params.transcript ?? [])
     .map((m) => `${m.role === "assistant" ? "BOT" : "CUSTOMER"}: ${m.content}`)
