@@ -36,9 +36,19 @@ type Customer = Database["public"]["Tables"]["customers"]["Row"];
 const LEARNED_CONTEXT_START = "[AI learned context]";
 const LEARNED_CONTEXT_END = "[/AI learned context]";
 
+// The thread list draws a name, a phone number, 60 characters of the newest
+// message and its time — so it selects those columns and nothing else. Both
+// queries used to be select('*') and ran every 10 seconds per open tab, which
+// is what pushed the Supabase project past its egress quota.
+type ThreadCustomer = Pick<Customer, "id" | "name" | "phone_number">;
+type ThreadMessage = Pick<
+  Conversation,
+  "customer_id" | "role" | "content" | "created_at"
+>;
+
 interface Thread {
-  customer: Customer;
-  lastMessage: Conversation;
+  customer: ThreadCustomer;
+  lastMessage: ThreadMessage;
   unread: boolean;
   menuShown: boolean;
   unanswered: boolean;
@@ -267,19 +277,46 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     attemptedForLatestUserMessage: false,
   });
 
+  // Newest message time and newest receipt time, in two single-row queries of
+  // about 70 bytes each. The fallback poll compares this instead of refetching
+  // the thread list, which is the whole point: the list is ~85 KB and almost
+  // never changes between ticks.
+  const watermarkRef = useRef<string | null>(null);
+
+  const readWatermark = useCallback(async () => {
+    const [{ data: newest }, { data: receipted }] = await Promise.all([
+      supabase
+        .from("conversations")
+        .select("created_at")
+        .order("created_at", { ascending: false })
+        .limit(1),
+      supabase
+        .from("conversations")
+        .select("whatsapp_status_updated_at")
+        .not("whatsapp_status_updated_at", "is", null)
+        .order("whatsapp_status_updated_at", { ascending: false })
+        .limit(1),
+    ]);
+    return `${newest?.[0]?.created_at ?? ""}|${
+      receipted?.[0]?.whatsapp_status_updated_at ?? ""
+    }`;
+  }, [supabase]);
+
   const loadThreads = useCallback(async () => {
     // inbox_threads (migration 059) is one row per customer holding their
     // newest message, so every thread loads — not just recently active ones.
     const { data } = await supabase
       .from("inbox_threads")
-      .select("*")
+      .select("customer_id, role, content, created_at")
       .order("created_at", { ascending: false });
 
     if (!data) return;
 
     // Fetched unfiltered rather than by id list — an .in() of every thread's
     // uuid produces a request URL long enough to be rejected.
-    const { data: customerRows } = await supabase.from("customers").select("*");
+    const { data: customerRows } = await supabase
+      .from("customers")
+      .select("id, name, phone_number");
     const customerById = new Map((customerRows ?? []).map((c) => [c.id, c]));
 
     const grouped: Thread[] = [];
@@ -290,7 +327,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       if (!customer) continue;
       grouped.push({
         customer,
-        lastMessage: row as unknown as Conversation,
+        lastMessage: row as unknown as ThreadMessage,
         unread: row.role === "user",
         menuShown: false,
         unanswered: false,
@@ -462,6 +499,11 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
         // on a chat someone else is already handling.
         void loadFlags(current);
       }
+      // Re-read the mark after refetching, so a refresh triggered by realtime
+      // does not leave a stale mark for the poll to trip over and refetch again.
+      void readWatermark().then((mark) => {
+        watermarkRef.current = mark;
+      });
     };
 
     const channel = supabase
@@ -488,8 +530,22 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
 
     // Polling fallback — Railway's reverse proxy occasionally drops the
     // realtime websocket; this guarantees new messages appear within 10s
-    // even if the socket is dead.
-    const pollInterval = setInterval(refresh, 10_000);
+    // even if the socket is dead. It refetches only when the watermark moved:
+    // the unconditional version refetched ~200 KB every 10s, 68 MB an hour per
+    // open tab, and that alone put the Supabase project over its 5 GB egress
+    // quota with 7 users and a 50 MB database.
+    const pollInterval = setInterval(() => {
+      void readWatermark().then((mark) => {
+        const previous = watermarkRef.current;
+        watermarkRef.current = mark;
+        if (previous !== null && previous !== mark) refresh();
+      });
+    }, 10_000);
+
+    // customer_flags carries no timestamp, so a takeover by another admin moves
+    // no watermark. Realtime delivers it; this slower sweep is what covers a
+    // dead socket, at 1/6th the ticks rather than none.
+    const flagPollInterval = setInterval(refresh, 60_000);
 
     // Refresh immediately when the tab regains focus
     const onVisible = () => {
@@ -500,9 +556,10 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     return () => {
       void supabase.removeChannel(channel);
       clearInterval(pollInterval);
+      clearInterval(flagPollInterval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [loadThreads, loadMessages, loadFlags, supabase]);
+  }, [loadThreads, loadMessages, loadFlags, readWatermark, supabase]);
 
   // Scroll to bottom when switching threads; on message updates only if already near bottom
   // biome-ignore lint/correctness/useExhaustiveDependencies: must fire on thread switch only — adding messages would yank the view to the bottom mid-scroll on every poll
