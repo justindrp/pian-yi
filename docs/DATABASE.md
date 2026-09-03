@@ -68,13 +68,16 @@ People who can log in to the dashboard. Email is the primary key (matches Supaba
 
 Named neighborhoods within each delivery area, used by `/api/settings/neighborhoods` for area-picker autocomplete. RLS enabled (authenticated-only policy, migration 053); only accessed server-side via the admin client.
 
-This table is global and include-only: a row says "this cluster belongs to that area", never that anyone will deliver to it. **Which kitchen will go there, and for how much, lives in `subcontractor_neighborhoods`** — see below.
+This table is global and, until migration 094, was include-only: a row said "this cluster belongs to that area", never that anyone will deliver to it. **`excluded` is how a row now says the opposite** — this cluster is inside an area we serve and we still will not go there, for everyone, on every kitchen. **Which kitchen will go there, and for how much, lives in `subcontractor_neighborhoods`** — see below; that is one kitchen's refusal, answered by finding another, and this one has no such answer.
+
+Deleting a row is not a refusal and never was: it stops the bot *recognising* the name, and the prompt's nearest-area rule then rounds the unrecognised cluster into the nearest served area and sells to it anyway. Taman Tekno (2026-08-30) and Synergy Building (2026-09-03) were both deleted that way; both are back as `excluded = true` rows instead. An excluded name is kept out of the served list the prompt renders, listed in its own refusal block, and checked in `createOrderFromExtraction` before any kitchen verdict (`exclusionFor()`, `src/lib/subcontractors/coverage.ts`), which withholds the order and sends no bank details. Toggle it at `/areas`; `PATCH /api/settings/neighborhoods` logs `exclude`/`include` to `edit_log`.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | Primary key |
 | area | text | Delivery area. Must be one of the areas some *active* subcontractor serves — there is no fixed list, and the count changes when a kitchen is activated or deactivated. See "Delivery areas" in `OPERATIONS.md` |
 | name | text | Neighborhood name, unique per (area, name) |
+| excluded | boolean | Default false. True = we do not deliver here, whatever the area says (migration 094) |
 | created_at | timestamp | |
 
 ---

@@ -1,7 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest, NextResponse } from "next/server";
 import { DELIVERY_WINDOWS, windowLabel } from "@/lib/deliveries/windows";
-import { getNeighborhoods } from "@/lib/cache/settings";
+import {
+  getExcludedNeighborhoods,
+  getNeighborhoods,
+} from "@/lib/cache/settings";
 import {
   getAnthropicClient,
   NO_THINKING,
@@ -74,6 +77,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const servedAreas = unionAreas(rawSubs);
 
   const neighborhoods = await getNeighborhoods();
+  const excludedNeighborhoods = await getExcludedNeighborhoods();
   const kitchenCoverageNotes = await coverageNotes(db, rawSubs);
 
   const activeOrder = body.hasActiveOrder
@@ -130,6 +134,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     ),
     servedAreas,
     neighborhoods,
+    excludedNeighborhoods,
     coverageNotes: kitchenCoverageNotes,
     activeOrder,
     schedule,

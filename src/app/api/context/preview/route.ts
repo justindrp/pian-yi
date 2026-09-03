@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { getNeighborhoods } from "@/lib/cache/settings";
+import {
+  getExcludedNeighborhoods,
+  getNeighborhoods,
+} from "@/lib/cache/settings";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { unionAreas } from "@/lib/subcontractors/areas";
@@ -62,6 +65,7 @@ export async function GET(): Promise<Response> {
   const servedAreas = unionAreas(rawSubs);
 
   const neighborhoods = await getNeighborhoods();
+  const excludedNeighborhoods = await getExcludedNeighborhoods();
   const kitchenCoverageNotes = await coverageNotes(db, rawSubs);
 
   const prompt = await buildSystemPrompt({
@@ -78,6 +82,7 @@ export async function GET(): Promise<Response> {
     ),
     servedAreas,
     neighborhoods,
+    excludedNeighborhoods,
     coverageNotes: kitchenCoverageNotes,
     activeOrder: null,
     schedule: null,

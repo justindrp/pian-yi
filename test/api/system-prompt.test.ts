@@ -39,6 +39,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
       schedule: null,
@@ -74,6 +75,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
       schedule: null,
@@ -121,6 +123,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
       schedule: null,
@@ -152,6 +155,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
       schedule: null,
@@ -181,6 +185,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: {
         id: "o1",
@@ -241,6 +246,7 @@ describe("customer chatbot system prompt", () => {
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
         neighborhoods: {},
+        excludedNeighborhoods: [],
         coverageNotes: [],
         activeOrder: null,
         schedule: null,
@@ -272,6 +278,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
     };
@@ -347,6 +354,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
       schedule: null,
@@ -400,6 +408,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
       schedule: null,
@@ -481,6 +490,7 @@ describe("customer chatbot system prompt", () => {
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
       neighborhoods: {},
+      excludedNeighborhoods: [],
       coverageNotes: [],
       activeOrder: null,
       schedule: null,
@@ -528,6 +538,7 @@ describe("customer chatbot system prompt", () => {
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
         neighborhoods: {},
+        excludedNeighborhoods: [],
         coverageNotes: [],
         activeOrder: null,
         schedule: null,
@@ -558,6 +569,7 @@ describe("customer chatbot system prompt", () => {
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
         neighborhoods: {},
+        excludedNeighborhoods: [],
         coverageNotes: [],
         activeOrder: null,
         schedule: null,
@@ -603,6 +615,7 @@ describe("customer chatbot system prompt", () => {
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["Alam Sutera"],
         neighborhoods: {},
+        excludedNeighborhoods: [],
         coverageNotes: [],
         activeOrder: {
           id: "o1",
@@ -684,6 +697,7 @@ describe("customer chatbot system prompt", () => {
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Lama"],
         neighborhoods: {},
+        excludedNeighborhoods: [],
         coverageNotes: [],
         activeOrder: null,
         schedule: null,
@@ -722,5 +736,68 @@ describe("customer chatbot system prompt", () => {
       expect(prompt).toContain("tim admin kami selalu standby");
       expect(prompt).not.toContain("Kak Annie selalu standby");
     });
+  });
+});
+
+// The mechanism that replaced deleting the row. A deleted neighbourhood is one
+// the bot does not recognise, and the nearest-area rule rounds an unrecognised
+// cluster into the nearest served area and sells to it — which is what happened
+// to Taman Tekno on 2026-08-30 and would have happened again to Synergy
+// Building. An excluded one is named in the prompt so it can be refused.
+describe("excluded neighborhoods", () => {
+  const base = {
+    casual: false,
+    customerState: "new",
+    customerName: null,
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["Alam Sutera"],
+    neighborhoods: { "Alam Sutera": ["Sutera Onyx"] },
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("names them, with the refusal spelled out", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      excludedNeighborhoods: [
+        { area: "Alam Sutera", name: "Synergy Building" },
+      ],
+    });
+
+    expect(prompt).toContain(
+      "Kami tidak mengantar ke: Synergy Building (Alam Sutera)",
+    );
+    expect(prompt).toContain("do not quote a price, do not call extract_order");
+    // The nearest-area rule has to be told it does not apply here, or it
+    // rounds the address into Alam Sutera and sells anyway.
+    expect(prompt).toContain(
+      "Rounding is for a cluster you do not recognise — never for one you recognise and cannot serve.",
+    );
+  });
+
+  test("an excluded name is never listed as a neighborhood we serve", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      excludedNeighborhoods: [
+        { area: "Alam Sutera", name: "Synergy Building" },
+      ],
+    });
+
+    expect(prompt).toContain("**Alam Sutera** neighborhoods: Sutera Onyx.");
+    expect(prompt).not.toContain("neighborhoods: Sutera Onyx, Synergy Building");
+  });
+
+  test("nothing excluded renders no block at all", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      excludedNeighborhoods: [],
+    });
+    expect(prompt).not.toContain("Kami tidak mengantar ke:");
   });
 });

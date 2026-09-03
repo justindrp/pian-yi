@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useDeliveryAreas, withCurrentAreas } from "@/hooks/use-delivery-areas";
 
-type Neighborhood = { id: string; area: string; name: string };
+type Neighborhood = {
+  id: string;
+  area: string;
+  name: string;
+  excluded: boolean;
+};
 type CoverageRule = {
   neighborhoodId: string;
   area: string;
@@ -96,6 +101,16 @@ export default function AreasClient() {
     },
   });
 
+  const excludeMutation = useMutation({
+    mutationFn: (vars: { id: string; excluded: boolean }) =>
+      fetch("/api/settings/neighborhoods", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vars),
+      }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["neighborhoods"] }),
+  });
+
   const ruleMutation = useMutation({
     mutationFn: (vars: {
       neighborhood_id: string;
@@ -153,6 +168,7 @@ export default function AreasClient() {
             ruleFor={ruleFor}
             onAdd={(name) => addMutation.mutate({ area, name })}
             onDelete={(id) => deleteMutation.mutate(id)}
+            onExclude={(vars) => excludeMutation.mutate(vars)}
             onRule={(vars) => ruleMutation.mutate(vars)}
           />
         ))
@@ -199,6 +215,7 @@ function AreaPanel({
   ruleFor,
   onAdd,
   onDelete,
+  onExclude,
   onRule,
 }: {
   area: string;
@@ -207,6 +224,7 @@ function AreaPanel({
   ruleFor: (neighborhoodId: string) => CoverageRule | null;
   onAdd: (name: string) => void;
   onDelete: (id: string) => void;
+  onExclude: (vars: { id: string; excluded: boolean }) => void;
   onRule: (vars: {
     neighborhood_id: string;
     can_deliver: boolean;
@@ -242,12 +260,31 @@ function AreaPanel({
           been; with one, each name carries that kitchen's verdict. */}
       {rules === null ? (
         <div className="flex flex-wrap gap-1.5 mb-3">
+          {/* An excluded name stays on the list rather than being deleted: the
+              bot has to recognise it to refuse it. Deleting it only makes the
+              bot round the address to the nearest area and sell there. */}
           {neighborhoods.map((n) => (
             <span
               key={n.id}
-              className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs rounded-full px-2.5 py-1"
+              className={`inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 ${
+                n.excluded
+                  ? "bg-red-50 text-red-700 line-through"
+                  : "bg-gray-100 text-gray-700"
+              }`}
             >
               {n.name}
+              <button
+                type="button"
+                title={
+                  n.excluded
+                    ? "Kami antar ke sini lagi"
+                    : "Tandai tidak diantar — bot menolak alamat di sini"
+                }
+                onClick={() => onExclude({ id: n.id, excluded: !n.excluded })}
+                className="text-gray-400 hover:text-gray-700 leading-none"
+              >
+                {n.excluded ? "↺" : "⊘"}
+              </button>
               <button
                 type="button"
                 onClick={() => onDelete(n.id)}

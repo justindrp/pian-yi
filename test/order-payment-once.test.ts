@@ -24,6 +24,7 @@ jest.mock("@/lib/cache/settings", () => ({
     ),
   ),
   getActiveInstructions: jest.fn().mockResolvedValue([]),
+  getExcludedNeighborhoods: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("@/lib/push/send", () => ({
   sendPushToAllAdmins: jest.fn().mockResolvedValue(undefined),

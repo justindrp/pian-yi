@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
 import {
+  getExcludedNeighborhoods,
   getNeighborhoods,
   getSetting,
   getTemplate,
@@ -1975,6 +1976,7 @@ export async function processSavedCustomerMessage(params: {
     }));
   const servedAreas = unionAreas(rawSubs);
   const neighborhoods = await getNeighborhoods();
+  const excludedNeighborhoods = await getExcludedNeighborhoods();
   // Which of those neighborhoods each kitchen refuses, and which cost extra to
   // reach. Read live rather than cached: a kitchen that has just said no must
   // stop being sold to on the next message, not on the next cache refresh.
@@ -2035,6 +2037,7 @@ export async function processSavedCustomerMessage(params: {
     ),
     servedAreas,
     neighborhoods,
+    excludedNeighborhoods,
     coverageNotes: kitchenCoverageNotes,
     activeOrder,
     schedule,

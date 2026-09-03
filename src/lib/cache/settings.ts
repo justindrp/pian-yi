@@ -1,3 +1,4 @@
+import type { ExcludedNeighborhood } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 interface CacheData {
@@ -6,6 +7,7 @@ interface CacheData {
   templates: Record<string, string>;
   activeInstructions: string[];
   neighborhoods: Record<string, string[]>;
+  excludedNeighborhoods: ExcludedNeighborhood[];
   loadedAt: number;
 }
 
@@ -26,7 +28,7 @@ async function load(): Promise<CacheData> {
     db.from("pricing_tiers").select("portions, price_per_portion"),
     db.from("message_templates").select("key, template"),
     db.from("chatbot_instructions").select("instruction").eq("is_active", true),
-    db.from("area_neighborhoods").select("area, name").order("name"),
+    db.from("area_neighborhoods").select("area, name, excluded").order("name"),
   ]);
 
   const settings: Record<string, string> = {};
@@ -43,8 +45,16 @@ async function load(): Promise<CacheData> {
     (r) => r.instruction,
   );
 
+  // The two lists are disjoint on purpose. An excluded neighbourhood must
+  // never appear in the per-area list the prompt renders as "neighborhoods we
+  // serve", and must still be a name the bot recognises — see `exclusionFor()`.
   const neighborhoods: Record<string, string[]> = {};
+  const excludedNeighborhoods: ExcludedNeighborhood[] = [];
   for (const row of neighborhoodsRes.data ?? []) {
+    if (row.excluded) {
+      excludedNeighborhoods.push({ area: row.area, name: row.name });
+      continue;
+    }
     if (!neighborhoods[row.area]) neighborhoods[row.area] = [];
     neighborhoods[row.area].push(row.name);
   }
@@ -55,6 +65,7 @@ async function load(): Promise<CacheData> {
     templates,
     activeInstructions,
     neighborhoods,
+    excludedNeighborhoods,
     loadedAt: Date.now(),
   };
 }
@@ -113,6 +124,13 @@ export async function getActiveInstructions(): Promise<string[]> {
 export async function getNeighborhoods(): Promise<Record<string, string[]>> {
   const c = await getCache();
   return c.neighborhoods;
+}
+
+export async function getExcludedNeighborhoods(): Promise<
+  ExcludedNeighborhood[]
+> {
+  const c = await getCache();
+  return c.excludedNeighborhoods;
 }
 
 export function invalidateCache(): void {

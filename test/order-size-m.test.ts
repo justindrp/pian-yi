@@ -12,6 +12,7 @@ jest.mock("@/lib/cache/settings", () => ({
     key === "size_m_surcharge" ? "4000" : "X",
   ),
   getActiveInstructions: jest.fn().mockResolvedValue([]),
+  getExcludedNeighborhoods: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("@/lib/push/send", () => ({
   sendPushToAllAdmins: jest.fn().mockResolvedValue(undefined),

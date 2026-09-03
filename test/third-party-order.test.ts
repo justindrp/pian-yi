@@ -12,6 +12,7 @@ jest.mock("@/lib/claude/classify-address", () => ({
 jest.mock("@/lib/cache/settings", () => ({
   getSetting: jest.fn().mockResolvedValue("X"),
   getActiveInstructions: jest.fn().mockResolvedValue([]),
+  getExcludedNeighborhoods: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("@/lib/push/send", () => ({
   sendPushToAllAdmins: jest.fn().mockResolvedValue(undefined),

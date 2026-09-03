@@ -103,6 +103,33 @@ export function coverageFor(
   };
 }
 
+export type ExcludedNeighborhood = { area: string; name: string };
+
+/**
+ * The one verdict that belongs to no kitchen: a place nobody delivers to.
+ *
+ * `subcontractor_neighborhoods.can_deliver = false` says a kitchen refuses an
+ * address, and the answer to it is to look for another kitchen. This says the
+ * business refuses it, so there is no other kitchen to look for — a building
+ * whose security will not let a courier hand food over is closed to every
+ * courier we have.
+ *
+ * The row stays in the table on purpose. Deleting it was the old way of saying
+ * this and it does the opposite of what it looks like: the bot stops
+ * recognising the name, and the prompt's nearest-area rule rounds the
+ * unrecognised cluster into the nearest served area and sells to it. An
+ * excluded row is recognised **and** refused.
+ */
+export function exclusionFor(
+  excluded: ExcludedNeighborhood[],
+  ...addressFields: (string | null | undefined)[]
+): ExcludedNeighborhood | null {
+  const address = addressFields.filter(Boolean).join(" ");
+  return (
+    excluded.find((n) => addressMatchesNeighborhood(address, n.name)) ?? null
+  );
+}
+
 /**
  * The same rules for several kitchens at once, keyed by subcontractor id — for
  * the prompt and the coverage editor, which both need every active kitchen's

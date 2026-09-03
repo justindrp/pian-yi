@@ -2,6 +2,7 @@ import {
   addressMatchesNeighborhood,
   type CoverageRule,
   coverageFor,
+  exclusionFor,
 } from "@/lib/subcontractors/coverage";
 
 const rule = (
@@ -112,5 +113,43 @@ describe("coverageFor", () => {
         "Kost Casa Living 158",
       ).blocked?.name,
     ).toBe("Casa Living");
+  });
+});
+
+// A business-level refusal, as opposed to one kitchen's. The rows exist so the
+// bot recognises the name: deleting them is what the code before this did, and
+// an unrecognised cluster gets rounded to the nearest served area and sold to.
+describe("exclusionFor", () => {
+  const excluded = [
+    { area: "Alam Sutera", name: "Synergy Building" },
+    { area: "BSD Lama", name: "Taman Tekno" },
+  ];
+
+  test("matches an excluded name anywhere in the address", () => {
+    expect(
+      exclusionFor(excluded, "Synergy Building lt. 12, Alam Sutera")?.name,
+    ).toBe("Synergy Building");
+  });
+
+  test("searches every address field it is given", () => {
+    expect(exclusionFor(excluded, null, undefined, "Taman Tekno")?.name).toBe(
+      "Taman Tekno",
+    );
+  });
+
+  test("an address in the same area but a different place is not excluded", () => {
+    expect(exclusionFor(excluded, "Sutera Onyx, Alam Sutera")).toBeNull();
+  });
+
+  // Same word-boundary anchor as the kitchen rules, and for the same reason:
+  // a bare substring test refuses places that merely contain the name.
+  test("does not match a name that only contains the excluded one", () => {
+    expect(exclusionFor([{ area: "BSD Lama", name: "Tekno" }], "Intekno")).toBe(
+      null,
+    );
+  });
+
+  test("nothing excluded refuses nothing", () => {
+    expect(exclusionFor([], "Synergy Building")).toBeNull();
   });
 });

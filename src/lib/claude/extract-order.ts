@@ -1,6 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
-import { getSetting } from "@/lib/cache/settings";
+import {
+  getExcludedNeighborhoods,
+  getSetting,
+} from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
 import {
   getAnthropicClient,
@@ -25,6 +28,7 @@ import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import {
   coverageFor,
+  exclusionFor,
   kitchenCoverage,
 } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -1648,6 +1652,55 @@ export async function createOrderFromExtraction(
     }
   }
 
+  // Which meal goes to the customer's second address. The bot has been offering
+  // split deliveries for months — makan siang ke kampus, makan malam ke kost —
+  // while every row written here went to slot 1, so the kitchen sheet showed one
+  // address for both meals and nothing said the promise had been dropped.
+  // A slot 2 is only real when there is an address to put in it: this order's,
+  // or one already on the record from an earlier order.
+  const { data: addressRow } = await db
+    .from("customers")
+    .select("address, address_2, area, sub_area, subcontractor_id")
+    .eq("id", orderCustomerId)
+    .maybeSingle();
+
+  // A place nobody delivers to, checked before the kitchen's own verdict and
+  // regardless of whether a kitchen was resolved at all. The kitchen-level
+  // refusal below is answered by finding another kitchen; this one has no such
+  // answer, so it does not go looking for one.
+  const excluded = exclusionFor(
+    await getExcludedNeighborhoods(),
+    input.address ?? addressRow?.address,
+    input.sub_area ?? addressRow?.sub_area,
+  );
+
+  if (excluded && sendPaymentInfo) {
+    const excludedMsg = `Mohon maaf kak 🙏 Untuk saat ini kami belum bisa mengantar ke ${excluded.name}, jadi pesanannya belum kami buat ya kak. Kalau kakak punya alamat lain di area ${excluded.area} atau sekitarnya, boleh dikirim ke sini, nanti kami cek 🙏`;
+    const conversationId = await saveMessage({
+      customerId,
+      role: "assistant",
+      content: excludedMsg,
+      modelUsed: "system",
+    });
+    const excludedMessageId = await sendTextMessage(phone, excludedMsg);
+    await updateMessageReceipt({
+      conversationId,
+      whatsappMessageId: excludedMessageId,
+      status: "sent",
+    });
+    await db
+      .from("customer_flags")
+      .update({
+        needs_human_review: true,
+        escalation_reason: `alamat di ${excluded.name} tidak kami layani`,
+      })
+      .eq("customer_id", customerId);
+    console.log(
+      `[extract-order] order withheld for ${customerId}: ${excluded.name} is excluded`,
+    );
+    return NOTHING_TO_SEND;
+  }
+
   // A customer already being asked to pay for an order has one order, not two.
   // The model re-calls extract_order whenever it restates the summary, and each
   // call used to insert: Sherine Fayola was billed Rp 145.000, then Rp 540.000,
@@ -1682,17 +1735,6 @@ export async function createOrderFromExtraction(
     await db.from("daily_deliveries").delete().eq("order_id", openOrder.id);
   }
 
-  // Which meal goes to the customer's second address. The bot has been offering
-  // split deliveries for months — makan siang ke kampus, makan malam ke kost —
-  // while every row written here went to slot 1, so the kitchen sheet showed one
-  // address for both meals and nothing said the promise had been dropped.
-  // A slot 2 is only real when there is an address to put in it: this order's,
-  // or one already on the record from an earlier order.
-  const { data: addressRow } = await db
-    .from("customers")
-    .select("address, address_2, area, sub_area, subcontractor_id")
-    .eq("id", orderCustomerId)
-    .maybeSingle();
   const secondMeal =
     input.address_2?.trim() || addressRow?.address_2?.trim()
       ? input.address_2_meal

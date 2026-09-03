@@ -112,6 +112,7 @@ async function main() {
       ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
     ].sort(),
     neighborhoods: {},
+    excludedNeighborhoods: [],
   coverageNotes: [],
     activeOrder: {
       id: "sim-order",

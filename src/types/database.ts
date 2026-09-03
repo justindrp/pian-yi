@@ -97,18 +97,21 @@ export type Database = {
         Row: {
           area: string
           created_at: string
+          excluded: boolean
           id: string
           name: string
         }
         Insert: {
           area: string
           created_at?: string
+          excluded?: boolean
           id?: string
           name: string
         }
         Update: {
           area?: string
           created_at?: string
+          excluded?: boolean
           id?: string
           name?: string
         }
