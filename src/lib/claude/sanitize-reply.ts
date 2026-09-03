@@ -55,17 +55,45 @@ function normalize(paragraph: string): string {
 // Indonesian to it. The tell is the model talking to itself, so match that
 // directly as well.
 const REASONING_OPENERS =
-  /^(hmm|wait|let me|i (should|need|will|must|can|'ll)\b|the customer\b|so the customer\b)/i;
+  /^(wait|let me|i (should|need|will|must|can|'ll)\b|the customer\b|so the customer\b)/i;
 
 // The subset that can only be the model talking to itself. "I will send the
 // menu image" is a sentence you say to a customer, in the wrong language; "I
 // need to check the address first" is not addressed to anyone. Used only to
 // decide whether a reply that is deliberation end to end may be dropped whole.
 const SELF_TALK =
-  /^(hmm|wait|let me|i (should|need|must)\b|the customer\b|so the customer\b)/i;
+  /^(wait|let me|i (should|need|must)\b|the customer\b|so the customer\b)/i;
+
+// "Hmm" is the one opener that is not an English word. Indonesian chat opens
+// with it too, so on 2026-09-03 Clairine asked for her delivery photo and
+// "Hmm, maaf kak, foto itu belum aku kirim ke kakak. Aku cek dulu ya ..." — an
+// answer, in Indonesian, addressed to her — was dropped whole as a leak and she
+// got the fallback template instead. It counts as deliberation only when the
+// prose around it is English.
+const HMM = /^hmm\b/i;
+
+// Deliberation about an Indonesian reply quotes the customer's own words, and
+// one Indonesian token anywhere is enough for `looksEnglish` to call the whole
+// paragraph Indonesian. The quotes are the model's evidence, not its prose, so
+// the language of a paragraph is judged on what is left once they are removed.
+function withoutQuotes(text: string): string {
+  return text.replace(/"[^"]*"|“[^”]*”/g, " ");
+}
 
 function isReasoning(paragraph: string): boolean {
-  return REASONING_OPENERS.test(paragraph.trim()) || looksEnglish(paragraph);
+  const t = paragraph.trim();
+  if (HMM.test(t)) return looksEnglish(withoutQuotes(t));
+  return (
+    REASONING_OPENERS.test(t) ||
+    looksEnglish(t) ||
+    looksEnglish(withoutQuotes(t))
+  );
+}
+
+function isSelfTalk(paragraph: string): boolean {
+  const t = paragraph.trim();
+  if (HMM.test(t)) return looksEnglish(withoutQuotes(t));
+  return SELF_TALK.test(t);
 }
 
 /** Splits off a preamble sentence run together with the answer that follows it. */
@@ -91,7 +119,7 @@ function stripReasoning(paragraphs: string[]): string[] {
     // because quoting one Indonesian phrase out of the prompt is enough for
     // `looksEnglish` to call the whole thing Indonesian. An English reply that
     // is an answer stays — it opens like speech, not like self-talk.
-    if (unglued.some((p) => SELF_TALK.test(p.trim()))) return [];
+    if (unglued.some(isSelfTalk)) return [];
     // Otherwise a plain English reply, which the language guard translates.
     // Not ours to cut.
     return paragraphs;

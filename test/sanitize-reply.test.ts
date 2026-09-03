@@ -110,6 +110,15 @@ describe("sanitizeReply — leaked reasoning", () => {
     expect(sanitizeReply(english)).toBe(english);
   });
 
+  // 2026-09-03: Clairine asked for her delivery photo. The reply was an answer,
+  // in Indonesian, addressed to her — but it opened "Hmm," and the whole thing
+  // was dropped as a leak, so she got the fallback template instead.
+  it("keeps an Indonesian reply that opens with Hmm", () => {
+    const reply =
+      "Hmm, maaf kak, foto itu belum aku kirim ke kakak. Aku cek dulu ya bukti pengiriman buat tanggal yang kakak maksud.";
+    expect(sanitizeReply(reply)).toBe(reply);
+  });
+
   it("keeps a multi-paragraph Indonesian reply whole", () => {
     const reply = [
       "Bisa banget kak, masih sempat kok karena sekarang masih sebelum jam 16.00.",
@@ -211,7 +220,9 @@ describe("sanitizeReply — bracketed asides meant for us", () => {
 
   it("cuts an inline meta bracket without eating the sentence", () => {
     expect(
-      sanitizeReply("Pengiriman malam ini jam 16.00-18.00 [Note: belum diverifikasi] ya kak."),
+      sanitizeReply(
+        "Pengiriman malam ini jam 16.00-18.00 [Note: belum diverifikasi] ya kak.",
+      ),
     ).toBe("Pengiriman malam ini jam 16.00-18.00 ya kak.");
   });
 
