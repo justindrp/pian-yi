@@ -57,6 +57,13 @@ function normalize(paragraph: string): string {
 const REASONING_OPENERS =
   /^(hmm|wait|let me|i (should|need|will|must|can|'ll)\b|the customer\b|so the customer\b)/i;
 
+// The subset that can only be the model talking to itself. "I will send the
+// menu image" is a sentence you say to a customer, in the wrong language; "I
+// need to check the address first" is not addressed to anyone. Used only to
+// decide whether a reply that is deliberation end to end may be dropped whole.
+const SELF_TALK =
+  /^(hmm|wait|let me|i (should|need|must)\b|the customer\b|so the customer\b)/i;
+
 function isReasoning(paragraph: string): boolean {
   return REASONING_OPENERS.test(paragraph.trim()) || looksEnglish(paragraph);
 }
@@ -72,9 +79,23 @@ function unglue(paragraph: string): string {
 function stripReasoning(paragraphs: string[]): string[] {
   const unglued = paragraphs.map(unglue);
   const firstAnswer = unglued.findIndex((p) => !isReasoning(p));
-  // Nothing left that reads as an answer: a plain English reply, which the
-  // language guard translates. Not ours to cut.
-  if (firstAnswer === -1) return paragraphs;
+  if (firstAnswer === -1) {
+    // Nothing here is an answer. If any of it opens like the model talking to
+    // itself, the whole reply is deliberation and none of it is for the
+    // customer — an empty return tells the caller to fall back. Asked on
+    // 2026-09-03 for an address on the excluded list, the bot shipped "I need
+    // to check the address first. Synergy Building is explicitly on the "Kami
+    // tidak mengantar ke" list ... This means I must not quote a price, must
+    // not call extract_order, and must call escalate_to_human." — three
+    // paragraphs of English reasoning that the language guard let through,
+    // because quoting one Indonesian phrase out of the prompt is enough for
+    // `looksEnglish` to call the whole thing Indonesian. An English reply that
+    // is an answer stays — it opens like speech, not like self-talk.
+    if (unglued.some((p) => SELF_TALK.test(p.trim()))) return [];
+    // Otherwise a plain English reply, which the language guard translates.
+    // Not ours to cut.
+    return paragraphs;
+  }
   // The leak is not always a preamble. Febby replied "ok" to her delivery photo
   // on 2026-09-02 and was sent "Baik kak, selamat menikmati ya 😊 sampai besok
   // ya 🍱" followed by three paragraphs of the model arguing with itself in

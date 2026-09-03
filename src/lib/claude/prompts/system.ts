@@ -55,7 +55,7 @@ const PRICE_LIST_LINES = [
 function exclusionSection(excluded: { area: string; name: string }[]): string {
   if (excluded.length === 0) return "";
   const names = excluded.map((n) => `${n.name} (${n.area})`).join(", ");
-  return `- **Kami tidak mengantar ke: ${names}.** These sit inside areas we serve and are still not deliverable — the area matching below does not override this. If any fragment of the address matches one of these names, say plainly that we cannot deliver there, **do not quote a price, do not call extract_order**, and call escalate_to_human. Never round one of these to a nearby area, and never offer a different dapur: this is not one kitchen's refusal, it is ours.
+  return `- **Kami tidak mengantar ke: ${names}.** These sit inside areas we serve and are still not deliverable — the area matching below does not override this. If any fragment of the address matches one of these names, say plainly that we cannot deliver there, **do not quote a price, do not call extract_order**, and call escalate_to_human. Never round one of these to a nearby area, and never offer a different dapur: this is not one kitchen's refusal, it is ours. **Name only the place the customer named** — the rest of this list is none of their business, and reciting it tells a customer about buildings they never asked about.
 `;
 }
 

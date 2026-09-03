@@ -2869,7 +2869,36 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
 
     // Last, so it also cleans up a validator retry or a translated reply. Saved
     // in its cleaned form too — the inbox must show what the customer got.
+    const beforeSanitize = replyText;
     replyText = sanitizeReply(replyText);
+
+    // The sanitizer emptied it: every paragraph was the model reasoning at
+    // itself, so there was never an answer underneath. Send the same fallback a
+    // twice-rejected reply gets and put the thread in front of an admin — the
+    // customer is owed a reply, and a blank one is the bug this guard exists to
+    // stop shipping.
+    if (!replyText.trim() && beforeSanitize.trim()) {
+      console.warn(
+        "[webhook] reply was reasoning only, falling back:",
+        beforeSanitize,
+      );
+      replyText = await getTemplate("reply_validation_fallback");
+      replyModelUsed = "system";
+      await db
+        .from("customer_flags")
+        .update({
+          pending_bot_response: true,
+          pending_bot_question:
+            "Auto-flagged: bot reply was reasoning only, needs review",
+        })
+        .eq("customer_id", customerId);
+      await sendPushToAllAdmins(
+        "Reply blocked — reasoning leak",
+        `${customerName ?? phone}`,
+        "/inbox",
+        "high",
+      );
+    }
 
     // A weekday the model wrote next to a date it did not check. Runs on the
     // cleaned text so it also catches a translated or retried reply, and

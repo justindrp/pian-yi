@@ -88,6 +88,28 @@ describe("sanitizeReply — leaked reasoning", () => {
     );
   });
 
+  // 2026-09-03: an address on the excluded list. Every paragraph was the model
+  // reasoning at itself, and quoting one Indonesian phrase out of the prompt
+  // was enough for `looksEnglish` to call the whole thing Indonesian, so the
+  // language guard passed it through and the customer got it verbatim.
+  it("returns nothing when the whole reply is deliberation", () => {
+    const leaked = [
+      'I need to check the address first. Synergy Building is explicitly on the "Kami tidak mengantar ke" list — it sits inside Alam Sutera but is still not deliverable, and no area matching overrides this.',
+      "",
+      "This means I must not quote a price, must not call extract_order, and must call escalate_to_human.",
+      "",
+      "Let me record her name too before escalating.",
+    ].join("\n");
+    expect(sanitizeReply(leaked)).toBe("");
+  });
+
+  // A plain English answer is not a leak — the language guard translates it,
+  // and cutting it here would leave the customer with silence instead.
+  it("keeps an English reply that is an answer, not deliberation", () => {
+    const english = "Yes, we can deliver on Monday. The total is Rp 336.000.";
+    expect(sanitizeReply(english)).toBe(english);
+  });
+
   it("keeps a multi-paragraph Indonesian reply whole", () => {
     const reply = [
       "Bisa banget kak, masih sempat kok karena sekarang masih sebelum jam 16.00.",
