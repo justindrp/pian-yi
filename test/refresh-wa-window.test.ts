@@ -1,13 +1,22 @@
 import type { NextRequest } from "next/server";
 import { GET } from "@/app/api/cron/refresh-wa-window/route";
+import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendTextMessage } from "@/lib/whatsapp/client";
+import {
+  isOutsideWindowError,
+  sendTextMessage,
+  sendTextTemplate,
+} from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin");
 jest.mock("@/lib/whatsapp/client", () => ({
   sendTextMessage: jest.fn().mockResolvedValue("wamid.1"),
   sendTextTemplate: jest.fn().mockResolvedValue("wamid.2"),
-  isOutsideWindowError: () => false,
+  isOutsideWindowError: jest.fn().mockReturnValue(false),
+}));
+jest.mock("@/lib/claude/conversation", () => ({
+  saveMessage: jest.fn().mockResolvedValue("conv-1"),
+  updateMessageReceipt: jest.fn().mockResolvedValue(undefined),
 }));
 
 const HOUR = 3_600_000;
@@ -79,6 +88,9 @@ function request(): NextRequest {
 beforeEach(() => {
   process.env.CRON_SECRET = "s3cret";
   jest.clearAllMocks();
+  (sendTextMessage as jest.Mock).mockResolvedValue("wamid.1");
+  (sendTextTemplate as jest.Mock).mockResolvedValue("wamid.2");
+  (isOutsideWindowError as jest.Mock).mockReturnValue(false);
 });
 
 describe("refresh-wa-window", () => {
@@ -119,6 +131,59 @@ describe("refresh-wa-window", () => {
     mockDb([{ customer_id: "c1", created_at: ago(30) }]);
     const res = await GET(request());
     expect(await res.json()).toEqual({ ok: true, sent: 0 });
+  });
+
+  // The nudge used to go out unlogged: it reached the customer's phone and
+  // nothing else, so the inbox showed a thread ending on their last message and
+  // the history the model loads had no trace of it — an "ok" answering nothing.
+  it("writes the nudge to conversations and records the receipt", async () => {
+    mockDb([{ customer_id: "c1", created_at: ago(20) }]);
+    await GET(request());
+
+    expect(saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: "c1",
+        role: "assistant",
+        messageType: "text",
+      }),
+    );
+    // Same words on the row as on the wire.
+    const [{ content }] = (saveMessage as jest.Mock).mock.calls[0];
+    expect((sendTextMessage as jest.Mock).mock.calls[0][1]).toBe(content);
+    expect(updateMessageReceipt).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      whatsappMessageId: "wamid.1",
+      status: "sent",
+    });
+  });
+
+  it("logs the template fallback against the same row", async () => {
+    mockDb([{ customer_id: "c1", created_at: ago(20) }]);
+    (sendTextMessage as jest.Mock).mockRejectedValue(new Error("131047"));
+    (isOutsideWindowError as jest.Mock).mockReturnValue(true);
+
+    const res = await GET(request());
+    expect(await res.json()).toEqual({ ok: true, sent: 1 });
+    expect(saveMessage).toHaveBeenCalledTimes(1);
+    expect(updateMessageReceipt).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      whatsappMessageId: "wamid.2",
+      status: "sent",
+    });
+  });
+
+  // 131042 on a business-initiated send. The row stays in the inbox, marked for
+  // what it is rather than left looking sent.
+  it("marks the row failed when neither send lands", async () => {
+    mockDb([{ customer_id: "c1", created_at: ago(20) }]);
+    (sendTextMessage as jest.Mock).mockRejectedValue(new Error("131042"));
+
+    const res = await GET(request());
+    expect(await res.json()).toEqual({ ok: true, sent: 0 });
+    expect(updateMessageReceipt).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      status: "failed",
+    });
   });
 
   it("refuses an unauthenticated call", async () => {

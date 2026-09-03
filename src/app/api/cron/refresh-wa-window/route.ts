@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   isOutsideWindowError,
@@ -7,6 +8,11 @@ import {
   sendTextTemplate,
 } from "@/lib/whatsapp/client";
 import { WINDOW_NOTICE_TEMPLATE } from "@/lib/whatsapp/window-notice";
+
+// One string, because the row saved to `conversations` and the message sent to
+// WhatsApp must be the same words.
+const NUDGE_TEXT =
+  'Halo kak, maaf ganggu ya 🙏 Karena keterbatasan WhatsApp Business, kami tidak bisa menghubungi kakak kalau tidak ada balasan dalam 24 jam. Mohon balas "ok" supaya kami tetap bisa menghubungi kakak kalau ada info penting ya!';
 
 export async function GET(req: NextRequest): Promise<Response> {
   if (req.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
@@ -71,24 +77,54 @@ export async function GET(req: NextRequest): Promise<Response> {
   for (const customer of rows ?? []) {
     if (!customer.phone_number) continue;
 
+    // Written to `conversations` like any other outbound message. It used to go
+    // out unlogged, so the nudge appeared on the customer's phone and nowhere
+    // else: the inbox showed a thread that ended on their last message, and the
+    // history the model loads had no trace of it — a customer answering "ok" to
+    // a message the bot could not see is answering nothing.
+    const conversationId = await saveMessage({
+      customerId: customer.id,
+      role: "assistant",
+      content: NUDGE_TEXT,
+      messageType: "text",
+      modelUsed: "system",
+    });
+
     // The window can lapse between the query and the send, so a rejected
     // free-form message falls back to the approved template — the only thing
     // Meta still delivers once the 24h window is shut.
     try {
-      await sendTextMessage(
+      const messageId = await sendTextMessage(
         customer.phone_number,
-        'Halo kak, maaf ganggu ya 🙏 Karena keterbatasan WhatsApp Business, kami tidak bisa menghubungi kakak kalau tidak ada balasan dalam 24 jam. Mohon balas "ok" supaya kami tetap bisa menghubungi kakak kalau ada info penting ya!',
+        NUDGE_TEXT,
       );
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: messageId,
+        status: "sent",
+      });
     } catch (err) {
       if (!isOutsideWindowError(err)) {
         console.error("[refresh-wa-window] send failed:", err);
+        // The row is already in the inbox; mark it for what it is rather than
+        // leaving a message nobody received looking sent.
+        await updateMessageReceipt({ conversationId, status: "failed" });
         continue;
       }
-      await sendTextTemplate(customer.phone_number, WINDOW_NOTICE_TEMPLATE, [
-        customer.name ?? "kak",
-      ]).catch((e) =>
-        console.error("[refresh-wa-window] template fallback failed:", e),
-      );
+      const messageId = await sendTextTemplate(
+        customer.phone_number,
+        WINDOW_NOTICE_TEMPLATE,
+        [customer.name ?? "kak"],
+      ).catch((e) => {
+        console.error("[refresh-wa-window] template fallback failed:", e);
+        return null;
+      });
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: messageId,
+        status: messageId ? "sent" : "failed",
+      });
+      if (!messageId) continue;
     }
     sent++;
   }
