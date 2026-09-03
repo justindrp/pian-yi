@@ -25,26 +25,51 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   // Customers whose last inbound message was 12–23h ago: window still open but
   // will expire before the next 12h cron run.
-  const { data: rows, error } = await db
-    .from("customer_rate_limits")
-    .select(
-      "customer_id, last_message_at, customers!customer_rate_limits_customer_id_fkey(phone_number, name)",
-    )
-    .gte("last_message_at", twentyThreeHoursAgo)
-    .lte("last_message_at", twelveHoursAgo);
+  //
+  // Read off `conversations`, which is what `hoursSinceInbound()` and every
+  // other window decision reads. This used to read
+  // `customer_rate_limits.last_message_at`, which is not an inbound clock: it
+  // is a counter `checkRateLimit()` stamps, and that function returns early —
+  // without stamping — on the first message of each day, on a VIP, and on any
+  // customer over a limit, and it is only reached on the model path at all. So
+  // a customer whose whole day is one "ok" never updated it. Clairine Aurelia's
+  // read 2026-09-01 18:17 while she had messaged on the 2nd and the 3rd; she
+  // was outside the 23h band on the 2026-09-03 08:00 run, got no nudge, her
+  // window lapsed, and that evening's delivery photo failed on 131042.
+  const { data: band, error } = await db
+    .from("conversations")
+    .select("customer_id")
+    .eq("role", "user")
+    .gte("created_at", twentyThreeHoursAgo)
+    .lte("created_at", twelveHoursAgo)
+    .limit(5000);
 
   if (error) {
     console.error("[refresh-wa-window] query error:", error);
     return NextResponse.json({ ok: false, error: error.message });
   }
 
+  // Anyone who has written since the band ended has a window that outlives the
+  // next run, so the nudge is neither needed nor wanted.
+  const { data: newer } = await db
+    .from("conversations")
+    .select("customer_id")
+    .eq("role", "user")
+    .gt("created_at", twelveHoursAgo)
+    .limit(5000);
+
+  const spokeSince = new Set((newer ?? []).map((r) => r.customer_id));
+  const ids = [
+    ...new Set((band ?? []).map((r) => r.customer_id as string)),
+  ].filter((id) => !spokeSince.has(id));
+
+  const { data: rows } = ids.length
+    ? await db.from("customers").select("id, phone_number, name").in("id", ids)
+    : { data: [] };
+
   let sent = 0;
-  for (const row of rows ?? []) {
-    const customer = row.customers as {
-      phone_number: string;
-      name: string | null;
-    } | null;
-    if (!customer?.phone_number) continue;
+  for (const customer of rows ?? []) {
+    if (!customer.phone_number) continue;
 
     // The window can lapse between the query and the send, so a rejected
     // free-form message falls back to the approved template — the only thing
