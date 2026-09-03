@@ -107,11 +107,18 @@ Each path fills it as well as it can. An upload from the sheet is exact: the but
 
 That fallback used to refetch everything on every tick: `inbox_threads select('*')` plus `customers select('*')` plus `customer_state` and `customer_flags` for every customer — about 200 KB gzipped, every 10 seconds, per open tab. 68 MB an hour. On 2026-09-03 the Supabase organization was at 6.601 GB against a 5 GB free-plan egress quota, with a 50 MB database and 7 monthly active users, and every project faced restriction on 02 Oct. The inbox was almost all of it: nothing else in the system reads at that rate.
 
-Two things changed, and both matter:
+Four things changed, and a refresh went from 200 KB to 5.4 KB:
 
 - **The poll compares a watermark instead of refetching.** `readWatermark()` reads the newest `conversations.created_at` and the newest `whatsapp_status_updated_at` — two single-row queries, about 150 bytes together — and `refresh()` runs only when that string moved. `refresh()` re-reads the mark when it finishes, so a refresh triggered by realtime does not leave a stale mark for the next tick to trip over and refetch a second time.
-- **Both list queries select columns instead of `*`.** The list draws a name, a masked phone number, 60 characters of the newest message and its time; `Thread.customer` and `Thread.lastMessage` are `Pick<>` types now, so adding a field to the render means adding it to the select and TypeScript says so. This alone took a full refresh from 200 KB to 85 KB.
+- **The queries select columns instead of `*`.** The list draws a name, a masked phone number, 60 characters of the newest message and its time; `Thread.customer` and `Thread.lastMessage` are `Pick<>` types, so adding a field to the render means adding it to the select and TypeScript says so.
+- **Four queries became one.** `inbox_threads` carries the name, phone and badges too now (migrations 095 and 096) — the whole `customers` table and the two `.in()` lookups against `customer_state` and `customer_flags` are gone.
+- **The list is paged.** `THREAD_PAGE_SIZE` (40) rows per request, more on scroll. A refresh re-reads the span already on screen rather than collapsing back to page one.
 
-`customer_flags` has no timestamp column, so another admin's takeover moves no watermark. Realtime carries it; a separate 60-second interval is the dead-socket fallback for that one case. Do not "simplify" the two intervals back into one unconditional refresh — that is the shape that cost the quota.
+Paging moved two things into the database that used to happen in the browser, and this is the part that is easy to get wrong: **the tab filter and the search box now filter in SQL.** A filter applied to whichever rows happen to be loaded answers a different question once the list is paged — it is the same mistake as the 500-row window that hid every lapsed customer before migration 059 (architectural principle 9 in `CLAUDE.md`). "Unanswered" is `.eq("unanswered", true)` against the derived column 096 added; the search box is a debounced `or=(...)` of three `ilike`s, with `sanitizeSearchTerm()` stripping the commas, parentheses, quotes and wildcards that would otherwise be read as filter syntax.
 
-The remaining 85 KB is the full thread list on every real change. Paginating it with `.range()` and load-on-scroll is the next step if egress climbs again; a fixed window is not (see architectural principle 9 in `CLAUDE.md` — the inbox already lost every lapsed customer's thread to a 500-row cap once).
+Two consequences worth knowing before touching this file:
+
+- `customer_flags` has no timestamp column, so another admin's takeover moves no watermark. Realtime carries it; a separate 60-second interval is the dead-socket fallback for that one case. Do not "simplify" the two intervals back into one unconditional refresh — that is the shape that cost the quota.
+- The open conversation is pinned in `pinnedThread` and no longer read out of the list. Clearing the search box, switching tabs, or a refresh that returns page one can all leave the selected thread off the loaded page, and the chat on screen must not blank because of where its row sits.
+
+`loadThreads` takes its filter and search term off refs, not props or state, so its identity never changes. It is a dependency of the effect that owns the realtime channel: rebuild that on a keystroke and the socket reconnects mid-conversation.

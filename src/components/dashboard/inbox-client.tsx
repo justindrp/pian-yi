@@ -202,6 +202,18 @@ function getReceiptClass(status: string | null) {
 // `canTakeOver` is owner-only (see POST /api/inbox/takeover for why). Non-owners
 // keep "Resume bot" on a thread a human already holds — handing work back to the
 // bot is the safe direction and must never need an owner present.
+// Threads per request. The list is ordered newest-first, so one page covers a
+// normal day's traffic and the rest loads as the admin scrolls.
+const THREAD_PAGE_SIZE = 40;
+
+// A search term is interpolated into a PostgREST or=(...) filter, where a
+// comma separates conditions, parentheses close the group, and % and * are
+// ilike wildcards. Strip them: an admin typing a comma should get no results,
+// not a malformed filter or someone else's rows.
+function sanitizeSearchTerm(raw: string) {
+  return raw.trim().replace(/[,()%*\\"']/g, "");
+}
+
 const HOLD_LABELS: Record<number, string> = {
   30: "Hold 30 min",
   120: "Hold 2 jam",
@@ -210,8 +222,14 @@ const HOLD_LABELS: Record<number, string> = {
 
 export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [pinnedThread, setPinnedThread] = useState<Thread | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  // The search box queries the database, so it is debounced — a request per
+  // keystroke across 291 threads is the egress problem in miniature.
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     null,
   );
@@ -277,6 +295,23 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     attemptedForLatestUserMessage: false,
   });
 
+  // Read inside loadThreads, which must not change identity when a filter or
+  // the search term does: it is a dependency of the effect that owns the
+  // realtime channel, and rebuilding that channel on every keystroke would
+  // drop messages while it reconnects.
+  const threadsRef = useRef<Thread[]>([]);
+  const hasMoreRef = useRef(false);
+  const filterRef = useRef<InboxFilter>("all");
+  const searchRef = useRef("");
+
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+
+  useEffect(() => {
+    filterRef.current = inboxFilter;
+  }, [inboxFilter]);
+
   // Newest message time and newest receipt time, in two single-row queries of
   // about 70 bytes each. The fallback poll compares this instead of refetching
   // the thread list, which is the whole point: the list is ~85 KB and almost
@@ -302,67 +337,103 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     }`;
   }, [supabase]);
 
-  const loadThreads = useCallback(async () => {
-    // inbox_threads (migration 059) is one row per customer holding their
-    // newest message, so every thread loads — not just recently active ones.
-    const { data } = await supabase
-      .from("inbox_threads")
-      .select("customer_id, role, content, created_at")
-      .order("created_at", { ascending: false });
+  // One page of threads, one query. inbox_threads (migration 059, extended in
+  // 095/096) is one row per customer holding their newest message plus the
+  // name, phone and badges the list draws, so the four queries this used to
+  // make — threads, the whole customers table, customer_state and
+  // customer_flags keyed by an .in() of every id — are now one.
+  const loadThreads = useCallback(
+    async (mode: "reset" | "append" | "refresh" = "reset") => {
+      if (mode === "append" && !hasMoreRef.current) return;
 
-    if (!data) return;
+      const loaded = threadsRef.current.length;
+      const from = mode === "append" ? loaded : 0;
+      // A refresh re-reads everything already on screen, so paging down and
+      // then receiving a message does not collapse the list back to one page.
+      const size =
+        mode === "refresh"
+          ? Math.max(loaded, THREAD_PAGE_SIZE)
+          : THREAD_PAGE_SIZE;
 
-    // Fetched unfiltered rather than by id list — an .in() of every thread's
-    // uuid produces a request URL long enough to be rejected.
-    const { data: customerRows } = await supabase
-      .from("customers")
-      .select("id, name, phone_number");
-    const customerById = new Map((customerRows ?? []).map((c) => [c.id, c]));
+      let request = supabase
+        .from("inbox_threads")
+        .select(
+          "customer_id, role, content, created_at, customer_name, customer_phone, menu_shown, unanswered",
+        )
+        .order("created_at", { ascending: false })
+        .range(from, from + size - 1);
 
-    const grouped: Thread[] = [];
-    for (const row of data) {
-      const customer = row.customer_id
-        ? customerById.get(row.customer_id)
-        : null;
-      if (!customer) continue;
-      grouped.push({
-        customer,
-        lastMessage: row as unknown as ThreadMessage,
-        unread: row.role === "user",
-        menuShown: false,
-        unanswered: false,
-      });
-    }
+      // Tab and search filter in the database, not over the loaded page — a
+      // filter applied to whichever rows happen to be in the browser answers a
+      // different question once the list is paged, and it is the question that
+      // hid every lapsed customer's thread before migration 059.
+      if (filterRef.current === "unread") request = request.eq("role", "user");
+      if (filterRef.current === "unanswered")
+        request = request.eq("unanswered", true);
 
-    if (grouped.length > 0) {
-      const customerIds = grouped.map((t) => t.customer.id);
-      const [{ data: stateData }, { data: flagData }] = await Promise.all([
-        supabase
-          .from("customer_state")
-          .select("customer_id, menu_shown")
-          .in("customer_id", customerIds),
-        supabase
-          .from("customer_flags")
-          .select("customer_id, escalated_to_human, pending_bot_response")
-          .in("customer_id", customerIds),
-      ]);
-      const menuShownMap = new Map(
-        (stateData ?? []).map((s) => [s.customer_id, s.menu_shown ?? false]),
-      );
-      const unansweredMap = new Map(
-        (flagData ?? []).map((flag) => [
-          flag.customer_id,
-          !!(flag.escalated_to_human || flag.pending_bot_response),
-        ]),
-      );
-      for (const thread of grouped) {
-        thread.menuShown = menuShownMap.get(thread.customer.id) ?? false;
-        thread.unanswered = unansweredMap.get(thread.customer.id) ?? false;
+      const term = searchRef.current;
+      if (term) {
+        request = request.or(
+          `customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%,content.ilike.%${term}%`,
+        );
       }
-    }
 
-    setThreads(grouped);
-  }, [supabase]);
+      const { data } = await request;
+      if (!data) return;
+
+      const page: Thread[] = data.flatMap((row) =>
+        row.customer_id && row.customer_phone
+          ? [
+              {
+                customer: {
+                  id: row.customer_id,
+                  name: row.customer_name,
+                  phone_number: row.customer_phone,
+                },
+                lastMessage: {
+                  customer_id: row.customer_id,
+                  role: row.role ?? "user",
+                  content: row.content ?? "",
+                  created_at: row.created_at,
+                },
+                unread: row.role === "user",
+                menuShown: row.menu_shown ?? false,
+                unanswered: row.unanswered ?? false,
+              },
+            ]
+          : [],
+      );
+
+      hasMoreRef.current = data.length === size;
+      setHasMore(hasMoreRef.current);
+      setThreads((prev) => (mode === "append" ? [...prev, ...page] : page));
+    },
+    [supabase],
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setSearchTerm(sanitizeSearchTerm(searchQuery)),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Back to page one whenever the question changes. Also the initial load —
+  // the realtime effect no longer does one, so the list is fetched once on
+  // mount rather than three times.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inboxFilter is the trigger, not a read — loadThreads takes the filter off filterRef so its identity stays stable for the realtime effect
+  useEffect(() => {
+    searchRef.current = searchTerm;
+    void loadThreads("reset");
+  }, [inboxFilter, searchTerm, loadThreads]);
+
+  async function loadMoreThreads() {
+    if (loadingMore || !hasMoreRef.current) return;
+    setLoadingMore(true);
+    await loadThreads("append");
+    setLoadingMore(false);
+  }
 
   const loadFlags = useCallback(
     async (customerId: string) => {
@@ -487,10 +558,8 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
 
   // Set up realtime channel once — never torn down when thread selection changes
   useEffect(() => {
-    void loadThreads();
-
     const refresh = () => {
-      void loadThreads();
+      void loadThreads("refresh");
       const current = selectedCustomerIdRef.current;
       if (current) {
         void loadMessages(current);
@@ -516,7 +585,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "customers" },
-        () => void loadThreads(),
+        () => void loadThreads("refresh"),
       )
       .on(
         "postgres_changes",
@@ -577,6 +646,9 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
 
   async function selectThread(customerId: string) {
     setSelectedCustomerId(customerId);
+    setPinnedThread(
+      threadsRef.current.find((t) => t.customer.id === customerId) ?? null,
+    );
     setLearnedContextStatus(null);
     setLearnedContext(null);
     setMobileView("chat");
@@ -867,7 +939,7 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     setMessages([]);
     setFlags(null);
     setMobileView("list");
-    await loadThreads();
+    await loadThreads("refresh");
   }
 
   async function sendManualReply() {
@@ -1041,27 +1113,30 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       alert(`Failed to update stage: ${body?.error ?? res.statusText}`);
       return;
     }
-    await loadThreads();
+    await loadThreads("refresh");
   }
 
-  const selectedThread = threads.find(
-    (t) => t.customer.id === selectedCustomerId,
-  );
-  const filteredByTab = filterThreads(threads, inboxFilter);
-  const query = searchQuery.trim().toLowerCase();
-  const visibleThreads = query
-    ? filteredByTab.filter(
-        (t) =>
-          t.customer.name?.toLowerCase().includes(query) ||
-          t.customer.phone_number.toLowerCase().includes(query) ||
-          t.lastMessage.content.toLowerCase().includes(query),
-      )
-    : filteredByTab;
+  // The open thread survives a list that no longer contains it: clearing the
+  // search box, switching to Unanswered, or scrolling back to page one all
+  // rewrite `threads`, and the conversation on screen must not blank because
+  // its row moved off the current page.
+  const selectedThread =
+    threads.find((t) => t.customer.id === selectedCustomerId) ?? pinnedThread;
+
+  // The tab and the search box already filtered in the database. This second
+  // pass only catches a row whose flags changed since it was fetched.
+  const visibleThreads = filterThreads(threads, inboxFilter);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] bg-white rounded-xl border border-gray-100 overflow-hidden">
       {/* Thread list */}
       <div
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) {
+            void loadMoreThreads();
+          }
+        }}
         className={`w-full md:w-72 flex-shrink-0 border-r border-gray-100 overflow-y-auto ${mobileView === "chat" ? "hidden md:block" : "block"}`}
       >
         <div className="p-4 border-b border-gray-100">
@@ -1140,11 +1215,21 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
         ))}
         {visibleThreads.length === 0 && (
           <p className="text-xs text-gray-400 p-4">
-            {threads.length === 0
-              ? "No conversations yet."
-              : query
-                ? "No conversations match this search."
+            {searchTerm
+              ? "No conversations match this search."
+              : inboxFilter === "all"
+                ? "No conversations yet."
                 : "No conversations match this filter."}
+          </p>
+        )}
+        {loadingMore && (
+          <p className="p-4 text-center text-[10px] text-gray-400">
+            Loading older chats…
+          </p>
+        )}
+        {!hasMore && visibleThreads.length > 0 && (
+          <p className="p-4 text-center text-[10px] text-gray-300">
+            End of conversations
           </p>
         )}
       </div>

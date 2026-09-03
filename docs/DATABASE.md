@@ -782,7 +782,13 @@ Implemented as `SELECT DISTINCT ON (customer_id) ... ORDER BY customer_id, creat
 
 Migration `061_inbox_threads_media_url.sql` added `media_url` to the column list. It sits last, not beside `media_id`: `CREATE OR REPLACE VIEW` can only append columns, and inserting one mid-list fails with `cannot change name of view column` (42P16). Any future column goes on the end too, or the view has to be dropped and recreated.
 
-Created `WITH (security_invoker = on)`, so the querying user's RLS applies and it inherits `admins_read_conversations` from `007_rls.sql` rather than bypassing it.
+Migrations `095_inbox_threads_badges.sql` and `096_inbox_threads_unanswered.sql` appended everything else the thread list draws: `customer_name`, `customer_phone`, `menu_shown`, `escalated_to_human`, `pending_bot_response`, and `unanswered` (the last being `escalated_to_human OR pending_bot_response`). The list is now one query where it used to be four — it also pulled the entire `customers` table plus `customer_state` and `customer_flags` keyed by an `.in()` of every customer id, on every refresh, which is most of what put the project over its Supabase egress quota (see "The inbox refresh" in `ADMIN.md`).
+
+`unanswered` is a derived column rather than two booleans the client ORs together because the "Unanswered" tab has to filter in the database once the list is paged. As two columns that filter is `or=(escalated_to_human.eq.true,pending_bot_response.eq.true)`, and PostgREST cannot AND a second `or=(...)` — the search box's — against it in one request. One column is one `.eq()`, which composes with anything.
+
+`customers` joins with a plain `JOIN`, not `LEFT JOIN`: a thread whose customer row is gone has nothing to render and the client dropped it anyway. `customer_state` and `customer_flags` join `LEFT` — both are `PRIMARY KEY (customer_id)` so neither can multiply rows, and an inbound message creates the customer before anything writes state or flags, so an inner join would hide a brand-new thread.
+
+Created `WITH (security_invoker = on)`, so the querying user's RLS applies and it inherits `admins_read_conversations` from `007_rls.sql` rather than bypassing it. The joins added in 095 mean it now also needs `admins_read_customers` (`007_rls.sql`) and `admins_read_customer_state` / `admins_read_customer_flags` (`020_rls_customer_state_flags_read.sql`) — all four are `FOR SELECT TO authenticated USING (true)`. Narrowing any of them silently empties the inbox.
 
 Why it exists: the inbox previously fetched the newest 500 `conversations` rows and grouped them by customer in the browser. Past a few thousand messages that window only covered recently active customers — lapsed customers had no thread at all, and the search box (which filters already-loaded threads) could never find them.
 
