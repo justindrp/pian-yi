@@ -1,7 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
-import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
 import {
   getExcludedNeighborhoods,
   getNeighborhoods,
@@ -34,12 +33,9 @@ import {
   resizePendingOrderFromMessage,
   shouldRecordName,
 } from "@/lib/claude/extract-order";
+import { fixWeekdayNames } from "@/lib/claude/fix-dates";
 import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
-import {
-  handleForwardedProof,
-  isProofForwarder,
-} from "@/lib/deliveries/forwarded-proof";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
@@ -56,7 +52,6 @@ import {
   IMAGE_STAGE_DIRECTION,
   sanitizeReply,
 } from "@/lib/claude/sanitize-reply";
-import { fixWeekdayNames } from "@/lib/claude/fix-dates";
 import { validateReply } from "@/lib/claude/validate-reply";
 import {
   hasCurrentOrder,
@@ -64,9 +59,15 @@ import {
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
 import { RESUMED_FLAGS, shouldAutoResume } from "@/lib/customers/takeover";
+import {
+  handleForwardedProof,
+  isProofForwarder,
+} from "@/lib/deliveries/forwarded-proof";
+import { resendFailedProofs } from "@/lib/deliveries/resend-failed-proof";
 import { deliveryWindow, loadKitchenWindows } from "@/lib/deliveries/windows";
 import { formatHolidayDate } from "@/lib/holidays/id";
 import { sendInvoice } from "@/lib/invoices/send";
+import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
 import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
 import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
@@ -672,7 +673,8 @@ async function flagOrderAtRisk(
     const echoesExistingOrder = (orders ?? []).some(
       (o) =>
         (o.created_at ?? "") > boughtRecently ||
-        (o.package_size === raw.package_size && o.start_date === raw.start_date),
+        (o.package_size === raw.package_size &&
+          o.start_date === raw.start_date),
     );
     if (echoesExistingOrder) return false;
 
@@ -1488,6 +1490,13 @@ export async function processWebhookAsync(
       return;
     }
   }
+
+  // A proof whose push failed while the window was shut. The customer writing
+  // in is what reopens it, so this is the one moment the retry can work. Never
+  // fatal: the reply matters more than the photo.
+  await resendFailedProofs(customerId).catch((err) =>
+    console.error("[webhook] proof resend failed:", (err as Error).message),
+  );
 
   const learnedNotes = await tryLearnCustomerContext(customerId, db);
 
@@ -3227,7 +3236,10 @@ async function noProofReason(
     db,
     (rows ?? []).map((r) => r.subcontractor_id),
   );
-  const windowOf = (r: { meal_type: string; subcontractor_id: string | null }) =>
+  const windowOf = (r: {
+    meal_type: string;
+    subcontractor_id: string | null;
+  }) =>
     deliveryWindow(
       r.meal_type,
       r.subcontractor_id ? kitchens.get(r.subcontractor_id) : null,
