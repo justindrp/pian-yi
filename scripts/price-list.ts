@@ -37,6 +37,7 @@ import { chromium } from "@playwright/test";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import { tiersForKitchen } from "@/lib/pricing/tiers";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const DIR = process.env.MENU_PHOTO_DIR ?? ".menu-photos";
@@ -167,35 +168,13 @@ function cell(s: Price, m: Price | null) {
  * sheet of theirs carrying Sabtu advertises a day nobody cooks. A contiguous
  * run prints as a span, anything else as a list.
  */
-const WEEKDAY = [
-  "",
-  "Senin",
-  "Selasa",
-  "Rabu",
-  "Kamis",
-  "Jumat",
-  "Sabtu",
-  "Minggu",
-];
-
-function daysLabelFor(days: number[]): string {
-  const sorted = [...new Set(days)]
-    .filter((d) => d >= 1 && d <= 7)
-    .sort((a, b) => a - b);
-  if (sorted.length === 0) return "";
-  const contiguous = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
-  if (sorted.length === 1) return WEEKDAY[sorted[0]];
-  return contiguous
-    ? `${WEEKDAY[sorted[0]]}–${WEEKDAY[sorted[sorted.length - 1]]}`
-    : sorted.map((d) => WEEKDAY[d]).join(", ");
-}
 
 function page(
   tiers: Record<number, number>,
   surcharge: number,
   areas: string[],
   nickname: string | null,
-  daysLabel: string,
+  daysText: string,
 ) {
   const rows = GROUPS.map((g) => {
     const days = g.days
@@ -238,7 +217,7 @@ function page(
       <div class="htext">
         <div class="kicker">Daftar Harga${nickname ? ` · ${nickname}` : ""}</div>
         <div class="title">PAKET PERSONAL</div>
-        <div class="sub">Halal · Gratis ongkir · ${daysLabel}</div>
+        <div class="sub">Halal · Gratis ongkir · ${daysText}</div>
       </div>
       <div class="sizes">
         <div><b>SIZE S</b> — nasi + lauk + sayur + sambal</div>
@@ -334,7 +313,7 @@ async function main() {
       m,
       sheet.areas,
       sheet.nickname,
-      daysLabelFor(sheet.days),
+      daysLabel(sheet.days),
     );
     writeFileSync(`${base}.html`, html);
 
@@ -348,7 +327,7 @@ async function main() {
     await ctx.close();
 
     console.log(
-      `${base}.png — ${sheet.nickname ?? "house ladder"}, ${daysLabelFor(sheet.days)}, size M ${m ? `on (+${m})` : "off"}`,
+      `${base}.png — ${sheet.nickname ?? "house ladder"}, ${daysLabel(sheet.days)}, size M ${m ? `on (+${m})` : "off"}`,
     );
 
     if (upload) {

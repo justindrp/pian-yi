@@ -731,6 +731,21 @@ Those eight guards now live in `src/lib/orders/record-daily-order.ts` (2026-08-2
 
 `stateRow` is read once near the top of `processWebhookAsync` and carried all the way to `buildSystemPrompt()`. Two writes in between changed the database and left the snapshot alone: `state -> "ordering"` when the classifier calls the message an order, and `menu_shown -> true` when the welcome sequence claims its slot. So the model was told `customerState: "new"` on the exact turn the customer started ordering, and `menuShown: false` immediately after the welcome message, price list, menu images and T&C had gone out — which is an invitation to send them again. Both writes now update the in-memory row as well. Covered by T20/T21 in `test/webhook.test.ts`.
 
+## The welcome sequence stops sending images once there is more than one kitchen
+
+First contact used to be five bubbles: greeting, price list image, every active kitchen's menu image, T&C, window notice. That was right while one kitchen cooked everything — one menu, one ladder, one set of delivery hours, and no question worth asking before sending them.
+
+Migration 098 ended all three. Each kitchen carries its own price ladder (the house bottom tier is Rp 29.000 against Dapur Monstera's Rp 45.000), its own `delivery_days` (Dapur Suplir works Saturdays, Dapur Monstera does not) and its own delivery windows (migration 093). The kitchens also do not cover the same areas: some areas rest on a single kitchen. So the old sequence, run with three kitchens active, sends a customer in Karawaci — served by one kitchen — three menus and three price sheets, two of them for food nobody will cook for them, at prices up to Rp 16.000 a portion off.
+
+`askArea` is `activeDapurs.length > 1`, and it branches the whole sequence:
+
+- **One kitchen** — unchanged, except that the numbers now come from that kitchen's row rather than from constants: its own `price_list_image_url` (falling back to `settings.price_list_image_url`), its own delivery windows via `deliveryWindow()`, and its `delivery_days` written into the T&C as "Kirim Senin–Sabtu".
+- **More than one** — greeting only, with one question appended asking which area the delivery goes to. No price list, no menu images, and the T&C's delivery line says the hours differ per kitchen and arrive with the menu, because at that point we do not know which kitchen is theirs. The greeting still goes out on the same turn: a first contact is never met with silence.
+
+`{{price_20}}` in the greeting is the **cheapest** active kitchen's 20-portion rate, not the house ladder's. The house ladder is only what a kitchen with no rows of its own is sold at, so quoting it flat advertises a price no kitchen near the customer may charge.
+
+The customer's answer is recorded by **`record_customer_area`**, which is what makes the branch work at all. Until it existed the area was written only by `extract_order`, at the very end — so for the whole conversation that decides what the customer is quoted, we knew nothing about where they live. The tool validates against `activeDeliveryAreas()` (a place we do not serve is refused, and the model is told not to claim it was recorded), writes `customers.area`, logs the change to `edit_log`, and answers with the nicknames of the kitchens serving that area plus an instruction to send their menu and price list now. The prompt's own rule, added only when more than one kitchen is active, is: call it the moment they name a place, and send no menu, price list or price before it.
+
 ## The turn after the welcome sequence is given a job
 
 `processWebhookAsync` sends the welcome blast on first contact — greeting, price list, menu images, T&C, window notice — and then calls `processSavedCustomerMessage()` **unconditionally**. So the model gets a turn immediately after, with one inbound message it has already been answered by the system. 153 of the first 223 welcomed customers got that turn.

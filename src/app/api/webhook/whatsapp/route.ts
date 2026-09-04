@@ -79,8 +79,9 @@ import {
   recordDailyOrder,
 } from "@/lib/orders/record-daily-order";
 import { sendPushToAllAdmins } from "@/lib/push/send";
-import { unionAreas } from "@/lib/subcontractors/areas";
+import { activeDeliveryAreas, unionAreas } from "@/lib/subcontractors/areas";
 import { coverageNotes } from "@/lib/subcontractors/coverage";
+import { daysLabel } from "@/lib/subcontractors/days";
 import { kitchensForCustomer } from "@/lib/subcontractors/for-customer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaMinuteOfDay, jakartaTimeString } from "@/lib/time/jakarta";
@@ -1571,15 +1572,15 @@ export async function processWebhookAsync(
         getSetting("order_deadline_hour"),
         db
           .from("subcontractors")
-          .select("customer_nickname, menu_image_url, delivery_areas")
+          .select(
+            "id, customer_nickname, menu_image_url, price_list_image_url, delivery_areas, delivery_days, lunch_window_start_min, lunch_window_end_min, dinner_window_start_min, dinner_window_end_min",
+          )
           .eq("is_active", true)
           .not("menu_image_url", "is", null),
         db
           .from("pricing_tiers")
-          .select("price_per_portion")
-          .is("subcontractor_id", null)
-          .eq("portions", 20)
-          .maybeSingle(),
+          .select("subcontractor_id, price_per_portion")
+          .eq("portions", 20),
       ]);
 
       const activeDapurs = (welcomeSubs ?? []).filter(
@@ -1599,18 +1600,47 @@ export async function processWebhookAsync(
           ? (uniqueAreas[0] ?? "")
           : `${uniqueAreas.slice(0, -1).join(", ")}, dan ${uniqueAreas[uniqueAreas.length - 1]}`;
 
-      const price20Text = tier20
-        ? `${Math.round(tier20.price_per_portion / 1000)}RB`
+      // "mulai dari" is the cheapest kitchen's 20-portion rate, not the house
+      // ladder's. Since migration 098 the house ladder is only what a kitchen
+      // with no rows of its own is sold at, so quoting it flat is quoting a
+      // price no kitchen near the customer may charge.
+      const houseTier20 =
+        (tier20 ?? []).find((t) => t.subcontractor_id === null)
+          ?.price_per_portion ?? null;
+      const kitchenTier20s = activeDapurs
+        .map(
+          (k) =>
+            (tier20 ?? []).find((t) => t.subcontractor_id === k.id)
+              ?.price_per_portion ?? houseTier20,
+        )
+        .filter((p): p is number => p != null);
+      const cheapest20 =
+        kitchenTier20s.length > 0 ? Math.min(...kitchenTier20s) : houseTier20;
+      const price20Text = cheapest20
+        ? `${Math.round(cheapest20 / 1000)}RB`
         : "";
       const deadlineText = deadlineHour ? `${deadlineHour}.00` : "";
 
+      // With one kitchen there is one menu, one ladder and one set of delivery
+      // hours, so everything can go out unasked — which is what the welcome
+      // sequence has always done. With more than one none of that is true: the
+      // kitchens do not cover the same areas and since migration 098 they do
+      // not charge the same prices, so sending all of them means quoting a
+      // customer for food nobody near them will cook. Ask where they are first
+      // and send the images once the answer narrows it. The greeting itself
+      // still goes out immediately — a first contact is never met with silence.
+      const askArea = n > 1;
+
       const resolvedWelcome =
-        (welcomeText ?? "")
+        ((welcomeText ?? "")
           .replace("{{dapur_list}}", dapurListText)
           .replace("{{delivery_areas}}", areasText)
           .replace("{{price_20}}", price20Text)
           .replace("{{order_deadline}}", deadlineText)
-          .trim() || dapurListText;
+          .trim() || dapurListText) +
+        (askArea
+          ? "\n\nBoleh tahu alamat pengirimannya di area mana kak? Nanti aku kirimkan menu, harga, dan jam kirim dapur yang melayani area itu ya 🙏"
+          : "");
 
       // The incoming message is already saved above, before any branch runs, so
       // it sorts ahead of the welcome replies without a second write. This used
@@ -1639,18 +1669,21 @@ export async function processWebhookAsync(
           status: "sent",
         });
       }
-      if (priceListUrl) {
+      const welcomePriceList = askArea
+        ? null
+        : (activeDapurs[0]?.price_list_image_url ?? priceListUrl);
+      if (welcomePriceList) {
         try {
           const conversationId = await saveMessage({
             customerId,
             role: "assistant",
-            content: priceListUrl,
+            content: welcomePriceList,
             messageType: "image",
             modelUsed: "system",
           });
           const whatsappMessageId = await sendImageByUrl(
             message.from,
-            priceListUrl,
+            welcomePriceList,
             "Harga & Area Pengiriman",
           );
           await updateMessageReceipt({
@@ -1661,13 +1694,13 @@ export async function processWebhookAsync(
         } catch (e) {
           console.error(
             "[welcome] price list send failed — url:",
-            priceListUrl?.slice(0, 120),
+            welcomePriceList.slice(0, 120),
             "error:",
             e,
           );
         }
       }
-      for (const sub of welcomeSubs ?? []) {
+      for (const sub of askArea ? [] : (welcomeSubs ?? [])) {
         if (sub.menu_image_url) {
           try {
             const conversationId = await saveMessage({
@@ -1695,16 +1728,31 @@ export async function processWebhookAsync(
         }
       }
 
+      // Hours and cooking days belong to the kitchen, not to the business
+      // (migrations 093 and 098): Dapur Suplir arrives 11.30-12.30 and works
+      // Saturdays, Dapur Monstera arrives 09.00-12.00 and does not. Hardcoding
+      // 10.00-12.00 here is how Naya came to be told at 11.09 that her food was
+      // late when by her kitchen's own window it was not yet due. One kitchen
+      // gets its own numbers; with more than one the T&C says the hours differ
+      // and they arrive with that kitchen's menu, because at this point in the
+      // conversation we do not know which kitchen is hers.
+      const welcomeKitchen = activeDapurs[0] ?? null;
+      const deliveryLine = askArea
+        ? "🚚 Jam kirim beda per dapur — aku kirimkan bersama menunya ya"
+        : `🚚 Pengiriman siang ${deliveryWindow("lunch", welcomeKitchen).label} WIB | malam ${deliveryWindow("dinner", welcomeKitchen).label} WIB`;
+      const daysText = askArea ? "" : daysLabel(welcomeKitchen?.delivery_days);
       const tnc = [
         "*Syarat & Ketentuan Pian Yi Catering:*",
         "",
         `📦 Setiap porsi: nasi + lauk + sayur + sambal (mika bento)`,
-        `🚚 Pengiriman siang 10.00–12.00 WIB | malam 16.00–18.00 WIB`,
+        deliveryLine,
         `⏰ Batas order & perubahan: jam ${deadlineText} H-1 pengiriman`,
         `💰 Pembayaran di muka sebelum jam ${deadlineText}`,
         `⚠️ Terlambat (siang >12.30 / malam >18.30) → diskon 50%`,
         `🏠 Pesanan selalu digantung di pintu/pagar — kurir tidak menunggu`,
-        `📅 Tutup di semua hari libur nasional (tanggal merah)`,
+        daysText
+          ? `📅 Kirim ${daysText}, tutup di semua hari libur nasional (tanggal merah)`
+          : `📅 Tutup di semua hari libur nasional (tanggal merah)`,
         `🚫 Pembayaran tidak dapat di-refund`,
         "",
         "Dengan melanjutkan pemesanan, kak menyetujui ketentuan di atas 🙏",
@@ -2187,6 +2235,23 @@ export async function processSavedCustomerMessage(params: {
           },
         },
         required: ["name"],
+      },
+    },
+    {
+      name: "record_customer_area",
+      description:
+        'Saves which delivery area the customer lives in. Call it the moment they name a place — answering "area mana kak?", or naming their neighbourhood, apartment or office anywhere in the conversation — and before you send them a menu, a price list or a price. Which kitchens cook for them is decided by this field, and since every kitchen has its own menu, its own prices and its own delivery hours, sending any of those before it is recorded means quoting food nobody near them will cook. Recording it costs nothing and can be corrected later; it is never a reason to delay a reply.',
+      input_schema: {
+        type: "object",
+        properties: {
+          area: {
+            type: "string",
+            enum: servedAreas,
+            description:
+              "The served area their address falls in. If they named a place rather than an area, pick the served area it sits in yourself — never ask a second time just to get this exact wording.",
+          },
+        },
+        required: ["area"],
       },
     },
     {
@@ -3449,6 +3514,50 @@ async function handleToolUse(
     return {
       ok: false,
       error: `Nama "${given}" tidak dicatat — tidak lolos pemeriksaan nama. Jangan bilang namanya sudah dicatat.`,
+    };
+  } else if (tool.name === "record_customer_area") {
+    // Before this tool the area was only ever written by extract_order, which
+    // runs at the very end — so for the whole conversation that decides what
+    // the customer is quoted, we knew nothing about where they live and every
+    // active kitchen's menu and ladder went out. With three kitchens that is a
+    // customer being shown Rp 45.000 a portion from a kitchen that does not
+    // reach them.
+    const input = tool.input as { area?: string };
+    const given = (input.area ?? "").trim();
+    const served = await activeDeliveryAreas(db);
+    const matched = served.find((a) => a.toLowerCase() === given.toLowerCase());
+    if (!matched) {
+      return {
+        ok: false,
+        error: `Area "${given}" tidak dicatat — bukan salah satu area yang kami layani (${served.join(", ")}). Jangan bilang areanya sudah dicatat.`,
+      };
+    }
+    const { data: current } = await db
+      .from("customers")
+      .select("area")
+      .eq("id", customerId)
+      .single();
+    if (current?.area !== matched) {
+      await db.from("customers").update({ area: matched }).eq("id", customerId);
+      await logEdit({
+        db,
+        actor: "system:webhook:record_customer_area",
+        entityType: "customers",
+        entityId: customerId,
+        action: "update",
+        changes: { area: { from: current?.area ?? null, to: matched } },
+      });
+    }
+    const kitchens = await kitchensForCustomer(db, customerId);
+    const names = kitchens
+      .map((k) => k.customer_nickname)
+      .filter((n): n is string => !!n);
+    return {
+      ok: true,
+      message:
+        names.length > 0
+          ? `Area customer dicatat sebagai "${matched}". Dapur yang melayani area itu: ${names.join(", ")}. Kirim menu dan price list-nya sekarang dengan send_menu_image dan send_price_list.`
+          : `Area customer dicatat sebagai "${matched}".`,
     };
   } else if (tool.name === "send_menu_image") {
     // Only the kitchens that would actually cook for this customer. Inactive
