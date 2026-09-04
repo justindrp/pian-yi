@@ -231,3 +231,34 @@ describe("sanitizeReply — bracketed asides meant for us", () => {
     expect(sanitizeReply(label)).toBe(label);
   });
 });
+
+describe("sanitizeReply — deliberation behind a discourse adverb", () => {
+  it("drops a leak that opens with 'Actually let me'", () => {
+    // Verbatim from a simulator run on 2026-09-04. It shipped: `let me` was not
+    // at the start of the string, and looksEnglish reads the Indonesian words
+    // the reasoning is about ("porsi", "siang", the day names) as proof the
+    // paragraph is Indonesian.
+    const leak =
+      'Actually let me think about the schedule. "senin sampai sabtu minggu depan" — 1 porsi siang. ' +
+      "Today is Jumat 4 Sept. Next week Monday = Senin 7 September 2026. But they said until Saturday. " +
+      "So Sept 7-12? Wait, the calendar's rows for next week: Senin 7 Sept through Sabtu 12 September. All open. Good.";
+    expect(sanitizeReply(leak)).toBe("");
+  });
+
+  it("drops the same leak when it precedes a real answer", () => {
+    const reply =
+      "Okay so the customer wants 6 porsi siang for next week.\n\n" +
+      "Baik kak, paket 6 porsi Rp 174.000 ya.";
+    expect(sanitizeReply(reply)).toBe("Baik kak, paket 6 porsi Rp 174.000 ya.");
+  });
+
+  it("keeps an Indonesian reply that opens with 'Ok'", () => {
+    const t = "Ok kak, pesanannya sudah aku catat ya. Nanti aku kabari lagi.";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+
+  it("keeps an Indonesian reply that opens with 'Baik'", () => {
+    const t = "Baik kak, aku cek dulu ya.";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+});

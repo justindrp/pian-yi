@@ -72,6 +72,21 @@ const SELF_TALK =
 // prose around it is English.
 const HMM = /^hmm\b/i;
 
+// Deliberation does not always open on the tell. On 2026-09-04 a simulator run
+// shipped "Actually let me think about the schedule. "senin sampai sabtu minggu
+// depan" — 1 porsi siang. Today is Jumat 4 Sept. ... Good." to a customer: one
+// paragraph of the model reasoning at itself, saved and sent because `let me`
+// was not at the start of the string and `looksEnglish` sees the Indonesian day
+// names and "porsi"/"siang" the reasoning is *about* and calls the whole thing
+// Indonesian. The discourse adverbs carry no meaning of their own, so they come
+// off before the openers are matched.
+const DISCOURSE_PREFIX =
+  /^(?:(?:actually|okay|ok|alright|well|but|so|now|first|right)\b[\s,]+)+/i;
+
+function withoutPrefix(text: string): string {
+  return text.replace(DISCOURSE_PREFIX, "").trim();
+}
+
 // Deliberation about an Indonesian reply quotes the customer's own words, and
 // one Indonesian token anywhere is enough for `looksEnglish` to call the whole
 // paragraph Indonesian. The quotes are the model's evidence, not its prose, so
@@ -81,7 +96,7 @@ function withoutQuotes(text: string): string {
 }
 
 function isReasoning(paragraph: string): boolean {
-  const t = paragraph.trim();
+  const t = withoutPrefix(paragraph.trim());
   if (HMM.test(t)) return looksEnglish(withoutQuotes(t));
   return (
     REASONING_OPENERS.test(t) ||
@@ -91,7 +106,7 @@ function isReasoning(paragraph: string): boolean {
 }
 
 function isSelfTalk(paragraph: string): boolean {
-  const t = paragraph.trim();
+  const t = withoutPrefix(paragraph.trim());
   if (HMM.test(t)) return looksEnglish(withoutQuotes(t));
   return SELF_TALK.test(t);
 }
