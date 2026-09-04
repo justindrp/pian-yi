@@ -81,6 +81,7 @@ import {
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { unionAreas } from "@/lib/subcontractors/areas";
 import { coverageNotes } from "@/lib/subcontractors/coverage";
+import { kitchensForCustomer } from "@/lib/subcontractors/for-customer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaMinuteOfDay, jakartaTimeString } from "@/lib/time/jakarta";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -3450,26 +3451,26 @@ async function handleToolUse(
       error: `Nama "${given}" tidak dicatat — tidak lolos pemeriksaan nama. Jangan bilang namanya sudah dicatat.`,
     };
   } else if (tool.name === "send_menu_image") {
-    const { data: menuSubsRaw } = await db
-      .from("subcontractors")
-      .select("customer_nickname, menu_image_url")
-      // Inactive kitchens keep their last menu_image_url forever, and nobody
-      // refreshes it once they stop cooking. Without this filter the customer
-      // got the live menu plus a months-old one from a kitchen we no longer use.
-      .eq("is_active", true)
-      .not("menu_image_url", "is", null);
-    const menuSubs = (menuSubsRaw ?? []).filter((s) => !!s.menu_image_url);
+    // Only the kitchens that would actually cook for this customer. Inactive
+    // kitchens keep their last menu_image_url forever and nobody refreshes it
+    // once they stop cooking, so `kitchensForCustomer` filtering on is_active
+    // is also what stops a months-old menu from a kitchen we no longer use
+    // going out beside the live one.
+    const menuSubs = (await kitchensForCustomer(db, customerId)).filter(
+      (s) => !!s.menu_image_url,
+    );
     for (const sub of menuSubs) {
+      const menuUrl = sub.menu_image_url as string;
       const conversationId = await saveMessage({
         customerId,
         role: "assistant",
-        content: sub.menu_image_url,
+        content: menuUrl,
         messageType: "image",
         modelUsed: "system",
       });
       const whatsappMessageId = await sendImageByUrl(
         phone,
-        sub.menu_image_url,
+        menuUrl,
         sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur",
       );
       await updateMessageReceipt({
@@ -3479,7 +3480,9 @@ async function handleToolUse(
       });
     }
     if (menuSubs.length === 0) {
-      console.error("[webhook] send_menu_image: no active kitchen has a menu");
+      console.error(
+        "[webhook] send_menu_image: no kitchen serving this customer has a menu",
+      );
       return {
         ok: false,
         error:
@@ -3602,35 +3605,57 @@ async function handleToolUse(
           "Price list tidak dikirim — customer ini punya harga kontrak, jadi daftar harga umum tidak berlaku untuknya. Sebutkan harga kontraknya, jangan janjikan gambar.",
       };
     }
-    const priceListUrl = await getSetting("price_list_image_url");
-    if (!priceListUrl) {
-      console.error("[webhook] send_price_list: price_list_image_url unset");
+    // One sheet per kitchen that would cook for this customer. Each kitchen
+    // has its own ladder since migration 098, so the single global image is
+    // only right for a kitchen with no rows of its own — it reads Rp 29.000 at
+    // the bottom tier where Dapur Monstera charges Rp 45.000. A kitchen whose
+    // own sheet has not been rendered yet still falls back to it, and the
+    // dedupe keeps two such kitchens from sending the same picture twice.
+    const houseUrl = await getSetting("price_list_image_url");
+    const kitchens = await kitchensForCustomer(db, customerId);
+    const sheets: { url: string; nickname: string | null }[] = [];
+    for (const k of kitchens) {
+      const url = k.price_list_image_url ?? houseUrl;
+      if (!url) continue;
+      if (sheets.some((s) => s.url === url)) continue;
+      sheets.push({
+        url,
+        nickname: k.price_list_image_url ? k.customer_nickname : null,
+      });
+    }
+    if (sheets.length === 0) {
+      console.error("[webhook] send_price_list: no price list image to send");
       return {
         ok: false,
         error:
           "Gambar price list tidak terkirim — belum ada gambarnya. Jangan bilang gambarnya sudah atau akan dikirim; tulis harganya sebagai teks.",
       };
     }
-    const conversationId = await saveMessage({
-      customerId,
-      role: "assistant",
-      content: priceListUrl,
-      messageType: "image",
-      modelUsed: "system",
-    });
-    const whatsappMessageId = await sendImageByUrl(
-      phone,
-      priceListUrl,
-      "Harga & Area Pengiriman",
-    );
-    await updateMessageReceipt({
-      conversationId,
-      whatsappMessageId,
-      status: "sent",
-    });
+    for (const sheet of sheets) {
+      const conversationId = await saveMessage({
+        customerId,
+        role: "assistant",
+        content: sheet.url,
+        messageType: "image",
+        modelUsed: "system",
+      });
+      const whatsappMessageId = await sendImageByUrl(
+        phone,
+        sheet.url,
+        sheet.nickname ? `Harga ${sheet.nickname}` : "Harga & Area Pengiriman",
+      );
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId,
+        status: "sent",
+      });
+    }
     return {
       ok: true,
-      message: "Gambar price list sudah dikirim ke customer.",
+      message:
+        sheets.length === 1
+          ? "Gambar price list sudah dikirim ke customer."
+          : `${sheets.length} gambar price list sudah dikirim ke customer, satu per dapur.`,
     };
   } else if (tool.name === "send_invoice") {
     const input = tool.input as { start_date?: string };
