@@ -84,7 +84,7 @@ export function detectFormat(text: string): "BCA" | "Superbank" | null {
 // journalised.
 //
 // The statements name individuals, not roles. Andreas Kurnianto is Thenie's
-// owner — Dapur 1 — and every daily kitchen settlement is in his name; the
+// owner — Thenie — and every daily kitchen settlement is in his name; the
 // masked "Dnid Sal…Put…" is the courier's kasbon. Without these, Rp 17jt of
 // kitchen cost reads as unexplained personal transfers.
 const RULES: { re: RegExp; account: AccountCode }[] = [

@@ -14,7 +14,7 @@ import type { Database } from "@/types/database";
  *
  * These two are the fallback for a kitchen nobody has measured. The real
  * numbers live on `subcontractors` (migration 093), because they are a fact
- * about a kitchen's courier and not about the meal: Dapur 1 arrives 11.30-12.30
+ * about a kitchen's courier and not about the meal: Thenie arrives 11.30-12.30
  * and was being quoted 10.00-12.00, which is how Naya came to be told at 11.09
  * on 2026-09-02 that her food was late when by her kitchen's own window it had
  * not been due yet.

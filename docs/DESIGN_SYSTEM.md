@@ -99,7 +99,7 @@ Read them with `activeDeliveryAreas(db)` (`src/lib/subcontractors/areas.ts`), or
 
 ## Confidentiality in creative
 
-Never name a subcontractor, in an image, a caption or a prompt. Customers see the `customer_nickname` only ("Dapur 1"), or "dapur partner kami". The rule covers every kitchen, present and future.
+Never name a subcontractor, in an image, a caption or a prompt. Customers see the `customer_nickname` only ("Dapur Suplir"), or "dapur partner kami". The rule covers every kitchen, present and future.
 
 That partner kitchens *exist* is not secret — a customer who names a supplier gets neither denial nor confirmation, because "kami masak sendiri" is a lie they can check. Never show COGS, margins or internal operations.
 

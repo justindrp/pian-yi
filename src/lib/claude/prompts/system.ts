@@ -349,7 +349,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   /**
    * Which kitchens cook one menu for both meals.
    *
-   * This was a sentence naming Dapur 1 — a fact about Thenie, not about
+   * This was a sentence naming one kitchen — a fact about Thenie, not about
    * whichever kitchen happens to be listed first, so it lied the moment a
    * kitchen was renamed and stayed silent for the next kitchen that shares its
    * menus. `subcontractors.same_menu_both_meals` (migration 097) carries it per

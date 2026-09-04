@@ -26,7 +26,7 @@ export type CustomerSchedule = {
   /**
    * `window` is the arrival window of the kitchen that cooks that row, as the
    * customer reads it ("11.30-12.30"). It is per kitchen, so it cannot be
-   * derived from `mealType` where the prompt prints it — Dapur 1's lunch ends
+   * derived from `mealType` where the prompt prints it — Thenie's lunch ends
    * at 12.30 and the default says 12.00.
    */
   upcoming: {

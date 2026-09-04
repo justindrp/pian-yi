@@ -3231,7 +3231,7 @@ async function noProofReason(
       .eq("id", customerId)
       .maybeSingle(),
   ]);
-  // The window is the kitchen's, not the meal's: Dapur 1 finishes lunch at
+  // The window is the kitchen's, not the meal's: Thenie finishes lunch at
   // 12.30 and the default says 12.00, which is the half hour Naya spent being
   // told her food was late.
   const kitchens = await loadKitchenWindows(

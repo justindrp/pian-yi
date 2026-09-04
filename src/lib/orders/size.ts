@@ -6,7 +6,7 @@ import { getSetting } from "@/lib/cache/settings";
  * Size lives on the order (`orders.size`), never on the delivery row — a
  * delivery has an `order_id`, so its size is derived, not duplicated. Which
  * kitchens cook M is per kitchen (`subcontractors.offers_size_m`), the same way
- * delivery areas are: right now only Dapur 1 does, and nothing may hardcode
+ * delivery areas are: right now only Thenie does, and nothing may hardcode
  * that, because it stops being true the moment a second kitchen adds the dish.
  */
 
