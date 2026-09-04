@@ -420,7 +420,14 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
-        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+          },
+        ],
       });
 
       expect(prompt).toContain("Name both sizes the first time you quote");
@@ -433,7 +440,14 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
-        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+          },
+        ],
         activeOrder: {
           id: "o1",
           packageSize: 20,
@@ -452,7 +466,14 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
-        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+          },
+        ],
         activeOrder: {
           id: "o1",
           packageSize: 20,
@@ -467,11 +488,62 @@ describe("customer chatbot system prompt", () => {
     test("says nothing about M when no active kitchen cooks it", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
-        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: false }],
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: false,
+            sameMenuBothMeals: false,
+          },
+        ],
       });
 
       expect(prompt).toContain("Only size S is available");
       expect(prompt).not.toContain("Name both sizes the first time you quote");
+    });
+
+    // The same-menu line used to name Dapur 1 in the prompt text. That is a
+    // fact about one kitchen, so it would have lied the moment the kitchen was
+    // renamed and stayed silent for the next kitchen that shares its menus.
+    test("names the kitchens that cook one menu for both meals", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur Suplir",
+            offersM: true,
+            sameMenuBothMeals: true,
+          },
+          {
+            id: "2",
+            nickname: "Dapur Palem",
+            offersM: false,
+            sameMenuBothMeals: false,
+          },
+        ],
+      });
+
+      expect(prompt).toContain(
+        "Dapur Suplir serves the same menu for lunch and dinner",
+      );
+      expect(prompt).not.toContain("Dapur Palem serves the same menu");
+    });
+
+    test("says nothing about same menus when no kitchen has one", async () => {
+      const prompt = await buildSystemPrompt({
+        ...base,
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur Suplir",
+            offersM: true,
+            sameMenuBothMeals: false,
+          },
+        ],
+      });
+
+      expect(prompt).not.toContain("same menu for lunch and dinner");
     });
   });
 
@@ -502,7 +574,14 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
-        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: true }],
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+          },
+        ],
       });
 
       expect(prompt).toContain('The dish after "Tambahan size M:"');
@@ -512,7 +591,14 @@ describe("customer chatbot system prompt", () => {
     test("an S-only kitchen carries no caveat and no empty bullet", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
-        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: false }],
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: false,
+            sameMenuBothMeals: false,
+          },
+        ],
       });
 
       expect(prompt).not.toContain('The dish after "Tambahan size M:"');
@@ -533,7 +619,14 @@ describe("customer chatbot system prompt", () => {
         customerNotes: null,
         detectedMapsLink: null,
         menuShown: true,
-        dapurOptions: [{ id: "1", nickname: "Dapur 1", offersM: false }],
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: false,
+            sameMenuBothMeals: false,
+          },
+        ],
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
@@ -636,7 +729,9 @@ describe("customer chatbot system prompt", () => {
 
       const lines = prompt
         .split("\n")
-        .filter((l) => l.startsWith("- ") && l.includes("(11.30-12.30), 1 porsi"));
+        .filter(
+          (l) => l.startsWith("- ") && l.includes("(11.30-12.30), 1 porsi"),
+        );
       expect(lines).toHaveLength(2);
       expect(lines[0]).toContain("TERKUNCI");
       expect(lines[1]).not.toContain("TERKUNCI");
@@ -671,7 +766,9 @@ describe("customer chatbot system prompt", () => {
       expect(prompt).toContain(
         "call ask_admin_for_help with the date, the meal and the address",
       );
-      expect(prompt).toContain('"Admin sees the conversation" is not a mechanism');
+      expect(prompt).toContain(
+        '"Admin sees the conversation" is not a mechanism',
+      );
       expect(prompt).not.toContain(
         "Confirm the change yourself in your reply — admin sees the conversation",
       );
@@ -721,7 +818,9 @@ describe("customer chatbot system prompt", () => {
 
       expect(prompt).toContain("Kak Justin selalu standby");
       expect(prompt).toContain("Kak Justin will provide a concise answer");
-      expect(prompt).toContain("If you name a person to the customer, name Kak Justin");
+      expect(prompt).toContain(
+        "If you name a person to the customer, name Kak Justin",
+      );
       // Fahmi's own words are quoted in an incident note and stay as he said
       // them; nothing else may name her.
       expect(prompt.split("Annie")).toHaveLength(2);
@@ -790,7 +889,9 @@ describe("excluded neighborhoods", () => {
     });
 
     expect(prompt).toContain("**Alam Sutera** neighborhoods: Sutera Onyx.");
-    expect(prompt).not.toContain("neighborhoods: Sutera Onyx, Synergy Building");
+    expect(prompt).not.toContain(
+      "neighborhoods: Sutera Onyx, Synergy Building",
+    );
   });
 
   test("nothing excluded renders no block at all", async () => {

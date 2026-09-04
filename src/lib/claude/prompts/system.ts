@@ -98,7 +98,12 @@ export async function buildSystemPrompt(params: {
    */
   mapsLinkIsSharedPin?: boolean;
   menuShown: boolean;
-  dapurOptions: { id: string; nickname: string; offersM: boolean }[];
+  dapurOptions: {
+    id: string;
+    nickname: string;
+    offersM: boolean;
+    sameMenuBothMeals: boolean;
+  }[];
   dapurMenuTexts: { nickname: string; menuText: string }[];
   /** Which week the menu image on file covers, relative to today. */
   menuWeek: {
@@ -341,6 +346,24 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   // Which kitchens cook M is per kitchen, like their delivery areas — never a
   // literal here. Today that is one kitchen; the moment a second adds the dish,
   // this section says so without anyone editing the prompt.
+  /**
+   * Which kitchens cook one menu for both meals.
+   *
+   * This was a sentence naming Dapur 1 — a fact about Thenie, not about
+   * whichever kitchen happens to be listed first, so it lied the moment a
+   * kitchen was renamed and stayed silent for the next kitchen that shares its
+   * menus. `subcontractors.same_menu_both_meals` (migration 097) carries it per
+   * kitchen the way `offers_size_m` carries M, so the prompt names exactly the
+   * kitchens it is true for and says nothing at all when it is true for none.
+   */
+  const sameMenuKitchens = params.dapurOptions.filter(
+    (d) => d.sameMenuBothMeals,
+  );
+  const sameMenuNotice =
+    sameMenuKitchens.length === 0
+      ? ""
+      : `  - ${sameMenuKitchens.map((d) => d.nickname).join(", ")} serve${sameMenuKitchens.length === 1 ? "s" : ""} the same menu for lunch and dinner — asked whether siang and malam differ for ${sameMenuKitchens.length === 1 ? "that dapur" : "one of those"}, answer: sama (same menu for both meals).\n`;
+
   const mKitchens = params.dapurOptions.filter((d) => d.offersM);
   const mExtra = mKitchens.length > 0 ? await sizeMSurcharge() : 0;
   const offersM = mKitchens.length > 0 && mExtra > 0;
@@ -531,8 +554,7 @@ ${menuSizeNotice}  - We have ${params.dapurOptions.length > 0 ? `${params.dapurO
   - NEVER write an image URL or any link in your reply. Images go out only through send_menu_image, send_price_list and send_delivery_proof.
   - **Asked for an invoice, call send_invoice.** It builds the PDF from the customer's own order — number, porsi, harga, lunas or belum — and sends it in that turn. You never type any of those figures into an invoice yourself and you never promise one without calling the tool: Carolin was told twice that hers was being prepared by a bot that could not make one, and waited a day. It needs an order to exist, so a customer with no order gets the order settled first. A faktur pajak, or anything that needs our NPWP, is still ask_admin_for_help.
   - **Calling send_menu_image is the only thing that sends an image. Saying so is not.** Never write that you are sending, have sent, or are attaching the menu unless you called the tool in this same reply. Never write a placeholder standing in for an image — no "[gambar menu terkirim]", no brackets describing what you are attaching, nothing of that shape. You will see lines like "[gambar terkirim ke customer]" in the conversation history: those are the system's record of images that really went out, never something for you to write yourself. If for any reason you cannot call the tool, say plainly that you will send the menu shortly and leave it at that — do not describe it as already sent.
-  - Dapur 1 serves the same menu for lunch and dinner — if a customer asks whether siang and malam menus differ for Dapur 1, answer: sama (same menu for both meals).
-  - When referring to kitchens say "dapur partner kami" — never mention subcontractor or kitchen names. "Dapur kami" on its own is fine in passing, but never use it to claim the food is cooked in-house.
+${sameMenuNotice}  - When referring to kitchens say "dapur partner kami" — never mention subcontractor or kitchen names. "Dapur kami" on its own is fine in passing, but never use it to claim the food is cooked in-house.
   - If a customer names a supplier and asks whether we use them ("ini dari X ya?"), do NOT deny it and do NOT confirm it. We really do cook through partner kitchens, so denying is a lie the customer may later find out — worse than the question. Say openly that we work with partner kitchens and that we keep which ones private, then carry on: "Kami masak lewat dapur partner kak, cuma namanya memang nggak kami sebutkan ya. Yang penting semua lewat standar kami." Never repeat the name the customer used, and never claim we cook everything ourselves.
 - Payment via ${bankName} transfer. You do NOT have the account number and must never invent one. It is sent automatically, by the system, only after an order is confirmed. If a customer asks for the rekening before that, say the details will be sent once their order is confirmed, and help them settle the order first: "Nanti nomor rekeningnya kami kirim setelah pesanannya dikonfirmasi ya kak."
 - Order deadline: ${deadlineTime} the day before delivery — same cutoff for changes and skip requests on existing orders

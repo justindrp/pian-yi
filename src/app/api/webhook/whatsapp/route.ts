@@ -1943,7 +1943,7 @@ export async function processSavedCustomerMessage(params: {
     db
       .from("subcontractors")
       .select(
-        "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m",
+        "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals",
       )
       .eq("is_active", true)
       .not("customer_nickname", "is", null),
@@ -1967,6 +1967,7 @@ export async function processSavedCustomerMessage(params: {
       menu_week_start: string | null;
       delivery_areas: string[] | null;
       offers_size_m: boolean;
+      same_menu_both_meals: boolean;
     } => s.customer_nickname !== null,
   );
   // Only offer a dapur if its menu image has been uploaded
@@ -1976,6 +1977,7 @@ export async function processSavedCustomerMessage(params: {
       id: s.id,
       nickname: s.customer_nickname,
       offersM: s.offers_size_m === true,
+      sameMenuBothMeals: s.same_menu_both_meals === true,
     }));
   const dapurMenuTexts = rawSubs
     .filter((s) => !!s.menu_image_url && !!s.menu_text)

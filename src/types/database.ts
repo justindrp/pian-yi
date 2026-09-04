@@ -1501,6 +1501,7 @@ export type Database = {
           name: string;
           notes: string | null;
           offers_size_m: boolean;
+          same_menu_both_meals: boolean;
           total_delivery_count: number | null;
           updated_at: string | null;
         };
@@ -1527,6 +1528,7 @@ export type Database = {
           name: string;
           notes?: string | null;
           offers_size_m?: boolean;
+          same_menu_both_meals?: boolean;
           total_delivery_count?: number | null;
           updated_at?: string | null;
         };
@@ -1553,6 +1555,7 @@ export type Database = {
           name?: string;
           notes?: string | null;
           offers_size_m?: boolean;
+          same_menu_both_meals?: boolean;
           total_delivery_count?: number | null;
           updated_at?: string | null;
         };
