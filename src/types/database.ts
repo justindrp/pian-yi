@@ -1514,6 +1514,7 @@ export type Database = {
           no_rice_discount: number | null;
           notes: string | null;
           offers_size_m: boolean;
+          price_list_image_url: string | null;
           same_menu_both_meals: boolean;
           total_delivery_count: number | null;
           updated_at: string | null;
@@ -1543,6 +1544,7 @@ export type Database = {
           no_rice_discount?: number | null;
           notes?: string | null;
           offers_size_m?: boolean;
+          price_list_image_url?: string | null;
           same_menu_both_meals?: boolean;
           total_delivery_count?: number | null;
           updated_at?: string | null;
@@ -1572,6 +1574,7 @@ export type Database = {
           no_rice_discount?: number | null;
           notes?: string | null;
           offers_size_m?: boolean;
+          price_list_image_url?: string | null;
           same_menu_both_meals?: boolean;
           total_delivery_count?: number | null;
           updated_at?: string | null;

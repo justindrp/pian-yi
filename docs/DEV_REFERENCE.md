@@ -324,14 +324,18 @@ npx tsx --env-file=.env.local scripts/menu-card.ts
 ## The price list
 
 ```
-npx tsx --env-file=.env.local scripts/price-list.ts
+pnpm tsx --env-file=.env.local scripts/price-list.ts [--all] [--upload]
 ```
 
-Renders 1080×1350 at 2x through the same headless chromium as the menu card and writes `.menu-photos/price-list.png` (gitignored). No image model, no photos, no cost — it is HTML and CSS all the way down.
+Renders 1080×1350 at 2x through the same headless chromium as the menu card and writes `.menu-photos/price-list-<dapur>.png` (gitignored). No image model, no photos, no cost — it is HTML and CSS all the way down.
 
-**Nothing on it is typed.** The rates come from `pricing_tiers`, the size M surcharge from `settings.size_m_surcharge`, the areas from `activeDeliveryAreas()`, and whether M appears at all from `offers_size_m` on the active kitchens. A tier change is a re-run, not a redraw. Layout rules and the reasons behind them: "The price list" in `docs/DESIGN_SYSTEM.md`.
+**One sheet per kitchen, because the customer picks their kitchen and is shown that kitchen's prices.** Migration 098 gave each kitchen its own ladder and 099 its own `price_list_image_url`; a single sheet is now correct for whichever kitchen matches the house ladder and wrong by up to Rp 16.000 a portion for the rest. Everything on a sheet is that kitchen's own: its ladder (`tiersForKitchen()`, falling back to the house one), its `delivery_areas` rather than the union, its `offers_size_m`, its `delivery_days` — which is where the "Senin–Sabtu" subtitle comes from, so Dapur Monstera's sheet reads Senin–Jumat rather than advertising a day nobody cooks. With no active kitchen at all there is still the house sheet, which is what `settings.price_list_image_url` holds.
 
-**A render nobody uploads changes nothing.** The sheet reaches customers through `settings.price_list_image_url`, which `send_price_list` reads — upload the PNG to the `menu` bucket and point the setting at the new object. Nothing deletes the old one, so an image already sent keeps resolving, and the flip is a settings write like any other: audit it with `logEdit()` and let the 60-second settings-cache refresh pick it up. Until 2026-08-31 that setting pointed at `price-list-personal-s-1787384421668.png`, a hand-drawn S-only sheet, which is why a customer asking for prices never learned size M existed; it now points at `price-list-personal-1788170708513.png`, this script's output.
+`--all` renders inactive kitchens too: a sheet has to be looked at before its kitchen goes live, and the kitchen is not active until it has been. `--upload` publishes each PNG to the `menu` bucket and writes its URL to that kitchen's `price_list_image_url` (or, for the house sheet, to the setting).
+
+**Nothing on it is typed.** The rates come from `pricing_tiers`, the size M surcharge from `settings.size_m_surcharge`, the areas and days from the kitchen's own row. A tier change is a re-run, not a redraw. An S-only sheet pads its rows to fill the page: an M cell carries two prices and an S cell one, so without that the footer's `margin-top:auto` parks it at the bottom over a red hole — and every kitchen but Thenie is S only, so that is the normal case now. Layout rules and the reasons behind them: "The price list" in `docs/DESIGN_SYSTEM.md`.
+
+**A render nobody uploads changes nothing.** `--upload` does it; by hand, the sheet reaches customers through `subcontractors.price_list_image_url` (falling back to `settings.price_list_image_url`), which `send_price_list` reads — upload the PNG to the `menu` bucket and point the setting at the new object. Nothing deletes the old one, so an image already sent keeps resolving, and the flip is a settings write like any other: audit it with `logEdit()` and let the 60-second settings-cache refresh pick it up. Until 2026-08-31 that setting pointed at `price-list-personal-s-1787384421668.png`, a hand-drawn S-only sheet, which is why a customer asking for prices never learned size M existed; it now points at `price-list-personal-1788170708513.png`, this script's output.
 
 ## Automated tests
 

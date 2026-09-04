@@ -21,13 +21,21 @@
  * `offers_size_m`, the same way the areas are per kitchen. Printing an M price
  * nobody cooks is worse than printing no M price.
  *
- * Usage: npx tsx --env-file=.env.local scripts/price-list.ts
- * Writes .menu-photos/price-list.png. Nothing is uploaded and nothing is sent.
+ * One sheet per active kitchen, because the customer picks their kitchen and
+ * is shown that kitchen's prices: its own ladder, its own delivery areas, its
+ * own delivery days, its own size M. With no active kitchen there is still the
+ * house sheet, which is what `settings.price_list_image_url` holds.
+ *
+ * Usage: pnpm tsx --env-file=.env.local scripts/price-list.ts [--all] [--upload]
+ * Writes .menu-photos/price-list-<dapur>.png. Without --upload nothing leaves
+ * the machine; with it each sheet lands in the `menu` bucket and its URL in
+ * that kitchen's `price_list_image_url` (or the setting, for the house sheet).
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { sizeMSurcharge } from "@/lib/orders/size";
+import { tiersForKitchen } from "@/lib/pricing/tiers";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -77,7 +85,8 @@ function rateFor(portions: number, tiers: Record<number, number>): number {
     .map(Number)
     .filter((p) => p <= portions)
     .sort((a, b) => b - a);
-  if (!listed.length) throw new Error(`no pricing tier at or below ${portions}`);
+  if (!listed.length)
+    throw new Error(`no pricing tier at or below ${portions}`);
   return tiers[listed[0]];
 }
 
@@ -150,10 +159,43 @@ function cell(s: Price, m: Price | null) {
   </td>`;
 }
 
+/**
+ * "Senin–Sabtu" from `subcontractors.delivery_days`.
+ *
+ * The sheet used to print Senin–Sabtu as a fact about the business, which it
+ * was while Thenie cooked everything. Dapur Monstera works Senin–Jumat, so a
+ * sheet of theirs carrying Sabtu advertises a day nobody cooks. A contiguous
+ * run prints as a span, anything else as a list.
+ */
+const WEEKDAY = [
+  "",
+  "Senin",
+  "Selasa",
+  "Rabu",
+  "Kamis",
+  "Jumat",
+  "Sabtu",
+  "Minggu",
+];
+
+function daysLabelFor(days: number[]): string {
+  const sorted = [...new Set(days)]
+    .filter((d) => d >= 1 && d <= 7)
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return "";
+  const contiguous = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
+  if (sorted.length === 1) return WEEKDAY[sorted[0]];
+  return contiguous
+    ? `${WEEKDAY[sorted[0]]}–${WEEKDAY[sorted[sorted.length - 1]]}`
+    : sorted.map((d) => WEEKDAY[d]).join(", ");
+}
+
 function page(
   tiers: Record<number, number>,
   surcharge: number,
   areas: string[],
+  nickname: string | null,
+  daysLabel: string,
 ) {
   const rows = GROUPS.map((g) => {
     const days = g.days
@@ -179,14 +221,24 @@ function page(
   ).join("");
 
   const rp = `Rp ${surcharge.toLocaleString("id-ID")}`;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
+
+  // An M cell carries two prices and an S-only cell one, so a sheet without M
+  // is a third shorter than the page and `.foot`'s `margin-top:auto` parks the
+  // footer at the bottom with a red hole above it. Every kitchen but Thenie is
+  // S only, so that hole is the normal case now, not the exception. The rows
+  // take the slack instead of the gap.
+  const fill = surcharge
+    ? ""
+    : "td.paket{padding:31px 8px}td.pc{padding:28px 16px 27px}";
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}${fill}</style></head><body>
   <div class="wrap">
     <div class="head">
       <img class="logo" src="file://${LOGO}">
       <div class="htext">
-        <div class="kicker">Daftar Harga</div>
+        <div class="kicker">Daftar Harga${nickname ? ` · ${nickname}` : ""}</div>
         <div class="title">PAKET PERSONAL</div>
-        <div class="sub">Halal · Gratis ongkir · Senin–Sabtu</div>
+        <div class="sub">Halal · Gratis ongkir · ${daysLabel}</div>
       </div>
       <div class="sizes">
         <div><b>SIZE S</b> — nasi + lauk + sayur + sambal</div>
@@ -209,44 +261,131 @@ function page(
 }
 
 async function main() {
+  const upload = process.argv.includes("--upload");
+  // A sheet has to be looked at before its kitchen goes live, and the kitchen
+  // is not active until it has been. `--all` renders the inactive ones too;
+  // combined with --upload it publishes them, which is how a kitchen arrives
+  // with its sheet already on file.
+  const includeInactive = process.argv.includes("--all");
   const db = createAdminClient();
-  const [{ data: tierRows, error }, { data: kitchens }, areas, surcharge] =
-    await Promise.all([
-      db
-        .from("pricing_tiers")
-        .select("portions, price_per_portion")
-        .is("subcontractor_id", null),
-      db.from("subcontractors").select("offers_size_m").eq("is_active", true),
-      activeDeliveryAreas(db),
-      sizeMSurcharge(),
-    ]);
-  if (error) throw new Error(error.message);
-  if (!tierRows?.length) throw new Error("pricing_tiers is empty");
 
-  const tiers: Record<number, number> = {};
-  for (const t of tierRows) tiers[t.portions] = t.price_per_portion;
+  const [{ data: kitchens, error: kErr }, surcharge] = await Promise.all([
+    db
+      .from("subcontractors")
+      .select(
+        "id, customer_nickname, is_active, offers_size_m, delivery_areas, delivery_days",
+      )
+      .order("customer_nickname"),
+    sizeMSurcharge(),
+  ]);
+  if (kErr) throw new Error(kErr.message);
+  const wanted = (kitchens ?? []).filter((k) => includeInactive || k.is_active);
 
-  // Coverage is per kitchen, so the sheet only advertises M while a kitchen
-  // that cooks it is actually taking orders.
-  const offersM = (kitchens ?? []).some((s) => s.offers_size_m);
-  const m = offersM ? surcharge : 0;
+  // One sheet per active kitchen, because the customer picks their kitchen and
+  // is shown that kitchen's prices. Everything on a sheet is that kitchen's
+  // own: its ladder (`tiersForKitchen`, falling back to the house one), its
+  // `delivery_areas` rather than the union, its `offers_size_m`, its
+  // `delivery_days`. With no active kitchen at all there is still the house
+  // sheet, which is what `settings.price_list_image_url` holds.
+  const sheets: {
+    id: string | null;
+    nickname: string | null;
+    areas: string[];
+    offersM: boolean;
+    days: number[];
+  }[] =
+    wanted.length > 0
+      ? wanted.map((k) => ({
+          id: k.id,
+          nickname: k.customer_nickname,
+          areas: (k.delivery_areas as string[] | null) ?? [],
+          offersM: !!k.offers_size_m,
+          days: k.delivery_days ?? [1, 2, 3, 4, 5, 6],
+        }))
+      : [
+          {
+            id: null,
+            nickname: null,
+            areas: await activeDeliveryAreas(db),
+            offersM: false,
+            days: [1, 2, 3, 4, 5, 6],
+          },
+        ];
 
   mkdirSync(DIR, { recursive: true });
-  const html = page(tiers, m, areas);
-  writeFileSync(`${DIR}/price-list.html`, html);
-
   const browser = await chromium.launch();
-  const ctx = await browser.newPage({
-    viewport: { width: 1080, height: 1350 },
-    deviceScaleFactor: 2,
-  });
-  await ctx.goto(`file://${process.cwd()}/${DIR}/price-list.html`);
-  await ctx.waitForTimeout(1500); // Google Fonts
-  await ctx.screenshot({ path: `${DIR}/price-list.png` });
+
+  for (const sheet of sheets) {
+    const tierRows = await tiersForKitchen(db, sheet.id);
+    if (tierRows.length === 0)
+      throw new Error(`no pricing tier for ${sheet.nickname ?? "house"}`);
+    const tiers: Record<number, number> = {};
+    for (const t of tierRows) tiers[t.portions] = t.price_per_portion;
+
+    const m = sheet.offersM ? surcharge : 0;
+    const slug = (sheet.nickname ?? "house")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    const base = `${DIR}/price-list-${slug}`;
+
+    const html = page(
+      tiers,
+      m,
+      sheet.areas,
+      sheet.nickname,
+      daysLabelFor(sheet.days),
+    );
+    writeFileSync(`${base}.html`, html);
+
+    const ctx = await browser.newPage({
+      viewport: { width: 1080, height: 1350 },
+      deviceScaleFactor: 2,
+    });
+    await ctx.goto(`file://${process.cwd()}/${base}.html`);
+    await ctx.waitForTimeout(1500); // Google Fonts
+    await ctx.screenshot({ path: `${base}.png` });
+    await ctx.close();
+
+    console.log(
+      `${base}.png — ${sheet.nickname ?? "house ladder"}, ${daysLabelFor(sheet.days)}, size M ${m ? `on (+${m})` : "off"}`,
+    );
+
+    if (upload) {
+      const storagePath = `price-list-${slug}-${Date.now()}.png`;
+      const { error: upErr } = await db.storage
+        .from("menu")
+        .upload(storagePath, readFileSync(`${base}.png`), {
+          contentType: "image/png",
+          upsert: true,
+        });
+      if (upErr) throw new Error(`upload failed: ${upErr.message}`);
+      const url = db.storage.from("menu").getPublicUrl(storagePath)
+        .data.publicUrl;
+
+      if (sheet.id) {
+        const { error } = await db
+          .from("subcontractors")
+          .update({ price_list_image_url: url })
+          .eq("id", sheet.id);
+        if (error) throw new Error(error.message);
+        console.log(`  → subcontractors.price_list_image_url = ${url}`);
+      } else {
+        const { error } = await db
+          .from("settings")
+          .upsert(
+            { key: "price_list_image_url", value: url },
+            { onConflict: "key" },
+          );
+        if (error) throw new Error(error.message);
+        console.log(`  → settings.price_list_image_url = ${url}`);
+      }
+    }
+  }
+
   await browser.close();
-  console.log(
-    `${DIR}/price-list.png — ${GROUPS.reduce((n, g) => n + g.days.length, 0)} rows, size M ${m ? `on (+${m})` : "off (no active kitchen cooks it)"}`,
-  );
+  if (!upload)
+    console.log("Nothing uploaded. Re-run with --upload to publish.");
 }
 
 main().then(
