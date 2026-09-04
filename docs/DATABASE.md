@@ -603,11 +603,14 @@ Price per portion at each quantity tier. The `portions` column is the minimum qu
 
 | Column | Type | Notes |
 |--------|------|-------|
-| portions | integer | Primary key — minimum package size to get this price |
+| subcontractor_id | uuid | The kitchen this ladder belongs to, FK to `subcontractors` (migration 098). **NULL is the house ladder** — what a kitchen with no rows of its own is sold at, and exactly Thenie's prices, so Thenie needs no rows. Unique on `(subcontractor_id, portions)` with `NULLS NOT DISTINCT`, which replaced the `portions` primary key |
+| portions | integer | Minimum package size to get this price. Unique per kitchen, not globally |
 | price_per_portion | integer | Price in IDR per portion at this tier |
 | updated_at | timestamp | |
 
-Current tiers: 5→29k, 10→28k, 20→27k, 40→26k, 60→26k, 120→25k
+**Every read goes through `tiersForKitchen()` (`src/lib/pricing/tiers.ts`), never a bare select.** One ladder for the whole business was true while one kitchen cooked everything and stopped being true the moment a second one did: Thenie costs us Rp 21.000 a portion, Santapin Rp 22.000, Homey Rp 33.000, so selling Homey's food at Thenie's Rp 28.000 tier is a Rp 5.000 loss on every portion and nothing in the order looks wrong. A bare select now returns every kitchen's rows interleaved and the largest-tier-below lookup on top of it quotes whichever kitchen sorts first. Writes are scoped the same way: `PATCH /api/settings/pricing` keyed on `portions` alone, which would have repriced every kitchen's row at that size in one request, and is now pinned to the house ladder — a kitchen's own ladder is set in SQL, not from that screen.
+
+House ladder (`subcontractor_id IS NULL`): 5→29k, 6→29k, 10→28k, 12→28k, 20→27k, 24→27k, 40→26k, 48→26k, 60→26k, 72→26k, 120→25k, 144→25k. Santapin and Homey carry their own twelve rows, anchored at 25% margin on the 10/12 tier (see "Per-kitchen price ladders" in `OPERATIONS.md`).
 
 ---
 
@@ -727,6 +730,8 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | admin_phone_2 | text | Secondary WhatsApp number |
 | delivery_areas | json | Array of area strings **this kitchen** serves. Each kitchen has its own list and the lists overlap only in part; the areas Pian Yi offers are the union of this column across rows with `is_active = true`, computed at read time by `activeDeliveryAreas()` / `unionAreas()` (`src/lib/subcontractors/areas.ts`) and never stored anywhere else. **This column is the only source** — not `settings.delivery_areas` (which exists, is written by nothing that reads it, and is no longer editable in the UI), and not a literal in code. Editing this column, or flipping `is_active`, changes what the chatbot tells customers. See "Delivery areas" in `OPERATIONS.md` |
 | cost_per_portion | integer | What we pay per portion in IDR — used for Route 2 (kitchen delivers) |
+| no_rice_discount | integer | IDR off per portion for a tanpa-nasi box, flat across the whole ladder (migration 098). Santapin knock off Rp 2.500 and Homey Rp 5.000, and the gap is the same at every tier, so this is one number per kitchen rather than a second ladder per kitchen. NULL means the kitchen does not sell a box without rice — which is Thenie, whose price is the same either way |
+| delivery_days | smallint[] | ISO weekdays this kitchen cooks, 1 = Senin (migration 098, default `{1,2,3,4,5,6}`). Senin–Sabtu was a fact about the business because Thenie work Saturdays; Homey do not — their menu grid has five columns and no Sabtu, so a Saturday row on their sheet is food nobody is cooking. This **narrows** the calendar per kitchen and never widens it: `isDeliveryDay()` still closes Minggu and the libur nasional for everybody |
 | cost_per_portion_route1 | integer | Override cost for Route 1 (back when we ran our own courier, cheaper). NULL = same as cost_per_portion, and **null on every kitchen since migration 084** — the courier stopped on 2026-09-01. Per kitchen — never quote a figure from memory, read the row |
 | offers_size_m | boolean | Whether this kitchen cooks size M (migration 078). Per kitchen, like `delivery_areas` — only Thenie has it today and nothing may hardcode that. The bot's prompt builds its size section from this column, and `createOrderFromExtraction` re-reads it after resolving the kitchen and downgrades an M order to S rather than sending an M row to a kitchen that cooks S |
 | same_menu_both_meals | boolean | Whether this kitchen cooks the same menu for siang and malam (migration 097). True for Thenie only today. Read the same way as `offers_size_m`: the bot's prompt builds its sentence from `dapurOptions[].sameMenuBothMeals` and names exactly the kitchens that have it, saying nothing when none do. This used to be a prompt line naming the kitchen by nickname — a fact about Thenie, not about whichever kitchen is listed first, so it would have lied the moment the kitchen was renamed and stayed silent for the next kitchen that shares its menus |
