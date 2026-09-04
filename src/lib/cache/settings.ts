@@ -25,7 +25,10 @@ async function load(): Promise<CacheData> {
     neighborhoodsRes,
   ] = await Promise.all([
     db.from("settings").select("key, value"),
-    db.from("pricing_tiers").select("portions, price_per_portion"),
+    db
+      .from("pricing_tiers")
+      .select("portions, price_per_portion")
+      .is("subcontractor_id", null),
     db.from("message_templates").select("key, template"),
     db.from("chatbot_instructions").select("instruction").eq("is_active", true),
     db.from("area_neighborhoods").select("area, name, excluded").order("name"),

@@ -17,7 +17,11 @@ export async function GET(): Promise<Response> {
   const db = createAdminClient();
   const [settingsRes, pricingRes, templatesRes, adminsRes] = await Promise.all([
     db.from("settings").select("*").order("key"),
-    db.from("pricing_tiers").select("*").order("portions"),
+    db
+      .from("pricing_tiers")
+      .select("*")
+      .is("subcontractor_id", null)
+      .order("portions"),
     db.from("message_templates").select("*").order("key"),
     db.from("admin_users").select("email, created_at, role"),
   ]);

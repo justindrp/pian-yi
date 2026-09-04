@@ -24,6 +24,7 @@ import {
   type OrderSize,
   sizeMSurcharge,
 } from "@/lib/orders/size";
+import { priceForPortions, tiersForKitchen } from "@/lib/pricing/tiers";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import {
@@ -563,11 +564,8 @@ async function packageSizeMatchingPayment(
   }
 
   const db = createAdminClient();
-  const { data: tiers } = await db
-    .from("pricing_tiers")
-    .select("portions")
-    .order("portions", { ascending: true });
-  for (const tier of tiers ?? []) {
+  const tiers = await tiersForKitchen(db, null);
+  for (const tier of tiers) {
     const { total_price } = await getExtractedOrderPricing(
       tier.portions,
       nasiMerah,
@@ -639,13 +637,8 @@ export const NASI_MERAH_SURCHARGE = 5000;
  */
 export async function minPackageSize(): Promise<number> {
   const db = createAdminClient();
-  const { data } = await db
-    .from("pricing_tiers")
-    .select("portions")
-    .order("portions", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return data?.portions ?? 5;
+  const tiers = await tiersForKitchen(db, null);
+  return tiers[0]?.portions ?? 5;
 }
 
 /**
@@ -724,30 +717,12 @@ export async function getExtractedOrderPricing(
     };
   }
 
+  // The house ladder, deliberately: this function does not know which kitchen
+  // will cook the order yet. Once the caller can name one, pass it here — every
+  // kitchen quoted off the house ladder is priced at Thenie's cost base.
   const db = createAdminClient();
-  const { data: tier } = await db
-    .from("pricing_tiers")
-    .select("price_per_portion")
-    .lte("portions", packageSize)
-    .order("portions", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  // A size below the smallest tier matches no row, and the price then came out
-  // Rp 0 — an order the kitchen cooks for free. Dewi's 2026-08-03 order was
-  // written that way (package 3, price 0). Fall back to the cheapest tier we
-  // publish; a price an admin adjusts beats a price of nothing.
-  const { data: smallestTier } = tier
-    ? { data: null }
-    : await db
-        .from("pricing_tiers")
-        .select("price_per_portion")
-        .order("portions", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-  const basePrice =
-    tier?.price_per_portion ?? smallestTier?.price_per_portion ?? 0;
+  const tiers = await tiersForKitchen(db, null);
+  const basePrice = priceForPortions(tiers, packageSize) ?? 0;
   const pricePerPortion =
     basePrice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0) + sizeExtra;
   return {

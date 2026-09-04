@@ -212,7 +212,10 @@ async function main() {
   const db = createAdminClient();
   const [{ data: tierRows, error }, { data: kitchens }, areas, surcharge] =
     await Promise.all([
-      db.from("pricing_tiers").select("portions, price_per_portion"),
+      db
+        .from("pricing_tiers")
+        .select("portions, price_per_portion")
+        .is("subcontractor_id", null),
       db.from("subcontractors").select("offers_size_m").eq("is_active", true),
       activeDeliveryAreas(db),
       sizeMSurcharge(),

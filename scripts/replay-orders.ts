@@ -370,6 +370,7 @@ async function currentRulePrice(
   const { data: tiers } = await db
     .from("pricing_tiers")
     .select("portions, price_per_portion")
+    .is("subcontractor_id", null)
     .order("portions", { ascending: false });
   const rows = tiers ?? [];
   const exact = rows.find((t) => t.portions === packageSize);

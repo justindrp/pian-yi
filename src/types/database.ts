@@ -1308,19 +1308,30 @@ export type Database = {
         Row: {
           portions: number;
           price_per_portion: number;
+          subcontractor_id: string | null;
           updated_at: string | null;
         };
         Insert: {
           portions: number;
           price_per_portion: number;
+          subcontractor_id?: string | null;
           updated_at?: string | null;
         };
         Update: {
           portions?: number;
           price_per_portion?: number;
+          subcontractor_id?: string | null;
           updated_at?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "pricing_tiers_subcontractor_id_fkey";
+            columns: ["subcontractor_id"];
+            isOneToOne: false;
+            referencedRelation: "subcontractors";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       processed_messages: {
         Row: {
@@ -1488,6 +1499,7 @@ export type Database = {
           created_at: string | null;
           customer_nickname: string | null;
           delivery_areas: Json | null;
+          delivery_days: number[];
           dinner_window_end_min: number | null;
           dinner_window_start_min: number | null;
           id: string;
@@ -1499,6 +1511,7 @@ export type Database = {
           menu_text: string | null;
           menu_week_start: string | null;
           name: string;
+          no_rice_discount: number | null;
           notes: string | null;
           offers_size_m: boolean;
           same_menu_both_meals: boolean;
@@ -1515,6 +1528,7 @@ export type Database = {
           created_at?: string | null;
           customer_nickname?: string | null;
           delivery_areas?: Json | null;
+          delivery_days?: number[];
           dinner_window_end_min?: number | null;
           dinner_window_start_min?: number | null;
           id?: string;
@@ -1526,6 +1540,7 @@ export type Database = {
           menu_text?: string | null;
           menu_week_start?: string | null;
           name: string;
+          no_rice_discount?: number | null;
           notes?: string | null;
           offers_size_m?: boolean;
           same_menu_both_meals?: boolean;
@@ -1542,6 +1557,7 @@ export type Database = {
           created_at?: string | null;
           customer_nickname?: string | null;
           delivery_areas?: Json | null;
+          delivery_days?: number[];
           dinner_window_end_min?: number | null;
           dinner_window_start_min?: number | null;
           id?: string;
@@ -1553,6 +1569,7 @@ export type Database = {
           menu_text?: string | null;
           menu_week_start?: string | null;
           name?: string;
+          no_rice_discount?: number | null;
           notes?: string | null;
           offers_size_m?: boolean;
           same_menu_both_meals?: boolean;

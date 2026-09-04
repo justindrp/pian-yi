@@ -18,6 +18,7 @@ export default async function HandbookPage() {
     db
       .from("pricing_tiers")
       .select("portions, price_per_portion")
+      .is("subcontractor_id", null)
       .order("portions"),
     db
       .from("subcontractors")

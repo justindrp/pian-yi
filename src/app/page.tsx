@@ -80,7 +80,10 @@ function toRungs(tiers: Tier[]): Rung[] {
 async function loadContent() {
   const db = createAdminClient();
   const [tiersRes, settingsRes, areas] = await Promise.all([
-    db.from("pricing_tiers").select("portions, price_per_portion"),
+    db
+      .from("pricing_tiers")
+      .select("portions, price_per_portion")
+      .is("subcontractor_id", null),
     db
       .from("settings")
       .select("key, value")

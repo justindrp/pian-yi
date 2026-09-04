@@ -3,6 +3,16 @@ import { invalidateCache } from "@/lib/cache/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
+/**
+ * Edits the house ladder, and only the house ladder.
+ *
+ * Every write here is scoped to `subcontractor_id IS NULL` (migration 098).
+ * Both paths used to key on `portions` alone, which was exact while one ladder
+ * existed and silently repriced every kitchen's row at that size the moment a
+ * second one did — a bulk adjust of +1.000 would have moved Santapin and Homey
+ * too, in the same request, with nothing in the UI saying so. A kitchen's own
+ * ladder is not editable from this screen yet; it is set in SQL.
+ */
 export async function PATCH(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
   const {
@@ -25,7 +35,8 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     const adjust = body.adjust;
     const { data: tiers, error: fetchError } = await db
       .from("pricing_tiers")
-      .select("portions, price_per_portion");
+      .select("portions, price_per_portion")
+      .is("subcontractor_id", null);
     if (fetchError)
       return NextResponse.json(
         { ok: false, error: fetchError.message },
@@ -37,6 +48,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
         db
           .from("pricing_tiers")
           .update({ price_per_portion: t.price_per_portion + adjust })
+          .is("subcontractor_id", null)
           .eq("portions", t.portions),
       ),
     );
@@ -58,6 +70,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     const { error } = await db
       .from("pricing_tiers")
       .update({ price_per_portion: body.price_per_portion })
+      .is("subcontractor_id", null)
       .eq("portions", body.portions);
 
     if (error)

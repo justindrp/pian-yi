@@ -1576,6 +1576,7 @@ export async function processWebhookAsync(
         db
           .from("pricing_tiers")
           .select("price_per_portion")
+          .is("subcontractor_id", null)
           .eq("portions", 20)
           .maybeSingle(),
       ]);
