@@ -2924,11 +2924,25 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
         );
         replyText = await getTemplate("reply_validation_fallback");
         replyModelUsed = "system";
+        // `needs_human_review`, never `pending_bot_response`. That pair means
+        // one thing only — the customer asked something an admin still owes
+        // them an answer to — and two other things read it: the prompt renders
+        // it as "a question is with an admin right now" and tells the model to
+        // say it is still being checked, and every later inbound message
+        // pushes "New message — question still unanswered". Writing a
+        // diagnostic string there on 2026-09-05 handed the model
+        // "Auto-flagged: bot reply blocked twice by hallucination validator"
+        // as Tiara's own open question: it spent four turns telling her the
+        // team was still checking something she had never asked, would not
+        // take the order she had already confirmed, and pushed the same
+        // notification on every message she sent. An auto-flag is an internal
+        // observation, so it goes where flagOrderAtRisk and the skip guard put
+        // theirs — visible to an admin, invisible to the model, one push.
         await db
           .from("customer_flags")
           .update({
-            pending_bot_response: true,
-            pending_bot_question:
+            needs_human_review: true,
+            escalation_reason:
               "Auto-flagged: bot reply blocked twice by hallucination validator, needs review",
           })
           .eq("customer_id", customerId);
@@ -2967,11 +2981,13 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
       );
       replyText = await getTemplate("reply_validation_fallback");
       replyModelUsed = "system";
+      // An internal observation, not a customer question — see the validator
+      // fallback above for why this may never touch `pending_bot_response`.
       await db
         .from("customer_flags")
         .update({
-          pending_bot_response: true,
-          pending_bot_question:
+          needs_human_review: true,
+          escalation_reason:
             "Auto-flagged: bot reply was reasoning only, needs review",
         })
         .eq("customer_id", customerId);
