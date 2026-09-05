@@ -677,6 +677,8 @@ export default function DeliveriesClient() {
   const [addMeal, setAddMeal] = useState<"lunch" | "dinner">("lunch");
   const [addPortions, setAddPortions] = useState(1);
   const [addSubId, setAddSubId] = useState<string | null>(null);
+  // null = every kitchen; NO_SUB = the rows no kitchen has been assigned.
+  const [kitchenFilter, setKitchenFilter] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const sensors = useSensors(
@@ -959,6 +961,10 @@ export default function DeliveriesClient() {
   function handleDragEnd(event: DragEndEvent, route: number) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    // Positions are renumbered 0..n across the whole route, so a drag inside a
+    // filtered view would write the filtered subset's order over everybody
+    // else's. The chips disable dragging; this is the guard behind that.
+    if (kitchenFilter !== null) return;
     const sortedIds = getRouteSortedIds(rows, route);
     const oldIndex = sortedIds.indexOf(active.id as string);
     const newIndex = sortedIds.indexOf(over.id as string);
@@ -979,8 +985,18 @@ export default function DeliveriesClient() {
     reorder.mutate(reorderedIds.map((id, i) => ({ id, delivery_position: i })));
   }
 
-  const lunchRows = rows.filter((r) => r.meal_type === "lunch");
-  const dinnerRows = rows.filter((r) => r.meal_type === "dinner");
+  // The sheet stays one cross-kitchen view because a delivery route is driven
+  // kitchen-blind — one courier carries three kitchens' food down one road. The
+  // page's other job is checking what a single kitchen is cooking, and a
+  // cross-kitchen total cannot answer that, so a chip narrows what is rendered
+  // instead of splitting the page. `rows` stays whole for every write: they are
+  // keyed on customer + meal and must not see a filtered world.
+  const visibleRows =
+    kitchenFilter === null
+      ? rows
+      : rows.filter((r) => (r.subcontractor_id ?? NO_SUB) === kitchenFilter);
+  const lunchRows = visibleRows.filter((r) => r.meal_type === "lunch");
+  const dinnerRows = visibleRows.filter((r) => r.meal_type === "dinner");
   const uniqueSubs = [
     ...new Set(
       rows
@@ -988,6 +1004,15 @@ export default function DeliveriesClient() {
         .map((r) => r.subcontractor_id as string),
     ),
   ];
+  // Counted off the rows that will actually be cooked, so a chip total is the
+  // number to read back to the kitchen. Rows with no kitchen get their own chip
+  // rather than being left out: they reach no kitchen sheet and no copy summary,
+  // so nothing else on this page would show they exist.
+  const portionsFor = (subId: string) =>
+    rows
+      .filter((r) => !r.skip && (r.subcontractor_id ?? NO_SUB) === subId)
+      .reduce((s, r) => s + r.portions, 0);
+  const unassignedPortions = portionsFor(NO_SUB);
 
   const autoSent = (proofs ?? []).filter((p) => p.status === "auto_sent");
   const adminUploaded = (proofs ?? []).filter(
@@ -1110,6 +1135,68 @@ export default function DeliveriesClient() {
             </div>
           )}
 
+          {/* One chip per kitchen with food on this date, plus a red chip for
+              rows no kitchen has been given. Selecting one narrows the tables
+              and the totals; the routes stay as they are, because a route is
+              still driven across kitchens. Hidden when only one bucket exists —
+              there is nothing to narrow. */}
+          {uniqueSubs.length + (unassignedPortions > 0 ? 1 : 0) > 1 && (
+            <div className="flex flex-wrap gap-2 mb-4 items-center">
+              <button
+                type="button"
+                onClick={() => setKitchenFilter(null)}
+                className={`px-3 py-1.5 rounded-full border text-sm ${
+                  kitchenFilter === null
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                Semua dapur ·{" "}
+                {rows
+                  .filter((r) => !r.skip)
+                  .reduce((s, r) => s + r.portions, 0)}{" "}
+                porsi
+              </button>
+              {uniqueSubs.map((subId) => (
+                <button
+                  key={subId}
+                  type="button"
+                  onClick={() =>
+                    setKitchenFilter(kitchenFilter === subId ? null : subId)
+                  }
+                  className={`px-3 py-1.5 rounded-full border text-sm ${
+                    kitchenFilter === subId
+                      ? "bg-gray-900 text-white border-gray-900"
+                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  {(subs ?? []).find((s) => s.id === subId)?.name ?? "?"} ·{" "}
+                  {portionsFor(subId)} porsi
+                </button>
+              ))}
+              {unassignedPortions > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setKitchenFilter(kitchenFilter === NO_SUB ? null : NO_SUB)
+                  }
+                  className={`px-3 py-1.5 rounded-full border text-sm ${
+                    kitchenFilter === NO_SUB
+                      ? "bg-red-600 text-white border-red-600"
+                      : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                  }`}
+                >
+                  Tanpa dapur · {unassignedPortions} porsi
+                </button>
+              )}
+              {kitchenFilter !== null && (
+                <span className="text-xs text-gray-400">
+                  Urutan rute dikunci selama filter aktif
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Summary */}
           <div className="flex gap-4 mb-4">
             <div className="bg-white border border-gray-100 rounded-lg px-4 py-3 text-sm">
@@ -1175,6 +1262,10 @@ export default function DeliveriesClient() {
               No deliveries for this date. Click Refresh to load from active
               orders.
             </div>
+          ) : visibleRows.length === 0 ? (
+            <div className="text-gray-400 text-sm text-center py-12">
+              Tidak ada pengiriman untuk dapur ini di tanggal ini.
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(["lunch", "dinner"] as const).map((meal) => (
@@ -1196,9 +1287,13 @@ export default function DeliveriesClient() {
                         </tr>
                       </thead>
                       {([1, 2] as const).map((route) => {
-                        const routeRows = getRouteMealRows(rows, route, meal);
+                        const routeRows = getRouteMealRows(
+                          visibleRows,
+                          route,
+                          meal,
+                        );
                         if (!routeRows.length) return null;
-                        const sortedIds = getRouteSortedIds(rows, route);
+                        const sortedIds = getRouteSortedIds(visibleRows, route);
                         return (
                           <Fragment key={route}>
                             <tbody>
@@ -1219,6 +1314,7 @@ export default function DeliveriesClient() {
                               <SortableContext
                                 items={sortedIds}
                                 strategy={verticalListSortingStrategy}
+                                disabled={kitchenFilter !== null}
                               >
                                 <tbody className="divide-y divide-gray-50">
                                   {routeRows.map((r, i) => (
@@ -1248,8 +1344,7 @@ export default function DeliveriesClient() {
                                       uploadState={
                                         uploadStates[
                                           `${r.customer_id}-${r.meal_type}`
-                                        ] ??
-                                        (hasProof(r) ? "done" : "idle")
+                                        ] ?? (hasProof(r) ? "done" : "idle")
                                       }
                                       onUploadProof={(file) =>
                                         handleUploadProof(
@@ -1268,7 +1363,7 @@ export default function DeliveriesClient() {
                         );
                       })}
                       {/* Unassigned rows (no delivery_route) */}
-                      {getUnassignedMealRows(rows, meal).length > 0 && (
+                      {getUnassignedMealRows(visibleRows, meal).length > 0 && (
                         <>
                           <tbody>
                             <tr className="bg-gray-50 border-t border-gray-100">
@@ -1281,170 +1376,175 @@ export default function DeliveriesClient() {
                             </tr>
                           </tbody>
                           <tbody className="divide-y divide-gray-50">
-                            {getUnassignedMealRows(rows, meal).map((r) => (
-                              <tr
-                                key={r.customer_id}
-                                className={r.skip ? "opacity-40" : ""}
-                              >
-                                <td className="px-2 py-2 w-6" />
-                                <td className="px-2 py-2 w-5" />
-                                <td className="px-2 py-2">
-                                  <Checkbox
-                                    checked={!r.skip}
-                                    onCheckedChange={(checked) =>
-                                      updateRow(
-                                        r.customer_id,
-                                        meal,
-                                        "skip",
-                                        !checked,
-                                      )
-                                    }
-                                  />
-                                </td>
-                                <td className="px-2 py-2">
-                                  <div className="font-medium text-gray-900 text-sm flex items-center gap-1">
-                                    <span>
-                                      {r.customers?.name ??
-                                        r.customer_id.slice(0, 8)}
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      aria-label="Delete delivery"
-                                      onClick={() => setDeleteTarget(r)}
-                                      className="ml-auto text-gray-300 hover:text-red-600 h-auto w-auto p-0.5 text-xs"
-                                    >
-                                      ✕
-                                    </Button>
-                                  </div>
-                                  <div className="flex items-center gap-1 text-xs text-gray-400">
-                                    <span>
-                                      {r.address_slot === 2
-                                        ? `${r.customers?.area_2 ?? ""}${r.customers?.sub_area_2 ? ` · ${r.customers.sub_area_2}` : ""}`
-                                        : `${r.customers?.area ?? ""}${r.customers?.sub_area ? ` · ${r.customers.sub_area}` : ""}`}
-                                    </span>
-                                    {r.customers?.address_2 && (
+                            {getUnassignedMealRows(visibleRows, meal).map(
+                              (r) => (
+                                <tr
+                                  key={r.customer_id}
+                                  className={r.skip ? "opacity-40" : ""}
+                                >
+                                  <td className="px-2 py-2 w-6" />
+                                  <td className="px-2 py-2 w-5" />
+                                  <td className="px-2 py-2">
+                                    <Checkbox
+                                      checked={!r.skip}
+                                      onCheckedChange={(checked) =>
+                                        updateRow(
+                                          r.customer_id,
+                                          meal,
+                                          "skip",
+                                          !checked,
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <div className="font-medium text-gray-900 text-sm flex items-center gap-1">
+                                      <span>
+                                        {r.customers?.name ??
+                                          r.customer_id.slice(0, 8)}
+                                      </span>
                                       <Button
                                         type="button"
                                         variant="ghost"
+                                        aria-label="Delete delivery"
+                                        onClick={() => setDeleteTarget(r)}
+                                        className="ml-auto text-gray-300 hover:text-red-600 h-auto w-auto p-0.5 text-xs"
+                                      >
+                                        ✕
+                                      </Button>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-xs text-gray-400">
+                                      <span>
+                                        {r.address_slot === 2
+                                          ? `${r.customers?.area_2 ?? ""}${r.customers?.sub_area_2 ? ` · ${r.customers.sub_area_2}` : ""}`
+                                          : `${r.customers?.area ?? ""}${r.customers?.sub_area ? ` · ${r.customers.sub_area}` : ""}`}
+                                      </span>
+                                      {r.customers?.address_2 && (
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          onClick={() =>
+                                            updateRow(
+                                              r.customer_id,
+                                              meal,
+                                              "address_slot",
+                                              r.address_slot === 2 ? 1 : 2,
+                                            )
+                                          }
+                                          className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded h-auto py-0"
+                                        >
+                                          {r.address_slot === 2 ? "A2" : "A1"}
+                                        </Button>
+                                      )}
+                                    </div>
+                                    <Select
+                                      value={
+                                        r.customers?.delivery_route?.toString() ??
+                                        ""
+                                      }
+                                      onValueChange={(v) =>
+                                        assignRoute.mutate({
+                                          customerId: r.customer_id,
+                                          route: v ? Number(v) : null,
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="mt-1 h-auto w-full rounded border-orange-200 bg-orange-50 px-1 py-0.5 text-[10px] text-orange-700">
+                                        <SelectValue placeholder="Assign route..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {Object.entries(ROUTE_LABELS).map(
+                                          ([k, label]) => (
+                                            <SelectItem key={k} value={k}>
+                                              {label}
+                                            </SelectItem>
+                                          ),
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <div className="flex items-center gap-1">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
                                         onClick={() =>
                                           updateRow(
                                             r.customer_id,
                                             meal,
-                                            "address_slot",
-                                            r.address_slot === 2 ? 1 : 2,
+                                            "portions",
+                                            Math.max(1, r.portions - 1),
                                           )
                                         }
-                                        className="ml-1 text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 px-1 rounded h-auto py-0"
+                                        className="w-5 h-5 rounded border text-xs p-0"
                                       >
-                                        {r.address_slot === 2 ? "A2" : "A1"}
+                                        -
                                       </Button>
-                                    )}
-                                  </div>
-                                  <Select
-                                    value={
-                                      r.customers?.delivery_route?.toString() ??
-                                      ""
-                                    }
-                                    onValueChange={(v) =>
-                                      assignRoute.mutate({
-                                        customerId: r.customer_id,
-                                        route: v ? Number(v) : null,
-                                      })
-                                    }
-                                  >
-                                    <SelectTrigger className="mt-1 h-auto w-full rounded border-orange-200 bg-orange-50 px-1 py-0.5 text-[10px] text-orange-700">
-                                      <SelectValue placeholder="Assign route..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {Object.entries(ROUTE_LABELS).map(
-                                        ([k, label]) => (
-                                          <SelectItem key={k} value={k}>
-                                            {label}
+                                      <span className="w-6 text-center text-sm">
+                                        {r.portions}
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() =>
+                                          updateRow(
+                                            r.customer_id,
+                                            meal,
+                                            "portions",
+                                            r.portions + 1,
+                                          )
+                                        }
+                                        className="w-5 h-5 rounded border text-xs p-0"
+                                      >
+                                        +
+                                      </Button>
+                                    </div>
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <Select
+                                      value={r.subcontractor_id ?? NO_SUB}
+                                      onValueChange={(v) =>
+                                        updateRow(
+                                          r.customer_id,
+                                          meal,
+                                          "subcontractor_id",
+                                          v === NO_SUB ? null : v,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="h-auto w-12 rounded border-gray-200 px-1 py-0.5 text-xs sm:w-auto">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={NO_SUB}>
+                                          —
+                                        </SelectItem>
+                                        {activeSubs.map((s) => (
+                                          <SelectItem key={s.id} value={s.id}>
+                                            {s.name}
                                           </SelectItem>
-                                        ),
-                                      )}
-                                    </SelectContent>
-                                  </Select>
-                                </td>
-                                <td className="px-2 py-2">
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      onClick={() =>
-                                        updateRow(
-                                          r.customer_id,
-                                          meal,
-                                          "portions",
-                                          Math.max(1, r.portions - 1),
-                                        )
-                                      }
-                                      className="w-5 h-5 rounded border text-xs p-0"
-                                    >
-                                      -
-                                    </Button>
-                                    <span className="w-6 text-center text-sm">
-                                      {r.portions}
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      onClick={() =>
-                                        updateRow(
-                                          r.customer_id,
-                                          meal,
-                                          "portions",
-                                          r.portions + 1,
-                                        )
-                                      }
-                                      className="w-5 h-5 rounded border text-xs p-0"
-                                    >
-                                      +
-                                    </Button>
-                                  </div>
-                                </td>
-                                <td className="px-2 py-2">
-                                  <Select
-                                    value={r.subcontractor_id ?? NO_SUB}
-                                    onValueChange={(v) =>
-                                      updateRow(
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </td>
+                                  <UploadButton
+                                    uploadState={
+                                      uploadStates[
+                                        `${r.customer_id}-${meal}`
+                                      ] ?? (hasProof(r) ? "done" : "idle")
+                                    }
+                                    onUpload={(file) =>
+                                      handleUploadProof(
                                         r.customer_id,
                                         meal,
-                                        "subcontractor_id",
-                                        v === NO_SUB ? null : v,
+                                        r.subcontractor_id,
+                                        file,
                                       )
                                     }
-                                  >
-                                    <SelectTrigger className="h-auto w-12 rounded border-gray-200 px-1 py-0.5 text-xs sm:w-auto">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value={NO_SUB}>—</SelectItem>
-                                      {activeSubs.map((s) => (
-                                        <SelectItem key={s.id} value={s.id}>
-                                          {s.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </td>
-                                <UploadButton
-                                  uploadState={
-                                    uploadStates[`${r.customer_id}-${meal}`] ??
-                                    (hasProof(r) ? "done" : "idle")
-                                  }
-                                  onUpload={(file) =>
-                                    handleUploadProof(
-                                      r.customer_id,
-                                      meal,
-                                      r.subcontractor_id,
-                                      file,
-                                    )
-                                  }
-                                />
-                              </tr>
-                            ))}
+                                  />
+                                </tr>
+                              ),
+                            )}
                           </tbody>
                         </>
                       )}
