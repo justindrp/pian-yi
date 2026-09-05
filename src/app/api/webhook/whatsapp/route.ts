@@ -68,7 +68,12 @@ import { deliveryWindow, loadKitchenWindows } from "@/lib/deliveries/windows";
 import { formatHolidayDate } from "@/lib/holidays/id";
 import { sendInvoice } from "@/lib/invoices/send";
 import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
-import { describeMenuWeeks, jakartaDateString } from "@/lib/menu/week";
+import {
+  describeMenuWeeks,
+  formatMenuWeekRange,
+  jakartaDateString,
+  menuSentToolMessage,
+} from "@/lib/menu/week";
 import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
   type DeleteDeliveriesInput,
@@ -3570,6 +3575,14 @@ async function handleToolUse(
     );
     for (const sub of menuSubs) {
       const menuUrl = sub.menu_image_url as string;
+      // The week goes on the picture itself, so the customer reads it off the
+      // caption no matter what the model types underneath. Per kitchen, not
+      // from describeMenuWeeks: that collapses to "unknown" the moment two
+      // kitchens hold different batches, and each caption is only ever a claim
+      // about its own image.
+      const subWeek = sub.menu_week_start
+        ? formatMenuWeekRange(sub.menu_week_start)
+        : null;
       const conversationId = await saveMessage({
         customerId,
         role: "assistant",
@@ -3580,7 +3593,12 @@ async function handleToolUse(
       const whatsappMessageId = await sendImageByUrl(
         phone,
         menuUrl,
-        sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur",
+        [
+          sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur",
+          subWeek,
+        ]
+          .filter(Boolean)
+          .join(" — "),
       );
       await updateMessageReceipt({
         conversationId,
@@ -3598,9 +3616,17 @@ async function handleToolUse(
           "Tidak ada gambar menu yang terkirim — belum ada dapur aktif yang punya menu. Jangan bilang menunya sudah dikirim.",
       };
     }
+    // The image goes out before the model writes the text that accompanies it,
+    // so this result is the one fresh fact the follow-up turn has about what the
+    // customer is now looking at. A bare count is week-blind: on 2026-09-05 the
+    // bot sent Batch 53 (7–12 September) to Evelyn Sunrise and then, in the same
+    // turn, told her that week's menu "belum rilis" and that the picture covered
+    // 14–19 September. Naming the week here is what makes that contradiction
+    // cost the model something.
+    const sentWeek = describeMenuWeeks(menuSubs.map((s) => s.menu_week_start));
     return {
       ok: true,
-      message: `${menuSubs.length} gambar menu sudah dikirim ke customer.`,
+      message: menuSentToolMessage(menuSubs.length, sentWeek.weekStart),
     };
   } else if (tool.name === "send_delivery_proof") {
     // The photo lives in a private bucket and is linked to the customer by

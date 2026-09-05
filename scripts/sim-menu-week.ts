@@ -19,7 +19,11 @@ import {
 } from "../src/lib/claude/language";
 import { buildSystemPrompt } from "../src/lib/claude/prompts/system";
 import { sanitizeReply } from "../src/lib/claude/sanitize-reply";
-import { describeMenuWeeks, jakartaDateString } from "../src/lib/menu/week";
+import {
+  describeMenuWeeks,
+  jakartaDateString,
+  menuSentToolMessage,
+} from "../src/lib/menu/week";
 
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
@@ -150,7 +154,7 @@ async function main() {
               {
                 type: "tool_result" as const,
                 tool_use_id: toolUse.id,
-                content: "done",
+                content: menuSentToolMessage(1, menuWeek.weekStart),
               },
             ],
           },

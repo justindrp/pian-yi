@@ -152,3 +152,21 @@ export function describeMenuWeeks(
   if (distinct.size !== 1) return { relation: "unknown", weekStart: null };
   return describeMenuWeek([...distinct][0], today);
 }
+
+/**
+ * What `send_menu_image` reports back to the model.
+ *
+ * The image goes out before the model writes the text beside it, so this string
+ * is the only fresh fact the follow-up turn has about what the customer is now
+ * looking at. It lives here because the simulator has to send the same one: it
+ * used to pass "done", which made it blind to the very bug it exists to catch.
+ */
+export function menuSentToolMessage(
+  count: number,
+  weekStart: string | null,
+): string {
+  const sent = `${count} gambar menu sudah dikirim ke customer.`;
+  return weekStart
+    ? `${sent} Gambar itu berisi menu ${formatMenuWeekRange(weekStart)}. Kalau kamu menyebut minggunya, sebut span itu persis — jangan sebut minggu lain, dan jangan bilang menu minggu itu belum rilis.`
+    : `${sent} Minggu yang dicakup tidak diketahui — jangan sebut minggu apa pun.`;
+}

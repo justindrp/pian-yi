@@ -314,12 +314,26 @@ Untuk tanggal yang **belum** terkunci: sebutkan tanggal serta meal-nya persis se
     const lastDay = params.menuWeek.weekStart
       ? formatHolidayDate(menuWeekLastDay(params.menuWeek.weekStart))
       : null;
-    const beyondRule = `The menu we hold runs to ${lastDay} inclusive, and only dates AFTER that are unpublished: ${beyond} onwards, "minggu depannya lagi", "dua minggu lagi". Say that plainly, name the unpublished week by its own span, and do not send this image as an answer to it.
+    // The two spans in this paragraph do opposite jobs, and rendering them in
+    // the same shape let the model swap them: on 2026-09-05 it sent the image
+    // for 7-12 September and then told the customer that week "belum rilis" and
+    // that the picture covered 14-19 September. `beyond` is only ever a name for
+    // what we do NOT have, so it is spelled out as such here.
+    const beyondRule = `${week} is the week ON the image — the one you are holding. ${beyond} is only a name for what we do NOT have; no image you can send covers it, so never present it as the week you just sent, and never say ${week} is "belum rilis", "belum keluar" or "belum ada". If an earlier message in this conversation named a different week, it was written on a different day: only the span given here is current.
+
+The menu we hold runs to ${lastDay} inclusive, and only dates AFTER that are unpublished: ${beyond} onwards, "minggu depannya lagi", "dua minggu lagi". Say that plainly, name the unpublished week by its own span, and do not send this image as an answer to it.
 
 Judge every menu question by the dates it covers, never by the word it uses. A question about a month or a date range that reaches into ${week} is already answered in part by this image: say which of those dates you do have, offer to send it, and call unpublished only the dates past ${lastDay}. Never tell a customer a month's menu is not out when the image on file covers days inside that month.`;
     switch (params.menuWeek.relation) {
       case "next":
-        return `The menu image on file is for NEXT week, covering ${week} — next week's menu is already out. If a customer asks for next week's menu, send it with send_menu_image. If they ask what today's or tomorrow's menu is, this image does not answer that: say the current week's menu is the one already sent earlier and offer next week's instead. Never describe this image as the current week's. When you name the week, always give the full span (${week}) — never only its first day, which reads as if the menu stops there. ${beyondRule}`;
+        // "say the current week's menu is the one already sent earlier" used to
+        // stand alone here, and it implied a second image the bot could reach
+        // for. Asked for next week's menu on 2026-09-05, the model answered
+        // that ${week} "belum rilis" and that what it held was "Senin 31
+        // Agustus – Sabtu 5 September" — a span the prompt never gave it, which
+        // it worked out from the current date. The inventory is stated as a
+        // count now, and the only two weeks it may name are the two named here.
+        return `There is exactly ONE menu image on file and it covers ${week} — next week's menu is already out, and this is it. No other image exists: none for the current week, none for ${beyond}. Never name a week that is not ${week} or ${beyond}, and never state a span you worked out yourself from today's date. If a customer asks for next week's menu, send it with send_menu_image. If they ask what today's or tomorrow's menu is, this image does not answer that — the current week's menu went out earlier and is not on file to resend, so say that and offer ${week} instead. Never describe this image as the current week's. When you name the week, always give the full span (${week}) — never only its first day, which reads as if the menu stops there. ${beyondRule}`;
       case "current":
         return `The menu image on file is for the CURRENT week, covering ${week}. Next week's is published every Friday and is NOT out yet. If a customer asks about next week's menu, say it isn't up yet and that it goes live Friday — you may still send this image, but only if you say plainly it is minggu ini. Never pass the current week's off as next week's. When you name the week, always give the full span (${week}) — never only its first day, which reads as if the menu stops there. ${beyondRule}`;
       case "past":

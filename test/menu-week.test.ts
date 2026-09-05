@@ -3,6 +3,7 @@ import {
   describeMenuWeek,
   describeMenuWeeks,
   formatMenuWeekRange,
+  menuSentToolMessage,
   menuWeekLastDay,
   mondayOf,
   weekAfter,
@@ -103,6 +104,26 @@ describe("describeMenuWeeks", () => {
       "unknown",
     );
     expect(describeMenuWeeks([], "2026-08-15").relation).toBe("unknown");
+  });
+});
+
+describe("menuSentToolMessage", () => {
+  // Evelyn Sunrise was sent Batch 53 (7-12 September) on 2026-09-05 and told in
+  // the same turn that that week "belum rilis" and that the picture covered
+  // 14-19 September. The result the tool returned was "1 gambar menu sudah
+  // dikirim ke customer" — a count and nothing else, so the follow-up turn had
+  // no fresh fact to contradict.
+  test("names the week the image covers", () => {
+    const msg = menuSentToolMessage(1, "2026-09-07");
+    expect(msg).toContain("Senin 7 – Sabtu 12 September 2026");
+    expect(msg).toContain("belum rilis");
+  });
+
+  test("names no week when the kitchens disagree or none is stored", () => {
+    const msg = menuSentToolMessage(2, null);
+    expect(msg).toContain("2 gambar menu");
+    expect(msg).toContain("tidak diketahui");
+    expect(msg).not.toMatch(/Senin \d/);
   });
 });
 
