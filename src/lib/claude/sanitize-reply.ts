@@ -243,6 +243,35 @@ function stripMetaBrackets(text: string): string {
 }
 
 /**
+ * Collapses a reply that is the model's candidate openings rather than its
+ * answer.
+ *
+ * On 2026-09-05 Clara Alicia asked whether her food had arrived and got one
+ * message containing nine different ways of saying "hold on, let me check":
+ * "kak, itu pertanyaan yang sama dengan tadi ya. saya cek dulu bukti
+ * pengirimannya sebentar.." / "sebentar kak, saya cek dulu ya." / "Halo kak,
+ * maaf ya" / "saya cek dulu ya kak." / ... — 181 output tokens of the model
+ * shopping for a phrasing and shipping the whole shortlist. No existing guard
+ * saw it: every line is Indonesian, addressed to her, and no two lines are the
+ * same string, so neither `isReasoning` nor the duplicate pass below fires.
+ *
+ * The tell is the shape, not the wording. A real reply carries something —
+ * a number, a date, a price, a question — in at least one of its paragraphs.
+ * A shortlist of openings carries nothing in any of them. So: four or more
+ * paragraphs, every one of them short and free of digits and question marks,
+ * means the model never chose, and the first one is the reply.
+ */
+function isDraftOpening(paragraph: string): boolean {
+  return paragraph.length <= 120 && !/[\d?]/.test(paragraph);
+}
+
+function stripDraftAlternatives(paragraphs: string[]): string[] {
+  if (paragraphs.length < 4 || !paragraphs.every(isDraftOpening))
+    return paragraphs;
+  return paragraphs.slice(0, 1);
+}
+
+/**
  * WhatsApp bold is `*one asterisk*`. Markdown `**two**` renders literally, and
  * the model mixes the two within a single conversation — the 2026-08-16 pricing
  * run sent `*Rp 420.000*` and `**Rp 1.300.000**` two replies apart.
@@ -252,11 +281,13 @@ function normalizeBold(text: string): string {
 }
 
 export function sanitizeReply(text: string): string {
-  const paragraphs = stripReasoning(
-    stripMetaBrackets(stripStageDirections(stripRetraction(unquote(text))))
-      .split(/\n{2,}/)
-      .map((p) => unquote(p))
-      .filter((p) => p.length > 0),
+  const paragraphs = stripDraftAlternatives(
+    stripReasoning(
+      stripMetaBrackets(stripStageDirections(stripRetraction(unquote(text))))
+        .split(/\n{2,}/)
+        .map((p) => unquote(p))
+        .filter((p) => p.length > 0),
+    ),
   );
 
   const kept: string[] = [];

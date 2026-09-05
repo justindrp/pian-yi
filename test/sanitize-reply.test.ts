@@ -262,3 +262,49 @@ describe("sanitizeReply — deliberation behind a discourse adverb", () => {
     expect(sanitizeReply(t)).toBe(t);
   });
 });
+
+describe("sanitizeReply — a shortlist of openings instead of one reply", () => {
+  // Verbatim from Clara Alicia's thread on 2026-09-05, one outbound message.
+  const shortlist = [
+    "kak, itu pertanyaan yang sama dengan tadi ya. saya cek dulu bukti pengirimannya sebentar..",
+    "sebentar kak, saya cek dulu ya.",
+    "Halo kak, maaf ya 🙏",
+    "saya cek dulu ya kak.",
+    "Baik kak, mohon tunggu sebentar ya, saya cek bukti kirimnya dulu.",
+    "Halo kak, saya cek bukti kirimnya dulu ya kak.",
+    "Oke kak, saya cari dulu bukti fotonya ya.",
+    "Halo kak, saya cari bukti kirimnya sebentar ya.",
+    "Baik kak, nanti saya kabari begitu fotonya ketemu ya.",
+  ].join("\n\n");
+
+  it("keeps only the first of nine drafted openings", () => {
+    expect(sanitizeReply(shortlist)).toBe(
+      "kak, itu pertanyaan yang sama dengan tadi ya. saya cek dulu bukti pengirimannya sebentar..",
+    );
+  });
+
+  it("leaves a three-paragraph reply alone", () => {
+    const t = "Halo kak 😊\n\nMakanan sudah dikirim ya.\n\nSelamat menikmati!";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+
+  it("leaves a long reply alone when a paragraph carries a number", () => {
+    const t = [
+      "Baik kak 😊",
+      "Paket 10 porsi ya kak.",
+      "Totalnya Rp 280.000.",
+      "Terima kasih ya kak!",
+    ].join("\n\n");
+    expect(sanitizeReply(t)).toBe(t);
+  });
+
+  it("leaves a long reply alone when a paragraph asks a question", () => {
+    const t = [
+      "Halo kak 😊",
+      "Terima kasih ya kak.",
+      "Mau dikirim ke alamat yang sama?",
+      "Nanti aku kabari lagi ya kak.",
+    ].join("\n\n");
+    expect(sanitizeReply(t)).toBe(t);
+  });
+});
