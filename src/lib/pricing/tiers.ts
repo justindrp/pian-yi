@@ -67,3 +67,57 @@ export function priceForPortions(
   );
   return (best ?? fallback)?.price_per_portion ?? null;
 }
+
+/**
+ * Every kitchen's ladder in one read, keyed by kitchen id.
+ *
+ * `tiersForKitchen()` is one query per kitchen, which is right when an order is
+ * being priced and wrong when the prompt has to publish all of them: the price
+ * list the bot quotes from is now one block per active kitchen, and building it
+ * a query at a time runs on every inbound message.
+ *
+ * A kitchen with no rows of its own maps to the house ladder, exactly as the
+ * single-kitchen read does. The house ladder comes back beside them because a
+ * prompt built for a customer with no kitchen resolved still has to publish a
+ * price list, and it is the one we would sell them at.
+ */
+export async function laddersForKitchens(
+  db: Db,
+  subcontractorIds: readonly string[],
+): Promise<{ house: PriceTier[]; byKitchen: Map<string, PriceTier[]> }> {
+  const { data: house } = await db
+    .from("pricing_tiers")
+    .select("portions, price_per_portion")
+    .is("subcontractor_id", null)
+    .order("portions", { ascending: true });
+
+  const byKitchen = new Map<string, PriceTier[]>();
+  if (subcontractorIds.length === 0) return { house: house ?? [], byKitchen };
+
+  const { data: own } = await db
+    .from("pricing_tiers")
+    .select("subcontractor_id, portions, price_per_portion")
+    .in("subcontractor_id", [...subcontractorIds])
+    .order("portions", { ascending: true });
+
+  for (const id of subcontractorIds) {
+    const mine = (own ?? [])
+      .filter((t) => t.subcontractor_id === id)
+      .map((t) => ({
+        portions: t.portions,
+        price_per_portion: t.price_per_portion,
+      }));
+    byKitchen.set(id, mine.length > 0 ? mine : (house ?? []));
+  }
+  return { house: house ?? [], byKitchen };
+}
+
+/** Two ladders quote the same price for every size the other lists. */
+export function sameLadder(a: PriceTier[], b: PriceTier[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (t, i) =>
+      t.portions === b[i].portions &&
+      t.price_per_portion === b[i].price_per_portion,
+  );
+}

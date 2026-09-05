@@ -90,4 +90,42 @@ describe("allocateDraws", () => {
       "2026-09-01 dinner",
     ]);
   });
+
+  test("a kitchen's delivery is never charged to another kitchen's package", () => {
+    const rows = allocateDraws(
+      [slot("2026-09-01", "lunch"), slot("2026-09-02", "lunch")],
+      [
+        { ...cand("thenie", 5, "2026-07-01"), subcontractor_id: "k-thenie" },
+        { ...cand("homey", 5, "2026-09-01"), subcontractor_id: "k-homey" },
+      ],
+      "homey",
+      "k-homey",
+    );
+    expect(rows.map((r) => r.order_id)).toEqual(["homey", "homey"]);
+  });
+
+  test("an order with no kitchen recorded still takes the draw", () => {
+    const rows = allocateDraws(
+      [slot("2026-09-01", "lunch")],
+      [
+        { ...cand("imported", 5, "2026-06-01"), subcontractor_id: null },
+        { ...cand("new", 5, "2026-09-01"), subcontractor_id: "k-homey" },
+      ],
+      "new",
+      "k-homey",
+    );
+    expect(rows[0].order_id).toBe("imported");
+  });
+
+  test("with no kitchen given, FIFO runs across every package as before", () => {
+    const rows = allocateDraws(
+      [slot("2026-09-01", "lunch")],
+      [
+        { ...cand("thenie", 5, "2026-07-01"), subcontractor_id: "k-thenie" },
+        { ...cand("homey", 5, "2026-09-01"), subcontractor_id: "k-homey" },
+      ],
+      "homey",
+    );
+    expect(rows[0].order_id).toBe("thenie");
+  });
 });

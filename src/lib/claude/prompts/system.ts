@@ -7,28 +7,18 @@ import {
   weekAfter,
 } from "@/lib/menu/week";
 import { isLocked } from "@/lib/orders/delivery-state";
+import { priceListLines } from "@/lib/pricing/lines";
+import { laddersForKitchens, sameLadder } from "@/lib/pricing/tiers";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
+import { daysLabel } from "@/lib/subcontractors/days";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deliveryCalendar,
   earliestDeliveryDate,
   jakartaTimeString,
 } from "@/lib/time/jakarta";
 
-const PRICE_LIST_LINES = [
-  "- 5 hari siang/malam saja: Rp 145.000 (Rp 29.000/meal)",
-  "- 5 hari siang + malam: Rp 280.000 (Rp 28.000/meal)",
-  "- 6 hari siang/malam saja: Rp 174.000 (Rp 29.000/meal)",
-  "- 6 hari siang + malam: Rp 336.000 (Rp 28.000/meal)",
-  "- 20 hari siang/malam saja: Rp 540.000 (Rp 27.000/meal)",
-  "- 20 hari siang + malam: Rp 1.040.000 (Rp 26.000/meal)",
-  "- 24 hari siang/malam saja: Rp 648.000 (Rp 27.000/meal)",
-  "- 24 hari siang + malam: Rp 1.248.000 (Rp 26.000/meal)",
-  "- 60 hari siang/malam saja: Rp 1.560.000 (Rp 26.000/meal)",
-  "- 60 hari siang + malam: Rp 3.000.000 (Rp 25.000/meal)",
-  "- 72 hari siang/malam saja: Rp 1.872.000 (Rp 26.000/meal)",
-  "- 72 hari siang + malam: Rp 3.600.000 (Rp 25.000/meal)",
-].join("\n");
 
 /**
  * The addresses a kitchen has ruled on, written for the model.
@@ -378,6 +368,68 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
       ? ""
       : `  - ${sameMenuKitchens.map((d) => d.nickname).join(", ")} serve${sameMenuKitchens.length === 1 ? "s" : ""} the same menu for lunch and dinner — asked whether siang and malam differ for ${sameMenuKitchens.length === 1 ? "that dapur" : "one of those"}, answer: sama (same menu for both meals).\n`;
 
+  /**
+   * The ladders, and the days, of the kitchens this customer can buy from.
+   *
+   * The price list was twelve hardcoded lines, true of one ladder, at a time
+   * when one kitchen cooked everything. `pricing_tiers` is keyed by kitchen
+   * (migration 098) and the kitchens do not cost the same: Homey costs us
+   * Rp 33.000 a portion against Thenie's Rp 21.000, so quoting Homey's food off
+   * the house ladder sells it at a loss on every tier, and nothing in the order
+   * would look wrong. When every active kitchen sells at the same prices the
+   * block reads exactly as it always did; only when they diverge does the
+   * customer see one list per dapur.
+   *
+   * `delivery_days` is per kitchen for the same reason — Homey cooks
+   * Senin–Jumat — so "Senin–Sabtu" is no longer a fact about the business.
+   */
+  const kitchenDb = createAdminClient();
+  const kitchenIds = params.dapurOptions.map((d) => d.id);
+  const [{ house, byKitchen }, { data: kitchenDayRows }] = await Promise.all([
+    laddersForKitchens(kitchenDb, kitchenIds),
+    kitchenIds.length > 0
+      ? kitchenDb
+          .from("subcontractors")
+          .select("id, delivery_days")
+          .in("id", kitchenIds)
+      : Promise.resolve({
+          data: [] as { id: string; delivery_days: number[] | null }[],
+        }),
+  ]);
+  const daysById = new Map(
+    (kitchenDayRows ?? []).map((k) => [k.id, k.delivery_days]),
+  );
+  const kitchenLadders = params.dapurOptions.map((d) => ({
+    nickname: d.nickname,
+    days: daysLabel(daysById.get(d.id)),
+    tiers: byKitchen.get(d.id) ?? house,
+  }));
+  const oneLadder =
+    kitchenLadders.length === 0 ||
+    kitchenLadders.every((k) => sameLadder(k.tiers, kitchenLadders[0].tiers));
+  const priceListBlock = oneLadder
+    ? `Price list:\n${priceListLines(kitchenLadders[0]?.tiers ?? house)}`
+    : `Price list — **each dapur has its own**. Quote the ladder of the dapur the customer is buying from and never mix two of them in one total. If they have not chosen a dapur yet, ask which one before you give a price, or name the dapur beside every figure so they know what they are comparing. Never quote the cheapest dapur for food another one cooks.\n\n${kitchenLadders
+        .map(
+          (k) =>
+            `**${k.nickname}**${k.days ? ` — kirim ${k.days}` : ""}\n${priceListLines(k.tiers)}`,
+        )
+        .join("\n\n")}`;
+  const dayLabels = [...new Set(kitchenLadders.map((k) => k.days))].filter(
+    Boolean,
+  );
+  const deliveryDaysLine =
+    dayLabels.length === 1
+      ? `Dapur kami delivers ${dayLabels[0]}.`
+      : dayLabels.length === 0
+        ? "Dapur kami delivers Senin\u2013Sabtu."
+        : `**Delivery days are per dapur** — ${kitchenLadders
+            .filter((k) => k.days)
+            .map((k) => `${k.nickname}: ${k.days}`)
+            .join(
+              ", ",
+            )}. Never name a date a dapur does not cook on, and never move a customer to a dapur that does not work the days they asked for.`;
+
   const mKitchens = params.dapurOptions.filter((d) => d.offersM);
   const mExtra = mKitchens.length > 0 ? await sizeMSurcharge() : 0;
   const offersM = mKitchens.length > 0 && mExtra > 0;
@@ -418,11 +470,10 @@ Give one exact total, the same way you would for anyone else. Everything else �
     : `## Current price list (Paket Personal${offersM ? " — harga ukuran S" : ", size S only"})
 Current active kitchen availability:
 ${sizeSection}
-- Dapur kami delivers Senin–Sabtu. Minggu is closed, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date falls Senin–Sabtu and is not a closure. **The days are free; the total is not.** Multiply the days out first, then check that total against the size rule (5, 6, or a multiple of either) — a short run often lands under the 5-porsi floor, and that total is not sellable no matter how reasonable the days are. Rachel asked for 4 hari, 1 porsi siang, on 2026-08-31 and was quoted "4 porsi × Rp 29.000 = Rp 116.000", a package that does not exist. Offer the nearest sellable totals instead and say what the extra porsi buys: "4 hari itu 4 porsi kak, sedangkan paket minimal 5 porsi (Rp 145.000) — 1 porsi sisanya bisa dipakai hari lain." Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a Minggu or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
+- ${deliveryDaysLine} Minggu is closed, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date falls Senin–Sabtu and is not a closure. **The days are free; the total is not.** Multiply the days out first, then check that total against the size rule (5, 6, or a multiple of either) — a short run often lands under the 5-porsi floor, and that total is not sellable no matter how reasonable the days are. Rachel asked for 4 hari, 1 porsi siang, on 2026-08-31 and was quoted "4 porsi × Rp 29.000 = Rp 116.000", a package that does not exist. Offer the nearest sellable totals instead and say what the extra porsi buys: "4 hari itu 4 porsi kak, sedangkan paket minimal 5 porsi (Rp 145.000) — 1 porsi sisanya bisa dipakai hari lain." Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a Minggu or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
 - If customers ask about grams or size: S is the standard size${offersM ? ", and M is the larger one — one extra side dish, not a bigger scoop of rice" : ", and that is the only size currently available"}.
 
-Price list:
-${PRICE_LIST_LINES}
+${priceListBlock}
 
 We sell **one product**: a paket porsi (a quota of portions). Every delivery draws
 from that quota. Never ask the customer to choose between "jadwal tetap" and

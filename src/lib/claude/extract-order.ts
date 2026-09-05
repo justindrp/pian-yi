@@ -546,6 +546,7 @@ async function customerMessages(
 async function packageSizeMatchingPayment(
   customerId: string,
   nasiMerah: boolean,
+  subcontractorId: string | null,
 ): Promise<number | null> {
   const messages = await customerMessages(customerId, 10);
   const amounts = messages
@@ -564,11 +565,14 @@ async function packageSizeMatchingPayment(
   }
 
   const db = createAdminClient();
-  const tiers = await tiersForKitchen(db, null);
+  const tiers = await tiersForKitchen(db, subcontractorId);
   for (const tier of tiers) {
     const { total_price } = await getExtractedOrderPricing(
       tier.portions,
       nasiMerah,
+      null,
+      "s",
+      subcontractorId,
     );
     if (total_price === paid) return tier.portions;
   }
@@ -634,10 +638,16 @@ export const NASI_MERAH_SURCHARGE = 5000;
  * model got wrong or dropped: DeepSeek omitted package_size entirely on two
  * 2026-08-19 replays (NOT NULL violation, no order at all) and returned 3 on a
  * third, for a customer who had agreed to 5.
+ *
+ * Per kitchen, like every other read of the ladder: a kitchen is free to
+ * publish a different smallest package, and flooring an order at another
+ * kitchen's minimum sells a size this one does not cook.
  */
-export async function minPackageSize(): Promise<number> {
+export async function minPackageSize(
+  subcontractorId: string | null = null,
+): Promise<number> {
   const db = createAdminClient();
-  const tiers = await tiersForKitchen(db, null);
+  const tiers = await tiersForKitchen(db, subcontractorId);
   return tiers[0]?.portions ?? 5;
 }
 
@@ -696,6 +706,7 @@ export async function getExtractedOrderPricing(
   nasiMerah = false,
   customerId?: string | null,
   portionSize: OrderSize = "s",
+  subcontractorId: string | null = null,
 ): Promise<ExtractedOrderPricing> {
   // M is folded into price_per_portion rather than carried beside it, so the
   // rate an order locks at creation is the rate the customer agreed to and
@@ -717,11 +728,13 @@ export async function getExtractedOrderPricing(
     };
   }
 
-  // The house ladder, deliberately: this function does not know which kitchen
-  // will cook the order yet. Once the caller can name one, pass it here — every
-  // kitchen quoted off the house ladder is priced at Thenie's cost base.
+  // The kitchen's own ladder, and the house one only when no kitchen is known.
+  // Every kitchen quoted off the house ladder is priced at Thenie's cost base:
+  // Homey costs us Rp 33.000 a portion and the house ladder sells at Rp 29.000,
+  // a loss on every portion that nothing downstream would flag. A caller that
+  // can name the kitchen must pass it.
   const db = createAdminClient();
-  const tiers = await tiersForKitchen(db, null);
+  const tiers = await tiersForKitchen(db, subcontractorId);
   const basePrice = priceForPortions(tiers, packageSize) ?? 0;
   const pricePerPortion =
     basePrice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0) + sizeExtra;
@@ -963,7 +976,7 @@ export async function resizePendingOrderFromMessage(
   const db = createAdminClient();
   const { data: order } = await db
     .from("orders")
-    .select("id, package_size, addon_cost_per_portion, size")
+    .select("id, package_size, addon_cost_per_portion, size, subcontractor_id")
     .eq("customer_id", customerId)
     .eq("status", "pending_payment")
     .order("created_at", { ascending: false })
@@ -996,8 +1009,17 @@ export async function resizePendingOrderFromMessage(
   // number in a chat message can express, and nothing here tries to read one.
   const portionSize = normalizeSize(order.size);
 
+  // Re-priced on the order's own kitchen. Its ladder is what the customer was
+  // quoted; re-pricing off the house one would move the total the moment they
+  // changed the portion count, with nothing in the chat saying why.
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
-    await getExtractedOrderPricing(size, nasiMerah, customerId, portionSize);
+    await getExtractedOrderPricing(
+      size,
+      nasiMerah,
+      customerId,
+      portionSize,
+      order.subcontractor_id ?? null,
+    );
 
   const { error } = await db
     .from("orders")
@@ -1474,6 +1496,49 @@ export async function createOrderFromExtraction(
     return NOTHING_TO_SEND;
   }
 
+  // Which meal goes to the customer's second address. The bot has been offering
+  // split deliveries for months — makan siang ke kampus, makan malam ke kost —
+  // while every row written here went to slot 1, so the kitchen sheet showed one
+  // address for both meals and nothing said the promise had been dropped.
+  // A slot 2 is only real when there is an address to put in it: this order's,
+  // or one already on the record from an earlier order.
+  const { data: addressRow } = await db
+    .from("customers")
+    .select("address, address_2, area, sub_area, subcontractor_id")
+    .eq("id", orderCustomerId)
+    .maybeSingle();
+
+  // The model drops subcontractor_id far more often than the tool's `required`
+  // list suggests — Cindi's 2026-08-21 order came through with a null one, and
+  // 33 open orders carry one. A null kitchen makes the order invisible on
+  // /dapur/[id] and on the kitchen's own sheet, which both filter strictly on
+  // it, so the food is never cooked and nothing anywhere says why. Fall back
+  // the way an admin would: the kitchen this customer already buys from, then
+  // the only active kitchen covering their area. Two candidates is a real
+  // choice between kitchens and stays null for an admin to make.
+  let subcontractorId =
+    input.subcontractor_id ?? addressRow?.subcontractor_id ?? null;
+  if (!subcontractorId) {
+    const { data: activeSubs } = await db
+      .from("subcontractors")
+      .select("id, delivery_areas")
+      .eq("is_active", true);
+    const area = (input.area ?? addressRow?.area ?? "").trim().toLowerCase();
+    const covering = area
+      ? (activeSubs ?? []).filter((sub) =>
+          ((sub.delivery_areas as string[] | null) ?? []).some(
+            (a) => a.trim().toLowerCase() === area,
+          ),
+        )
+      : [];
+    if (covering.length === 1) {
+      subcontractorId = covering[0].id;
+      console.log(
+        `[extract-order] no dapur from the model — assigned ${subcontractorId}, the only active kitchen covering ${area}`,
+      );
+    }
+  }
+
   const schedule = input.delivery_schedule?.length
     ? input.delivery_schedule
     : null;
@@ -1520,7 +1585,7 @@ export async function createOrderFromExtraction(
   // 8 porsi, was told 8 was off the list, wrote "Boleh 6 porsi dulu kak", and
   // the order was still written for 8. Anything below the smallest package we
   // sell is describing a delivery ("1 porsi"), not the order.
-  const floor = await minPackageSize();
+  const floor = await minPackageSize(subcontractorId);
   const statedTotal =
     inbound
       .map(statedBareTotal)
@@ -1534,7 +1599,7 @@ export async function createOrderFromExtraction(
   // Money that has moved outranks every number in the conversation.
   const paidSize =
     beneficiary.kind === "self"
-      ? await packageSizeMatchingPayment(customerId, nasiMerah)
+      ? await packageSizeMatchingPayment(customerId, nasiMerah, subcontractorId)
       : null;
 
   // Every one of these overrides is read out of the buyer's chat, and in a
@@ -1577,7 +1642,7 @@ export async function createOrderFromExtraction(
   // outright and says nothing about which sizes exist; and the payment-proof
   // path (`sendPaymentInfo: false`), where the money has already moved and
   // refusing would throw away a real payment.
-  const sizeFloor = await minPackageSize();
+  const sizeFloor = await minPackageSize(subcontractorId);
   if (
     sendPaymentInfo &&
     !isSellableSize(packageSize, sizeFloor) &&
@@ -1593,9 +1658,11 @@ export async function createOrderFromExtraction(
       packageSize = input.package_size;
     } else {
       const { below, above } = nearestSellableSizes(packageSize, sizeFloor);
-      // Quoted at the size the model asked for rather than the one the kitchen
-      // can cook: the M check needs a subcontractor, which is not resolved until
-      // further down, and this branch creates nothing for that check to protect.
+      // Quoted off the chosen kitchen's ladder, at the size the model asked
+      // for: the M check runs further down and this branch creates nothing for
+      // it to protect, but the price must still be the one that kitchen sells
+      // at — a refusal that offers two sizes at another kitchen's rate is a
+      // quote the customer will hold us to.
       const quoted = await Promise.all(
         (below === null ? [above] : [below, above]).map(async (n) => {
           const { total_price } = await getExtractedOrderPricing(
@@ -1603,6 +1670,7 @@ export async function createOrderFromExtraction(
             input.nasi_merah === true,
             orderCustomerId,
             normalizeSize(input.size),
+            subcontractorId,
           );
           return `*${n} porsi (${formatIDR(total_price)})*`;
         }),
@@ -1627,17 +1695,6 @@ export async function createOrderFromExtraction(
     }
   }
 
-  // Which meal goes to the customer's second address. The bot has been offering
-  // split deliveries for months — makan siang ke kampus, makan malam ke kost —
-  // while every row written here went to slot 1, so the kitchen sheet showed one
-  // address for both meals and nothing said the promise had been dropped.
-  // A slot 2 is only real when there is an address to put in it: this order's,
-  // or one already on the record from an earlier order.
-  const { data: addressRow } = await db
-    .from("customers")
-    .select("address, address_2, area, sub_area, subcontractor_id")
-    .eq("id", orderCustomerId)
-    .maybeSingle();
 
   // A place nobody delivers to, checked before the kitchen's own verdict and
   // regardless of whether a kitchen was resolved at all. The kitchen-level
@@ -1717,36 +1774,6 @@ export async function createOrderFromExtraction(
   const lunchSlot = secondMeal === "lunch" ? 2 : 1;
   const dinnerSlot = secondMeal === "dinner" ? 2 : 1;
 
-  // The model drops subcontractor_id far more often than the tool's `required`
-  // list suggests — Cindi's 2026-08-21 order came through with a null one, and
-  // 33 open orders carry one. A null kitchen makes the order invisible on
-  // /dapur/[id] and on the kitchen's own sheet, which both filter strictly on
-  // it, so the food is never cooked and nothing anywhere says why. Fall back
-  // the way an admin would: the kitchen this customer already buys from, then
-  // the only active kitchen covering their area. Two candidates is a real
-  // choice between kitchens and stays null for an admin to make.
-  let subcontractorId =
-    input.subcontractor_id ?? addressRow?.subcontractor_id ?? null;
-  if (!subcontractorId) {
-    const { data: activeSubs } = await db
-      .from("subcontractors")
-      .select("id, delivery_areas")
-      .eq("is_active", true);
-    const area = (input.area ?? addressRow?.area ?? "").trim().toLowerCase();
-    const covering = area
-      ? (activeSubs ?? []).filter((sub) =>
-          ((sub.delivery_areas as string[] | null) ?? []).some(
-            (a) => a.trim().toLowerCase() === area,
-          ),
-        )
-      : [];
-    if (covering.length === 1) {
-      subcontractorId = covering[0].id;
-      console.log(
-        `[extract-order] no dapur from the model — assigned ${subcontractorId}, the only active kitchen covering ${area}`,
-      );
-    }
-  }
 
   // Which size, and what it costs. Both settled here rather than earlier
   // because M is per kitchen — like `delivery_areas` — so the size cannot be
@@ -1829,6 +1856,7 @@ export async function createOrderFromExtraction(
       nasiMerah,
       orderCustomerId,
       portionSize,
+      subcontractorId,
     );
 
   // The kitchen's per-drop surcharge is charged through to the customer, the

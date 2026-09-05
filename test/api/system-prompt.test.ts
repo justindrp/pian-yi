@@ -8,8 +8,88 @@ jest.mock("@/lib/cache/settings", () => ({
   getSetting: jest.fn(),
 }));
 
+// The price list is drawn from `pricing_tiers`, per kitchen (migration 098), so
+// the prompt builder reads the database. These are the rows production holds:
+// the house ladder, which is Thenie's, and whatever a kitchen publishes of its
+// own. A test that gives a kitchen no rows gets the house ladder for it, exactly
+// as the live read does.
+const mockHouseTiers = [
+  { portions: 5, price_per_portion: 29000 },
+  { portions: 6, price_per_portion: 29000 },
+  { portions: 10, price_per_portion: 28000 },
+  { portions: 12, price_per_portion: 28000 },
+  { portions: 20, price_per_portion: 27000 },
+  { portions: 24, price_per_portion: 27000 },
+  { portions: 40, price_per_portion: 26000 },
+  { portions: 48, price_per_portion: 26000 },
+  { portions: 60, price_per_portion: 26000 },
+  { portions: 72, price_per_portion: 26000 },
+  { portions: 120, price_per_portion: 25000 },
+  { portions: 144, price_per_portion: 25000 },
+];
+const mockKitchenTiers: Record<
+  string,
+  { portions: number; price_per_portion: number }[]
+> = {};
+const mockKitchenDays: Record<string, number[]> = {};
+
+jest.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: (table: string) => {
+      const state: { houseOnly?: boolean; ids?: string[] } = {};
+      const rows = () => {
+        if (table === "pricing_tiers") {
+          if (state.houseOnly) return { data: mockHouseTiers };
+          return {
+            data: (state.ids ?? []).flatMap((id) =>
+              (mockKitchenTiers[id] ?? []).map((t) => ({
+                ...t,
+                subcontractor_id: id,
+              })),
+            ),
+          };
+        }
+        if (table === "subcontractors") {
+          return {
+            data: (state.ids ?? []).map((id) => ({
+              id,
+              delivery_days: mockKitchenDays[id] ?? [1, 2, 3, 4, 5, 6],
+            })),
+          };
+        }
+        return { data: [] };
+      };
+      // biome-ignore lint/suspicious/noExplicitAny: a chainable query stub
+      const query: any = {
+        select: () => query,
+        order: () => query,
+        eq: () => query,
+        maybeSingle: () => Promise.resolve({ data: null }),
+        is: () => {
+          state.houseOnly = true;
+          return query;
+        },
+        in: (_column: string, ids: string[]) => {
+          state.ids = ids;
+          return query;
+        },
+        // A thenable is what makes `await db.from(...).select(...)` resolve,
+        // which is how the real client behaves and how the code under test
+        // uses it.
+        // biome-ignore lint/suspicious/noThenProperty: deliberately a thenable
+        // biome-ignore lint/suspicious/noExplicitAny: matches the client's shape
+        then: (resolve: any, reject: any) =>
+          Promise.resolve(rows()).then(resolve, reject),
+      };
+      return query;
+    },
+  }),
+}));
+
 beforeEach(() => {
   jest.clearAllMocks();
+  for (const key of Object.keys(mockKitchenTiers)) delete mockKitchenTiers[key];
+  for (const key of Object.keys(mockKitchenDays)) delete mockKitchenDays[key];
   (getActiveInstructions as jest.Mock).mockResolvedValue([]);
   (getSetting as jest.Mock).mockImplementation((key: string) => {
     const values: Record<string, string> = {

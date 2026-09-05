@@ -27,6 +27,14 @@ export type DrawCandidate = {
   unbooked: number | null;
   start_date: string | null;
   created_at?: string | null;
+  /**
+   * The kitchen this package was bought from, where the caller cares. Portions
+   * stopped being fungible when the ladders diverged: a portion bought from
+   * Thenie at Rp 29.000 is not a portion of Homey's food at Rp 45.000, so a
+   * delivery one kitchen cooks must not be charged to a package bought from
+   * another. Callers that do not care leave it undefined.
+   */
+  subcontractor_id?: string | null;
 };
 
 function byStartDate(a: DrawCandidate, b: DrawCandidate): number {

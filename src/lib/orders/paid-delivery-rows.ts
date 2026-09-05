@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDeliveryDay } from "@/lib/holidays/id";
+import { kitchenDeliversOn } from "@/lib/subcontractors/days";
 import { unbookedByOrder } from "@/lib/orders/customer-schedule";
 import {
   type DrawCandidate,
@@ -46,8 +47,23 @@ export function allocateDraws<T extends { portions: number }>(
   rows: readonly T[],
   candidates: readonly DrawCandidate[],
   fallbackOrderId: string,
+  kitchenId: string | null = null,
 ): (T & { order_id: string })[] {
-  const pool = candidates.map((c) => ({ ...c }));
+  // Only packages bought from the kitchen that is cooking these rows. FIFO
+  // across every active order was right while one kitchen cooked everything and
+  // a portion was a portion; the ladders are per kitchen now (migration 098),
+  // so charging a Homey delivery to a Thenie package spends Rp 29.000 of quota
+  // on Rp 45.000 of food and the ledger still balances to the portion. An order
+  // with no kitchen recorded stays eligible — that is most of the June import,
+  // and excluding it would strand quota nobody can spend.
+  const pool = candidates
+    .filter(
+      (c) =>
+        kitchenId === null ||
+        c.subcontractor_id == null ||
+        c.subcontractor_id === kitchenId,
+    )
+    .map((c) => ({ ...c }));
 
   return rows.map((row) => {
     // Only orders with balance are offered. pickDrawOrder's own fallback picks
@@ -89,12 +105,36 @@ export async function buildPaidDeliveryRows(params: {
 }): Promise<PaidDeliveryRow[]> {
   const { db, order, customerSubcontractorId, requested } = params;
 
+  // The order's own kitchen is an override; the customer's is the default.
+  // Without the fallback a delivery row carries a null subcontractor_id, and
+  // /dapur/[id] filters strictly on it — so the kitchen never sees the
+  // delivery. Julian S's whole renewal was invisible that way.
+  const kitchenId = order.subcontractor_id ?? customerSubcontractorId ?? null;
+
+  // Which weekdays that kitchen works. `isDeliveryDay()` answers for the
+  // business — Minggu and libur nasional — and used to be the whole answer,
+  // because every kitchen worked Senin–Sabtu. Homey does not: a Sabtu row on
+  // its sheet is food nobody cooks, and the row's existence is the only thing
+  // that says the food is coming.
+  const { data: kitchenRow } = kitchenId
+    ? await db
+        .from("subcontractors")
+        .select("delivery_days")
+        .eq("id", kitchenId)
+        .maybeSingle()
+    : { data: null };
+
   // Minggu and libur nasional are days nobody cooks. Dropping them leaves those
   // portions unbooked, which is right — the customer still owns them and can
-  // move them. Sorted so the FIFO charge runs in delivery order rather than
-  // whatever order the model listed the days in; lunch precedes dinner.
+  // move them. A day this kitchen does not work is dropped the same way and for
+  // the same reason. Sorted so the FIFO charge runs in delivery order rather
+  // than whatever order the model listed the days in; lunch precedes dinner.
   const slots = requested
-    .filter((r) => isDeliveryDay(r.date))
+    .filter(
+      (r) =>
+        isDeliveryDay(r.date) &&
+        kitchenDeliversOn(kitchenRow?.delivery_days, r.date),
+    )
     .sort((a, b) =>
       a.date !== b.date
         ? a.date < b.date
@@ -108,7 +148,7 @@ export async function buildPaidDeliveryRows(params: {
   const { data: active } = order.customer_id
     ? await db
         .from("orders")
-        .select("id, package_size, start_date, created_at")
+        .select("id, package_size, start_date, created_at, subcontractor_id")
         .eq("customer_id", order.customer_id)
         .eq("status", "active")
     : { data: null };
@@ -118,11 +158,13 @@ export async function buildPaidDeliveryRows(params: {
     package_size: number | null;
     start_date: string | null;
     created_at: string | null;
+    subcontractor_id: string | null;
   }[] = (active ?? []).map((o) => ({
     id: o.id,
     package_size: o.package_size,
     start_date: o.start_date,
     created_at: o.created_at,
+    subcontractor_id: o.subcontractor_id,
   }));
   // Both callers flip the order to `active` before they get here, so it is
   // normally in that list already. If the read misses it, add it anyway: the
@@ -134,6 +176,7 @@ export async function buildPaidDeliveryRows(params: {
       package_size: order.package_size,
       start_date: null,
       created_at: new Date().toISOString(),
+      subcontractor_id: order.subcontractor_id,
     });
   }
   const unbooked = await unbookedByOrder(db, rows);
@@ -143,9 +186,10 @@ export async function buildPaidDeliveryRows(params: {
     unbooked: unbooked.get(o.id) ?? 0,
     start_date: o.start_date,
     created_at: o.created_at,
+    subcontractor_id: o.subcontractor_id,
   }));
 
-  const charged = allocateDraws(slots, candidates, order.id);
+  const charged = allocateDraws(slots, candidates, order.id, kitchenId);
 
   return charged.map((r) => ({
     delivery_date: r.date,
@@ -153,11 +197,7 @@ export async function buildPaidDeliveryRows(params: {
     order_id: r.order_id,
     meal_type: r.meal_type,
     portions: r.portions,
-    // The order's own kitchen is an override; the customer's is the default.
-    // Without the fallback a delivery row carries a null subcontractor_id, and
-    // /dapur/[id] filters strictly on it — so the kitchen never sees the
-    // delivery. Julian S's whole renewal was invisible that way.
-    subcontractor_id: order.subcontractor_id ?? customerSubcontractorId ?? null,
+    subcontractor_id: kitchenId,
     address_slot:
       r.meal_type === "dinner"
         ? (order.dinner_address_slot ?? 1)

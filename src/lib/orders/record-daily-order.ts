@@ -9,6 +9,7 @@ import {
   unbookedByOrder,
 } from "@/lib/orders/customer-schedule";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
+import { daysLabel, kitchenDeliversOn } from "@/lib/subcontractors/days";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import type { Database } from "@/types/database";
 
@@ -208,7 +209,35 @@ export async function recordDailyOrder(params: {
   // in the simulator even with the holiday list in its prompt. Dropping the
   // date here is the guarantee; the prompt rule is the first layer.
   const closedDates = dates.filter((d) => isClosedHoliday(d));
-  const openDates = dates.filter((d) => !isClosedHoliday(d));
+  const businessDates = dates.filter((d) => !isClosedHoliday(d));
+
+  // A weekday the kitchen cooking this package does not work. `isClosedHoliday`
+  // answers for the business and used to be the whole calendar, because every
+  // kitchen worked Senin–Sabtu; Homey works Senin–Jumat, so a Sabtu booked on a
+  // Homey package is a row on a sheet nobody reads. Dropped like a libur is —
+  // the portions stay unbooked and the customer can move them — and named in
+  // the result, so the model does not confirm a date that was thrown away.
+  const { data: kitchenDaysRow } = kitchenId
+    ? await db
+        .from("subcontractors")
+        .select("delivery_days")
+        .eq("id", kitchenId)
+        .maybeSingle()
+    : { data: null };
+  const kitchenDays = kitchenDaysRow?.delivery_days ?? null;
+  const offDates = businessDates.filter((d) => !kitchenDeliversOn(kitchenDays, d));
+  const openDates = businessDates.filter((d) => kitchenDeliversOn(kitchenDays, d));
+
+  if (openDates.length === 0 && offDates.length > 0) {
+    console.warn(
+      "[record-daily-order] every open date falls on a day this dapur does not cook",
+      JSON.stringify({ kitchenId, offDates }),
+    );
+    return {
+      ok: false,
+      error: `Dapur yang memasak paket customer ini hanya kirim ${daysLabel(kitchenDays)}, jadi tanggal yang diminta (${offDates.join(", ")}) tidak bisa dicatat. Tidak ada yang tercatat — tawarkan hari lain.`,
+    };
+  }
 
   if (openDates.length === 0) {
     console.warn(
@@ -349,6 +378,7 @@ export async function recordDailyOrder(params: {
   // confirmed the whole run to the customer.
   const notBooked = [
     ...closedDates.map((d) => `${d} (libur nasional)`),
+    ...offDates.map((d) => `${d} (dapur tidak kirim hari itu)`),
     ...[...alreadyBooked].map((d) => `${d} (sudah ada di jadwal)`),
     ...fresh.slice(booking.length).map((d) => `${d} (kuota tidak cukup)`),
   ];

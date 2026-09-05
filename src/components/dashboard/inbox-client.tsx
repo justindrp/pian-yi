@@ -824,6 +824,8 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       body: JSON.stringify({
         package_size: packageSize,
         customer_id: selectedCustomerId,
+        size: extractedOrder?.size,
+        subcontractor_id: extractedOrder?.subcontractor_id ?? null,
       }),
     });
     const body = (await res.json().catch(() => null)) as {
