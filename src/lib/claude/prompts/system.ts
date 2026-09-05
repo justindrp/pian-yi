@@ -7,9 +7,9 @@ import {
   weekAfter,
 } from "@/lib/menu/week";
 import { isLocked } from "@/lib/orders/delivery-state";
+import { sizeMSurcharge } from "@/lib/orders/size";
 import { priceListLines } from "@/lib/pricing/lines";
 import { laddersForKitchens, sameLadder } from "@/lib/pricing/tiers";
-import { sizeMSurcharge } from "@/lib/orders/size";
 import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
 import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -18,7 +18,6 @@ import {
   earliestDeliveryDate,
   jakartaTimeString,
 } from "@/lib/time/jakarta";
-
 
 /**
  * The addresses a kitchen has ruled on, written for the model.
@@ -203,7 +202,6 @@ export async function buildSystemPrompt(params: {
     : "Use polished Indonesian with proper punctuation. Default to no emojis; use at most one per message, only when warmth wouldn't otherwise come across.";
 
   const now = new Date();
-  const upcomingHolidays = describeUpcomingHolidays();
   const [deadlineHour, dailyDeadlineHour] = await Promise.all([
     getSetting("order_deadline_hour"),
     getSetting("order_deadline_daily_hour"),
@@ -217,25 +215,6 @@ export async function buildSystemPrompt(params: {
   // hours after the cutoff had gone. See src/lib/time/jakarta.ts.
   const todayWib = jakartaDateString(now);
   const timeWib = jakartaTimeString(now);
-  const { date: earliestDate, deadlinePassed } = earliestDeliveryDate({
-    deadlineHour: Number(deadlineHour) || 16,
-    now,
-  });
-  const earliestDisplay = formatHolidayDate(earliestDate);
-  // Six weeks, not the two the helper defaults to. The calendar is the only
-  // place the model may take a date from ("never work one out"), so its length
-  // is the longest package it can write a schedule for. At 14 days Clara Alicia
-  // bought 20 lunches on 2026-09-02 and got 8 rows: the dates past 15 September
-  // were not in her prompt, so the model listed what it had and stopped. 42 days
-  // covers a 36-delivery run, which is every package we sell in practice.
-  const calendar = deliveryCalendar({
-    deadlineHour: Number(deadlineHour) || 16,
-    now,
-    days: 42,
-  });
-  const cutoffLine = deadlinePassed
-    ? `- Deadline ${deadlineTime} untuk besok SUDAH LEWAT (sekarang ${timeWib} WIB). Do NOT offer or agree to a delivery tomorrow, and do not accept a change or a skip for tomorrow — tomorrow is already locked with the kitchen. The soonest date you may promise is ${earliestDisplay}. Say so plainly and offer that date.`
-    : `- Deadline ${deadlineTime} untuk besok masih terbuka (sekarang ${timeWib} WIB). Soonest deliverable date: ${earliestDisplay}.`;
 
   const areasDisplay = params.servedAreas.join(", ");
 
@@ -399,6 +378,61 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   const daysById = new Map(
     (kitchenDayRows ?? []).map((k) => [k.id, k.delivery_days]),
   );
+
+  // Which weekdays are open is the union of the weekdays of the dapur this
+  // customer could actually be served by — Minggu is a working day when one of
+  // them lists 7. `partialDays` are the days only some of them work: the
+  // calendar marks those rather than dropping them, because dropping a day one
+  // dapur cooks costs an order. What may be *promised* without knowing which
+  // dapur the customer lands on is the intersection, so that is what the
+  // soonest-date line is computed from.
+  const kitchenDayLists = params.dapurOptions
+    .map((d) => daysById.get(d.id))
+    .filter((d): d is number[] => Array.isArray(d) && d.length > 0);
+  const servedDays =
+    kitchenDayLists.length > 0
+      ? [...new Set(kitchenDayLists.flat())].sort((a, b) => a - b)
+      : null;
+  const partialDays =
+    servedDays?.filter((d) => kitchenDayLists.some((l) => !l.includes(d))) ??
+    [];
+  const promisableDays =
+    servedDays?.filter((d) => !partialDays.includes(d)) ?? null;
+  const upcomingHolidays = describeUpcomingHolidays(
+    undefined,
+    undefined,
+    servedDays,
+  );
+  // Whether Minggu is closed is a fact about the dapur, not about the business,
+  // so the closure list only carries Sundays when none of them cooks one. Said
+  // wrong either way the model answers a date question from the weekday name
+  // instead of from the list, which is the whole thing this block exists to stop.
+  const sundayNote = servedDays?.includes(7)
+    ? "Minggu is NOT closed by default — at least one dapur cooks it, so a Minggu appears on this list only when it is a closure. Any date NOT on it is a working day for some dapur; check the delivery calendar for whether it is the customer's dapur before promising it."
+    : "Every Minggu is on this list too, so the list is the whole answer: any date NOT on it is a normal working day.";
+  const { date: earliestDate, deadlinePassed } = earliestDeliveryDate({
+    deadlineHour: Number(deadlineHour) || 16,
+    now,
+    days: promisableDays,
+  });
+  const earliestDisplay = formatHolidayDate(earliestDate);
+  // Six weeks, not the two the helper defaults to. The calendar is the only
+  // place the model may take a date from ("never work one out"), so its length
+  // is the longest package it can write a schedule for. At 14 days Clara Alicia
+  // bought 20 lunches on 2026-09-02 and got 8 rows: the dates past 15 September
+  // were not in her prompt, so the model listed what it had and stopped. 42 days
+  // covers a 36-delivery run, which is every package we sell in practice.
+  const calendar = deliveryCalendar({
+    deadlineHour: Number(deadlineHour) || 16,
+    now,
+    days: 42,
+    servedDays,
+    partialDays,
+  });
+  const cutoffLine = deadlinePassed
+    ? `- Deadline ${deadlineTime} untuk besok SUDAH LEWAT (sekarang ${timeWib} WIB). Do NOT offer or agree to a delivery tomorrow, and do not accept a change or a skip for tomorrow — tomorrow is already locked with the kitchen. The soonest date you may promise is ${earliestDisplay}. Say so plainly and offer that date.`
+    : `- Deadline ${deadlineTime} untuk besok masih terbuka (sekarang ${timeWib} WIB). Soonest deliverable date: ${earliestDisplay}.`;
+
   const kitchenLadders = params.dapurOptions.map((d) => ({
     nickname: d.nickname,
     days: daysLabel(daysById.get(d.id)),
@@ -470,7 +504,7 @@ Give one exact total, the same way you would for anyone else. Everything else �
     : `## Current price list (Paket Personal${offersM ? " — harga ukuran S" : ", size S only"})
 Current active kitchen availability:
 ${sizeSection}
-- ${deliveryDaysLine} Minggu is closed, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date falls Senin–Sabtu and is not a closure. **The days are free; the total is not.** Multiply the days out first, then check that total against the size rule (5, 6, or a multiple of either) — a short run often lands under the 5-porsi floor, and that total is not sellable no matter how reasonable the days are. Rachel asked for 4 hari, 1 porsi siang, on 2026-08-31 and was quoted "4 porsi × Rp 29.000 = Rp 116.000", a package that does not exist. Offer the nearest sellable totals instead and say what the extra porsi buys: "4 hari itu 4 porsi kak, sedangkan paket minimal 5 porsi (Rp 145.000) — 1 porsi sisanya bisa dipakai hari lain." Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a Minggu or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
+- ${deliveryDaysLine} Days outside that are closed for that dapur, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date is a day their dapur cooks and is not a closure. **The days are free; the total is not.** Multiply the days out first, then check that total against the size rule (5, 6, or a multiple of either) — a short run often lands under the 5-porsi floor, and that total is not sellable no matter how reasonable the days are. Rachel asked for 4 hari, 1 porsi siang, on 2026-08-31 and was quoted "4 porsi × Rp 29.000 = Rp 116.000", a package that does not exist. Offer the nearest sellable totals instead and say what the extra porsi buys: "4 hari itu 4 porsi kak, sedangkan paket minimal 5 porsi (Rp 145.000) — 1 porsi sisanya bisa dipakai hari lain." Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a day their dapur does not cook, or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
 - If customers ask about grams or size: S is the standard size${offersM ? ", and M is the larger one — one extra side dish, not a bigger scoop of rice" : ", and that is the only size currently available"}.
 
 ${priceListBlock}
@@ -501,7 +535,7 @@ Examples:
 
 The examples above use 5 hari because it is the commonest week, not because the
 run has to be 5 or 6 days. Multiply by however many delivery days the customer
-actually wants. Dapur kami delivers Senin–Sabtu; Minggu is closed.
+actually wants. ${deliveryDaysLine}
 
 ### Package sizes and prices
 
@@ -638,7 +672,7 @@ ${upcomingHolidays}
   - A date marked TUTUP: say we are closed that day, name the holiday, offer the next working day.
   - A date marked BUKA: we deliver that day as normal. Do not mention that it is a tanggal merah, do not warn about it, do not offer a later date — treat it as an ordinary working day and answer the question the customer actually asked.
   - A cuti bersama: do NOT promise delivery and do NOT refuse. Say you need to check with dapur partner and call ask_admin_for_help — this is the one operational-status question you must escalate.
-  - Every Minggu is on this list too, so the list is the whole answer: any date NOT on it is a normal working day. Do not invent holidays, do not hedge about dates that are not listed, and never work out a day of the week yourself to decide whether we are open.
+  - ${sundayNote} Do not invent holidays, do not hedge about dates that are not listed, and never work out a day of the week yourself to decide whether we are open.
   - **A date range is not a day count.** When a customer names a run ("1–7 September", "seminggu mulai Senin"), check every date in it against this list first and drop the closed ones before you count anything. Then say the number of delivery days back to them along with the dates you dropped, and multiply porsi per hari by *that* number — never by the length of the range. On 2026-08-29 Julie asked for 1–7 September and was quoted 7 hari × 4 porsi = 28 porsi, Rp 728.000; 6 September is a Minggu, so the run is 6 hari = 24 porsi and the price was wrong by a whole day of food.`
     : "- No public holidays are listed for the period ahead. If a customer asks about a date you believe may be a holiday, do not guess — call ask_admin_for_help."
 }
@@ -649,7 +683,7 @@ ${upcomingHolidays}
 
 **A row that says SUDAH DIKUNCI or TUTUP is a no, whatever word the customer used for it.** If they say "besok" and besok's row is locked, do not repeat their word back as though it were available — name the date, say it is closed, and offer the soonest row that is open. On 2026-08-31 at 21.54 WIB Cindi asked what time "besok" arrived and was told "untuk besok (Selasa, 2 September) pengiriman siang jam 10.00-12.00" — besok was 1 September and already locked, 2 September is a Rabu, and she was left waiting for food nobody had been asked to cook.
 
-**Resolve a run of weekday names to dates before you answer it, not after.** Every named day gets its row checked, and a closed one is dropped and said out loud. Cindi asked in the same chat for "besok, sabtu, minggu" to one address and "rabu, kamis, jumat" to another, and got "Bisa banget" with Minggu still in the list — a day we never deliver — because the names were never turned into dates.
+**Resolve a run of weekday names to dates before you answer it, not after.** Every named day gets its row checked, and a closed one is dropped and said out loud. Cindi asked in the same chat for "besok, sabtu, minggu" to one address and "rabu, kamis, jumat" to another, and got "Bisa banget" with Minggu still in the list — a day her dapur did not cook — because the names were never turned into dates.
 
 If the customer later states an explicit date (e.g. "mulai 6 Juli") that conflicts with your earlier interpretation of a relative phrase, trust the explicit date — never silently recompute or "correct" a date the customer just confirmed.
 
@@ -803,7 +837,7 @@ ${
 
 When they request one or more deliveries (an order for the next day must arrive before ${dailyDeadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the dates.
 
-Booking a multi-day run: pass EVERY agreed date in "delivery_dates" in a single call — "Senin–Jumat" is one call with all five ISO dates, never five calls and never only the first day. Nothing else writes these rows, so a date left out of the call is a delivery that will not happen. Resolve each date yourself from Today before calling; never send a weekday name. Skip every date marked TUTUP in "Upcoming closures" above — that list holds the Minggu as well as the libur, so it is the only check you need, and you must run it over every date in the run before you call — leave it out of "delivery_dates" AND tell the customer that day is libur, so a 5-day week that contains one becomes 4 days. A cuti bersama is not automatically skipped; call ask_admin_for_help before promising it.
+Booking a multi-day run: pass EVERY agreed date in "delivery_dates" in a single call — "Senin–Jumat" is one call with all five ISO dates, never five calls and never only the first day. Nothing else writes these rows, so a date left out of the call is a delivery that will not happen. Resolve each date yourself from Today before calling; never send a weekday name. Skip every date marked TUTUP in "Upcoming closures" above — that list holds every closed date, so it is the only check you need, and you must run it over every date in the run before you call — leave it out of "delivery_dates" AND tell the customer that day is libur, so a 5-day week that contains one becomes 4 days. A cuti bersama is not automatically skipped; call ask_admin_for_help before promising it.
 
 Confirming without looping: propose ONE concrete schedule with real dates and ask them to confirm it — do not offer two options and ask them to choose. If they answer a proposal with "iya" / "ok" / "boleh" / "betul", that confirms the schedule you just proposed: book it. Never ask the same clarifying question twice — if their answer is still unclear after one attempt, take the most recent concrete dates you proposed, say plainly that you are recording those, and book them. A customer who has already said which days and which meal has told you enough; asking again is how a confirmed order ends up with nothing recorded.
 

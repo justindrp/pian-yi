@@ -402,7 +402,7 @@ Aturan:
 - Kembalikan {"delivery_dates":[]} kalau balasan itu hanya menawarkan, bertanya, atau belum memastikan tanggal.
 - "mulai <tanggal>" tanpa tanggal akhir berarti SATU tanggal saja: tanggal itu.
 - Jangan pernah menebak tanggal yang tidak disebut. Jangan masukkan tanggal sebelum ${today}.
-- Minggu tidak pernah menjadi tanggal pengiriman.`,
+- Jangan menyaring tanggal berdasarkan nama hari. Hari kerja berbeda per dapur — ada dapur yang masak hari Minggu — jadi ambil tanggal yang admin janjikan apa adanya.`,
       messages: [
         {
           role: "user",
@@ -3610,7 +3610,9 @@ async function handleToolUse(
         phone,
         menuUrl,
         [
-          sub.customer_nickname ? `Menu ${sub.customer_nickname}` : "Menu Dapur",
+          sub.customer_nickname
+            ? `Menu ${sub.customer_nickname}`
+            : "Menu Dapur",
           subWeek,
         ]
           .filter(Boolean)

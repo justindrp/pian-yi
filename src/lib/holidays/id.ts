@@ -136,20 +136,37 @@ export function isClosedHoliday(ymd: string): boolean {
 }
 
 /**
- * True when we deliver on this date at all: Senin–Sabtu, minus the days we are
- * definitely closed.
+ * The weekdays the business works when nobody has said which kitchen. Senin–Sabtu
+ * is what every kitchen but Santapin cooks, so it is the safe answer for a path
+ * that does not know the kitchen: it refuses a Minggu one kitchen could have
+ * served, which costs an order, rather than promising one nobody cooks.
+ */
+export const BUSINESS_DAYS = [1, 2, 3, 4, 5, 6];
+
+/**
+ * True when we deliver on this date at all: a weekday the kitchen works, minus
+ * the days we are definitely closed.
  *
  * Saturday counts. It was excluded once, in the delivery generator this moved
  * out of, and no 6-day package could then produce its sixth day — every one
  * came up a delivery short with nothing saying so, and Julian S's 18–22
- * Agustus package generated four days for five portions. Minggu stays closed.
+ * Agustus package generated four days for five portions.
+ *
+ * **Minggu is per kitchen, not a fact about the business.** It was hardcoded
+ * closed here until Santapin, which cooks Senin–Minggu; pass that kitchen's
+ * `delivery_days` and its Sunday is a delivery day. Pass nothing and the answer
+ * is `BUSINESS_DAYS`, which is what every caller that cannot name a kitchen
+ * gets.
  *
  * Cuti bersama is deliberately not filtered: whether the partner kitchens work
  * those days is an escalation, not a closure.
  */
-export function isDeliveryDay(ymd: string): boolean {
+export function isDeliveryDay(ymd: string, days?: number[] | null): boolean {
   const day = new Date(`${ymd}T00:00:00Z`).getUTCDay();
-  if (day < 1 || day > 6) return false;
+  const iso = day === 0 ? 7 : day;
+  const allowed = (days ?? BUSINESS_DAYS).filter((d) => d >= 1 && d <= 7);
+  if (!(allowed.length === 0 ? BUSINESS_DAYS : allowed).includes(iso))
+    return false;
   return !isClosedHoliday(ymd);
 }
 
@@ -220,6 +237,12 @@ export function formatHolidayDate(ymd: string): string {
 export function describeUpcomingHolidays(
   today: string = jakartaDateString(),
   days = 45,
+  /**
+   * The weekdays some active kitchen works. When one of them cooks Minggu the
+   * blanket "TUTUP, hari Minggu" lines are wrong and are left out — the
+   * delivery calendar marks those dates as available from some dapur only.
+   */
+  servedDays?: number[] | null,
 ): string | null {
   if (today > HOLIDAYS_KNOWN_THROUGH) return null;
 
@@ -240,7 +263,8 @@ export function describeUpcomingHolidays(
 
   // A Minggu that is also a tanggal merah is already named above; naming it
   // twice would let the model subtract it twice.
-  for (const date of upcomingSundays(today, days)) {
+  const sundayClosed = !(servedDays ?? BUSINESS_DAYS).includes(7);
+  for (const date of sundayClosed ? upcomingSundays(today, days) : []) {
     if (entries.some((e) => e.date === date)) continue;
     entries.push({
       date,

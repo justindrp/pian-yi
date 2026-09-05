@@ -237,7 +237,7 @@ export const assistantTools: Tool[] = [
   {
     name: "check_delivery_dates",
     description:
-      "Whether we can actually deliver on given dates, and whether the order deadline for each has passed. Checks Minggu, libur nasional and the H-1 cutoff from settings. ALWAYS call this before promising a customer any date — never work a calendar out yourself.",
+      "Whether we can actually deliver on given dates, and whether the order deadline for each has passed. Checks each dapur's own working weekdays (Minggu is a working day for some of them), libur nasional and the H-1 cutoff from settings. When only some dapur work a date, the result names them in `dapur`. ALWAYS call this before promising a customer any date — never work a calendar out yourself.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -1127,6 +1127,21 @@ export async function runTool(
         .eq("key", "order_deadline_hour");
       const cutoffHour = Number(settings?.[0]?.value ?? 16);
 
+      // Which weekdays are worked is per kitchen, so a date is closed only when
+      // no active dapur cooks that weekday, and a date some of them cook is
+      // servable with the caveat named. Answering "Minggu — tutup" for every
+      // Sunday refused food a kitchen that works Minggu had already agreed to.
+      const { data: kitchenRows } = await db
+        .from("subcontractors")
+        .select("customer_nickname, delivery_days")
+        .eq("is_active", true);
+      const kitchensOn = (iso: number) =>
+        (kitchenRows ?? []).filter((k) =>
+          Array.isArray(k.delivery_days) && k.delivery_days.length > 0
+            ? k.delivery_days.includes(iso)
+            : [1, 2, 3, 4, 5, 6].includes(iso),
+        );
+
       const DAY_ID = [
         "Minggu",
         "Senin",
@@ -1146,11 +1161,13 @@ export async function runTool(
         const holiday = holidayOn(ymd);
         const closedHoliday = isClosedHoliday(ymd);
 
+        const iso = dow === 0 ? 7 : dow;
+        const open = kitchensOn(iso);
         let servable = true;
         let reason: string | null = null;
-        if (dow === 0) {
+        if (open.length === 0) {
           servable = false;
-          reason = "Minggu — tutup";
+          reason = `${DAY_ID[dow]} — tidak ada dapur yang masak hari ini`;
         } else if (closedHoliday) {
           servable = false;
           reason = `${holiday?.name} — libur nasional, tutup`;
@@ -1167,6 +1184,12 @@ export async function runTool(
           weekday: DAY_ID[dow],
           servable,
           reason,
+          // Named so the answer says which dapur, rather than promising a day
+          // only one of them works as if every customer could have it.
+          dapur:
+            open.length === (kitchenRows ?? []).length
+              ? null
+              : open.map((k) => k.customer_nickname).join(", "),
           // Cuti bersama is not a closure: whether the partner kitchens work
           // those days is an admin decision, so it is surfaced, not enforced.
           cuti_bersama:

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Nunito, Poppins } from "next/font/google";
 import Image from "next/image";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import { activeDeliveryDays } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 import "./landing.css";
 
@@ -79,7 +80,7 @@ function toRungs(tiers: Tier[]): Rung[] {
 
 async function loadContent() {
   const db = createAdminClient();
-  const [tiersRes, settingsRes, areas] = await Promise.all([
+  const [tiersRes, settingsRes, areas, openDays] = await Promise.all([
     db
       .from("pricing_tiers")
       .select("portions, price_per_portion")
@@ -89,6 +90,7 @@ async function loadContent() {
       .select("key, value")
       .in("key", ["price_list_image_url", "instagram_handle"]),
     activeDeliveryAreas(db),
+    activeDeliveryDays(db),
   ]);
 
   const settings: Record<string, string> = {};
@@ -99,13 +101,26 @@ async function loadContent() {
     priceListImage: settings.price_list_image_url ?? null,
     instagram: settings.instagram_handle ?? null,
     areas,
+    openDays,
   };
 }
+
+const WEEKDAY_ID = [
+  "",
+  "Senin",
+  "Selasa",
+  "Rabu",
+  "Kamis",
+  "Jumat",
+  "Sabtu",
+  "Minggu",
+];
 
 const rupiah = (n: number) => n.toLocaleString("id-ID");
 
 export default async function LandingPage() {
-  const { rungs, priceListImage, instagram, areas } = await loadContent();
+  const { rungs, priceListImage, instagram, areas, openDays } =
+    await loadContent();
 
   const prices = rungs.map((r) => r.price);
   const dearest = Math.max(...prices);
@@ -259,22 +274,28 @@ export default async function LandingPage() {
           <div className="pl-shell">
             <span className="pl-eyebrow">Jadwal &amp; area</span>
             <h2 className="pl-h2">Kapan dan ke mana kami antar</h2>
+            {/* Which days are open is the union of the active kitchens' own
+                delivery_days, never a written-in week: one kitchen cooks
+                Minggu, another rests Sabtu, and a page that says otherwise
+                turns away food we would have delivered. */}
             <ul className="pl-week">
-              {["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"].map(
-                (day) => (
-                  <li key={day} className="pl-day">
-                    {day}
-                  </li>
-                ),
-              )}
-              <li className="pl-day pl-day--closed">Minggu</li>
+              {[1, 2, 3, 4, 5, 6, 7].map((iso) => (
+                <li
+                  key={iso}
+                  className={
+                    openDays.includes(iso) ? "pl-day" : "pl-day pl-day--closed"
+                  }
+                >
+                  {WEEKDAY_ID[iso]}
+                </li>
+              ))}
             </ul>
             <div className="pl-cutoff">
               <span className="pl-cutoff-time pl-num">16.00</span>
               <p>
                 Batas pesan untuk besok, waktu WIB. Perubahan jadwal, ganti
-                alamat, dan libur sehari ikut batas yang sama. Kami tutup hari
-                Minggu dan libur nasional.
+                alamat, dan libur sehari ikut batas yang sama. Hari yang dicoret
+                di atas dan libur nasional kami tutup.
               </p>
             </div>
             <ul className="pl-areas">

@@ -1,12 +1,13 @@
 import HandbookClient from "@/components/dashboard/handbook-client";
 import { getSetting } from "@/lib/cache/settings";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Onboarding for a new admin. The prose is in the client component; everything
  * here is a fact that has already gone stale once somewhere else in this repo —
- * the served areas, the H-1 cutoff and the price ladder are read live so the
+ * the served areas, the working weekdays, the H-1 cutoff and the price ladder are read live so the
  * handbook cannot teach a new admin a rule the system stopped enforcing.
  */
 export default async function HandbookPage() {
@@ -22,7 +23,7 @@ export default async function HandbookPage() {
       .order("portions"),
     db
       .from("subcontractors")
-      .select("customer_nickname")
+      .select("customer_nickname, delivery_days")
       .eq("is_active", true)
       .order("customer_nickname"),
   ]);
@@ -39,6 +40,12 @@ export default async function HandbookPage() {
       nicknames={(kitchens.data ?? [])
         .map((k) => k.customer_nickname)
         .filter((n): n is string => Boolean(n))}
+      schedules={(kitchens.data ?? [])
+        .filter((k) => k.customer_nickname)
+        .map(
+          (k) =>
+            `${k.customer_nickname}: ${daysLabel(k.delivery_days) || "belum diisi"}`,
+        )}
     />
   );
 }

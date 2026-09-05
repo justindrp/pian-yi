@@ -1,4 +1,8 @@
-import { formatHolidayDate, isClosedHoliday } from "@/lib/holidays/id";
+import {
+  BUSINESS_DAYS,
+  formatHolidayDate,
+  isClosedHoliday,
+} from "@/lib/holidays/id";
 import { jakartaDateString } from "@/lib/menu/week";
 
 // Wall-clock time in the timezone the business runs on.
@@ -43,10 +47,19 @@ export function addDays(ymd: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** True when a date is one we deliver on: not Minggu, not a libur nasional. */
-export function isDeliveryDay(ymd: string): boolean {
+/**
+ * True when a date is one we deliver on: a weekday `days` covers, and not a
+ * libur nasional. `days` is a kitchen's `delivery_days`; omit it and the answer
+ * is the business default, Senin–Sabtu. Minggu stopped being closed everywhere
+ * when Santapin, which cooks Senin–Minggu, was onboarded.
+ */
+export function isDeliveryDay(ymd: string, days?: number[] | null): boolean {
   const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
-  return dow !== 0 && !isClosedHoliday(ymd);
+  const iso = dow === 0 ? 7 : dow;
+  const allowed = (days ?? BUSINESS_DAYS).filter((d) => d >= 1 && d <= 7);
+  if (!(allowed.length === 0 ? BUSINESS_DAYS : allowed).includes(iso))
+    return false;
+  return !isClosedHoliday(ymd);
 }
 
 /**
@@ -60,6 +73,8 @@ export function isDeliveryDay(ymd: string): boolean {
 export function earliestDeliveryDate(opts: {
   deadlineHour: number;
   now?: Date;
+  /** The weekdays some kitchen works. Omitted, the business default applies. */
+  days?: number[] | null;
 }): { date: string; deadlinePassed: boolean } {
   const now = opts.now ?? new Date();
   const today = jakartaDateString(now);
@@ -68,7 +83,7 @@ export function earliestDeliveryDate(opts: {
   let date = addDays(today, deadlinePassed ? 2 : 1);
   // 60 is arbitrary but far past any real run of closures; it only exists so a
   // bad holiday table cannot spin here forever.
-  for (let i = 0; i < 60 && !isDeliveryDay(date); i++) {
+  for (let i = 0; i < 60 && !isDeliveryDay(date, opts.days); i++) {
     date = addDays(date, 1);
   }
   return { date, deadlinePassed };
@@ -96,6 +111,17 @@ export function deliveryCalendar(opts: {
   deadlineHour: number;
   now?: Date;
   days?: number;
+  /**
+   * The weekdays some active kitchen works — the union, not one kitchen's list,
+   * because the calendar is written before the customer has chosen a dapur.
+   */
+  servedDays?: number[] | null;
+  /**
+   * Of those, the ones only some kitchens work. They are deliverable, but not
+   * from every dapur, and the line says so: promising Minggu to a customer on a
+   * Senin–Jumat kitchen is the same false promise as promising a closed day.
+   */
+  partialDays?: number[] | null;
 }): string {
   const now = opts.now ?? new Date();
   const today = jakartaDateString(now);
@@ -109,7 +135,7 @@ export function deliveryCalendar(opts: {
       lines.push(`- ${label} — HARI INI, sudah lewat untuk pengiriman`);
       continue;
     }
-    if (!isDeliveryDay(date)) {
+    if (!isDeliveryDay(date, opts.servedDays)) {
       lines.push(
         `- ${label} — TUTUP, tidak ada pengiriman${date === addDays(today, 1) ? ' (ini yang customer sebut "besok")' : ""}`,
       );
@@ -121,8 +147,10 @@ export function deliveryCalendar(opts: {
       );
       continue;
     }
+    const isoDow = new Date(`${date}T00:00:00Z`).getUTCDay() || 7;
+    const partial = (opts.partialDays ?? []).includes(isoDow);
     lines.push(
-      `- ${label} — bisa dikirim${date === addDays(today, 1) ? ' (ini yang customer sebut "besok")' : ""}`,
+      `- ${label} — bisa dikirim${partial ? ", TAPI hanya sebagian dapur — cek dapur customer dulu sebelum menjanjikan tanggal ini" : ""}${date === addDays(today, 1) ? ' (ini yang customer sebut "besok")' : ""}`,
     );
   }
   return lines.join("\n");

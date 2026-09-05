@@ -10,6 +10,8 @@ type Facts = {
   deadlineHour: number;
   tiers: Tier[];
   nicknames: string[];
+  /** One "Nickname: Senin–Sabtu" per active kitchen. */
+  schedules: string[];
 };
 
 type Lang = "id" | "en";
@@ -131,7 +133,10 @@ function contentId(f: Facts): Section[] {
       title: "Pengiriman dan batas waktu",
       blocks: [
         p(
-          `Kirim Senin sampai Sabtu. Minggu tutup. Libur nasional tutup. Batas pemesanan pukul ${String(f.deadlineHour).padStart(2, "0")}.00 WIB sehari sebelumnya — batas yang sama berlaku untuk perubahan dan permintaan skip, bukan cuma pesanan baru.`,
+          `Hari kerja per dapur: ${f.schedules.join("; ") || "(belum ada dapur aktif)"}. Libur nasional tutup. Batas pemesanan pukul ${String(f.deadlineHour).padStart(2, "0")}.00 WIB sehari sebelumnya — batas yang sama berlaku untuk perubahan dan permintaan skip, bukan cuma pesanan baru.`,
+        ),
+        rule(
+          "Hari kerja itu milik dapur, bukan milik perusahaan. Ada dapur yang masak hari Minggu dan ada yang libur Sabtu, jadi jangan pernah bilang \u201cMinggu tutup\u201d ke customer sebelum melihat dapur yang melayani dia.",
         ),
         p(
           `Area yang dilayani sekarang: ${areas || "(belum ada dapur aktif)"}.`,
@@ -314,7 +319,10 @@ function contentEn(f: Facts): Section[] {
       title: "Delivery and the cutoff",
       blocks: [
         p(
-          `We deliver Monday to Saturday. Sunday closed. National holidays closed. Orders close at ${String(f.deadlineHour).padStart(2, "0")}:00 WIB the day before — and that same cutoff governs changes and skip requests, not just new orders.`,
+          `Working days per kitchen: ${f.schedules.join("; ") || "(no active kitchen)"}. National holidays closed. Orders close at ${String(f.deadlineHour).padStart(2, "0")}:00 WIB the day before — and that same cutoff governs changes and skip requests, not just new orders.`,
+        ),
+        rule(
+          "Working days belong to the kitchen, not to the company. One kitchen cooks Sunday and another rests on Saturday, so never tell a customer Sunday is closed before checking which kitchen serves them.",
         ),
         p(`Areas served right now: ${areas || "(no active kitchen)"}.`),
         rule(

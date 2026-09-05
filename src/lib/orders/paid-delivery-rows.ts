@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDeliveryDay } from "@/lib/holidays/id";
-import { kitchenDeliversOn } from "@/lib/subcontractors/days";
 import { unbookedByOrder } from "@/lib/orders/customer-schedule";
 import {
   type DrawCandidate,
@@ -124,17 +123,15 @@ export async function buildPaidDeliveryRows(params: {
         .maybeSingle()
     : { data: null };
 
-  // Minggu and libur nasional are days nobody cooks. Dropping them leaves those
-  // portions unbooked, which is right — the customer still owns them and can
-  // move them. A day this kitchen does not work is dropped the same way and for
-  // the same reason. Sorted so the FIFO charge runs in delivery order rather
-  // than whatever order the model listed the days in; lunch precedes dinner.
+  // A day this kitchen does not work, and libur nasional, are days nobody
+  // cooks. Dropping them leaves those portions unbooked, which is right — the
+  // customer still owns them and can move them. Which weekdays those are is the
+  // kitchen's own `delivery_days`: Minggu is a working day for a kitchen that
+  // lists 7, so it is never dropped on the strength of being a Sunday. Sorted so
+  // the FIFO charge runs in delivery order rather than whatever order the model
+  // listed the days in; lunch precedes dinner.
   const slots = requested
-    .filter(
-      (r) =>
-        isDeliveryDay(r.date) &&
-        kitchenDeliversOn(kitchenRow?.delivery_days, r.date),
-    )
+    .filter((r) => isDeliveryDay(r.date, kitchenRow?.delivery_days))
     .sort((a, b) =>
       a.date !== b.date
         ? a.date < b.date

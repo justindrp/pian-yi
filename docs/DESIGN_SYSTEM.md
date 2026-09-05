@@ -121,6 +121,8 @@ Rendered by `scripts/menu-card.ts`, so this is a specification the output actual
 
 **A kitchen with no generated photos gets a written card** — two columns of bordered panels instead of three columns of cutouts, because with the photo slot empty the dishes are the whole cell and need a panel of their own. A kitchen whose lunch and dinner differ prints both under gold SIANG and MALAM pills in the same cell. The type on a written card is fitted after layout, not chosen in advance: six days of separate lunch and dinner is twice the text of five single line-ups, so the render shrinks the list font until the densest panel stops overflowing. Without that, Dapur Palem's Jumat and Sabtu ran off the bottom of the card and took the footer with them.
 
+**The grid is counted from the days, and a seventh day buys a column rather than a row.** Two columns up to six days, three from seven — Santapin cook Minggu, so their week has seven panels. Cell *height* is what a split-meal card runs out of, so splitting the same page into four rows made every panel shorter and clipped all seven; three columns keeps the panel height of a six-day card. A chef's-choice panel on a written card carries no invisible photo spacer either: the spacer exists to line a text panel up with its photographed neighbours, and on a card with no photos it pushed the panel's own words out of the clip, so Santapin's Minggu rendered as an empty box.
+
 **Ask the image model for transparency; never knock it out afterwards.** `background: "transparent"` gives an alpha edge with no colour of its own. Cutting a photo off a coloured background leaves anti-aliased edge pixels holding *that* colour at partial alpha, which reads as a dark halo on any other ground.
 
 ---

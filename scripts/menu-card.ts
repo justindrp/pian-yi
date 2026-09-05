@@ -133,7 +133,7 @@ li{list-style:none;font-size:18px;font-weight:600;line-height:1.36;margin-top:3p
 /* A kitchen with no generated photos gets a written card: the dishes are the
    whole cell, so they get a panel of their own rather than floating under an
    empty photo slot. */
-.grid.text{min-height:0;--tfs:21px;--tday:30px;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr);align-content:stretch;gap:20px}
+.grid.text{min-height:0;--tfs:21px;--tday:30px;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;align-content:stretch;gap:20px}
 .grid.text .cell{overflow:hidden;background:rgba(255,255,255,.08);border:2px solid ${GOLD}55;border-radius:20px;padding:20px 22px;text-align:left;align-items:stretch;justify-content:flex-start}
 .grid.text .day{margin-top:0;font-size:var(--tday)}
 .grid.text .date{font-size:16px}
@@ -148,9 +148,13 @@ li{list-style:none;font-size:18px;font-weight:600;line-height:1.36;margin-top:3p
  * The S box and the M tambahan are drawn apart, always. Folding them into one
  * list is the bug this card exists to fix.
  */
-function cell(d: Day) {
+function cell(d: Day, photos: boolean) {
   if (!d.s.length && !d.lunch && !d.dinner) {
-    return `<div class="cell"><img class="photo" src="" style="visibility:hidden">
+    // The spacer image keeps a chef's-choice cell aligned with its photographed
+    // neighbours. On a written card there are no photos to align to, and the
+    // reserved height pushed the whole cell past the clip: Santapin's Minggu
+    // rendered as an empty box.
+    return `<div class="cell">${photos ? '<img class="photo" src="" style="visibility:hidden">' : ""}
       <div class="day">${d.name}</div><div class="date">${d.date}</div>
       <div class="chef"><span class="big">CHEF'S CHOICE</span>${d.note ?? ""}</div></div>`;
   }
@@ -177,6 +181,7 @@ function page(
   opts: { offersM: boolean; daysLine: string; photos: boolean },
 ) {
   const rp = `Rp ${surcharge.toLocaleString("id-ID")}`;
+  const cols = menu.days.length > 6 ? 3 : 2;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
   <div class="wrap">
     <div class="head">
@@ -196,7 +201,16 @@ function page(
       </div>
     </div>
     <div class="rule"></div>
-    <div class="grid${opts.photos ? "" : " text"}">${menu.days.map(cell).join("")}</div>
+    <div class="grid${opts.photos ? "" : " text"}"${
+      opts.photos
+        ? ""
+        : // The shape is counted from the days, never fixed: Santapin's week is
+          // seven days since they cook Minggu. Cell height is what a split-meal
+          // card runs out of, so a seventh day buys a third column rather than a
+          // fourth row — the same page split four ways clipped every cell and
+          // dropped the MALAM half off the card.
+          ` style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${Math.ceil(menu.days.length / cols)},1fr)"`
+    }>${menu.days.map((d) => cell(d, opts.photos)).join("")}</div>
     <div class="foot">
       <div class="areas">${areas.join(" &nbsp;·&nbsp; ")}</div>
       <div class="order"><div class="lbl">Pesan via WhatsApp</div><div class="wa">${wa}</div></div>
