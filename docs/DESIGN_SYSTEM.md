@@ -117,6 +117,10 @@ Rendered by `scripts/menu-card.ts`, so this is a specification the output actual
 - Footer: delivery areas (read, not typed), the WhatsApp number, and the cutoff line.
 - Photos are cutouts floating on the flat red with a drop shadow — no cell boxes, no frames.
 
+**The card is per kitchen, and so is everything on it.** `scripts/menu-card.ts --kitchen X` renders one kitchen; the size legend prints "SATU UKURAN" rather than the S/M pair when that kitchen's `offers_size_m` is false, the footer's day range comes from its `delivery_days`, and the areas from its own `delivery_areas`. A kitchen that cooks Senin–Jumat must not be handed a card whose footer says Senin–Sabtu, and a kitchen with no size M must not show an M price for a box it does not pack.
+
+**A kitchen with no generated photos gets a written card** — two columns of bordered panels instead of three columns of cutouts, because with the photo slot empty the dishes are the whole cell and need a panel of their own. A kitchen whose lunch and dinner differ prints both under gold SIANG and MALAM pills in the same cell. The type on a written card is fitted after layout, not chosen in advance: six days of separate lunch and dinner is twice the text of five single line-ups, so the render shrinks the list font until the densest panel stops overflowing. Without that, Dapur Palem's Jumat and Sabtu ran off the bottom of the card and took the footer with them.
+
 **Ask the image model for transparency; never knock it out afterwards.** `background: "transparent"` gives an alpha edge with no colour of its own. Cutting a photo off a coloured background leaves anti-aliased edge pixels holding *that* colour at partial alpha, which reads as a dark halo on any other ground.
 
 ---

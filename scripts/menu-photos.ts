@@ -18,7 +18,7 @@
  *   npx tsx --env-file=.env.local scripts/menu-photos.ts [--day 1] [--quality low|medium|high]
  *
  * Costs money on every run: ~$0.041 per image at medium, ~$0.005 at low.
- * Writes .menu-photos/t1.png … t5.png. Nothing is uploaded and nothing is sent.
+ * Writes .menu-photos/<kitchen>/t1.png … t5.png. Nothing is uploaded and nothing is sent.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -251,13 +251,28 @@ async function main() {
     (k) => (k.menu_text ?? "").trim().length > 0,
   );
   if (!kitchen) throw new Error("no active kitchen has a menu_text to draw");
+  // A kitchen whose lunch and dinner are different menus has two line-ups a day
+  // and this script draws one tray per day. Drawing either one would put food on
+  // the card that half the customers are not getting.
+  if (/\bSiang:/.test(kitchen.menu_text ?? ""))
+    throw new Error(
+      `${kitchen.customer_nickname} has a separate siang and malam menu — photos are only for a kitchen that cooks one line-up a day`,
+    );
 
   const days = parseMenu(kitchen.menu_text ?? "");
   if (!days.length) throw new Error("menu_text parsed to no days");
 
-  mkdirSync(OUT, { recursive: true });
+  // Per kitchen, because the card reads them back per kitchen: flat files put
+  // Thenie's five trays under Homey's dish names the first time a second
+  // kitchen was drawn.
+  const slug = (kitchen.customer_nickname ?? "kitchen")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const dir = `${OUT}/${slug}`;
+  mkdirSync(dir, { recursive: true });
   console.log(
-    `${kitchen.customer_nickname}: ${days.length} days, quality=${quality}`,
+    `${kitchen.customer_nickname}: ${days.length} days, quality=${quality} -> ${dir}`,
   );
 
   for (const [i, day] of days.entries()) {
@@ -266,7 +281,7 @@ async function main() {
     const prompt = promptFor(day);
     process.stdout.write(`t${n} ${day.name} ${day.date} … `);
     const png = await deskew(await generate(prompt, quality, REFERENCE));
-    writeFileSync(`${OUT}/t${n}.png`, png);
+    writeFileSync(`${dir}/t${n}.png`, png);
     console.log(`${(png.length / 1024).toFixed(0)} KB`);
   }
 }

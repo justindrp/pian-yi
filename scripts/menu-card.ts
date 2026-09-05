@@ -9,14 +9,30 @@
  * listed all five items with no size marking; a size S customer read it as food
  * she had been shorted. Next week is a re-run of this script, not a redraw.
  *
- * Usage: npx tsx --env-file=.env.local scripts/menu-card.ts
- * Writes .menu-photos/card.png. Nothing is uploaded and nothing is sent.
+ * Usage:
+ *   pnpm tsx --env-file=.env.local scripts/menu-card.ts [--kitchen <nickname|name|id>]
+ *
+ * Without `--kitchen` it draws the first active kitchen that has a `menu_text`,
+ * which is what it always did. Naming one draws that kitchen whether it is
+ * active or not — a kitchen cannot be activated until its card exists, because
+ * `dapurOptions` needs `menu_image_url`, so the card has to come first.
+ *
+ * Three things vary per kitchen and are all read, never typed: whether lunch and
+ * dinner are different menus (`same_menu_both_meals`), whether size M exists at
+ * all (`offers_size_m` — the size strip and the M blocks are simply absent for a
+ * kitchen that does not cook it), and which days it delivers (`delivery_days`,
+ * printed in the footer). The areas come from that kitchen's own
+ * `delivery_areas`, not from the union across active kitchens: a card promising
+ * an area this kitchen does not drive to is a delivery we cannot make.
+ *
+ * Writes .menu-photos/card-<nickname>.png. Nothing is uploaded and nothing is sent.
  */
 
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const DIR = process.env.MENU_PHOTO_DIR ?? ".menu-photos";
@@ -28,11 +44,23 @@ const LOGO = `${process.cwd()}/scripts/assets/menu-card-logo.png`;
 type Day = {
   name: string;
   date: string;
+  /** The one menu of the day, for a kitchen that cooks the same food at both meals. */
   s: string[];
+  /** Set instead of `s` when lunch and dinner are different menus. */
+  lunch: string[] | null;
+  dinner: string[] | null;
   m: string | null;
   photo: string | null;
   note?: string;
 };
+
+function items(rest: string): string[] {
+  return rest
+    .replace(/\.$/, "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
 
 function parseMenu(text: string): {
   batch: string;
@@ -43,7 +71,9 @@ function parseMenu(text: string): {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  const head = lines[0]?.match(/^(Batch \d+)\s*—\s*(.+)\.$/);
+  // "Batch 53 — 7 s/d 12 September." is Thenie's own numbering. A kitchen with
+  // no batch counter writes its own title, so the left half is any text.
+  const head = lines[0]?.match(/^(.+?)\s*—\s*(.+)\.$/);
   const days: Day[] = [];
   for (const line of lines.slice(2)) {
     const parts = line.match(/^(\w+) ([^:]+):\s*(.+)$/);
@@ -51,17 +81,15 @@ function parseMenu(text: string): {
     const [, name, date, rest] = parts;
     const m = rest.match(/Tambahan size M:\s*([^.]+)\./);
     const isChef = /Chef recommendation/i.test(rest);
+    // A kitchen whose lunch and dinner differ writes both on the day's line.
+    const split = rest.match(/^Siang:\s*(.+?)\.\s*Malam:\s*(.+)$/);
+    const body = rest.replace(/\s*Tambahan size M:.*$/, "");
     days.push({
       name,
       date,
-      s: isChef
-        ? []
-        : rest
-            .replace(/\s*Tambahan size M:.*$/, "")
-            .replace(/\.$/, "")
-            .split(",")
-            .map((x) => x.trim())
-            .filter(Boolean),
+      s: isChef || split ? [] : items(body),
+      lunch: split ? items(split[1]) : null,
+      dinner: split ? items(split[2]) : null,
       m: m ? m[1].trim() : null,
       photo: null,
       note: isChef ? "Menu spesial pilihan chef,<br>diumumkan H-1" : undefined,
@@ -102,6 +130,18 @@ li{list-style:none;font-size:18px;font-weight:600;line-height:1.36;margin-top:3p
 .order .lbl{font-family:'Poppins';font-size:12px;letter-spacing:.2em;font-weight:600;color:${GOLD};text-transform:uppercase}
 .order .wa{font-family:'Poppins';font-size:26px;font-weight:800;letter-spacing:.02em;line-height:1.15}
 .note{text-align:center;font-size:13px;font-weight:600;opacity:.8;margin-top:9px}
+/* A kitchen with no generated photos gets a written card: the dishes are the
+   whole cell, so they get a panel of their own rather than floating under an
+   empty photo slot. */
+.grid.text{min-height:0;--tfs:21px;--tday:30px;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr);align-content:stretch;gap:20px}
+.grid.text .cell{overflow:hidden;background:rgba(255,255,255,.08);border:2px solid ${GOLD}55;border-radius:20px;padding:20px 22px;text-align:left;align-items:stretch;justify-content:flex-start}
+.grid.text .day{margin-top:0;font-size:var(--tday)}
+.grid.text .date{font-size:16px}
+.grid.text li{font-size:var(--tfs);line-height:1.36;margin-top:3px}
+.grid.text .mealtag{font-size:12px;padding:3px 11px}
+.meal{margin-top:11px}
+.mealtag{display:inline-block;font-family:'Poppins';font-size:11px;font-weight:700;letter-spacing:.08em;color:#2B2B2B;background:${GOLD};border-radius:999px;padding:2px 9px}
+.meal ul{margin-top:5px}
 `;
 
 /**
@@ -109,15 +149,22 @@ li{list-style:none;font-size:18px;font-weight:600;line-height:1.36;margin-top:3p
  * list is the bug this card exists to fix.
  */
 function cell(d: Day) {
-  if (!d.s.length) {
+  if (!d.s.length && !d.lunch && !d.dinner) {
     return `<div class="cell"><img class="photo" src="" style="visibility:hidden">
       <div class="day">${d.name}</div><div class="date">${d.date}</div>
       <div class="chef"><span class="big">CHEF'S CHOICE</span>${d.note ?? ""}</div></div>`;
   }
+  const list = (xs: string[]) =>
+    `<ul>${xs.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+  const meals =
+    d.lunch || d.dinner
+      ? `${d.lunch ? `<div class="meal"><span class="mealtag">SIANG</span>${list(d.lunch)}</div>` : ""}
+         ${d.dinner ? `<div class="meal"><span class="mealtag">MALAM</span>${list(d.dinner)}</div>` : ""}`
+      : list(d.s);
   return `<div class="cell">
     ${d.photo ? `<img class="photo" src="${d.photo}">` : ""}
     <div class="day">${d.name}</div><div class="date">${d.date}</div>
-    <ul>${d.s.map((i) => `<li>${i}</li>`).join("")}</ul>
+    ${meals}
     ${d.m ? `<div class="mblock"><span class="mtag">+ SIZE M</span><div class="mitem">${d.m}</div></div>` : ""}
   </div>`;
 }
@@ -127,6 +174,7 @@ function page(
   areas: string[],
   surcharge: number,
   wa: string,
+  opts: { offersM: boolean; daysLine: string; photos: boolean },
 ) {
   const rp = `Rp ${surcharge.toLocaleString("id-ID")}`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
@@ -139,55 +187,136 @@ function page(
         <div class="range">${menu.range}</div>
       </div>
       <div class="sizes">
-        <div><b>SIZE S</b> — nasi + lauk + sayur + sambal</div>
-        <div><b>SIZE M</b> — size S + lauk tambahan (+${rp}/porsi)</div>
+        ${
+          opts.offersM
+            ? `<div><b>SIZE S</b> — nasi + lauk + sayur + sambal</div>
+               <div><b>SIZE M</b> — size S + lauk tambahan (+${rp}/porsi)</div>`
+            : "<div><b>SATU UKURAN</b> — nasi + lauk + sayur + sambal</div>"
+        }
       </div>
     </div>
     <div class="rule"></div>
-    <div class="grid">${menu.days.map(cell).join("")}</div>
+    <div class="grid${opts.photos ? "" : " text"}">${menu.days.map(cell).join("")}</div>
     <div class="foot">
       <div class="areas">${areas.join(" &nbsp;·&nbsp; ")}</div>
       <div class="order"><div class="lbl">Pesan via WhatsApp</div><div class="wa">${wa}</div></div>
     </div>
-    <div class="note">Foto menampilkan porsi size M · Senin–Sabtu · pesanan ditutup 16.00 WIB H-1</div>
+    <div class="note">${opts.photos && opts.offersM ? "Foto menampilkan porsi size M · " : ""}${opts.daysLine} · pesanan ditutup 16.00 WIB H-1</div>
   </div></body></html>`;
 }
 
 async function main() {
-  const db = createAdminClient();
-  const [{ data: kitchens, error }, areas, surcharge] = await Promise.all([
-    db
-      .from("subcontractors")
-      .select("customer_nickname, menu_text")
-      .eq("is_active", true),
-    activeDeliveryAreas(db),
-    sizeMSurcharge(),
-  ]);
-  if (error) throw new Error(error.message);
+  const argv = process.argv.slice(2);
+  const wanted = argv[argv.indexOf("--kitchen") + 1];
+  const asked = argv.includes("--kitchen") ? (wanted ?? "").trim() : "";
+  if (argv.includes("--kitchen") && !asked)
+    throw new Error("--kitchen needs a nickname, a name or an id");
 
-  const kitchen = (kitchens ?? []).find(
-    (k) => (k.menu_text ?? "").trim().length > 0,
-  );
-  if (!kitchen) throw new Error("no active kitchen has a menu_text to draw");
+  const db = createAdminClient();
+  const [{ data: kitchens, error }, fallbackAreas, surcharge] =
+    await Promise.all([
+      db
+        .from("subcontractors")
+        .select(
+          "id, name, customer_nickname, menu_text, delivery_areas, delivery_days, offers_size_m, is_active",
+        ),
+      activeDeliveryAreas(db),
+      sizeMSurcharge(),
+    ]);
+  if (error) throw new Error(error.message);
+  const all = kitchens ?? [];
+
+  const hasMenu = (k: (typeof all)[number]) =>
+    (k.menu_text ?? "").trim().length > 0;
+  const needle = asked.toLowerCase();
+  const kitchen = asked
+    ? all.find(
+        (k) =>
+          k.id === asked ||
+          (k.customer_nickname ?? "").toLowerCase().includes(needle) ||
+          k.name.toLowerCase().includes(needle),
+      )
+    : all.find((k) => k.is_active === true && hasMenu(k));
+  if (!kitchen)
+    throw new Error(
+      asked
+        ? `no kitchen matches "${asked}"`
+        : "no active kitchen has a menu_text to draw",
+    );
+  if (!hasMenu(kitchen))
+    throw new Error(
+      `${kitchen.customer_nickname ?? kitchen.name} has no menu_text — write the week into that column first`,
+    );
+
+  const slug = (kitchen.customer_nickname ?? kitchen.name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
   const menu = parseMenu(kitchen.menu_text ?? "");
+  // Photos live under the kitchen that cooked them (`.menu-photos/<slug>/`) and
+  // only Thenie has any. They were flat files while one kitchen cooked
+  // everything, and the first card drawn for a second kitchen put Thenie's five
+  // trays under Homey's dish names — the exact "names a dish, shows another"
+  // failure this script was written to end. A missing file is drawn as a
+  // written card, never as another kitchen's food.
+  let photos = false;
   menu.days.forEach((d, i) => {
-    if (d.s.length) d.photo = `file://${process.cwd()}/${DIR}/t${i + 1}.png`;
+    const file = `${process.cwd()}/${DIR}/${slug}/t${i + 1}.png`;
+    if (d.s.length && existsSync(file)) {
+      d.photo = `file://${file}`;
+      photos = true;
+    }
   });
 
-  const html = page(menu, areas, surcharge, "0851-1121-4390");
-  writeFileSync(`${DIR}/card.html`, html);
+  // This kitchen's own coverage, not the union across active kitchens: some
+  // areas rest on a single kitchen, and a card is read as a promise.
+  const own = ((kitchen.delivery_areas as string[] | null) ?? []).filter(
+    (a) => a.trim().length > 0,
+  );
+  const areas = own.length > 0 ? own : fallbackAreas;
+  const daysLine = daysLabel(kitchen.delivery_days) || "Senin–Sabtu";
+
+  const html = page(menu, areas, surcharge, "0851-1121-4390", {
+    offersM: kitchen.offers_size_m === true,
+    daysLine,
+    photos,
+  });
+  writeFileSync(`${DIR}/card-${slug}.html`, html);
 
   const browser = await chromium.launch();
   const ctx = await browser.newPage({
     viewport: { width: 1080, height: 1350 },
     deviceScaleFactor: 2,
   });
-  await ctx.goto(`file://${process.cwd()}/${DIR}/card.html`);
+  await ctx.goto(`file://${process.cwd()}/${DIR}/card-${slug}.html`);
   await ctx.waitForTimeout(1500); // Google Fonts, then the photos
-  await ctx.screenshot({ path: `${DIR}/card.png` });
+  // A written card carries whatever the kitchen cooks that week — six days of
+  // separate lunch and dinner is twice the text of five single line-ups — so
+  // the type shrinks until the densest cell fits rather than being cut off.
+  // `evaluate` gets a string, not a closure: tsx compiles with keepNames, and
+  // the injected `__name` helper does not exist inside the page.
+  await ctx.evaluate(`
+    (function () {
+      var grid = document.querySelector(".grid.text");
+      if (!grid) return;
+      function spills() {
+        return Array.prototype.some.call(
+          grid.children,
+          function (c) { return c.scrollHeight > c.clientHeight; },
+        );
+      }
+      for (var fs = 21; fs > 13 && spills(); fs--) {
+        grid.style.setProperty("--tfs", fs - 1 + "px");
+        grid.style.setProperty("--tday", Math.max(23, fs + 8) + "px");
+      }
+    })()
+  `);
+  await ctx.screenshot({ path: `${DIR}/card-${slug}.png` });
   await browser.close();
-  console.log(`${DIR}/card.png — ${menu.batch}, ${menu.days.length} days`);
+  console.log(
+    `${DIR}/card-${slug}.png — ${kitchen.customer_nickname ?? kitchen.name}, ${menu.batch}, ${menu.days.length} days`,
+  );
 }
 
 main().then(

@@ -297,13 +297,15 @@ Standard commands (always use these spellings):
 Two scripts, run in order, produce the card that goes to customers and to Instagram:
 
 ```
-npx tsx --env-file=.env.local scripts/menu-photos.ts [--day N] [--quality low|medium|high]
-npx tsx --env-file=.env.local scripts/menu-card.ts
+npx tsx --env-file=.env.local scripts/menu-photos.ts [--kitchen X] [--day N] [--quality low|medium|high]
+npx tsx --env-file=.env.local scripts/menu-card.ts [--kitchen X]
 ```
 
-`menu-photos.ts` generates one food photo per menu day with OpenAI `gpt-image-2` (`OPENAI_API_KEY`, local only — nothing on Railway calls it). `menu-card.ts` renders 1080×1350 at 2x through headless chromium and writes `.menu-photos/card.png` (gitignored).
+`menu-photos.ts` generates one food photo per menu day with OpenAI `gpt-image-2` (`OPENAI_API_KEY`, local only — nothing on Railway calls it). `menu-card.ts` renders 1080×1350 at 2x through headless chromium and writes `.menu-photos/card-<nickname-slug>.png` (gitignored).
 
-**Nothing on the card is typed.** The batch, the dates, the dishes and the size M item are parsed out of `subcontractors.menu_text` for the active kitchen; the surcharge is `settings.size_m_surcharge`; the areas are `activeDeliveryAreas()`. Both scripts parse that column the same way, so the photo prompt and the printed dish names cannot drift apart — which is the whole point. Batch 51's card was drawn by hand in a chat window and three of its five photos showed food nobody cooks that week; Senin's "Chicken Katsu" was plated as tempeh sticks. Next week is a re-run, not a redraw.
+**Both scripts take `--kitchen` and both key their files on the kitchen.** Every kitchen cooks a different week, so `--kitchen` matches an id, a nickname or a name and defaults to the first active kitchen with a `menu_text`; without it the scripts only ever saw one kitchen. Photos live in `.menu-photos/<nickname-slug>/tN.png`, not flat at the top of the directory — while they were flat, Dapur Monstera's first card printed its own dish names under Dapur Suplir's food photos, which is precisely the failure the pipeline exists to prevent. A kitchen may be named even when it is inactive, so its card can be rendered before it is switched on.
+
+**Nothing on the card is typed.** The batch, the dates, the dishes and the size M item are parsed out of `subcontractors.menu_text` for the kitchen being rendered; the surcharge is `settings.size_m_surcharge`; the delivery days are that kitchen's `delivery_days` and its areas its own `delivery_areas`, falling back to `activeDeliveryAreas()` only when the row carries none. Both scripts parse that column the same way, so the photo prompt and the printed dish names cannot drift apart — which is the whole point. Batch 51's card was drawn by hand in a chat window and three of its five photos showed food nobody cooks that week; Senin's "Chicken Katsu" was plated as tempeh sticks. Next week is a re-run, not a redraw.
 
 **The batch number is counted, not remembered.** Batch 1 was 8–13 September 2025, so a week's number is the count of weeks since — the week of 31 Agustus 2026 is **Batch 52**. `menu_text` is edited by hand and its header carried "Batch 51" for that week; the card prints whatever the header says, so 129 customers received a card numbered one short. Check the header against that anchor before running either script, and correct the column rather than the card.
 
