@@ -72,8 +72,12 @@ function parseMenu(text: string): {
     .map((l) => l.trim())
     .filter(Boolean);
   // "Batch 53 — 7 s/d 12 September." is Thenie's own numbering. A kitchen with
-  // no batch counter writes its own title, so the left half is any text.
-  const head = lines[0]?.match(/^(.+?)\s*—\s*(.+)\.$/);
+  // no batch counter writes its own title, so the left half is any text — and
+  // may be left out entirely ("7 s/d 13 September 2026."), which is the honest
+  // answer for a kitchen that numbers nothing. An invented placeholder there
+  // printed "MENU MINGGUAN · MENU REGULER" across the top of the card.
+  const head =
+    lines[0]?.match(/^(.+?)\s*—\s*(.+)\.$/) ?? lines[0]?.match(/^()(.+)\.$/);
   const days: Day[] = [];
   for (const line of lines.slice(2)) {
     const parts = line.match(/^(\w+) ([^:]+):\s*(.+)$/);
@@ -95,7 +99,7 @@ function parseMenu(text: string): {
       note: isChef ? "Menu spesial pilihan chef,<br>diumumkan H-1" : undefined,
     });
   }
-  return { batch: head?.[1] ?? "Batch", range: head?.[2] ?? "", days };
+  return { batch: head?.[1]?.trim() ?? "", range: head?.[2] ?? "", days };
 }
 
 const CSS = `
@@ -178,7 +182,12 @@ function page(
   areas: string[],
   surcharge: number,
   wa: string,
-  opts: { offersM: boolean; daysLine: string; photos: boolean },
+  opts: {
+    offersM: boolean;
+    daysLine: string;
+    photos: boolean;
+    nickname: string | null;
+  },
 ) {
   const rp = `Rp ${surcharge.toLocaleString("id-ID")}`;
   const cols = menu.days.length > 6 ? 3 : 2;
@@ -187,8 +196,26 @@ function page(
     <div class="head">
       <img class="logo" src="file://${LOGO}">
       <div class="htext">
-        <div class="kicker">Menu Mingguan</div>
-        <div class="batch">${menu.batch.toUpperCase()}</div>
+        ${
+          // The nickname is the only name of a kitchen a customer may ever see,
+          // and with three kitchens offered at once it has to be the biggest
+          // thing on the card: three cards whose headline is the kitchen's own
+          // title differ only in their dish lists, and a customer cannot ask
+          // for one by name. The kitchen's own title — Thenie's batch number —
+          // moves up to the kicker, where it is still printed. A kitchen with
+          // no nickname keeps the old layout rather than falling back to
+          // `name`, which is the supplier's real name and never goes out.
+          opts.nickname
+            ? `<div class="kicker">Menu Mingguan${menu.batch ? ` · ${menu.batch}` : ""}</div>
+               <div class="batch"${
+                 // A long nickname at the full 52px runs into the size block
+                 // beside it — "DAPUR MONSTERA" left no gap at all. The header
+                 // is one row, so the name gives way rather than wrapping.
+                 opts.nickname.length > 12 ? ' style="font-size:44px"' : ""
+}>${opts.nickname.toUpperCase()}</div>`
+            : `<div class="kicker">Menu Mingguan</div>
+               <div class="batch">${(menu.batch || "Menu Mingguan").toUpperCase()}</div>`
+        }
         <div class="range">${menu.range}</div>
       </div>
       <div class="sizes">
@@ -295,6 +322,7 @@ async function main() {
     offersM: kitchen.offers_size_m === true,
     daysLine,
     photos,
+    nickname: kitchen.customer_nickname,
   });
   writeFileSync(`${DIR}/card-${slug}.html`, html);
 
