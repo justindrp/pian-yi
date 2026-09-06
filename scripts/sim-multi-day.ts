@@ -96,6 +96,7 @@ async function main() {
     customerNotes: null,
     detectedMapsLink: null,
     menuShown: true,
+    currentDapur: null,
     dapurOptions: rawSubs
       .filter((s) => !!s.menu_image_url)
       .map((s) => ({

@@ -114,6 +114,7 @@ describe("customer chatbot system prompt", () => {
       customerNotes: null,
       detectedMapsLink: null,
       menuShown: true,
+      currentDapur: null,
       dapurOptions: [],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -150,6 +151,7 @@ describe("customer chatbot system prompt", () => {
       customerNotes: null,
       detectedMapsLink: null,
       menuShown: true,
+      currentDapur: null,
       dapurOptions: [],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -198,6 +200,7 @@ describe("customer chatbot system prompt", () => {
       customerNotes: null,
       detectedMapsLink: null,
       menuShown: true,
+      currentDapur: null,
       dapurOptions: [],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -230,6 +233,7 @@ describe("customer chatbot system prompt", () => {
       customerNotes: null,
       detectedMapsLink: "https://maps.app.goo.gl/abc",
       menuShown: true,
+      currentDapur: null,
       dapurOptions: [],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -260,6 +264,7 @@ describe("customer chatbot system prompt", () => {
       customerNotes: null,
       detectedMapsLink: null,
       menuShown: true,
+      currentDapur: null,
       dapurOptions: [],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -321,6 +326,7 @@ describe("customer chatbot system prompt", () => {
         customerNotes: null,
         detectedMapsLink: null,
         menuShown: true,
+        currentDapur: null,
         dapurOptions: [],
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -353,6 +359,7 @@ describe("customer chatbot system prompt", () => {
       customerNotes: null,
       detectedMapsLink: null,
       menuShown: true,
+      currentDapur: null,
       dapurOptions: [],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -429,6 +436,7 @@ describe("customer chatbot system prompt", () => {
       customerNotes: null,
       detectedMapsLink: null,
       menuShown: true,
+      currentDapur: null,
       dapurOptions: [],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -500,6 +508,7 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -520,6 +529,7 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -546,6 +556,7 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -568,6 +579,7 @@ describe("customer chatbot system prompt", () => {
     test("says nothing about M when no active kitchen cooks it", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -588,6 +600,7 @@ describe("customer chatbot system prompt", () => {
     test("names the kitchens that cook one menu for both meals", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -613,6 +626,7 @@ describe("customer chatbot system prompt", () => {
     test("says nothing about same menus when no kitchen has one", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -654,6 +668,7 @@ describe("customer chatbot system prompt", () => {
       );
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -671,6 +686,7 @@ describe("customer chatbot system prompt", () => {
     test("an S-only kitchen carries no caveat and no empty bullet", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -699,6 +715,7 @@ describe("customer chatbot system prompt", () => {
         customerNotes: null,
         detectedMapsLink: null,
         menuShown: true,
+        currentDapur: null,
         dapurOptions: [
           {
             id: "1",
@@ -737,6 +754,7 @@ describe("customer chatbot system prompt", () => {
         customerNotes: null,
         detectedMapsLink: null,
         menuShown: true,
+        currentDapur: null,
         dapurOptions: [],
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -783,6 +801,7 @@ describe("customer chatbot system prompt", () => {
         customerNotes: null,
         detectedMapsLink: null,
         menuShown: true,
+        currentDapur: null,
         dapurOptions: [],
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -869,6 +888,7 @@ describe("customer chatbot system prompt", () => {
         customerNotes: null,
         detectedMapsLink: null,
         menuShown: true,
+        currentDapur: null,
         dapurOptions: [],
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -931,6 +951,7 @@ describe("excluded neighborhoods", () => {
     customerNotes: null,
     detectedMapsLink: null,
     menuShown: true,
+    currentDapur: null,
     dapurOptions: [],
     dapurMenuTexts: [],
     menuWeek: { relation: "unknown" as const, weekStart: null },
@@ -980,5 +1001,81 @@ describe("excluded neighborhoods", () => {
       excludedNeighborhoods: [],
     });
     expect(prompt).not.toContain("Kami tidak mengantar ke:");
+  });
+});
+
+// Veronica Catherine had cooked with Thenie since June. On 2026-09-06 the bot
+// sent her Thenie's menu and asked, in the same turn, which of the three
+// kitchens she subscribed to — then told her the kitchen follows her area.
+// Customers choose their dapur; hers was on her record the whole time, and the
+// prompt was the one place it never reached. Picking a different kitchen would
+// have moved her from Rp 29.000 to Rp 45.000 a porsi.
+describe("the customer's own dapur", () => {
+  const base = {
+    casual: false,
+    customerState: "ordering",
+    customerName: "Veronica Catherine",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null as { id: string; nickname: string } | null,
+    dapurOptions: [
+      {
+        id: "a",
+        nickname: "Dapur Suplir",
+        offersM: true,
+        sameMenuBothMeals: true,
+      },
+      {
+        id: "b",
+        nickname: "Dapur Palem",
+        offersM: false,
+        sameMenuBothMeals: false,
+      },
+    ],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["Alam Sutera"],
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("a customer with a dapur on file is told it, never asked", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      currentDapur: { id: "a", nickname: "Dapur Suplir" },
+    });
+
+    expect(prompt).toContain("Dapur customer ini: Dapur Suplir");
+    expect(prompt).toContain(
+      "This customer already cooks with Dapur Suplir",
+    );
+    expect(prompt).toContain("Dapur: Dapur Suplir");
+    expect(prompt).not.toContain(
+      'Mau pesan dari Dapur Suplir atau Dapur Palem kak?"',
+    );
+  });
+
+  test("the choice is the customer's, and never derived from their area", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      currentDapur: { id: "a", nickname: "Dapur Suplir" },
+    });
+
+    expect(prompt).toContain("The customer chooses their dapur");
+    expect(prompt).toContain("it does not follow their area");
+    expect(prompt).toContain("there are now 2 to choose from");
+  });
+
+  test("a customer with no dapur yet is still asked which one", async () => {
+    const prompt = await buildSystemPrompt({ ...base, currentDapur: null });
+
+    expect(prompt).toContain("Dapur customer ini: belum memilih dapur");
+    expect(prompt).toContain(
+      'Mau pesan dari Dapur Suplir atau Dapur Palem kak?"',
+    );
   });
 });

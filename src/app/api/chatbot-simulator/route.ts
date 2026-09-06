@@ -129,6 +129,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     customerNotes: null,
     detectedMapsLink: null,
     menuShown: false,
+    currentDapur: null,
     dapurOptions,
     dapurMenuTexts,
     menuWeek: describeMenuWeeks(

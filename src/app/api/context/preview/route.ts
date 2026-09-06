@@ -77,6 +77,7 @@ export async function GET(): Promise<Response> {
     customerNotes: null,
     detectedMapsLink: null,
     menuShown: false,
+    currentDapur: null,
     dapurOptions,
     dapurMenuTexts,
     menuWeek: describeMenuWeeks(

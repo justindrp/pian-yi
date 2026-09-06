@@ -144,6 +144,24 @@ Carolin asked for an invoice on 2026-08-30. The bot had no tool for it, so it sa
 - **A faktur pajak is not this.** Anything needing our NPWP is still `ask_admin_for_help`.
 - **Claiming an invoice without calling the tool sends it anyway.** `claimsInvoiceSent()` matches the reply after cutting deferrals ("invoice-nya menyusul ya kak" promises a later turn and is left alone), and the webhook runs the tool for it — the same recovery the menu claim gets. A second copy of an invoice is harmless where a second order would not be: the PDF is derived from an order that already exists and no money moves. If the recovery fails, admins are pushed, because the customer has already been told it is coming.
 
+## The customer's own dapur belongs in the prompt, and nobody assigns it for them
+
+The prompt carried `dapurOptions` — every active kitchen — and nothing saying which one this customer already cooks with. So the model could not tell a returning customer their own dapur, and it did the two worst things available instead.
+
+Veronica Catherine has cooked with Thenie since June. On 2026-09-06 at 19:35 WIB she asked for next week's menu. `send_menu_image` sent Thenie's menu, correctly, and the same reply asked her which of the three kitchens she subscribed to. She answered that she did not know. Four minutes later she was told *"pemilihan dapur sudah otomatis ditentukan sesuai area tempat tinggal kakak, jadi tidak perlu pilih-pilih dapur sendiri"* — a rule that does not exist. All three active kitchens cover Alam Sutera; the kitchen is on `customers.subcontractor_id` because the customer picked it.
+
+It cost money within fifteen minutes. The model quoted Rp 145.000 for 5 porsi (Thenie's ladder), then called `extract_order` with Santapin's id — a kitchen she has never bought from — so the order was written at Rp 30.500 a porsi and the bank message went out asking for **Rp 152.500**. She asked which figure to transfer and got an escalation instead of an answer.
+
+`currentDapur` now reaches `buildSystemPrompt`, resolved in the webhook from `customers.subcontractor_id` and falling back to the active order's kitchen. An admin who has moved someone outranks whichever package is still running, which is why the customer record wins. With it set, the prompt:
+
+- **states the dapur** in Current context and forbids asking the customer which one they are on, or sending them to an admin to find out
+- **says the choice is the customer's** — never assigned by us, never derived from the area, which only narrows the list of kitchens that can reach them
+- **pre-fills the Dapur line** of the order form instead of asking, the way a single-kitchen setup already did
+- **offers the choice once**, because multi-kitchen shipped on 2026-09-05 and a customer of several months has never been told there is now more than one
+- **requires the new dapur's price to be quoted before a switch.** Thenie's 5-porsi rate is Rp 29.000 and Homey's is Rp 45.000; a customer who answers "mau pesan dari dapur mana kak?" with an unfamiliar name has repriced their own subscription without being told.
+
+A customer with no dapur yet is still asked, unchanged. Covered by three tests in `test/api/system-prompt.test.ts`.
+
 ## A dapur the model omits is resolved, not left null
 
 Cindi's order was written with `subcontractor_id` null, and 33 open orders carry one. A null kitchen is invisible on `/dapur/[id]` and on the kitchen's own sheet — both filter strictly on it — so the food is never cooked and nothing says why. The tool lists `subcontractor_id` as required whenever a dapur has a menu uploaded; the model omits it anyway, and `required` is not enforced.

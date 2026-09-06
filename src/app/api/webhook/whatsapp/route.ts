@@ -1969,7 +1969,7 @@ export async function processSavedCustomerMessage(params: {
   // link by hand outranks anything found in a chat.
   const { data: storedLinkRow } = await db
     .from("customers")
-    .select("google_maps_link")
+    .select("google_maps_link, subcontractor_id")
     .eq("id", customerId)
     .maybeSingle();
   let storedMapsLink = storedLinkRow?.google_maps_link ?? null;
@@ -2047,6 +2047,17 @@ export async function processSavedCustomerMessage(params: {
   // reach. Read live rather than cached: a kitchen that has just said no must
   // stop being sold to on the next message, not on the next cache refresh.
   const kitchenCoverageNotes = await coverageNotes(db, rawSubs);
+  // The dapur this customer already cooks with. Everything about it was on
+  // hand and none of it reached the prompt: on 2026-09-06 Veronica Catherine,
+  // on Thenie since June, was sent Thenie's menu and asked in the same turn
+  // which of the three kitchens she subscribed to — and then told, wrongly,
+  // that the kitchen is assigned from her area. Customers choose their dapur;
+  // we never assign one. The customer record wins over the order's kitchen: an
+  // admin who moved someone outranks whichever package is still running.
+  const currentDapurId =
+    storedLinkRow?.subcontractor_id ?? activeOrderRow?.subcontractor_id ?? null;
+  const currentDapur =
+    rawSubs.find((s) => s.id === currentDapurId) ?? null;
   const activeOrder = activeOrderRow
     ? {
         id: activeOrderRow.id,
@@ -2096,6 +2107,9 @@ export async function processSavedCustomerMessage(params: {
     justWelcomed,
     menuShown: stateRow?.menu_shown ?? false,
     dapurOptions,
+    currentDapur: currentDapur
+      ? { id: currentDapur.id, nickname: currentDapur.customer_nickname }
+      : null,
     dapurMenuTexts,
     // Only the kitchens whose image can actually be sent decide the week.
     menuWeek: describeMenuWeeks(

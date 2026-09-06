@@ -93,6 +93,18 @@ export async function buildSystemPrompt(params: {
     offersM: boolean;
     sameMenuBothMeals: boolean;
   }[];
+  /**
+   * The dapur this customer already cooks with, when they have one. The model
+   * used to get `dapurOptions` and nothing else, so it could not tell a
+   * returning customer which kitchen was theirs — it asked instead, and then
+   * invented an answer. Veronica Catherine, on Thenie since June, was sent
+   * Thenie's menu and asked in the same turn to pick between all three
+   * kitchens; the next message told her the kitchen follows her area. Neither
+   * is true: customers pick their dapur, and hers was on her record the whole
+   * time. Had she picked a different one she would have jumped from Rp 29.000
+   * to Rp 45.000 per porsi on a package she had been buying for months.
+   */
+  currentDapur: { id: string; nickname: string } | null;
   dapurMenuTexts: { nickname: string; menuText: string }[];
   /** Which week the menu image on file covers, relative to today. */
   menuWeek: {
@@ -645,8 +657,16 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 - Menu rotates daily. ${params.dapurMenuTexts.length > 0 ? `Menu per dapur:\n${params.dapurMenuTexts.map((d) => `${d.nickname}:\n${d.menuText}`).join("\n\n")}` : "Menu details change daily — you don't have the specific menu text right now. Call send_menu_image and point the customer at the image; that tool call is the only thing that makes the image real. Do NOT call ask_admin_for_help just because you don't know today's menu."}
 ${menuSizeNotice}  - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different menus — menu and price list images are sent automatically to new customers. If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image. **Asked for the price list again, call send_price_list** — it resends the image. Never say you cannot send it, and never promise to send it later: the tool call is the only thing that sends anything, and there is no later turn.
 ${
+  params.dapurOptions.length > 1 && params.currentDapur
+    ? `  - **This customer already cooks with ${params.currentDapur.nickname}, and that is the answer to "dapur saya yang mana".** Say it plainly; never ask them which dapur they are on, and never send them off to an admin to find out. It is on their record, their running package is from that dapur, and send_menu_image sends that dapur's menu.
+  - **The customer chooses their dapur. We never assign one, and it does not follow their area.** Several kitchens cover most areas, so the area narrows the list and nothing more. Never tell a customer their dapur is decided automatically, by area or by anything else — Veronica Catherine was told exactly that on 2026-09-06, one message after being asked to pick a kitchen herself, and it is not a rule that exists.
+  - **Choosing between kitchens is new — offer it to a returning customer once.** Until this week there was one kitchen and no choice to make, so someone who has been ordering for months has never been told. When the dapur or the menu comes up, or when they are starting a new package, say which dapur has been theirs, that there are now ${params.dapurOptions.length} to choose from, and that they may stay or switch for the next package — their call. Do not repeat it every message, and never push them off ${params.currentDapur.nickname}.
+  - **Switching dapur changes the price, so never let one be picked blind.** Each kitchen has its own ladder and the gap between them is large. Before a customer moves, quote the new dapur's price for the porsi they want beside what they pay now, and send that dapur's menu. A returning customer who answers a bare "mau dari dapur mana kak?" with a name they have never bought from has just repriced their own subscription without being told.
+`
+    : ""
+}${
   params.dapurOptions.length > 1
-    ? `  - **With more than one kitchen, the area decides which menu and which price list they get.** Each kitchen carries its own menu, its own prices and its own delivery hours, and they do not cover the same areas — so call **record_customer_area** the moment the customer names a place, and only then send_menu_image and send_price_list, which send that area's kitchens and nothing else. Sending either before the area is recorded quotes them food nobody near them will cook, off by thousands of rupiah a portion. Recording the area is one tool call and can be corrected later; it is never a reason to make them wait a turn.`
+    ? `  - **With more than one kitchen, the area decides which kitchens they may choose between — the customer picks from that list, we never pick for them.** Each kitchen carries its own menu, its own prices and its own delivery hours, and they do not cover the same areas — so call **record_customer_area** the moment the customer names a place, and only then send_menu_image and send_price_list, which send that area's kitchens and nothing else. Sending either before the area is recorded quotes them food nobody near them will cook, off by thousands of rupiah a portion. Recording the area is one tool call and can be corrected later; it is never a reason to make them wait a turn.`
     : ""
 }
   - ${menuWeekGuidance}
@@ -742,7 +762,7 @@ both shapes are supported, and they are handled differently:
   first date that is still open. Only an unlocked date may be passed to
   ask_admin_for_help.
 
-${params.dapurOptions.length > 1 ? `Also ask which kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?" — combine it with the scheduling question in one message rather than sending two.` : params.dapurOptions.length === 1 ? `There is only one kitchen (${params.dapurOptions[0].nickname}). Never ask which kitchen and never ask the customer to confirm it — use it silently, and leave the Dapur line of the form pre-filled. Lina Marlianty was asked to "konfirmasi Dapur 1" twice on 2026-08-03 and her 10-porsi order was never created.` : ""}
+${params.dapurOptions.length > 1 && params.currentDapur ? `The Dapur line is pre-filled with **${params.currentDapur.nickname}** — the dapur this customer already cooks with. Never ask them which dapur they are on. Confirm it back to them, and in the same clause say they may switch to another one for this package if they prefer; if they name a different dapur, quote its price before the order is created.` : params.dapurOptions.length > 1 ? `Also ask which kitchen: "Mau pesan dari ${params.dapurOptions.map((d) => d.nickname).join(" atau ")} kak?" — combine it with the scheduling question in one message rather than sending two.` : params.dapurOptions.length === 1 ? `There is only one kitchen (${params.dapurOptions[0].nickname}). Never ask which kitchen and never ask the customer to confirm it — use it silently, and leave the Dapur line of the form pre-filled. Lina Marlianty was asked to "konfirmasi Dapur 1" twice on 2026-08-03 and her 10-porsi order was never created.` : ""}
 
 ---
 
@@ -768,7 +788,7 @@ Nama Lengkap: (optional — use the name they signed with, or leave it and addre
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Jumlah total porsi (paket):
-${params.dapurOptions.length > 1 ? "Dapur:\n" : params.dapurOptions.length === 1 ? `Dapur: ${params.dapurOptions[0].nickname}\n` : ""}${offersM ? "Ukuran (S / M):" : "Ukuran: S"}
+${params.dapurOptions.length > 1 && params.currentDapur ? `Dapur: ${params.currentDapur.nickname}\n` : params.dapurOptions.length > 1 ? "Dapur:\n" : params.dapurOptions.length === 1 ? `Dapur: ${params.dapurOptions[0].nickname}\n` : ""}${offersM ? "Ukuran (S / M):" : "Ukuran: S"}
 Makan siang / makan malam / keduanya:
 Jumlah porsi per pengiriman:
 Tanggal mulai:
@@ -954,6 +974,7 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 - Customer state: ${params.customerState}
 - Customer name (if known): ${params.customerName ?? "unknown"}
 - Customer notes / learned context: ${params.customerNotes?.trim() || "none"}
+- Dapur customer ini: ${params.currentDapur ? `${params.currentDapur.nickname} — the kitchen they already cook with. Say it when asked; never ask them, and never say it was assigned by us or by their area.` : "belum memilih dapur"}
 - Today: ${formatHolidayDate(todayWib)} — sekarang jam ${timeWib} WIB
 ${cutoffLine}
 - Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${
