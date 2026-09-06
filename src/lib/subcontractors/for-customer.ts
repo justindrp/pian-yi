@@ -5,7 +5,7 @@ type Db = SupabaseClient<Database>;
 
 /** The columns every customer-facing kitchen decision needs. */
 const KITCHEN_COLUMNS =
-  "id, customer_nickname, menu_image_url, menu_text, menu_week_start, price_list_image_url, delivery_areas, delivery_days, offers_size_m, lunch_window_start_min, lunch_window_end_min, dinner_window_start_min, dinner_window_end_min";
+  "id, customer_nickname, menu_image_url, menu_text, menu_week_start, price_list_image_url, delivery_areas, delivery_days, offers_size_m, same_menu_both_meals, lunch_window_start_min, lunch_window_end_min, dinner_window_start_min, dinner_window_end_min";
 
 export type CustomerKitchen = {
   id: string;
@@ -17,6 +17,7 @@ export type CustomerKitchen = {
   delivery_areas: unknown;
   delivery_days: number[];
   offers_size_m: boolean;
+  same_menu_both_meals: boolean;
   lunch_window_start_min: number | null;
   lunch_window_end_min: number | null;
   dinner_window_start_min: number | null;
@@ -56,6 +57,48 @@ function serves(kitchen: CustomerKitchen, areas: string[]): boolean {
  * Never write an area or a kitchen list into a prompt from anywhere else: the
  * lists move whenever a kitchen is activated, deactivated or edited.
  */
+/**
+ * The active kitchens whose own `delivery_areas` covers where this customer
+ * lives — their assignment deliberately ignored.
+ *
+ * `kitchensForCustomer` narrows to the kitchen already cooking for them, which
+ * is right for sending a menu or a price list: one customer, one menu. It is
+ * wrong for the prompt's dapur list, which has to keep every kitchen the
+ * customer may *choose* between, including the ones they have never bought
+ * from and the ones they might mix into a package.
+ *
+ * Area is still a hard narrowing, and it is why this exists: the prompt used
+ * to list every active kitchen, so on 2026-09-06, when Santapin's couriers
+ * filled up outside Bintaro and their `delivery_areas` was cut to Bintaro
+ * alone, nothing changed for a lead in BSD — the bot went on offering that
+ * dapur, quoting its ladder and selling days it could not deliver. The area
+ * lists only reach a customer if something reads them.
+ *
+ * An area no active kitchen covers falls back to every active kitchen, the
+ * same way `kitchensForCustomer` does: a data gap is not a reason to show the
+ * customer nothing.
+ */
+export async function kitchensForCustomerArea(
+  db: Db,
+  customerId: string,
+): Promise<CustomerKitchen[]> {
+  const [{ data: customer }, { data: activeRaw }] = await Promise.all([
+    db
+      .from("customers")
+      .select("area, area_2")
+      .eq("id", customerId)
+      .maybeSingle(),
+    db.from("subcontractors").select(KITCHEN_COLUMNS).eq("is_active", true),
+  ]);
+
+  const active = (activeRaw ?? []) as unknown as CustomerKitchen[];
+  const areas = [customer?.area, customer?.area_2].filter(
+    (a): a is string => !!a,
+  );
+  const covering = active.filter((k) => serves(k, areas));
+  return covering.length > 0 ? covering : active;
+}
+
 export async function kitchensForCustomer(
   db: Db,
   customerId: string,

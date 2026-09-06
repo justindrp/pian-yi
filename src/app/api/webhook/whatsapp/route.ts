@@ -87,7 +87,10 @@ import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas, unionAreas } from "@/lib/subcontractors/areas";
 import { coverageNotes } from "@/lib/subcontractors/coverage";
 import { daysLabel } from "@/lib/subcontractors/days";
-import { kitchensForCustomer } from "@/lib/subcontractors/for-customer";
+import {
+  kitchensForCustomer,
+  kitchensForCustomerArea,
+} from "@/lib/subcontractors/for-customer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaMinuteOfDay, jakartaTimeString } from "@/lib/time/jakarta";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -2025,8 +2028,20 @@ export async function processSavedCustomerMessage(params: {
       same_menu_both_meals: boolean;
     } => s.customer_nickname !== null,
   );
+  // Which dapur this customer may choose between is their area's list, not
+  // every active kitchen. The menu and price-list tools have narrowed by area
+  // since they went per kitchen; the prompt had not, so a kitchen that had
+  // stopped taking orders in an area was still offered, quoted and sold there
+  // — Santapin cut theirs to Bintaro alone on 2026-09-06 and the bot kept
+  // selling them BSD. Their assignment is deliberately not applied: the list
+  // is what they may pick from, including a dapur they have never bought from
+  // and one they might mix into the same package.
+  const areaKitchens = (await kitchensForCustomerArea(db, customerId)).filter(
+    (k): k is typeof k & { customer_nickname: string } =>
+      k.customer_nickname !== null,
+  );
   // Only offer a dapur if its menu image has been uploaded
-  const dapurOptions = rawSubs
+  const dapurOptions = areaKitchens
     .filter((s) => !!s.menu_image_url)
     .map((s) => ({
       id: s.id,
@@ -2034,12 +2049,15 @@ export async function processSavedCustomerMessage(params: {
       offersM: s.offers_size_m === true,
       sameMenuBothMeals: s.same_menu_both_meals === true,
     }));
-  const dapurMenuTexts = rawSubs
+  const dapurMenuTexts = areaKitchens
     .filter((s) => !!s.menu_image_url && !!s.menu_text)
     .map((s) => ({
       nickname: s.customer_nickname,
       menuText: s.menu_text as string,
     }));
+  // The areas we serve stays the union over every active kitchen: it is what
+  // the bot may tell a customer we cover, and narrowing it to this customer's
+  // own kitchens would answer "kalian antar ke mana saja" with a subset.
   const servedAreas = unionAreas(rawSubs);
   const neighborhoods = await getNeighborhoods();
   const excludedNeighborhoods = await getExcludedNeighborhoods();
