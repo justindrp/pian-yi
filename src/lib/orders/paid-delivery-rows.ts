@@ -13,6 +13,14 @@ export type RequestedSlot = {
   date: string;
   meal_type: string;
   portions: number;
+  /**
+   * The dapur the customer asked for on this day, when it is not the order's.
+   * Written by `extract_order` and already checked against the active kitchens
+   * there, so it is trusted here.
+   */
+  subcontractor_id?: string | null;
+  /** What that dapur's ladder charged for this package, frozen at creation. */
+  price_per_portion?: number | null;
 };
 
 export type PaidDeliveryRow = {
@@ -22,6 +30,11 @@ export type PaidDeliveryRow = {
   meal_type: string;
   portions: number;
   subcontractor_id: string | null;
+  /**
+   * What this delivery is worth per portion when its kitchen is not the
+   * order's. Null means the order's own rate — every row of an unmixed order.
+   */
+  price_per_portion: number | null;
   address_slot: number;
 };
 
@@ -42,35 +55,44 @@ export type PaidDeliveryRow = {
  * portions bought first are the portions eaten first — so this reuses it rather
  * than restating it, one row at a time against a running balance.
  */
-export function allocateDraws<T extends { portions: number }>(
+export function allocateDraws<
+  T extends { portions: number; subcontractor_id?: string | null },
+>(
   rows: readonly T[],
   candidates: readonly DrawCandidate[],
   fallbackOrderId: string,
   kitchenId: string | null = null,
 ): (T & { order_id: string })[] {
-  // Only packages bought from the kitchen that is cooking these rows. FIFO
-  // across every active order was right while one kitchen cooked everything and
-  // a portion was a portion; the ladders are per kitchen now (migration 098),
-  // so charging a Homey delivery to a Thenie package spends Rp 29.000 of quota
-  // on Rp 45.000 of food and the ledger still balances to the portion. An order
-  // with no kitchen recorded stays eligible — that is most of the June import,
-  // and excluding it would strand quota nobody can spend.
-  const pool = candidates
-    .filter(
-      (c) =>
-        kitchenId === null ||
-        c.subcontractor_id == null ||
-        c.subcontractor_id === kitchenId,
-    )
-    .map((c) => ({ ...c }));
+  const pool = candidates.map((c) => ({ ...c }));
 
   return rows.map((row) => {
+    // Only packages bought from the kitchen cooking THIS row. FIFO across every
+    // active order was right while one kitchen cooked everything and a portion
+    // was a portion; the ladders are per kitchen now (migration 098), so
+    // charging a Homey delivery to a Thenie package spends Rp 29.000 of quota on
+    // Rp 45.000 of food and the ledger still balances to the portion. An order
+    // with no kitchen recorded stays eligible — that is most of the June import,
+    // and excluding it would strand quota nobody can spend.
+    //
+    // The kitchen is per row, not per call: one package may be split across
+    // kitchens day by day now, and its own days must not be pushed onto some
+    // other package bought from the kitchen that happens to be cooking them.
+    // A row whose kitchen matches no package falls through to `fallbackOrderId`,
+    // the order being paid — which is exactly where a mixed order's away days
+    // belong, since it is the package that sold them.
+    const rowKitchen = row.subcontractor_id ?? kitchenId ?? null;
+    const eligible = pool.filter(
+      (c) =>
+        rowKitchen === null ||
+        c.subcontractor_id == null ||
+        c.subcontractor_id === rowKitchen,
+    );
     // Only orders with balance are offered. pickDrawOrder's own fallback picks
     // the newest order when none has any, which is the wrong answer here: the
     // order being paid is the package this schedule was sold as, so it takes
     // whatever the older ones cannot cover. Never null — a row we refuse to
     // charge is a meal that never reaches a kitchen.
-    const pick = pickDrawOrder(pool.filter((c) => (c.unbooked ?? 0) > 0));
+    const pick = pickDrawOrder(eligible.filter((c) => (c.unbooked ?? 0) > 0));
     if (!pick) return { ...row, order_id: fallbackOrderId };
 
     // A row is indivisible — `daily_deliveries` is unique on
@@ -110,18 +132,39 @@ export async function buildPaidDeliveryRows(params: {
   // delivery. Julian S's whole renewal was invisible that way.
   const kitchenId = order.subcontractor_id ?? customerSubcontractorId ?? null;
 
-  // Which weekdays that kitchen works. `isDeliveryDay()` answers for the
-  // business — Minggu and libur nasional — and used to be the whole answer,
+  // The kitchen for one day. A package may be split across kitchens now — the
+  // customer picks per day — so the order's kitchen is the default, not the
+  // answer.
+  const kitchenForSlot = (slot: RequestedSlot): string | null =>
+    slot.subcontractor_id ?? kitchenId;
+
+  const involved = [
+    ...new Set(
+      requested
+        .map(kitchenForSlot)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+
+  // Which weekdays each of those kitchens works. `isDeliveryDay()` answers for
+  // the business — Minggu and libur nasional — and used to be the whole answer,
   // because every kitchen worked Senin–Sabtu. Homey does not: a Sabtu row on
   // its sheet is food nobody cooks, and the row's existence is the only thing
-  // that says the food is coming.
-  const { data: kitchenRow } = kitchenId
-    ? await db
-        .from("subcontractors")
-        .select("delivery_days")
-        .eq("id", kitchenId)
-        .maybeSingle()
-    : { data: null };
+  // that says the food is coming. On a split package the question is per day:
+  // the Sabtu that Homey will not cook is deliverable by Thenie.
+  const { data: kitchenRows } =
+    involved.length > 0
+      ? await db
+          .from("subcontractors")
+          .select("id, delivery_days")
+          .in("id", involved)
+      : { data: null };
+  const daysByKitchen = new Map<string, number[] | null>(
+    (kitchenRows ?? []).map((k) => [
+      k.id,
+      (k.delivery_days as number[] | null) ?? null,
+    ]),
+  );
 
   // A day this kitchen does not work, and libur nasional, are days nobody
   // cooks. Dropping them leaves those portions unbooked, which is right — the
@@ -131,7 +174,10 @@ export async function buildPaidDeliveryRows(params: {
   // the FIFO charge runs in delivery order rather than whatever order the model
   // listed the days in; lunch precedes dinner.
   const slots = requested
-    .filter((r) => isDeliveryDay(r.date, kitchenRow?.delivery_days))
+    .filter((r) => {
+      const k = kitchenForSlot(r);
+      return isDeliveryDay(r.date, k ? daysByKitchen.get(k) : null);
+    })
     .sort((a, b) =>
       a.date !== b.date
         ? a.date < b.date
@@ -194,7 +240,11 @@ export async function buildPaidDeliveryRows(params: {
     order_id: r.order_id,
     meal_type: r.meal_type,
     portions: r.portions,
-    subcontractor_id: kitchenId,
+    subcontractor_id: kitchenForSlot(r),
+    // Only an away day carries a rate. A row worth the order's own rate leaves
+    // this null, which is what every row written before the split existed is,
+    // so nothing downstream has to tell the two apart.
+    price_per_portion: r.subcontractor_id ? (r.price_per_portion ?? null) : null,
     address_slot:
       r.meal_type === "dinner"
         ? (order.dinner_address_slot ?? 1)

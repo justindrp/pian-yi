@@ -810,6 +810,7 @@ export type Database = {
           notes: string | null;
           order_id: string | null;
           portions: number;
+          price_per_portion: number | null;
           quota_deducted: boolean;
           subcontractor_id: string | null;
           updated_at: string | null;
@@ -827,6 +828,7 @@ export type Database = {
           notes?: string | null;
           order_id?: string | null;
           portions: number;
+          price_per_portion?: number | null;
           quota_deducted?: boolean;
           subcontractor_id?: string | null;
           updated_at?: string | null;
@@ -844,6 +846,7 @@ export type Database = {
           notes?: string | null;
           order_id?: string | null;
           portions?: number;
+          price_per_portion?: number | null;
           quota_deducted?: boolean;
           subcontractor_id?: string | null;
           updated_at?: string | null;

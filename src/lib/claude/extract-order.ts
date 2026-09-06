@@ -43,6 +43,19 @@ export interface DeliveryScheduleSlot {
   date: string;
   meal_type: string;
   portions: number;
+  /**
+   * The dapur cooking this one delivery, when it is not the order's own.
+   *
+   * A package used to be one kitchen at one price, so a customer who wanted two
+   * kitchens in one week had to buy two packages — and every ladder starts at 5
+   * porsi, so a 5-porsi customer could not mix at all. The choice of kitchen is
+   * theirs (see "The customer's own dapur belongs in the prompt" in
+   * `docs/BOT_RULES.md`), and it is a choice they may make per day.
+   *
+   * Null or absent means the order's kitchen. A kitchen that is not active is
+   * ignored rather than trusted — the model invents UUIDs.
+   */
+  subcontractor_id?: string | null;
 }
 
 export interface ExtractedOrderInput {
@@ -187,7 +200,7 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
   delivery_schedule: {
     type: "array",
     description:
-      'REQUIRED. Every delivery day the customer named, one entry per day per meal — a plain Senin–Jumat run and a set with gaps (11, 12, 13, 14, 18) are both written out in full. Send `[]`, an empty array, when the customer books day by day ("bebas", "saya pesan harian", "nanti saya kabari") — that is a real answer and it sells them the quota with no dates attached. Never leave the field out: if you do not yet know which days they want, ask them before calling this tool at all. package_size must equal the sum of all slot portions.',
+      'REQUIRED. Every delivery day the customer named, one entry per day per meal — a plain Senin–Jumat run and a set with gaps (11, 12, 13, 14, 18) are both written out in full. Send `[]`, an empty array, when the customer books day by day ("bebas", "saya pesan harian", "nanti saya kabari") — that is a real answer and it sells them the quota with no dates attached. Never leave the field out: if you do not yet know which days they want, ask them before calling this tool at all. package_size must equal the sum of all slot portions. A customer may take a different dapur on different days of the same package — put that day\'s dapur in the slot\'s subcontractor_id.',
     items: {
       type: "object",
       properties: {
@@ -200,13 +213,19 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
           enum: ["lunch", "dinner"],
         },
         portions: { type: "number" },
+        subcontractor_id: {
+          type: "string",
+          description:
+            "UUID of the dapur cooking THIS day, from the dapur list given. Send it only when the customer asked for a different dapur on this day than the rest of the order; leave it out otherwise. Each day is priced off the dapur that cooks it, so the total is the sum of the days, not one rate times the portions.",
+        },
       },
       required: ["date", "meal_type", "portions"],
     },
   },
   subcontractor_id: {
     type: "string",
-    description: "UUID of the chosen dapur, from the dapur list given",
+    description:
+      "UUID of the chosen dapur, from the dapur list given — the one that cooks every day the customer did not name a different dapur for.",
   },
   size: {
     type: "string",
@@ -741,6 +760,94 @@ export async function getExtractedOrderPricing(
   return {
     price_per_portion: pricePerPortion,
     total_price: pricePerPortion * packageSize,
+  };
+}
+
+/** A schedule slot with the kitchen that will cook it and what it is worth. */
+export type RatedSlot = {
+  date: string;
+  meal_type: string;
+  portions: number;
+  subcontractor_id: string | null;
+  price_per_portion: number;
+};
+
+/**
+ * Price a schedule whose days may be cooked by different kitchens.
+ *
+ * Each portion is worth what the kitchen cooking it charges at the tier for the
+ * whole package, so the volume discount is earned on the total the customer
+ * bought and the margin survives the mix. Pricing the mix at the order's own
+ * rate instead would sell Homey's Rp 45.000 food at Thenie's Rp 29.000 — the
+ * loss `tiersForKitchen()` exists to stop, reintroduced one delivery at a time.
+ *
+ * `activeKitchenIds` is the allowlist. The model supplies these ids and it
+ * invents UUIDs; an id that is not an active kitchen falls back to the order's
+ * own rather than pricing off an empty ladder at Rp 0.
+ */
+export async function priceScheduleSlots(params: {
+  slots: readonly DeliveryScheduleSlot[];
+  packageSize: number;
+  homeKitchenId: string | null;
+  activeKitchenIds: ReadonlySet<string>;
+  nasiMerah: boolean;
+  customerId: string | null;
+  portionSize: OrderSize;
+}): Promise<{ rated: RatedSlot[]; portionsPrice: number }> {
+  const {
+    slots,
+    packageSize,
+    homeKitchenId,
+    activeKitchenIds,
+    nasiMerah,
+    customerId,
+    portionSize,
+  } = params;
+
+  const kitchenFor = (slot: DeliveryScheduleSlot): string | null => {
+    const named = slot.subcontractor_id ?? null;
+    if (named && activeKitchenIds.has(named)) return named;
+    if (named)
+      console.warn(
+        `[extract-order] slot ${slot.date} named dapur ${named}, which is not an active kitchen — using the order's`,
+      );
+    return homeKitchenId;
+  };
+
+  // One lookup per distinct kitchen, not per slot: a five-day schedule on one
+  // kitchen used to be one query and must not become five.
+  const rates = new Map<string, number>();
+  for (const slot of slots) {
+    const kitchen = kitchenFor(slot);
+    const key = kitchen ?? "";
+    if (rates.has(key)) continue;
+    const { price_per_portion } = await getExtractedOrderPricing(
+      packageSize,
+      nasiMerah,
+      customerId,
+      portionSize,
+      kitchen,
+    );
+    rates.set(key, price_per_portion);
+  }
+
+  const rated: RatedSlot[] = slots.map((slot) => {
+    const kitchen = kitchenFor(slot);
+    return {
+      date: slot.date,
+      meal_type: slot.meal_type,
+      portions: slot.portions,
+      subcontractor_id: kitchen,
+      price_per_portion: rates.get(kitchen ?? "") ?? 0,
+    };
+  });
+
+  return {
+    rated,
+    portionsPrice: rated.reduce(
+      (sum, r) => sum + r.portions * r.price_per_portion,
+      0,
+    ),
   };
 }
 
@@ -1850,14 +1957,60 @@ export async function createOrderFromExtraction(
     return NOTHING_TO_SEND;
   }
 
-  const { price_per_portion: pricePerPortion, total_price: portionsPrice } =
-    await getExtractedOrderPricing(
-      packageSize,
-      nasiMerah,
-      orderCustomerId,
-      portionSize,
-      subcontractorId,
+  // Which days, if any, the customer asked a different dapur for. Only read the
+  // kitchen list when one of them did: the ordinary order names none, and it
+  // must not pay for a query to learn that.
+  const namedKitchens = new Set(
+    (sortedSchedule ?? [])
+      .map((s) => s.subcontractor_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+  const activeKitchenIds = new Set<string>();
+  if (namedKitchens.size > 0) {
+    const { data: liveSubs } = await db
+      .from("subcontractors")
+      .select("id")
+      .eq("is_active", true);
+    for (const sub of liveSubs ?? []) activeKitchenIds.add(sub.id);
+  }
+
+  const homePricing = await getExtractedOrderPricing(
+    packageSize,
+    nasiMerah,
+    orderCustomerId,
+    portionSize,
+    subcontractorId,
+  );
+  // The rate the order locks: the kitchen it was sold under. Every row that
+  // kitchen cooks is worth this, and a row cooked elsewhere carries its own.
+  const pricePerPortion = homePricing.price_per_portion;
+
+  // A schedule split across kitchens is worth the sum of its days rather than
+  // one rate times the portions. Only when the days account for the whole
+  // package: `packageSize` can be floored up to the smallest package we sell,
+  // and summing the days would then bill for fewer portions than were bought.
+  const scheduledPortions = (sortedSchedule ?? []).reduce(
+    (sum, s) => sum + s.portions,
+    0,
+  );
+  const mixed =
+    sortedSchedule && namedKitchens.size > 0 && scheduledPortions === packageSize
+      ? await priceScheduleSlots({
+          slots: sortedSchedule,
+          packageSize,
+          homeKitchenId: subcontractorId,
+          activeKitchenIds,
+          nasiMerah,
+          customerId: orderCustomerId,
+          portionSize,
+        })
+      : null;
+  if (namedKitchens.size > 0 && !mixed) {
+    console.warn(
+      `[extract-order] ${customerId} named ${namedKitchens.size} dapur across days but the schedule covers ${scheduledPortions} of ${packageSize} porsi — priced at the order's own dapur`,
     );
+  }
+  const portionsPrice = mixed ? mixed.portionsPrice : homePricing.total_price;
 
   // The kitchen's per-drop surcharge is charged through to the customer, the
   // same way the nasi merah add-on is — except this one is per delivery, not
@@ -1884,15 +2037,44 @@ export async function createOrderFromExtraction(
   //
   // Null only when the customer books day by day and the model sent `[]`. A
   // model that sends nothing at all never reaches here — see the guard above.
+  //
+  // A day the customer asked a different dapur for carries that dapur here, so
+  // mark_paid writes the row against the kitchen that agreed to cook it. Taken
+  // from the rated slots rather than the raw input, because those have already
+  // dropped any kitchen id the model made up.
   const requestedSchedule:
-    | { date: string; meal_type: string; portions: number }[]
-    | null = sortedSchedule
-    ? sortedSchedule.map((s) => ({
+    | {
+        date: string;
+        meal_type: string;
+        portions: number;
+        subcontractor_id?: string;
+        price_per_portion?: number;
+      }[]
+    | null = mixed
+    ? // Frozen here like `price_per_portion` on the order itself. mark_paid
+      // could look the rate up again off the kitchen's ladder, but it would
+      // have to reconstruct the nasi merah and size-M add-ons folded into it
+      // and would drift the day a tier is edited between order and payment.
+      // Only an away day is written out: a day the order's own kitchen cooks
+      // is worth the order's own rate and stays as bare as it has always been.
+      mixed.rated.map((s) => ({
         date: s.date,
         meal_type: s.meal_type,
         portions: s.portions,
+        ...(s.subcontractor_id && s.subcontractor_id !== subcontractorId
+          ? {
+              subcontractor_id: s.subcontractor_id,
+              price_per_portion: s.price_per_portion,
+            }
+          : {}),
       }))
-    : null;
+    : sortedSchedule
+      ? sortedSchedule.map((s) => ({
+          date: s.date,
+          meal_type: s.meal_type,
+          portions: s.portions,
+        }))
+      : null;
 
   const orderFields = {
     customer_id: orderCustomerId,

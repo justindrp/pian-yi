@@ -2131,7 +2131,7 @@ export async function processSavedCustomerMessage(params: {
     {
       name: "extract_order",
       description:
-        'Creates the customer\'s order. Call this as soon as the customer has agreed to a package — any affirmative counts ("ya", "iya", "oke", "sip", "boleh", "saya join", a thumbs-up), not only the literal word "YA" — and you have their name, address and total portions. Call it also when a customer sends a payment proof and no order exists yet. Never ask for confirmation a second time instead of calling this.',
+        'Creates the customer\'s order. Call this as soon as the customer has agreed to a package — any affirmative counts ("ya", "iya", "oke", "sip", "boleh", "saya join", a thumbs-up), not only the literal word "YA" — and you have their name, address and total portions. Call it also when a customer sends a payment proof and no order exists yet. Never ask for confirmation a second time instead of calling this. An order split across two dapur is an ordinary order: put each day\'s dapur in its own delivery_schedule slot and call this in the same turn. Never hand a mix to an admin, and never say you are processing the order without calling this — a reply alone creates nothing.',
       input_schema: {
         type: "object",
         properties: extractOrderProperties(servedAreas),

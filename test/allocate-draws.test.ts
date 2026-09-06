@@ -117,6 +117,38 @@ describe("allocateDraws", () => {
     expect(rows[0].order_id).toBe("imported");
   });
 
+  // A package split across kitchens: the order was bought from Thenie and one
+  // of its days is cooked by Homey. That day must stay on the package that sold
+  // it, not jump to whatever Homey package the customer happens to hold.
+  test("an away day stays on the order that sold it", () => {
+    const rows = allocateDraws(
+      [
+        { ...slot("2026-09-08", "dinner"), subcontractor_id: null },
+        { ...slot("2026-09-09", "dinner"), subcontractor_id: "k-homey" },
+      ],
+      [{ ...cand("thenie", 5, "2026-09-08"), subcontractor_id: "k-thenie" }],
+      "thenie",
+      "k-thenie",
+    );
+    expect(rows.map((r) => r.order_id)).toEqual(["thenie", "thenie"]);
+  });
+
+  test("an away day is not charged to another kitchen's package", () => {
+    const rows = allocateDraws(
+      [{ ...slot("2026-09-09", "dinner"), subcontractor_id: "k-homey" }],
+      [
+        { ...cand("thenie", 5, "2026-09-08"), subcontractor_id: "k-thenie" },
+        { ...cand("homey", 5, "2026-07-01"), subcontractor_id: "k-homey" },
+      ],
+      "thenie",
+      "k-thenie",
+    );
+    // The older Homey package is eligible by kitchen and by FIFO, and takes it:
+    // the customer really does hold Homey portions, and those are the ones a
+    // Homey delivery spends first.
+    expect(rows[0].order_id).toBe("homey");
+  });
+
   test("with no kitchen given, FIFO runs across every package as before", () => {
     const rows = allocateDraws(
       [slot("2026-09-01", "lunch")],

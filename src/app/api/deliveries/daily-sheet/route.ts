@@ -168,6 +168,18 @@ export async function PUT(req: NextRequest): Promise<Response> {
       continue;
     }
 
+    // What the existing row was worth, if it is an existing row. A package can
+    // be split across kitchens now, and an away day carries its own rate — the
+    // upsert below replaces the whole row, so a rate not carried forward here
+    // is a rate silently reset to the order's, which is the wrong money.
+    const { data: priorRow } = await db
+      .from("daily_deliveries")
+      .select("price_per_portion")
+      .eq("delivery_date", body.date)
+      .eq("customer_id", row.customer_id)
+      .eq("meal_type", row.meal_type)
+      .maybeSingle();
+
     const { data: upserted } = await db
       .from("daily_deliveries")
       .upsert(
@@ -178,6 +190,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
           meal_type: row.meal_type,
           portions: row.portions,
           subcontractor_id: row.subcontractor_id,
+          price_per_portion: priorRow?.price_per_portion ?? null,
           notes: row.notes,
           address_slot: row.address_slot ?? 1,
           updated_at: new Date().toISOString(),
@@ -203,7 +216,11 @@ export async function PUT(req: NextRequest): Promise<Response> {
         if (lines.length === 0) journalAccum.set(mealType, lines);
         lines.push({
           portions: row.portions,
-          pricePerPortion: ord.price_per_portion,
+          // The row's own rate wins. It is set only when this delivery is
+          // cooked by a kitchen the order was not bought from, and then the
+          // order's rate is the wrong one: revenue recognition draws 2100 down
+          // by portions x rate, and the deposit was taken at the mix.
+          pricePerPortion: priorRow?.price_per_portion ?? ord.price_per_portion,
           addonCostPerPortion: ord.addon_cost_per_portion ?? 0,
           surchargePerDelivery: ord.delivery_surcharge_per_delivery ?? 0,
           subcontractorId: row.subcontractor_id,
