@@ -108,6 +108,7 @@ export async function POST(req: NextRequest): Promise<Response> {
               DELIVERY_WINDOWS.lunch.startMin,
               DELIVERY_WINDOWS.lunch.endMin,
             ),
+            addressSlot: 1,
           },
           {
             date: addDays(jakartaDateString(), 2),
@@ -117,7 +118,14 @@ export async function POST(req: NextRequest): Promise<Response> {
               DELIVERY_WINDOWS.dinner.startMin,
               DELIVERY_WINDOWS.dinner.endMin,
             ),
+            addressSlot: 2,
           },
+        ],
+        // Two addresses, so training mode exercises change_delivery_address and
+        // the per-row address line that goes with it.
+        addresses: [
+          { slot: 1, label: "Alamat rumah (contoh)" },
+          { slot: 2, label: "Alamat kantor (contoh)" },
         ],
       }
     : null;
@@ -193,6 +201,20 @@ export async function POST(req: NextRequest): Promise<Response> {
           reason: { type: "string" },
         },
         required: ["delivery_dates"],
+      },
+    },
+    {
+      name: "change_delivery_address",
+      description:
+        "Sends already-scheduled deliveries to the customer's OTHER saved address. Only the two addresses on file, and a TERKUNCI date is refused.",
+      input_schema: {
+        type: "object",
+        properties: {
+          delivery_dates: { type: "array", items: { type: "string" } },
+          address_slot: { type: "number", enum: [1, 2] },
+          reason: { type: "string" },
+        },
+        required: ["delivery_dates", "address_slot"],
       },
     },
     {

@@ -257,7 +257,7 @@ Three defects, all in the prompt, all now fixed:
 
 - **Each scheduled date carries its lock state**, computed by `isLocked()` (`src/lib/orders/delivery-state.ts`) rather than derived by the model — the same function the dashboard and the skip path ask, so the prompt and the sheet cannot disagree. A locked row prints **TERKUNCI** with the deadline that has passed.
 - **A locked date is immutable in every direction.** The prompt used to name only skips. It now says a TERKUNCI date cannot be skipped, moved, have its meal changed, **or have its address changed** — the kitchen is cooking it for the address on record — and that the answer is to say so plainly, name that address, and offer the change from the first date still open.
-- **"Admin sees the conversation and updates the record" is gone.** That was the standing instruction for every schedule change, and for the one-off address override, which no bot tool can perform. Nobody re-reads threads looking for changes. An unlocked address change is confirmed *and* passed to `ask_admin_for_help` with the date, the meal and the address; an unlocked skip or day/meal move is the bot's own work now — see "A skip is a tool call, not a confirmation" below.
+- **"Admin sees the conversation and updates the record" is gone.** That was the standing instruction for every schedule change, and for the one-off address override. Nobody re-reads threads looking for changes. An unlocked skip or day/meal move is the bot's own work — see "A skip is a tool call, not a confirmation" below — and so is an unlocked address change between the two addresses on file, since `change_delivery_address` exists. Only a place we have never been given still goes to `ask_admin_for_help` with the date, the meal and the address.
 
 Tests in `test/api/system-prompt.test.ts`.
 
@@ -279,11 +279,32 @@ A partial run is still `ok: true` and names what it dropped, per "A tool result 
 
 Tests in `test/delete-deliveries.test.ts`.
 
+### An address change is a tool call too
+
+`ask_admin_for_help` was the whole answer for an address for as long as there was no tool, and the model would not use it: confirming is cheaper than escalating, and it confirmed. Cindi asked three times in one week for her lunch to go to her kost instead of UPH Gate 2 — 5 September, 6 September, 7 September — and was told *"pengiriman dialihkan ke Kost Platinum ya"* and *"jadwal di catatan kami memang sudah begitu kok"*. No row changed either time. We paid for two rescue Grabs from UPH to the kost, and the third row was still wrong when the 8 September sheet went out.
+
+`change_delivery_address` (`src/lib/orders/change-delivery-address.ts`) is the tool: dates plus an `address_slot`, writing `daily_deliveries.address_slot` and nothing else. It is the same shape as `delete_deliveries` and refuses on the same grounds —
+
+- **A date past its H-1 16:00 deadline**, from `isLocked()` with `loadDeadlineHour()`. Past the cutoff the kitchen holds a sheet printed with the old address, which is the whole reason a locked date cannot be re-addressed.
+- **A date with nothing scheduled on it.**
+- **Slot 2 for a customer who has only one address on file** — and a place the customer has never given us at all. This tool writes a slot number; it cannot invent an address, so that case is still `ask_admin_for_help`.
+
+A row that already points at the address asked for is `ok: true` with "tidak ada yang perlu diubah" and no write. That is the one case where "jadwal kami memang sudah begitu" is true, and the model may now only say it when the tool has said it first.
+
+**The prompt prints where each scheduled row is going**, and the two addresses with their slot numbers, whenever the customer has two — `CustomerSchedule.addresses` and `upcoming[].addressSlot` (`src/lib/orders/customer-schedule.ts`). Cindi's reply was a guess about a row the model could not see the address of; a model that cannot see it will fill the hole rather than leave it. A customer with one address gets a line saying the tool does not apply to them, instead of an invitation to try it.
+
+Tests in `test/change-delivery-address.test.ts` and `test/api/system-prompt.test.ts`.
+
 ### A confirmed skip with no tool behind it is flagged
 
 The tool exists now; the model still has to call it. On 2026-09-02 Febby asked *"untuk kamis besok mau skip terus lanjut jumat yaa, masih sempet kah?"* and was answered *"Bisa banget kak, masih sempat kok … Saya skip pengiriman Kamis besok dan lanjut lagi Jumat seperti biasa ya. Saya proses sekarang."* — no `delete_deliveries`, and in her case no row on that Kamis either: her calendar held Rabu 2 September and Jumat 4 September only, both printed in the schedule block the model was reading. So the reply confirmed work that was neither done nor needed, and the prompt's instruction for exactly that case — name the dates back so the customer can see the records already match — went unused.
 
-`claimsSkipDone()` in the webhook is the guard: a reply that confirms a skip, a move or a cancellation (`SKIP_CLAIM`), minus the refusals that name the same verbs (`SKIP_REFUSED` — "tidak bisa di-skip", "sudah terkunci"), in a turn where no `delete_deliveries` ran. It sets `customer_flags.needs_human_review` and pushes, once per unresolved flag, with the dates still on the calendar in the body.
+`claimsSkipDone()` in the webhook is the guard: a reply that confirms a skip, a move, a cancellation or a re-address (`SKIP_CLAIM`), minus the refusals that name the same verbs (`SKIP_REFUSED` — "tidak bisa di-skip", "sudah terkunci"), in a turn where neither `delete_deliveries` nor `change_delivery_address` ran. It sets `customer_flags.needs_human_review` and pushes, once per unresolved flag, with the dates still on the calendar in the body.
+
+Two ways it stayed silent through 7 September, both fixed:
+
+- **The verbs were the ones a skip uses.** A row's date, its meal and its address are the three things a customer asks to change, and the model announces all three the same way — Nadya was told *"pengiriman kak Nadya diganti ke siang ya"*, Cindi *"pengiriman dialihkan ke Kost Platinum ya"*. Neither *diganti* nor *dialihkan* was listed. Widening the verb list is cheap: a false positive costs one push, and `needs_human_review` does not silence the bot.
+- **A refusal anywhere in the reply cancelled the whole reply.** Both of those turns confirmed the change and then took it back a line later — "…sudah kami catet ya. Tapi mohon maaf kak, untuk besok sebenarnya sudah dikunci" — so the word "dikunci" blanked the guard for a reply whose first paragraph is what the customer acts on. `claimsSkipDone()` now reads the reply a paragraph at a time, and a refusal only cancels the claim standing next to it. **Confirm-then-refuse is precisely the shape an admin needs to see**, not the shape that should be waved through: a plain refusal has no claim to cancel, so it still matches nothing.
 
 **It flags rather than recovers, and that is the difference from every other claim guard.** The menu, proof, invoice and schedule guards all repair themselves by *sending* something, and a second menu image or a second invoice costs nothing. Repairing this one means deleting a delivery row, and a date recovered out of a reply the model already got wrong is not good enough grounds to destroy the only record of a meal — `deleteDelivery()` copies the row to `edit_log` because nothing else can rebuild it. An admin decides.
 

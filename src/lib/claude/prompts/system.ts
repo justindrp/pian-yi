@@ -6,6 +6,7 @@ import {
   menuWeekLastDay,
   weekAfter,
 } from "@/lib/menu/week";
+import type { CustomerSchedule } from "@/lib/orders/customer-schedule";
 import { isLocked } from "@/lib/orders/delivery-state";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import { priceListLines } from "@/lib/pricing/lines";
@@ -160,17 +161,7 @@ export async function buildSystemPrompt(params: {
    * same day, and the dropped `orders.portions_remaining` was the second one.
    * Quoting it as the first told a customer with 12 meals coming she had none.
    */
-  schedule: {
-    upcoming: {
-      date: string;
-      mealType: string;
-      portions: number;
-      /** Arrival window of the kitchen cooking that row, e.g. "11.30-12.30". */
-      window: string;
-    }[];
-    remainingToday: number;
-    unbooked: number;
-  } | null;
+  schedule: CustomerSchedule | null;
   /**
    * A question already sent to an admin and still unanswered, or null. The bot
    * used to fall silent on these threads entirely; it now keeps serving the
@@ -250,6 +241,12 @@ ${
         .map(
           (d) =>
             `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam" : "siang"} (${d.window}), ${d.portions} porsi${
+              // Where each row is going, printed only when there is a choice to
+              // get wrong. See the `addresses` field in customer-schedule.ts.
+              params.schedule && params.schedule.addresses.length > 1
+                ? ` — ke *${params.schedule.addresses.find((a) => a.slot === d.addressSlot)?.label ?? params.schedule.addresses[0].label}* (alamat ${d.addressSlot})`
+                : ""
+            }${
               isLocked(d.date, {
                 deadlineHour: Number(deadlineHour) || 16,
                 now,
@@ -264,7 +261,15 @@ ${
 
 **Tanggal bertanda TERKUNCI tidak bisa diubah dengan cara apa pun.** Dapur sudah menerima daftarnya dan makanannya sudah dimasak untuk alamat yang tercatat, jadi tanggal itu tidak bisa di-skip, tidak bisa dipindah, tidak bisa diganti meal-nya, **dan tidak bisa diganti alamat kirimnya**. Jangan pernah menjawab "baik kak, dicatat" untuk salah satu dari itu. Katakan terus terang bahwa untuk tanggal itu kiriman sudah dikunci dan tetap ke alamat yang tercatat, sebutkan alamatnya, lalu tawarkan perubahan itu mulai tanggal pertama yang belum terkunci. Winy meminta pada 1 September jam 02.07 supaya kiriman hari itu dipindah ke Brooklyn Apartment; deadline-nya lewat jam 16.00 tanggal 31 Agustus, dapur sudah memegang alamat kantornya, dan bot menjawab "Baik kak, dicatat ya" — makanannya tetap berangkat ke kantor dan tidak ada satu pun catatan yang berubah.
 
-Untuk tanggal yang **belum** terkunci: sebutkan tanggal serta meal-nya persis seperti di daftar, supaya kalau catatan kami sudah sesuai permintaannya, kakaknya tahu tidak perlu diubah apa-apa. Kalau memang harus diubah, **panggil delete_deliveries di turn yang sama** — untuk skip cukup itu saja, untuk pindah meal atau pindah hari tambahkan record_daily_order dengan tanggal dan meal barunya. "Baik kak, dicatat" tanpa tool call tidak mengubah apa pun: barisnya tetap di daftar dapur dan makanannya tetap dimasak.`
+Untuk tanggal yang **belum** terkunci: sebutkan tanggal serta meal-nya persis seperti di daftar, supaya kalau catatan kami sudah sesuai permintaannya, kakaknya tahu tidak perlu diubah apa-apa. Kalau memang harus diubah, **panggil tool-nya di turn yang sama** — skip cukup delete_deliveries; pindah meal atau pindah hari adalah delete_deliveries plus record_daily_order dengan tanggal dan meal barunya; **pindah alamat adalah change_delivery_address** dengan tanggalnya dan nomor alamatnya. "Baik kak, dicatat" tanpa tool call tidak mengubah apa pun: barisnya tetap di daftar dapur, makanannya tetap dimasak, dan tetap berangkat ke alamat yang tertulis di daftar di atas.${
+  params.schedule && params.schedule.addresses.length > 1
+    ? `\n\nAlamat yang tercatat untuk customer ini:\n${params.schedule.addresses
+        .map((a) => `- alamat ${a.slot}: ${a.label}`)
+        .join(
+          "\n",
+        )}\n\nPakai nomor itu sebagai \`address_slot\`. Kalau customer minta tempat lain yang tidak ada di daftar ini, change_delivery_address tidak bisa dipakai — panggil ask_admin_for_help dengan tanggal, meal dan alamatnya.`
+    : "\n\nCustomer ini baru punya satu alamat tercatat, jadi change_delivery_address tidak bisa dipakai. Kalau dia minta kiriman ke tempat lain, panggil ask_admin_for_help dengan tanggal, meal dan alamatnya."
+}`
     : "";
 
   // The menu image on file is not always the current week's. It is published
@@ -923,7 +928,7 @@ Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for saf
 
 **Unserved area**: Only say we cannot serve somewhere when the customer names a place you can tell is outside ${areasDisplay} — a different city or a district you know belongs to one. **An address you simply do not recognise is not an unserved address.** Ask which of our areas it falls under: "Maaf kak, [nama tempat] itu masuk area mana ya? Kami melayani: ${areasDisplay}." A customer who gave a street or a maps pin inside a served area must never be turned away for it — asked about "bsd lama jalan persatuan ciater" on 2026-08-02 the bot answered "area itu belum masuk jangkauan pengiriman kami" while listing BSD Lama as served in the same message, and reversed itself one turn later. If they confirm they have permanently moved outside our areas and have a prepaid active order, offer a refund.
 
-**Schedule change**: Customer can move a scheduled delivery to another day or another meal (siang ↔ malam), and can move a delivery to their other address for one day. Both are subject to the ${deadlineTime} cutoff the day before, per date: read the lock marks in "Jadwal pengiriman customer ini" and never agree to a change on a date marked TERKUNCI — that food is already being cooked for the address on record. **A move of the day or the meal is two calls in one message: delete_deliveries for what is on the calendar now, then record_daily_order for the new date and meal.** Doing only the first leaves the customer with nothing scheduled; doing only the second double-books the day. An **address** change is different — you have no tool for it, so call ask_admin_for_help with the date, the meal and the address. **"Admin sees the conversation" is not a mechanism** — nobody re-reads threads looking for changes, so a confirmation with no tool call behind it changes nothing.
+**Schedule change**: Customer can move a scheduled delivery to another day or another meal (siang ↔ malam), and can move a delivery to their other address for one day. Both are subject to the ${deadlineTime} cutoff the day before, per date: read the lock marks in "Jadwal pengiriman customer ini" and never agree to a change on a date marked TERKUNCI — that food is already being cooked for the address on record. **A move of the day or the meal is two calls in one message: delete_deliveries for what is on the calendar now, then record_daily_order for the new date and meal.** Doing only the first leaves the customer with nothing scheduled; doing only the second double-books the day. An **address** change is **change_delivery_address** with the dates and the slot number, and only between the two addresses already on the customer's record — a place we have never been given is still ask_admin_for_help with the date, the meal and the address. **"Admin sees the conversation" is not a mechanism** — nobody re-reads threads looking for changes, so a confirmation with no tool call behind it changes nothing.
 
 **Referral program**: For every 5 friends who each buy minimum 10 portions, the referrer earns 5 free portions. When a new customer says they were referred, ask for the referrer's full name and include "Direferensikan oleh: [name]" in the Catatan field of the order form.
 

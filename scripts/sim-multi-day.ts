@@ -122,7 +122,12 @@ async function main() {
       portionsPerDelivery: 1,
     },
     // Quota is customer-level and lives here now, not on activeOrder.
-    schedule: { upcoming: [], remainingToday: remaining, unbooked: remaining },
+    schedule: {
+      upcoming: [],
+      remainingToday: remaining,
+      unbooked: remaining,
+      addresses: [{ slot: 1, label: "Alamat simulasi" }],
+    },
   });
 
   console.log(

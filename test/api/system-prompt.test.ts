@@ -278,7 +278,12 @@ describe("customer chatbot system prompt", () => {
         portionsPerDelivery: 1,
         pricePerPortion: 29000,
       },
-      schedule: { unbooked: 0, remainingToday: 0, upcoming: [] },
+      schedule: {
+          unbooked: 0,
+          remainingToday: 0,
+          upcoming: [],
+          addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+        },
     };
 
     // The branch gated the call ("only once they have told you the days") and
@@ -299,7 +304,12 @@ describe("customer chatbot system prompt", () => {
     test("says none of it while quota is left", async () => {
       const prompt = await buildSystemPrompt({
         ...renewing,
-        schedule: { unbooked: 3, remainingToday: 3, upcoming: [] },
+        schedule: {
+          unbooked: 3,
+          remainingToday: 3,
+          upcoming: [],
+          addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+        },
       } as never);
       expect(prompt).not.toContain(
         "the turn they arrive is the turn that calls extract_order",
@@ -373,7 +383,12 @@ describe("customer chatbot system prompt", () => {
     test("nets the leftover off the new package first", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
-        schedule: { unbooked: 1, remainingToday: 1, upcoming: [] },
+        schedule: {
+          unbooked: 1,
+          remainingToday: 1,
+          upcoming: [],
+          addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+        },
       } as never);
 
       expect(prompt).toContain(
@@ -390,7 +405,12 @@ describe("customer chatbot system prompt", () => {
     test("does not net off a size the customer named, and forbids the merge question", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
-        schedule: { unbooked: 0, remainingToday: 2, upcoming: [] },
+        schedule: {
+          unbooked: 0,
+          remainingToday: 2,
+          upcoming: [],
+          addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+        },
       } as never);
 
       expect(prompt).toContain(
@@ -409,7 +429,12 @@ describe("customer chatbot system prompt", () => {
     test("makes the agreed size the trigger, and forbids the empty promise", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
-        schedule: { unbooked: 1, remainingToday: 1, upcoming: [] },
+        schedule: {
+          unbooked: 1,
+          remainingToday: 1,
+          upcoming: [],
+          addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+        },
       } as never);
 
       expect(prompt).toContain("turn itu juga yang memanggil extract_order");
@@ -420,7 +445,12 @@ describe("customer chatbot system prompt", () => {
     test("says nothing when there is no leftover to net off", async () => {
       const prompt = await buildSystemPrompt({
         ...base,
-        schedule: { unbooked: 0, remainingToday: 0, upcoming: [] },
+        schedule: {
+          unbooked: 0,
+          remainingToday: 0,
+          upcoming: [],
+          addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+        },
       } as never);
 
       expect(prompt).not.toContain(
@@ -792,7 +822,11 @@ describe("customer chatbot system prompt", () => {
         mealType: string;
         portions: number;
         window: string;
+        addressSlot?: number;
       }[],
+      addresses: { slot: number; label: string }[] = [
+        { slot: 1, label: "Jl. Contoh 1" },
+      ],
     ) =>
       buildSystemPrompt({
         casual: false,
@@ -815,7 +849,12 @@ describe("customer chatbot system prompt", () => {
           portionsPerDelivery: 1,
           pricePerPortion: 29000,
         },
-        schedule: { unbooked: 0, remainingToday: 4, upcoming },
+        schedule: {
+          unbooked: 0,
+          remainingToday: 4,
+          upcoming: upcoming.map((u) => ({ addressSlot: 1, ...u })),
+          addresses,
+        },
       } as never);
 
     test("marks today locked and leaves a later date open", async () => {
@@ -834,6 +873,41 @@ describe("customer chatbot system prompt", () => {
       expect(lines).toHaveLength(2);
       expect(lines[0]).toContain("TERKUNCI");
       expect(lines[1]).not.toContain("TERKUNCI");
+    });
+
+    // The model had no way of knowing where a scheduled row was going, and it
+    // did not say so: asked on 2026-09-06 to send Tuesday's lunch to her kost,
+    // Cindi was told "jadwal di catatan kami memang sudah begitu kok" about a
+    // row pointed at UPH Gate 2.
+    test("prints the address each scheduled row goes to, and the slot numbers", async () => {
+      const prompt = await withSchedule(
+        [
+          {
+            date: addDays(jakartaDateString(), 3),
+            mealType: "lunch",
+            portions: 1,
+            window: "11.30-12.30",
+            addressSlot: 2,
+          },
+        ],
+        [
+          { slot: 1, label: "Kost Platinum" },
+          { slot: 2, label: "UPH Gate 2" },
+        ],
+      );
+
+      expect(prompt).toContain("ke *UPH Gate 2* (alamat 2)");
+      expect(prompt).toContain("- alamat 1: Kost Platinum");
+      expect(prompt).toContain("pindah alamat adalah change_delivery_address");
+    });
+
+    // One address means the tool has nothing to switch between, and the model
+    // is told that rather than left to try it.
+    test("sends a one-address customer to an admin instead", async () => {
+      const prompt = await withSchedule([]);
+
+      expect(prompt).toContain("baru punya satu alamat tercatat");
+      expect(prompt).not.toContain("- alamat 2:");
     });
 
     test("says a locked date cannot have its address changed either", async () => {
@@ -863,7 +937,7 @@ describe("customer chatbot system prompt", () => {
         "delete_deliveries for what is on the calendar now, then record_daily_order",
       );
       expect(prompt).toContain(
-        "call ask_admin_for_help with the date, the meal and the address",
+        "still ask_admin_for_help with the date, the meal and the address",
       );
       expect(prompt).toContain(
         '"Admin sees the conversation" is not a mechanism',

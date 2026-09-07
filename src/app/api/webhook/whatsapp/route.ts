@@ -74,6 +74,10 @@ import {
   jakartaDateString,
   menuSentToolMessage,
 } from "@/lib/menu/week";
+import {
+  type ChangeDeliveryAddressInput,
+  changeDeliveryAddress,
+} from "@/lib/orders/change-delivery-address";
 import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
 import {
   type DeleteDeliveriesInput,
@@ -319,13 +323,21 @@ const SCHEDULE_PROMISE = new RegExp(
 // pengiriman Kamis besok dan lanjut lagi Jumat seperti biasa ya. Saya proses
 // sekarang" — no tool call, and in her case no row on that Kamis either, so the
 // reply was a confirmation of work that was neither done nor needed.
+//
+// The verbs cover a re-address as well as a skip. A row's date, its meal and
+// its address are the three things a customer asks to change, they are changed
+// by two tools between them, and the model announces all three the same way:
+// Nadya was told "pengiriman kak Nadya diganti ke siang ya" on 2026-09-07 and
+// Cindi "pengiriman dialihkan ke Kost Platinum ya" on 2026-09-06. Neither verb
+// was listed here, and neither turn called a tool.
 const SKIP_CLAIM = new RegExp(
   [
     // "saya skip pengiriman Kamis" / "aku hapus jadwal Jumat besok"
-    /(saya|aku|kami)\s+(sudah\s+)?(skip|hapus|hapuskan|batalkan|pindahkan|geser)\w*/
+    /(saya|aku|kami)\s+(sudah\s+)?(skip|hapus|hapuskan|batalkan|pindahkan|geser|ganti|gantikan|ubah|alihkan)\w*/
       .source,
     // "Kamis di-skip ya kak" / "pengirimannya dibatalkan"
-    /\b(di-?skip|dihapus|dibatalkan|dipindah\w*|digeser)\b/.source,
+    /\b(di-?skip|dihapus|dibatalkan|dipindah\w*|digeser|diganti|diubah|dialihkan)\b/
+      .source,
     // "skip Kamis, lanjut Jumat" — the customer's own words agreed to verbatim.
     /\bskip\w*\b[\s\S]{0,40}?\b(lanjut|dilanjut\w*)\b/.source,
   ].join("|"),
@@ -338,9 +350,29 @@ const SKIP_CLAIM = new RegExp(
 const SKIP_REFUSED =
   /\b(tidak|nggak|ga|gak|belum|tak)\s+(bisa|dapat|boleh|sempat)\b|terkunci|sudah\s+dikunci|sudah\s+(masuk|diproses)\s+dapur/i;
 
-/** Whether the reply told a customer a scheduled day was skipped or moved. */
+// One reply, read a paragraph at a time. Both of the 2026-09-07 misses
+// confirmed the change and then took it back — "pengiriman kak Nadya diganti ke
+// siang ya, sudah kami catet" and, two lines later, "untuk besok sebenarnya
+// sudah dikunci". Weighed whole, the word "dikunci" silenced the guard for the
+// whole reply; the customer meanwhile reads the first paragraph and expects
+// lunch. That confirm-then-refuse shape is exactly the one an admin has to see,
+// so a refusal only cancels the claim it stands next to.
+function paragraphs(text: string): string[] {
+  return text
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Whether the reply told a customer a scheduled day was skipped, moved or
+ * re-addressed. Satisfied by `delete_deliveries` or `change_delivery_address`,
+ * so it does not distinguish between them.
+ */
 export function claimsSkipDone(replyText: string): boolean {
-  return SKIP_CLAIM.test(replyText) && !SKIP_REFUSED.test(replyText);
+  return paragraphs(replyText).some(
+    (p) => SKIP_CLAIM.test(p) && !SKIP_REFUSED.test(p),
+  );
 }
 
 /**
@@ -2227,6 +2259,33 @@ export async function processSavedCustomerMessage(params: {
       },
     },
     {
+      name: "change_delivery_address",
+      description:
+        'Sends already-scheduled deliveries to the customer\'s OTHER saved address — "besok kirim ke kost aja ya", "hari Selasa ke kantor". Pass every date the customer named. This is the only way an address on the sheet changes: saying "dialihkan ke kost ya" or "jadwal kami memang sudah begitu" without calling this changes nothing, and the food goes to the old address. A date marked TERKUNCI is refused and nothing on it changes, so never promise the move for one. Only the two addresses already on file — for a place we have never been given, call ask_admin_for_help with the date, the meal and the address instead.',
+      input_schema: {
+        type: "object",
+        properties: {
+          delivery_dates: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Every date to re-address as ISO YYYY-MM-DD, resolved yourself from Today. Never a weekday name.",
+          },
+          address_slot: {
+            type: "number",
+            enum: [1, 2],
+            description:
+              "1 for the main address, 2 for the second one, exactly as they are listed in the customer's notes.",
+          },
+          reason: {
+            type: "string",
+            description: "Why the customer asked, in their own words.",
+          },
+        },
+        required: ["delivery_dates", "address_slot"],
+      },
+    },
+    {
       name: "ask_admin_for_help",
       description:
         "Called when the bot is uncertain about the answer. Pauses the bot, asks an admin for input, then the bot will send a polished version of that answer to the customer. Use this by default for uncertainty. Do NOT use escalate_to_human unless the customer needs a human to take over entirely. Never name the admin to the customer — the system prompt says which name, if any, may be used.",
@@ -2705,9 +2764,11 @@ export async function processSavedCustomerMessage(params: {
     }
   }
 
-  // The model confirms a skip or a move and calls no delete_deliveries. Nothing
-  // is deleted, so the row stays on the kitchen sheet, the food is cooked, and
-  // the portion is spent on a day the customer was told they had back.
+  // The model confirms a skip, a move or an address change and calls neither
+  // delete_deliveries nor change_delivery_address. Nothing is written, so the
+  // row stays on the kitchen sheet as it was: the food is cooked on a day the
+  // customer was told they had back, or driven to the address they were told it
+  // had left.
   //
   // Flagged rather than recovered, unlike the guards above: every one of those
   // fixes itself by *sending* something, and a second menu image or a second
@@ -2718,7 +2779,10 @@ export async function processSavedCustomerMessage(params: {
   // decides.
   if (
     replyText &&
-    !toolUses.some((t) => t.name === "delete_deliveries") &&
+    !toolUses.some(
+      (t) =>
+        t.name === "delete_deliveries" || t.name === "change_delivery_address",
+    ) &&
     claimsSkipDone(replyText)
   ) {
     const { data: flags } = await db
@@ -2739,9 +2803,9 @@ export async function processSavedCustomerMessage(params: {
               )
               .join(", ")
           : "tidak ada pengiriman terjadwal";
-      const note = `Bot menyanggupi skip/pindah jadwal tanpa memanggil delete_deliveries. Jadwal yang masih tercatat: ${scheduled}`;
+      const note = `Bot menyanggupi skip/pindah/ganti alamat tanpa memanggil tool apa pun. Jadwal yang masih tercatat: ${scheduled}`;
       console.warn(
-        `[webhook] skip confirmed but never deleted for ${customerId} — ${scheduled}`,
+        `[webhook] schedule change confirmed but never written for ${customerId} — ${scheduled}`,
       );
       await db
         .from("customer_flags")
@@ -3473,6 +3537,14 @@ async function handleToolUse(
       phone,
       customerName,
       input: tool.input as DeleteDeliveriesInput,
+    });
+  } else if (tool.name === "change_delivery_address") {
+    return changeDeliveryAddress({
+      db,
+      customerId,
+      phone,
+      customerName,
+      input: tool.input as ChangeDeliveryAddressInput,
     });
   } else if (tool.name === "ask_admin_for_help") {
     const input = tool.input as { question: string };

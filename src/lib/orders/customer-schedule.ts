@@ -34,10 +34,29 @@ export type CustomerSchedule = {
     mealType: string;
     portions: number;
     window: string;
+    /** 1 = the customer's main address, 2 = their second one. */
+    addressSlot: number;
   }[];
   remainingToday: number;
   unbooked: number;
+  /**
+   * The addresses this customer has on file, by slot — one entry, or two.
+   *
+   * Without them the model cannot say where a delivery is going, and it will
+   * not leave that blank: asked on 2026-09-06 to send Tuesday's lunch to her
+   * kost, Cindi was told "jadwal di catatan kami memang sudah begitu kok" for a
+   * row that was pointed at UPH Gate 2. It is also what picks the `address_slot`
+   * for `change_delivery_address`.
+   */
+  addresses: { slot: number; label: string }[];
 };
+
+/** Short enough for a prompt line, long enough to tell two addresses apart. */
+function addressLabel(address: string | null, area: string | null): string {
+  const text =
+    (address ?? "").trim() || (area ?? "").trim() || "alamat tercatat";
+  return text.length > 60 ? `${text.slice(0, 57)}...` : text;
+}
 
 // Statuses whose package_size the customer has actually paid for. A
 // pending_payment order is not quota yet, and the cancelled ones never were.
@@ -49,18 +68,26 @@ export async function loadCustomerSchedule(
   customerId: string,
   today: string = jakartaDateString(),
 ): Promise<CustomerSchedule | null> {
-  const [{ data: orders }, { data: rows }] = await Promise.all([
-    db
-      .from("orders")
-      .select("package_size")
-      .eq("customer_id", customerId)
-      .in("status", PAID_STATUSES),
-    db
-      .from("daily_deliveries")
-      .select("delivery_date, meal_type, portions, subcontractor_id")
-      .eq("customer_id", customerId)
-      .order("delivery_date"),
-  ]);
+  const [{ data: orders }, { data: rows }, { data: customer }] =
+    await Promise.all([
+      db
+        .from("orders")
+        .select("package_size")
+        .eq("customer_id", customerId)
+        .in("status", PAID_STATUSES),
+      db
+        .from("daily_deliveries")
+        .select(
+          "delivery_date, meal_type, portions, subcontractor_id, address_slot",
+        )
+        .eq("customer_id", customerId)
+        .order("delivery_date"),
+      db
+        .from("customers")
+        .select("address, area, address_2, area_2")
+        .eq("id", customerId)
+        .maybeSingle(),
+    ]);
 
   if (!orders?.length) return null;
 
@@ -91,7 +118,22 @@ export async function loadCustomerSchedule(
         r.meal_type ?? "lunch",
         r.subcontractor_id ? kitchens.get(r.subcontractor_id) : null,
       ).label,
+      addressSlot: r.address_slot ?? 1,
     })),
+    addresses: [
+      {
+        slot: 1,
+        label: addressLabel(customer?.address ?? null, customer?.area ?? null),
+      },
+      ...(customer?.address_2
+        ? [
+            {
+              slot: 2,
+              label: addressLabel(customer.address_2, customer.area_2 ?? null),
+            },
+          ]
+        : []),
+    ],
   };
 }
 
