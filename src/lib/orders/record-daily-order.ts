@@ -9,6 +9,7 @@ import {
   unbookedByOrder,
 } from "@/lib/orders/customer-schedule";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
+import { jakartaTimeString } from "@/lib/time/jakarta";
 import { daysLabel, kitchenDeliversOn } from "@/lib/subcontractors/days";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import type { Database } from "@/types/database";
@@ -81,6 +82,28 @@ export async function recordDailyOrder(params: {
       ok: false,
       error:
         "Tidak ada tanggal yang valid di panggilan ini. Tidak ada yang tercatat — tanyakan tanggalnya ke customer, lalu panggil lagi.",
+    };
+  }
+
+  // A date already gone. The shape check above passes any well-formed ISO
+  // string, and on 2026-09-01 Rachel was told "besok Rabu 2 September" — the
+  // reply named no year, and the date that reached this function was
+  // 2025-09-02. It booked cleanly: the double-booking guard compares strings,
+  // so the real 2026-09-02 row sitting on her sheet did not stop it, and the
+  // phantom ate the fifth portion of her five-portion package. Nothing downstream
+  // can tell a mistyped year from a real booking, so drop it here.
+  const todayWib = jakartaTimeString().slice(0, 10);
+  const pastDates = dates.filter((d) => d < todayWib);
+  const futureDates = dates.filter((d) => d >= todayWib);
+
+  if (futureDates.length === 0) {
+    console.error(
+      "[record-daily-order] every requested date is in the past",
+      JSON.stringify({ dates, todayWib }),
+    );
+    return {
+      ok: false,
+      error: `Tanggal yang diminta (${pastDates.join(", ")}) sudah lewat, hari ini ${todayWib}. Tidak ada yang tercatat — pastikan tahunnya benar dan tanyakan tanggalnya lagi ke customer.`,
     };
   }
 
@@ -208,8 +231,8 @@ export async function recordDailyOrder(params: {
   // straight through one — it put 25 Agustus (Maulid Nabi) in an eight-day run
   // in the simulator even with the holiday list in its prompt. Dropping the
   // date here is the guarantee; the prompt rule is the first layer.
-  const closedDates = dates.filter((d) => isClosedHoliday(d));
-  const businessDates = dates.filter((d) => !isClosedHoliday(d));
+  const closedDates = futureDates.filter((d) => isClosedHoliday(d));
+  const businessDates = futureDates.filter((d) => !isClosedHoliday(d));
 
   // A weekday the kitchen cooking this package does not work. `isClosedHoliday`
   // answers for the business and used to be the whole calendar, because every
@@ -377,6 +400,7 @@ export async function recordDailyOrder(params: {
   // model was told "done" for a booking that dropped half the run and
   // confirmed the whole run to the customer.
   const notBooked = [
+    ...pastDates.map((d) => `${d} (sudah lewat)`),
     ...closedDates.map((d) => `${d} (libur nasional)`),
     ...offDates.map((d) => `${d} (dapur tidak kirim hari itu)`),
     ...[...alreadyBooked].map((d) => `${d} (sudah ada di jadwal)`),
