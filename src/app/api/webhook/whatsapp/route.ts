@@ -2495,20 +2495,125 @@ export async function processSavedCustomerMessage(params: {
       if (send) await send();
     }
   };
-  for (const toolUse of toolUses) {
-    const result = await handleToolUse(
-      toolUse,
-      customerId,
-      phone,
-      customerName,
-    );
-    toolResults.set(toolUse.id, result);
-    if (result.ok && result.sendPayment) deferredSends.push(result.sendPayment);
-    if (!result.ok) {
-      console.warn(
-        `[webhook] tool ${toolUse.name} did nothing for ${customerId}: ${result.error}`,
+  const runTools = async (blocks: Anthropic.Messages.ToolUseBlock[]) => {
+    for (const toolUse of blocks) {
+      const result = await handleToolUse(
+        toolUse,
+        customerId,
+        phone,
+        customerName,
       );
+      toolResults.set(toolUse.id, result);
+      if (result.ok && result.sendPayment)
+        deferredSends.push(result.sendPayment);
+      if (!result.ok) {
+        console.warn(
+          `[webhook] tool ${toolUse.name} did nothing for ${customerId}: ${result.error}`,
+        );
+      }
     }
+  };
+  await runTools(toolUses);
+
+  // A reasoning model spends its first turn on `thinking` + `tool_use` and
+  // emits no text, which left the customer with total silence whenever the tool
+  // was a no-op (Julie W got send_menu_image on an already-sent menu). So the
+  // tool result goes back and the reply that should have come with it is asked
+  // for.
+  //
+  // This is a loop, and it sits here rather than after the claim guards, for
+  // two reasons found on the same turn — +6281514527982, 2026-09-07:
+  //
+  // One round trip was not enough. A tool result may name the next tool —
+  // record_customer_area's does, because menu and price list are per area and
+  // must not go out before the area is known — and the follow-up's own
+  // `tool_use` blocks used to be dropped on the floor, so the customer was
+  // promised a menu that no code path could ever send.
+  //
+  // And every guard below reads `replyText`. Filling it after they had run
+  // meant the text the customer actually reads was the one text nothing
+  // checked: that reply claimed the menu was on its way, claimsMenuSent()
+  // matches it, and the guard that exists to send it never looked.
+  //
+  // Rounds are capped because each one is a model call the customer is waiting
+  // through, and a model that keeps calling tools without ever writing a
+  // sentence is not converging on a reply.
+  const MAX_TOOL_ROUNDS = 3;
+  const toolMessages: Anthropic.Messages.MessageParam[] = [];
+  let lastResponse = claudeResponse;
+  let round = 0;
+  while (!replyText && toolUses.length > 0 && round < MAX_TOOL_ROUNDS) {
+    round += 1;
+    const pending = lastResponse.content.filter(
+      (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+    );
+    toolMessages.push(
+      { role: "assistant", content: lastResponse.content },
+      {
+        role: "user",
+        content: [
+          ...pending.map((t) => ({
+            type: "tool_result" as const,
+            tool_use_id: t.id,
+            // The real outcome, not the literal "done" this used to send for
+            // every tool regardless of whether it wrote anything.
+            content: JSON.stringify(
+              toolResults.get(t.id) ?? {
+                ok: false,
+                error: "Tool tidak dijalankan.",
+              },
+            ),
+            is_error: toolResults.get(t.id)?.ok === false,
+          })),
+          // A tool result is written to the system, not to the customer, and on
+          // this turn it is the last thing the model reads before it writes. On
+          // 2026-09-07 it answered the tool result instead of the customer, in
+          // the tool result's own voice: "Kak, customer-nya sudah
+          // menginformasikan kalau area mereka di Gading Serpong ... aku kirim
+          // menu dan daftar harganya ke mereka." Third person about the person
+          // being addressed, and neither looksEnglish() nor sanitizeReply() can
+          // see it — the text is Indonesian and carries no stage direction. So
+          // the turn is handed back to the customer explicitly.
+          {
+            type: "text" as const,
+            text: "Sekarang balas customer-nya langsung. Kamu sedang menulis pesan WhatsApp ke dia, bukan laporan ke admin: sapa dia dengan 'kak', jangan pernah menyebut dia sebagai 'customer' atau 'mereka', dan jangan menceritakan ulang isi tool result di atas.",
+          },
+        ],
+      },
+    );
+    try {
+      const client = getAnthropicClient();
+      lastResponse = await client.messages.create({
+        model: SONNET_MODEL,
+        ...NO_THINKING,
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [
+          ...history,
+          { role: "user", content: text },
+          ...toolMessages,
+        ],
+        tools,
+      });
+    } catch (err) {
+      console.error(
+        "[webhook] tool follow-up call failed:",
+        (err as Error).message,
+      );
+      break;
+    }
+    await updateTokenCount(
+      customerId,
+      lastResponse.usage.input_tokens + lastResponse.usage.output_tokens,
+    );
+    replyText = extractText(lastResponse);
+    // Appended to the same list the guards below read, so a tool the model only
+    // reached for on a later round still counts as called.
+    const nextTools = lastResponse.content.filter(
+      (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+    );
+    toolUses.push(...nextTools);
+    await runTools(nextTools);
   }
 
   // An order the conversation already contains must never die in a turn that
@@ -2839,56 +2944,6 @@ export async function processSavedCustomerMessage(params: {
       `[webhook] escalation claimed but never made — parking it for ${customerId}`,
     );
     await recordClaimedEscalation(customerId, phone, customerName, text);
-  }
-
-  // A tool call with no text alongside it. Anthropic models answer and call a
-  // tool in the same response, so one round trip was enough; a reasoning model
-  // spends the turn on `thinking` + `tool_use` and emits no text, which left the
-  // customer with total silence whenever the tool was a no-op (Julie W got
-  // send_menu_image on an already-sent menu). Feed the tool result back and ask
-  // for the reply that should have come with it.
-  if (toolUses.length > 0 && !replyText) {
-    try {
-      const client = getAnthropicClient();
-      const followUp = await client.messages.create({
-        model: SONNET_MODEL,
-        ...NO_THINKING,
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [
-          ...history,
-          { role: "user", content: text },
-          { role: "assistant", content: claudeResponse.content },
-          {
-            role: "user",
-            content: toolUses.map((t) => ({
-              type: "tool_result" as const,
-              tool_use_id: t.id,
-              // The real outcome, not the literal "done" this used to send for
-              // every tool regardless of whether it wrote anything.
-              content: JSON.stringify(
-                toolResults.get(t.id) ?? {
-                  ok: false,
-                  error: "Tool tidak dijalankan.",
-                },
-              ),
-              is_error: toolResults.get(t.id)?.ok === false,
-            })),
-          },
-        ],
-        tools,
-      });
-      replyText = extractText(followUp);
-      await updateTokenCount(
-        customerId,
-        followUp.usage.input_tokens + followUp.usage.output_tokens,
-      );
-    } catch (err) {
-      console.error(
-        "[webhook] tool follow-up call failed:",
-        (err as Error).message,
-      );
-    }
   }
 
   let replyConversationId: string | null = null;
@@ -3681,8 +3736,8 @@ async function handleToolUse(
       ok: true,
       message:
         names.length > 0
-          ? `Area customer dicatat sebagai "${matched}". Dapur yang melayani area itu: ${names.join(", ")}. Kirim menu dan price list-nya sekarang dengan send_menu_image dan send_price_list.`
-          : `Area customer dicatat sebagai "${matched}".`,
+          ? `Area tersimpan: "${matched}". Dapur yang melayani area itu: ${names.join(", ")}. Menu dan price list-nya belum terkirim — panggil send_menu_image dan send_price_list di giliran ini juga.`
+          : `Area tersimpan: "${matched}".`,
     };
   } else if (tool.name === "send_menu_image") {
     // Only the kitchens that would actually cook for this customer. Inactive

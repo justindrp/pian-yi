@@ -553,7 +553,10 @@ describe("processWebhookAsync", () => {
   // before its 31 August start.
   test("T14b — a buyer's proof also flips the orders they bought for others", async () => {
     const db = makeDefaultDb({
-      orders: { data: { id: "order-1", status: "pending_payment" }, error: null },
+      orders: {
+        data: { id: "order-1", status: "pending_payment" },
+        error: null,
+      },
     });
     (createAdminClient as jest.Mock).mockReturnValue(db);
 
@@ -728,6 +731,110 @@ describe("processWebhookAsync", () => {
       expect.objectContaining({ ok: false, error: expect.any(String) }),
     );
     expect(toolResult.content).not.toBe("done");
+  });
+
+  // The follow-up used to be a single round trip that kept only the text and
+  // dropped any tool_use it returned. A tool result may name the next tool —
+  // record_customer_area's does, because the menu and price list are per area —
+  // so the model was told to send something no code path could send.
+  test("T19b — a tool the model reaches for on the follow-up round is actually run", async () => {
+    const db = makeDefaultDb({ orders: { data: [], error: null } });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const bookLunch = (id: string) => ({
+      type: "tool_use",
+      id,
+      name: "record_daily_order",
+      input: {
+        delivery_dates: ["2026-09-01"],
+        meal_type: "lunch",
+        portions: 1,
+      },
+    });
+    const create = jest
+      .fn()
+      .mockResolvedValueOnce({
+        content: [bookLunch("tool-1")],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      })
+      // Second round: still no text, and another tool.
+      .mockResolvedValueOnce({
+        content: [bookLunch("tool-2")],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "Maaf kak, belum bisa dicatat." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+    (getAnthropicClient as jest.Mock).mockReturnValue({ messages: { create } });
+
+    await processWebhookAsync(makePayload("Besok kirim ya kak"));
+
+    expect(create).toHaveBeenCalledTimes(3);
+    // The second round's tool ran and its real outcome went back, exactly as
+    // the first round's did.
+    const third = create.mock.calls[2][0];
+    const second = third.messages.at(-1).content[0];
+    expect(second.tool_use_id).toBe("tool-2");
+    expect(JSON.parse(second.content)).toEqual(
+      expect.objectContaining({ ok: false, error: expect.any(String) }),
+    );
+  });
+
+  // Every claim guard reads replyText, and replyText is only filled by the
+  // follow-up when the first response is tool-only. Running the guards first
+  // meant the text the customer actually reads was the one text nothing
+  // checked: +6281514527982 was told on 2026-09-07 that the menu was on its
+  // way, and nothing sent it.
+  test("T19c — a menu claim made in the follow-up text is still caught", async () => {
+    const db = makeDefaultDb({
+      orders: { data: [], error: null },
+      // sentImageSinceLastInbound needs an inbound to measure against, or it
+      // reports "already sent" and every image guard stands down.
+      conversations: {
+        data: { created_at: "2026-09-07T10:00:00Z" },
+        error: null,
+      },
+    });
+    (createAdminClient as jest.Mock).mockReturnValue(db);
+
+    const create = jest
+      .fn()
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-1",
+            name: "record_customer_area",
+            input: { area: "Gading Serpong" },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      })
+      .mockResolvedValueOnce({
+        content: [
+          { type: "text", text: "Siap kak, aku kirim menu dan harganya ya 🙏" },
+        ],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+    (getAnthropicClient as jest.Mock).mockReturnValue({ messages: { create } });
+
+    await processWebhookAsync(makePayload("Saya di Gading Serpong"));
+
+    // No kitchen carries a menu in this mock, so the recovery cannot send one —
+    // and that failure is exactly what the guard escalates. Reaching it at all
+    // is the point: before the fix nothing looked at this reply.
+    expect(sendPushToAllAdmins).toHaveBeenCalledWith(
+      expect.stringContaining("Menu dijanjikan tapi tidak terkirim"),
+      expect.any(String),
+      "/inbox",
+      "high",
+    );
   });
 
   // stateRow is read once near the top of processWebhookAsync and handed to
