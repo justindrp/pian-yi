@@ -421,7 +421,7 @@ async function extractPromisedSchedule(params: {
   meal_type: "lunch" | "dinner" | "both";
   portions: number;
 } | null> {
-  const today = jakartaTimeString().slice(0, 10);
+  const today = jakartaDateString();
   try {
     const client = getAnthropicClient();
     const res = await client.messages.create({

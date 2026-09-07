@@ -93,6 +93,30 @@ function call(
   });
 }
 
+// The fixtures below name real dates, and the past-date guard reads the WIB
+// clock. Left on the wall clock, every case in this file starts failing the day
+// after its own fixture date — which is exactly what happened on 2026-09-02.
+beforeAll(() => {
+  jest.useFakeTimers({
+    doNotFake: [
+      "nextTick",
+      "queueMicrotask",
+      "setImmediate",
+      "setInterval",
+      "setTimeout",
+      "clearImmediate",
+      "clearInterval",
+      "clearTimeout",
+      "performance",
+    ],
+  });
+  jest.setSystemTime(new Date("2026-08-25T03:00:00Z"));
+});
+
+afterAll(() => {
+  jest.useRealTimers();
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   (unbookedByOrder as jest.Mock).mockResolvedValue(new Map([["order-1", 10]]));

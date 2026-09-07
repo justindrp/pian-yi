@@ -9,7 +9,7 @@ import {
   unbookedByOrder,
 } from "@/lib/orders/customer-schedule";
 import { pickDrawOrder } from "@/lib/orders/pick-draw-order";
-import { jakartaTimeString } from "@/lib/time/jakarta";
+import { jakartaDateString } from "@/lib/menu/week";
 import { daysLabel, kitchenDeliversOn } from "@/lib/subcontractors/days";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import type { Database } from "@/types/database";
@@ -92,7 +92,10 @@ export async function recordDailyOrder(params: {
   // so the real 2026-09-02 row sitting on her sheet did not stop it, and the
   // phantom ate the fifth portion of her five-portion package. Nothing downstream
   // can tell a mistyped year from a real booking, so drop it here.
-  const todayWib = jakartaTimeString().slice(0, 10);
+  // jakartaDateString(), not jakartaTimeString().slice(0, 10): the latter
+  // returns "HH:MM", so todayWib was "20:23" and every well-formed date sorted
+  // below it as a string — the guard refused every booking it ever saw.
+  const todayWib = jakartaDateString();
   const pastDates = dates.filter((d) => d < todayWib);
   const futureDates = dates.filter((d) => d >= todayWib);
 
