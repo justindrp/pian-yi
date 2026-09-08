@@ -23,6 +23,35 @@ export const LEARNED_CONTEXT_END = "[/AI learned context]";
 
 type AdminDb = SupabaseClient<Database>;
 
+const SUMMARIZER_SYSTEM = `Summarize this WhatsApp conversation into durable context for a catering customer-service chatbot.
+
+Rules:
+- Return Indonesian only.
+- Keep 3-6 short bullet points.
+- Include preferences, constraints, recurring questions, order intent, address or schedule context if present.
+- Anything the kitchen has to act on while cooking or dropping off — dietary
+  requests and restrictions, portion notes, and drop-off instructions — MUST go
+  in a bullet that begins with the exact label "Preferensi:". Put every such
+  fact in that bullet, and never put a price, a total, a discount or a bank
+  detail in it. Record only what the customer asked for, never what we do about
+  it internally: write their request as they made it, never the protein
+  increase we arrange with the kitchen in return for it. This bullet does not
+  reach the kitchen — customers.kitchen_notes does, and only an admin or an
+  accepted order writes that — so a request recorded here still has to be acted
+  on by a person.
+- A restriction goes in that bullet ONLY if the customer stated it themselves,
+  in their own message, in this transcript. Use their words. If they stated
+  none, the bullet must read exactly "Preferensi: tidak ada permintaan khusus."
+  — never a list of plausible restrictions, never a restriction because it is
+  common, and never one lifted from these instructions rather than the
+  transcript. A customer who is told about a restriction, or asked whether they
+  have one and says no, has not stated one. The chatbot is handed this bullet
+  on every turn and answers from it: on 2026-08-31 Carolin asked "ini tanpa
+  nasi?" about a restriction she had never given, and the bot confirmed it back
+  to her because the bullet said so.
+- Do not invent facts.
+- Do not include temporary chatter, greetings, or exact payment/card details.`;
+
 export async function learnCustomerContext(
   customerId: string,
   db: AdminDb = createAdminClient(),
@@ -64,39 +93,16 @@ export async function learnCustomerContext(
     // response came back stop_reason "max_tokens" with no text at all. The
     // summary itself is still 3-6 bullets.
     max_tokens: 1500,
+    // The rules are the cacheable half and the transcript is not, so the rules
+    // go in `system` where they sit ahead of it in the request. They used to
+    // ride in the user turn with the transcript appended, which meant nothing
+    // this call sent could ever match a cached prefix — and it runs on every
+    // inbound message.
+    system: SUMMARIZER_SYSTEM,
     messages: [
       {
         role: "user",
-        content: `Summarize this WhatsApp conversation into durable context for a catering customer-service chatbot.
-
-Rules:
-- Return Indonesian only.
-- Keep 3-6 short bullet points.
-- Include preferences, constraints, recurring questions, order intent, address or schedule context if present.
-- Anything the kitchen has to act on while cooking or dropping off — dietary
-  requests and restrictions, portion notes, and drop-off instructions — MUST go
-  in a bullet that begins with the exact label "Preferensi:". Put every such
-  fact in that bullet, and never put a price, a total, a discount or a bank
-  detail in it. Record only what the customer asked for, never what we do about
-  it internally: write their request as they made it, never the protein
-  increase we arrange with the kitchen in return for it. This bullet does not
-  reach the kitchen — customers.kitchen_notes does, and only an admin or an
-  accepted order writes that — so a request recorded here still has to be acted
-  on by a person.
-- A restriction goes in that bullet ONLY if the customer stated it themselves,
-  in their own message, in this transcript. Use their words. If they stated
-  none, the bullet must read exactly "Preferensi: tidak ada permintaan khusus."
-  — never a list of plausible restrictions, never a restriction because it is
-  common, and never one lifted from these instructions rather than the
-  transcript. A customer who is told about a restriction, or asked whether they
-  have one and says no, has not stated one. The chatbot is handed this bullet
-  on every turn and answers from it: on 2026-08-31 Carolin asked "ini tanpa
-  nasi?" about a restriction she had never given, and the bot confirmed it back
-  to her because the bullet said so.
-- Do not invent facts.
-- Do not include temporary chatter, greetings, or exact payment/card details.
-
-Transcript:
+        content: `Transcript:
 ${transcript}`,
       },
     ],

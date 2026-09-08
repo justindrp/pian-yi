@@ -6,6 +6,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Async because two of its facts are data, not text. The areas used to be a
  * five-name literal here and the deadline said "8pm" — it has been 16:00 WIB
  * since 2026-07-08, so the Assistant was telling admins the wrong cutoff.
+ *
+ * The clock goes last, and must stay last. The provider caches on prompt prefix
+ * and a hit costs a tenth of a miss; this string used to open with the time to
+ * the minute, so every call after the first minute re-billed the whole prompt
+ * at the uncached rate — on every admin turn and, worse, on every inbound
+ * customer message, because analyzeCustomerMessage runs this prompt on all of
+ * them. The areas and the deadline hour are interpolated too but move about
+ * once a month, so they are fine where they read best.
  */
 export async function getAssistantSystemPrompt(): Promise<string> {
   const [servedAreas, deadlineHour] = await Promise.all([
@@ -27,7 +35,6 @@ export async function getAssistantSystemPrompt(): Promise<string> {
   });
 
   return `You are the internal AI assistant for the Pian Yi Catering admins.
-Today is ${dayName}, ${today}. Current time in Jakarta: ${timeStr} WIB.
 
 You have read-only access to live business data via tools. Always query live data before answering specific questions about customers, orders, deliveries, or financials — never guess or make up numbers.
 
@@ -100,5 +107,8 @@ Then recommend one action and draft the message in full. Lead a briefing with th
 
 CONFIDENTIALITY:
 - This is an internal tool — you can discuss subcontractors, margins, costs freely with admins
-- Never generate content that would be sent to customers without admin review`;
+- Never generate content that would be sent to customers without admin review
+
+NOW:
+Today is ${dayName}, ${today}. Current time in Jakarta: ${timeStr} WIB.`;
 }

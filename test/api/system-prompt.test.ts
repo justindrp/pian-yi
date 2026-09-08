@@ -1027,7 +1027,10 @@ describe("excluded neighborhoods", () => {
     menuShown: true,
     currentDapur: null,
     dapurOptions: [],
-    dapurMenuTexts: [],
+    dapurMenuTexts: [
+      { nickname: "Dapur Suplir", menuText: "Senin: ayam rica-rica" },
+      { nickname: "Dapur Palem", menuText: "Senin: semur daging" },
+    ],
     menuWeek: { relation: "unknown" as const, weekStart: null },
     servedAreas: ["Alam Sutera"],
     neighborhoods: { "Alam Sutera": ["Sutera Onyx"] },
@@ -1243,6 +1246,14 @@ describe("the cacheable prefix", () => {
     built.forEach((prompt, i) => {
       expect(prefixes[i].length / prompt.length).toBeGreaterThan(0.9);
     });
+
+    // Every kitchen's menu stays in the shared part, including the kitchens
+    // this customer is not on. Trimming the menus to the customer's own dapur
+    // looks like the obvious saving and is the opposite of one: three menus
+    // cost ~4.8K tokens at the cache-hit rate, one menu in the per-customer
+    // tail costs ~1.6K at the miss rate, which is over three times as much.
+    for (const { menuText } of base.dapurMenuTexts)
+      expect(prefixes[0]).toContain(menuText);
   });
 
   test("the per-customer block carries what varies", async () => {

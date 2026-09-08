@@ -70,13 +70,14 @@ async function capturePrompt(): Promise<string> {
       { role: "user", content: "antar ke Alam Sutera" },
     ]),
   );
-  return create.mock.calls[0][0].messages[0].content as string;
+  // The rules live in `system` — the user turn carries only the transcript,
+  // so that the fixed half of this call can hit the provider's prefix cache.
+  return create.mock.calls[0][0].system as string;
 }
 
 describe("learnCustomerContext prompt", () => {
   test("states no concrete dietary restriction the model could copy as fact", async () => {
-    const prompt = await capturePrompt();
-    const instructions = prompt.slice(0, prompt.indexOf("Transcript:"));
+    const instructions = await capturePrompt();
 
     // The exact run that leaked, and each term on its own. A restriction named
     // in the instructions is one the model can emit without transcript support.
@@ -87,19 +88,19 @@ describe("learnCustomerContext prompt", () => {
   });
 
   test("requires the restriction to come from the customer's own message", async () => {
-    const instructions = (await capturePrompt()).split("Transcript:")[0];
+    const instructions = await capturePrompt();
     expect(instructions).toMatch(/stated it themselves/i);
     expect(instructions).toMatch(/in this transcript/i);
   });
 
   test("gives an explicit bullet for a customer who stated nothing", async () => {
-    const instructions = (await capturePrompt()).split("Transcript:")[0];
+    const instructions = await capturePrompt();
     // Without a required wording the model fills the empty bullet with a guess.
     expect(instructions).toContain("Preferensi: tidak ada permintaan khusus.");
   });
 
   test("still forbids recording our internal protein arrangement", async () => {
-    const instructions = (await capturePrompt()).split("Transcript:")[0];
+    const instructions = await capturePrompt();
     expect(instructions).toMatch(/protein/i);
   });
 });

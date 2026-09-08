@@ -51,6 +51,10 @@ Everything a request sends is serialised tools → system → messages, so the f
 
 Counterintuitively the three dapur menu texts stay in the invariant block even though only one is the customer's: ~4.8K cached tokens cost about a tenth of what 1.6K uncached ones do. The contract-price branch of the price list is inlined for the same reason — it only diverges for the rare corporate customer, and pulling it out would move the divergence up for everyone else.
 
+**The same fix, twice more.** `getAssistantSystemPrompt()` (`src/lib/claude/assistant-prompt.ts`) opened with the Jakarta clock **to the minute**, at roughly token 30 of a 2,096-token prompt — so it cached for at most sixty seconds and then re-billed the whole thing. That prompt is not just the admin Assistant's: `analyzeCustomerMessage` runs it on **every inbound customer message**, for up to five turns each. The clock now sits last, under `NOW:`, and must stay there. The areas and the deadline hour are interpolated mid-prompt and stay there — they move about once a month, which is stable enough to cache.
+
+`learnCustomerContext()` (`src/lib/claude/learn-context.ts`) had its ~484 tokens of summarizer rules in the user turn ahead of the transcript, and it too runs on every inbound message. They live in `SUMMARIZER_SYSTEM` now; the user turn is the transcript alone, which also lets the sliding 80-message window cache whatever of itself has not moved.
+
 `validateReply` (`src/lib/claude/validate-reply.ts`) had no `system` at all; its four paragraphs of fixed instructions rode in the user turn behind the variable transcript, so nothing it sent was ever cacheable. They live in `VALIDATOR_SYSTEM` now and the user turn carries only context + transcript + the draft reply.
 
 The remaining fix queue is in the `tasks` table (`pnpm tasks`). The durable rule: **anything that varies per message belongs at the end of the prompt, and anything that varies at all belongs as late as it can go.** Verify against platform.deepseek.com → Usage, which splits cache-hit from cache-miss input tokens per day.
