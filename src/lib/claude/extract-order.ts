@@ -1715,8 +1715,23 @@ export async function createOrderFromExtraction(
   // are worse than useless: Naya's "20 porsi" and her Rp 540.000 are precisely
   // what turned Cila's 5-porsi order into a copy of Naya's. For someone else's
   // package, the size the model extracted for that package is all we have.
+  //
+  // `statedTotal` is also read past whenever the customer named their days.
+  // It is the last bare number they typed, and a customer who books days says
+  // that number per day: Ireine Roosdy wrote "5 porsi", named five days, and
+  // her order was written for 5 against a schedule summing to 25 — Rp 145.000
+  // of bank details for a Rp 675.000 package, which she caught herself with
+  // "145rb?". The schedule is the more specific statement of the same thing,
+  // and the tool description already says so in as many words: package_size
+  // must equal the sum of all slot portions. `weeksSize` is suppressed the
+  // same way and for the same reason. `paidSize` still outranks both — money
+  // that has moved outranks every number in the conversation — and the Tiwi
+  // case `statedTotal` exists for ("Boleh 6 porsi dulu kak" against an 8-porsi
+  // order) carried no schedule, so it is untouched.
   const chatSize =
-    beneficiary.kind === "self" ? (paidSize ?? statedTotal ?? weeksSize) : null;
+    beneficiary.kind === "self"
+      ? (paidSize ?? (sortedSchedule ? null : statedTotal) ?? weeksSize)
+      : null;
   let packageSize = chatSize ?? flooredPackageSize;
   if (packageSize !== flooredPackageSize) {
     console.log(
