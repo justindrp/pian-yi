@@ -1922,8 +1922,8 @@ export async function processSavedCustomerMessage(params: {
   } = params;
   const db = createAdminClient();
 
-  // Rate limit check. Must stay above analyzeCustomerMessage: that is a Haiku
-  // call, and a rate-limited customer should not cost a model call at all.
+  // Rate limit check. Must stay above everything below it: a rate-limited
+  // customer should not cost a model call at all.
   if (!draft && !shouldHandlePaymentProof(latestOrderStatus)) {
     const rateCheck = await checkRateLimit(customerId);
     if (!rateCheck.allowed) {
@@ -1939,15 +1939,23 @@ export async function processSavedCustomerMessage(params: {
     }
   }
 
-  // Skipped when drafting: this is a second Sonnet call that can open an
-  // assistant thread and push every admin. An admin asking for a draft has
-  // already read the message, and re-drafting three times should not raise
-  // three alerts.
-  if (!draft && text.trim()) {
-    analyzeCustomerMessage({ customerId, customerName, text }).catch((err) =>
-      console.error("[webhook] analyzeCustomerMessage failed:", err),
-    );
-  }
+  // analyzeCustomerMessage does NOT run here. It used to, on every inbound
+  // message — a second model call carrying the Assistant's own prompt and all
+  // 24 of its tools, for up to five turns, whose only output is a proposed
+  // write action plus a high-priority push to every admin. Over the fortnight
+  // to 2026-09-08 it ran on ~1,000 messages and proposed something on 126 of
+  // them, and 94 of those 126 were send_whatsapp_message or send_whatsapp_image
+  // — the Assistant offering to say something to a customer the bot had already
+  // answered seconds earlier. Nine pushes a day, three quarters of them
+  // duplicates of a reply that had already gone out; see "Minimize admin
+  // flagging" — an alert nobody reads is not a safety net.
+  //
+  // It still runs on the escalated branch in processWebhookAsync, which is
+  // where it earns its keep: there the bot is silent and an admin is the only
+  // one who can act. On this path the customer is being answered, and three
+  // other nets already cover the failures — the model's own ask_admin_for_help
+  // tool, flagOrderAtRisk on a reply that created no order, and the validator's
+  // needs_human_review flag.
 
   // No "new message" push here: processWebhookAsync already sent one before
   // handing off, and replay-latest re-runs this function over a message the
