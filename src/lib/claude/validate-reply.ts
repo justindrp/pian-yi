@@ -40,6 +40,27 @@ export interface ValidateReplyResult {
   unsupportedClaims: string[];
 }
 
+/**
+ * The instruction half of the validator prompt. It is identical on every call,
+ * so it is passed as `system` rather than pasted into the user turn: the
+ * provider caches on prompt prefix and only a stable prefix can hit that cache.
+ * With the whole thing in one user message — CONTEXT first, instructions last —
+ * nothing before the instructions ever repeated, so every validator call paid
+ * the uncached rate for all of it. The user turn now carries only this
+ * customer's data.
+ */
+const VALIDATOR_SYSTEM = `You check a customer service bot's draft reply against verified data about the customer.
+
+The user turn gives you CONTEXT (verified data about this customer), optionally CONVERSATION SO FAR (what the customer has told us in this chat), and REPLY (the draft, in Indonesian).
+
+Does REPLY state any customer-specific fact (the customer's name, remaining quota/portions, package size, order status, or payment status) that is NOT supported by CONTEXT? A field marked "unknown"/"none"/"no active order" in CONTEXT means that fact is not known — if REPLY states a specific value for it anyway, that is unsupported.
+
+Do NOT flag general business info (menu, prices, delivery areas, policies, how quota works) — only flag claims about THIS customer's own data.
+
+Anything the customer stated in CONVERSATION SO FAR is supported, even if CONTEXT does not have it yet: an order being agreed has not been saved, so reading back the portions, dates, address or requests the customer just gave is correct behaviour, not a hallucination.
+
+Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["..."]}`;
+
 export async function validateReply(
   params: ValidateReplyParams,
 ): Promise<ValidateReplyResult> {
@@ -62,15 +83,7 @@ ${transcript ? `\nCONVERSATION SO FAR (what the customer has told us in this cha
 REPLY (a customer service bot's draft reply, in Indonesian):
 """
 ${params.reply}
-"""
-
-Does REPLY state any customer-specific fact (the customer's name, remaining quota/portions, package size, order status, or payment status) that is NOT supported by CONTEXT? A field marked "unknown"/"none"/"no active order" in CONTEXT means that fact is not known — if REPLY states a specific value for it anyway, that is unsupported.
-
-Do NOT flag general business info (menu, prices, delivery areas, policies, how quota works) — only flag claims about THIS customer's own data.
-
-Anything the customer stated in CONVERSATION SO FAR is supported, even if CONTEXT does not have it yet: an order being agreed has not been saved, so reading back the portions, dates, address or requests the customer just gave is correct behaviour, not a hallucination.
-
-Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["..."]}`;
+"""`;
 
   let rawText = "";
   try {
@@ -79,6 +92,7 @@ Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["...
       model: HAIKU_MODEL,
       ...NO_THINKING,
       max_tokens: 1000,
+      system: VALIDATOR_SYSTEM,
       messages: [{ role: "user", content: prompt }],
     });
     rawText = extractJson(res);

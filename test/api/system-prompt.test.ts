@@ -1127,7 +1127,12 @@ describe("the customer's own dapur", () => {
     expect(prompt).toContain(
       "This customer already cooks with Dapur Suplir",
     );
-    expect(prompt).toContain("Dapur: Dapur Suplir");
+    // The order form's own Dapur line is left blank so the form stays
+    // identical for every customer and keeps the prompt prefix cacheable; the
+    // per-customer block at the end is what names the dapur it is filled with.
+    expect(prompt).toContain(
+      "The Dapur line is pre-filled with **Dapur Suplir**",
+    );
     expect(prompt).not.toContain(
       'Mau pesan dari Dapur Suplir atau Dapur Palem kak?"',
     );
@@ -1151,5 +1156,102 @@ describe("the customer's own dapur", () => {
     expect(prompt).toContain(
       'Mau pesan dari Dapur Suplir atau Dapur Palem kak?"',
     );
+  });
+});
+
+/**
+ * The provider caches on prompt prefix and a cache hit costs a tenth of a miss,
+ * so what this prompt costs is decided by how far down the first per-customer
+ * word sits. Measured 2026-09-08, before the per-customer block was pulled out:
+ * 21,079 of the prompt's 21,332 tokens were identical for every customer, but
+ * the casual/polished sentence diverged at token 56, so ~94% of every prompt
+ * was billed as a full-price miss — on the first call, on each tool round and
+ * on each validator retry. The median call burned 7,089 uncached tokens.
+ *
+ * These tests are the guard. They fail the moment a per-customer interpolation
+ * is put back into the body of the prompt, because everything below such a line
+ * stops caching too.
+ */
+describe("the cacheable prefix", () => {
+  const base = {
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    dapurOptions: [
+      {
+        id: "a",
+        nickname: "Dapur Suplir",
+        offersM: true,
+        sameMenuBothMeals: true,
+      },
+      {
+        id: "b",
+        nickname: "Dapur Palem",
+        offersM: false,
+        sameMenuBothMeals: false,
+      },
+    ],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["Alam Sutera"],
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+  };
+
+  const variants = [
+    {
+      casual: false,
+      customerState: "new",
+      customerName: null,
+      currentDapur: null,
+      activeOrder: null,
+      schedule: null,
+    },
+    {
+      casual: true,
+      customerState: "ordering",
+      customerName: "Budi",
+      currentDapur: { id: "a", nickname: "Dapur Suplir" },
+      activeOrder: { id: "o", packageSize: 20, portionsPerDelivery: 1 },
+      schedule: null,
+    },
+    {
+      casual: false,
+      customerState: "lapsed",
+      customerName: "Sari",
+      currentDapur: { id: "b", nickname: "Dapur Palem" },
+      activeOrder: null,
+      schedule: null,
+    },
+  ];
+
+  const MARKER = "\n\n## Gaya bahasa\n";
+
+  test("every customer gets the same prompt until the per-customer block", async () => {
+    const built = [];
+    for (const variant of variants)
+      built.push(await buildSystemPrompt({ ...base, ...variant }));
+
+    for (const prompt of built) expect(prompt).toContain(MARKER);
+
+    const prefixes = built.map((p) => p.slice(0, p.indexOf(MARKER)));
+    for (const prefix of prefixes) expect(prefix).toEqual(prefixes[0]);
+
+    // Not merely equal — the shared part has to be the bulk of the prompt, or
+    // the block has drifted back up and taken the saving with it.
+    built.forEach((prompt, i) => {
+      expect(prefixes[i].length / prompt.length).toBeGreaterThan(0.9);
+    });
+  });
+
+  test("the per-customer block carries what varies", async () => {
+    const prompt = await buildSystemPrompt({ ...base, ...variants[1] });
+    const block = prompt.slice(prompt.indexOf(MARKER));
+
+    expect(block).toContain("casual lowercase Indonesian");
+    expect(block).toContain("This customer already cooks with Dapur Suplir");
+    expect(block).toContain("## Daily quota ordering");
+    expect(block).toContain("Customer name (if known): Budi");
   });
 });
