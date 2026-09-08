@@ -577,6 +577,12 @@ const TYPED_WEEKS = /(?<![\d.,])(\d{1,2})\s*minggu\b/gi;
 const BUY_EVIDENCE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /**
+ * Prefix on every `escalation_reason` flagOrderAtRisk writes, and the only
+ * thing it may dedupe on — `needs_human_review` is a shared boolean.
+ */
+const ORDER_AT_RISK_PREFIX = "Kemungkinan order belum tercatat: ";
+
+/**
  * Whether the customer themselves typed a number that could be this package
  * size. Recovery hands a whole conversation to a model that will return an
  * order shape for a chat containing none, so the extraction is not evidence of
@@ -720,22 +726,36 @@ async function flagOrderAtRisk(
     );
     if (echoesExistingOrder) return false;
 
-    // One push per unresolved flag. The trigger fires on every turn, and an
-    // admin who has already been told does not need telling again each time the
-    // customer writes.
+    // One push per unresolved flag *of this kind*. The trigger fires on every
+    // turn, and an admin who has already been told does not need telling again
+    // each time the customer writes.
+    //
+    // Which is why this keys on the reason this function itself wrote, never on
+    // `needs_human_review`. That boolean is shared — the hallucination-validator
+    // fallback, the reasoning-leak guard, the skip guard and the address guards
+    // all raise it — so deduping on it meant any one of them silently turned
+    // the order-at-risk net off for the rest of the conversation. Ireine Roosdy
+    // was blocked by the validator on 2026-09-08, sent her Maps link and her
+    // name eleven minutes later, got a reply that called no `extract_order`,
+    // and a complete Rp 675.000 order produced no order, no flag and no push.
+    // Every path that resolves a flag nulls `escalation_reason` with it, so a
+    // dealt-with flag does not suppress the next one.
     const { data: flags } = await db
       .from("customer_flags")
-      .select("needs_human_review")
+      .select("escalation_reason")
       .eq("customer_id", customerId)
       .maybeSingle();
-    if (flags?.needs_human_review === true) return false;
+    if (flags?.escalation_reason?.startsWith(ORDER_AT_RISK_PREFIX))
+      return false;
 
     const note = `${raw.package_size} porsi${raw.start_date ? `, mulai ${raw.start_date}` : ""} — ${reason}`;
+    // Overwrites another guard's reason if one is sitting there. An order that
+    // may not exist outranks it, and the flag stays raised either way.
     await db
       .from("customer_flags")
       .update({
         needs_human_review: true,
-        escalation_reason: `Kemungkinan order belum tercatat: ${note}`,
+        escalation_reason: `${ORDER_AT_RISK_PREFIX}${note}`,
       })
       .eq("customer_id", customerId);
 
@@ -2106,8 +2126,7 @@ export async function processSavedCustomerMessage(params: {
   // admin who moved someone outranks whichever package is still running.
   const currentDapurId =
     storedLinkRow?.subcontractor_id ?? activeOrderRow?.subcontractor_id ?? null;
-  const currentDapur =
-    rawSubs.find((s) => s.id === currentDapurId) ?? null;
+  const currentDapur = rawSubs.find((s) => s.id === currentDapurId) ?? null;
   const activeOrder = activeOrderRow
     ? {
         id: activeOrderRow.id,
@@ -2539,16 +2558,18 @@ export async function processSavedCustomerMessage(params: {
   // through, and a model that keeps calling tools without ever writing a
   // sentence is not converging on a reply.
   const MAX_TOOL_ROUNDS = 3;
-  const toolMessages: Anthropic.Messages.MessageParam[] = [];
-  let lastResponse = claudeResponse;
-  let round = 0;
-  while (!replyText && toolUses.length > 0 && round < MAX_TOOL_ROUNDS) {
-    round += 1;
-    const pending = lastResponse.content.filter(
+
+  // The assistant turn and the tool results that answer it, in the shape the
+  // model has to be handed back. Also used by the validator retry below, which
+  // is given the same `tools` and so can reach for one just as this call can.
+  const toolResultTurn = (
+    response: Anthropic.Messages.Message,
+  ): Anthropic.Messages.MessageParam[] => {
+    const pending = response.content.filter(
       (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
     );
-    toolMessages.push(
-      { role: "assistant", content: lastResponse.content },
+    return [
+      { role: "assistant", content: response.content },
       {
         role: "user",
         content: [
@@ -2580,7 +2601,15 @@ export async function processSavedCustomerMessage(params: {
           },
         ],
       },
-    );
+    ];
+  };
+
+  const toolMessages: Anthropic.Messages.MessageParam[] = [];
+  let lastResponse = claudeResponse;
+  let round = 0;
+  while (!replyText && toolUses.length > 0 && round < MAX_TOOL_ROUNDS) {
+    round += 1;
+    toolMessages.push(...toolResultTurn(lastResponse));
     try {
       const client = getAnthropicClient();
       lastResponse = await client.messages.create({
@@ -3007,54 +3036,92 @@ export async function processSavedCustomerMessage(params: {
       let retryText = "";
       try {
         const client = getAnthropicClient();
-        const retryResponse = await client.messages.create({
-          model: SONNET_MODEL,
-          ...NO_THINKING,
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [
-            ...history,
-            { role: "user", content: text },
-            { role: "assistant", content: replyText },
-            {
-              role: "user",
-              // This instruction used to say "hanya gunakan fakta dari Current
-              // context di system prompt. Jika data tidak tersedia, katakan
-              // akan dicek dulu." Both halves were wrong and cost real orders.
-              //
-              // "Only Current context" is narrower than the validator's own
-              // rule, which explicitly does NOT flag business info. Current
-              // context holds this customer's row, not the pricing ladder or
-              // the custom-request exceptions — so on retry the model lost
-              // access to facts it legitimately had and reversed correct
-              // answers. On 2026-08-26 +6287895957020 was told tanpa nasi is
-              // free (right), then after a retry that it needed to "cek dulu
-              // ke tim" about the price (wrong, and there is no such rate to
-              // check). The customer deferred and the thread stalled.
-              //
-              // "Katakan akan dicek dulu" is worse: nothing schedules that
-              // follow-up, so it is a promise the business cannot keep. It is
-              // the exact shape /api/cron/stalled-leads now has to detect
-              // after the fact. Ask the customer instead — they are right
-              // there, and they are the only source for their own data.
-              content: `Balasan sebelumnya berisi klaim tentang data pelanggan ini yang tidak didukung: ${validation.unsupportedClaims.join(", ")}.
+        const retryMessages: Anthropic.Messages.MessageParam[] = [
+          ...history,
+          { role: "user", content: text },
+          { role: "assistant", content: replyText },
+          {
+            role: "user",
+            // This instruction used to say "hanya gunakan fakta dari Current
+            // context di system prompt. Jika data tidak tersedia, katakan
+            // akan dicek dulu." Both halves were wrong and cost real orders.
+            //
+            // "Only Current context" is narrower than the validator's own
+            // rule, which explicitly does NOT flag business info. Current
+            // context holds this customer's row, not the pricing ladder or
+            // the custom-request exceptions — so on retry the model lost
+            // access to facts it legitimately had and reversed correct
+            // answers. On 2026-08-26 +6287895957020 was told tanpa nasi is
+            // free (right), then after a retry that it needed to "cek dulu
+            // ke tim" about the price (wrong, and there is no such rate to
+            // check). The customer deferred and the thread stalled.
+            //
+            // "Katakan akan dicek dulu" is worse: nothing schedules that
+            // follow-up, so it is a promise the business cannot keep. It is
+            // the exact shape /api/cron/stalled-leads now has to detect
+            // after the fact. Ask the customer instead — they are right
+            // there, and they are the only source for their own data.
+            content: `Balasan sebelumnya berisi klaim tentang data pelanggan ini yang tidak didukung: ${validation.unsupportedClaims.join(", ")}.
 
 Tulis ulang balasan itu dengan HANYA memperbaiki klaim tersebut — bagian lain yang sudah benar biarkan apa adanya.
 
 Aturan bisnis di system prompt (harga, menu, area, hari pengiriman, ketentuan permintaan khusus) tetap boleh dipakai sepenuhnya. Yang tidak boleh ditebak hanya data pribadi pelanggan ini: nama, sisa kuota, ukuran paket, status order, status pembayaran.
 
 Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggannya. Jangan pernah menjanjikan akan mengecek dulu ke tim atau ke admin — tidak ada yang menjadwalkan follow-up itu, jadi janji seperti itu tidak akan pernah ditepati.`,
-            },
-          ],
+          },
+        ];
+        const retryResponse = await client.messages.create({
+          model: SONNET_MODEL,
+          ...NO_THINKING,
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: retryMessages,
           tools,
         });
-        for (const block of retryResponse.content) {
-          if (block.type === "text") retryText = block.text;
-        }
         await updateTokenCount(
           customerId,
           retryResponse.usage.input_tokens + retryResponse.usage.output_tokens,
         );
+        // extractText, not the last text block: a reply split across two blocks
+        // used to lose everything but the tail.
+        retryText = extractText(retryResponse);
+
+        // This call is given `tools`, so it can reach for one — and every
+        // `tool_use` it returned used to be dropped on the floor, the same
+        // defect the main follow-up loop was fixed for on 2026-09-07. A retry
+        // that answered by calling `extract_order` wrote nothing, and the turn
+        // ended on the fallback template. So the tools run, and they join the
+        // list the guards below read.
+        const retryTools = retryResponse.content.filter(
+          (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+        );
+        toolUses.push(...retryTools);
+        await runTools(retryTools);
+
+        // A tool-only retry leaves no sentence to send, so the text that goes
+        // with it is asked for, once. One round rather than the main loop's
+        // three: the customer has already waited through a rejected reply and a
+        // regeneration, and the fallback below still catches an empty answer.
+        if (retryTools.length > 0 && !retryText) {
+          const followUp = await client.messages.create({
+            model: SONNET_MODEL,
+            ...NO_THINKING,
+            max_tokens: 1000,
+            system: systemPrompt,
+            messages: [...retryMessages, ...toolResultTurn(retryResponse)],
+            tools,
+          });
+          await updateTokenCount(
+            customerId,
+            followUp.usage.input_tokens + followUp.usage.output_tokens,
+          );
+          retryText = extractText(followUp);
+          const followUpTools = followUp.content.filter(
+            (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+          );
+          toolUses.push(...followUpTools);
+          await runTools(followUpTools);
+        }
       } catch (err) {
         console.error(
           "[webhook] regeneration after validator rejection failed:",
