@@ -1847,6 +1847,26 @@ function BankStatementsTab() {
     );
   });
 
+  // The running balance, so the table reads like a ledger rather than a list
+  // of amounts. Superbank prints a balance on every line; BCA prints one on
+  // about 40% of them, so the rest are carried forward from the statement's
+  // opening balance — a printed figure always wins, which also re-syncs the
+  // running total after any line the parser read without one.
+  //
+  // It is computed over every line of the statement, never over `shown`: a
+  // search box that hid half the rows would otherwise renumber the balance
+  // into something the bank never said.
+  const balances = new Map<string, number>();
+  {
+    let running = Number(detail.data?.statement.opening_balance ?? 0);
+    for (const l of [...lines].sort((a, b) => a.row_index - b.row_index)) {
+      running +=
+        l.direction === "CR" ? Number(l.amount) : -Number(l.amount);
+      if (l.balance_after !== null) running = Number(l.balance_after);
+      balances.set(l.id, running);
+    }
+  }
+
   // Grouped by contra account: the answer to "is this in the right account?"
   const groups = new Map<
     string,
@@ -2075,6 +2095,7 @@ function BankStatementsTab() {
                   <th className="text-left p-3 font-normal">Keterangan</th>
                   <th className="text-right p-3 font-normal w-28">Masuk</th>
                   <th className="text-right p-3 font-normal w-28">Keluar</th>
+                  <th className="text-right p-3 font-normal w-32">Saldo</th>
                   <th className="text-left p-3 font-normal w-64">Debit</th>
                   <th className="text-left p-3 font-normal w-64">Kredit</th>
                 </tr>
@@ -2105,6 +2126,18 @@ function BankStatementsTab() {
                       {l.direction === "DB"
                         ? formatMoney(Number(l.amount), currency)
                         : ""}
+                    </td>
+                    <td
+                      className={`p-3 text-right align-top whitespace-nowrap ${
+                        l.balance_after === null ? "text-gray-400" : "text-gray-600"
+                      }`}
+                      title={
+                        l.balance_after === null
+                          ? "Saldo berjalan — tidak dicetak di rekening koran"
+                          : undefined
+                      }
+                    >
+                      {formatMoney(balances.get(l.id) ?? 0, currency)}
                     </td>
                     <td className="p-3 align-top">
                       {l.direction === "CR" ? (

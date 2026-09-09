@@ -40,19 +40,31 @@ export async function GET(
       { status: 404 },
     );
 
-  const { data: lines, error: lineErr } = await db
-    .from("bank_transactions")
-    .select("*")
-    .eq("statement_id", id)
-    .order("row_index", { ascending: true });
-  if (lineErr)
-    return NextResponse.json(
-      { ok: false, error: lineErr.message },
-      { status: 500 },
-    );
+  // Paged, because a bare select stops at PostgREST's 1000-row default and
+  // says nothing about the rest (CLAUDE.md rule 9 — a server route is not
+  // exempt). The running balance the table draws is computed over these lines,
+  // so a truncated read would not just shorten the list: it would print a
+  // ledger balance the bank never said.
+  const lines: Record<string, unknown>[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error: lineErr } = await db
+      .from("bank_transactions")
+      .select("*")
+      .eq("statement_id", id)
+      .order("row_index", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (lineErr)
+      return NextResponse.json(
+        { ok: false, error: lineErr.message },
+        { status: 500 },
+      );
+    lines.push(...(page ?? []));
+    if ((page?.length ?? 0) < PAGE) break;
+  }
 
   return NextResponse.json({
     ok: true,
-    data: { statement, lines: lines ?? [] },
+    data: { statement, lines },
   });
 }
