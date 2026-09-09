@@ -8,6 +8,8 @@ The 24-hour window and the WABA payment restriction are the two things most like
 
 Meta blocks a business from writing first once 24 hours have passed since the customer's last inbound message, and nothing we send reopens it — only they can. Customers do not know this, so our enforced silence reads as being ignored. On 2026-08-18 Jordy, whose delivery had been missed, wrote "Saya gk mau tau, masa harus saya yang follow up tiap hari??" and threatened a refund; he had no way to know we were locked out of his thread.
 
+**Every wording names the account type: "nomor ini WhatsApp Business API, bukan WhatsApp biasa".** Until 2026-09-09 they said only that the channel locks — *jalurnya terkunci* — which a customer reads as our choice: our office hours, our staffing, our indifference. So they answer it with fixes for a problem we do not have. Bu Mimi, on 2026-09-03: *"jk kendala.. ya telp cust/ miscall.. kan kebaca"*, and publish "WA katering aktif pkl 6.00–22.00". Naming the account is what makes the limit legible as Meta's rule rather than ours — no advertised opening hours would change it. The two long wordings also say plainly that **this number cannot telephone or miss-call at all**, and hand the risk back: on a day the customer has not written to us, a late dapur or an unclear address is something we have no way to tell them about. The bot's side of the same rule is in "A complaint about the 24-hour rule" in `docs/BOT_RULES.md`; `test/window-notice.test.ts` pins the account-type naming and the no-call promise.
+
 Both wordings live in `src/lib/whatsapp/window-notice.ts` and both end on the same explicit ask — *if it has been over 24 hours, message us first*:
 
 - `WINDOW_NOTICE_WELCOME` — its own bubble, sent last in the welcome sequence, after the T&C.

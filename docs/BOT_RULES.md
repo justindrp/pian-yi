@@ -801,6 +801,18 @@ The 24-hour window opens on **their** message and closes on their silence — `w
 
 The rule now sits in `## Contextual replies`: never tell a customer to reply less, never say a reply could lock the chat, never use the window as a reason for them to stay quiet. A bare "makasih" or "ok" gets one short line back — "Sama-sama kak" — and nothing else. Their replies are the only thing that keeps us able to reach them at all; with `131042` on the WABA, a closed window means the manual number or nothing.
 
+## A complaint about the 24-hour rule is answered with the rule
+
+Telling a customer the channel locks invites them to solve it, and every solution they offer is a channel we do not have. Bu Mimi wrote *"jk kendala.. ya telp cust/ miscall.. kan kebaca"* on 2026-09-03 and was answered *"masukannya jelas sekali dan sangat membantu — kalau ada kendala, kami bisa telepon atau misscall ke nomor ibu, dan itu tetap kebaca walaupun WhatsApp-nya terkunci"*. The number has no telephone at all; the reply invented one and told a customer to rely on it. Praising a wrong suggestion is how it becomes a promise.
+
+The rule sits in `## Contextual replies`, next to the one above, and it is three sentences in a fixed order and nothing else:
+
+1. **We can only chat.** No calls, no miss-calls, not as a backup and never as something that works "walaupun WhatsApp-nya terkunci".
+2. **Name the account: "nomor ini WhatsApp Business API, bukan WhatsApp biasa".** WhatsApp itself blocks a business account from writing after 24 hours without a reply — not our office hours, not our staffing, and not a setting we can publish or extend. Say outright that advertising working hours would change nothing.
+3. **Hand back the risk, once.** On a day they have not written to us, a late dapur or an unclear address or a courier who cannot get in is something we cannot tell them about at all — *"apa kakak mau ambil risiko makanannya tidak sampai?"*
+
+Thank them and pass it on with `ask_admin_for_help` if you like; never affirm the premise. The customer-facing strings carry the same three points (see "The 24-hour WhatsApp window" in `docs/WHATSAPP.md`), so the bot and the notice cannot contradict each other.
+
 ## A tool result says what the tool actually did
 
 DeepSeek spends a turn on `thinking` + `tool_use` and emits no text, so the webhook runs the tool and then calls the model again to get the sentence that should have come with it. That second call fed it the literal string `"done"` as the tool result — for every tool, whatever happened. `record_daily_order` alone has eight ways to write nothing (no valid date, no active order, no draw order, no unbooked quota, every date a libur nasional, every date already on the sheet, quota short of one day, an insert error), and each of them arrived at the model as success. It could answer *"sudah tercatat kak"* over an empty calendar and be doing exactly what it was told.

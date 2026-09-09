@@ -8,6 +8,14 @@
 // to know we were locked out. The rule is Meta's and cannot be worked around,
 // so the only honest fix is to say it up front and ask them plainly to write.
 //
+// Every version below names WhatsApp Business API and says the account is not
+// an ordinary WhatsApp. "Jalurnya terkunci" on its own reads as our choice —
+// our office hours, our staffing, our indifference — and customers answer it
+// with fixes for a problem we do not have. Bu Mimi read it that way on
+// 2026-09-03: she proposed we telephone or miss-call instead, and publish
+// "WA katering aktif pkl 6.00–22.00". Naming the account type is what makes
+// the limit legible as Meta's and not ours.
+//
 // Two lengths, both ending on the same ask. The long one is its own bubble at
 // the end of the welcome sequence, where a new customer has the attention for
 // it. The short one rides along on order confirmations — the moment a customer
@@ -17,9 +25,11 @@
 export const WINDOW_NOTICE_WELCOME = [
   "*Penting — cara menghubungi kami* 📱",
   "",
-  "WhatsApp punya aturan kak: bisnis cuma boleh mengirim pesan dalam 24 jam sejak pesan terakhir dari kakak. Lewat dari itu jalurnya otomatis terkunci dari WhatsApp-nya, jadi kami nggak bisa memulai chat duluan walaupun kami mau.",
+  "Nomor ini bukan WhatsApp biasa kak, tapi *WhatsApp Business API* — akun resmi yang aturannya dibuat oleh WhatsApp sendiri, bukan oleh kami. Salah satu aturannya: kami cuma boleh mengirim pesan dalam *24 jam* sejak pesan terakhir dari kakak. Lewat dari itu WhatsApp yang mengunci, dan pesan kami ditolak sistem walaupun kami mau kirim.",
   "",
-  "Jadi kalau chat kami terlihat berhenti, bukan kami diamkan ya kak 🙏",
+  "Ini bukan soal jam kerja kami ya kak — kami tetap ada. Dan kami juga cuma bisa chat, tidak bisa menelepon atau miss-call dari nomor ini, karena akun API memang tidak punya fitur telepon.",
+  "",
+  "Jadi kalau chat kami terlihat berhenti, bukan kami diamkan 🙏 Risikonya ada di kakak: kalau ada info mendadak — dapur telat, alamat kurang jelas, pengiriman bermasalah — kami tidak punya cara apa pun untuk mengabari.",
   "",
   "*Kalau sudah lewat 24 jam dari chat terakhir, kakak chat kami duluan ya kak* — mau pesan, ganti jadwal, ganti alamat, atau ada yang kurang pas. Kirim satu pesan apa aja, jalurnya langsung kebuka dan kami bisa balas lagi 😊",
 ].join("\n");
@@ -29,10 +39,10 @@ export const WINDOW_NOTICE_WELCOME = [
 // notice would turn into wallpaper; what they were missing is only the *reason*
 // the reply matters.
 export const WINDOW_NOTICE_CLAUSE =
-  "biar jalur chat kita tetap kebuka ya kak — WhatsApp mengunci chat kalau lewat 24 jam tanpa balasan dari kakak";
+  "biar jalur chat kita tetap kebuka ya kak — nomor ini WhatsApp Business API, dan WhatsApp sendiri yang mengunci chat kalau lewat 24 jam tanpa balasan dari kakak";
 
 export const WINDOW_NOTICE_SHORT =
-  "Oh iya kak, WhatsApp cuma mengizinkan kami mengirim pesan dalam 24 jam sejak pesan terakhir kakak — lewat dari itu jalurnya terkunci dan kami nggak bisa chat duluan. Jadi kalau sudah lewat 24 jam dan ada apa-apa, kakak chat kami duluan ya kak, langsung kami balas 😊";
+  "Oh iya kak, nomor ini WhatsApp Business API — bukan WhatsApp biasa — dan aturan WhatsApp-nya: kami cuma boleh mengirim pesan dalam 24 jam sejak pesan terakhir kakak. Lewat dari itu WhatsApp yang mengunci, jadi kami tidak bisa chat duluan dan tidak bisa menelepon juga. Kalau sudah lewat 24 jam dan ada apa-apa, kakak chat kami duluan ya kak, langsung kami balas 😊";
 
 /**
  * Approved Meta template carrying the same notice (WABA 1603294840784079,
