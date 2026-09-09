@@ -54,7 +54,7 @@ Two end users:
 
 ## Required CLIs
 
-CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI can do job.
+CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI can do job. **One exception: the claude-mem search MCP** (`mcp__plugin_claude-mem_mcp-search__*`, or the `mem-search` skill) — query it whenever a prompt needs searching for something, because the cross-session record answers in fewer tokens than re-deriving the answer from the code.
 
 - **Supabase CLI** — migrations, RLS policies, seed data, type gen, local dev, project mgmt
 - **GitHub CLI** (`gh`) — repo creation, branches, PRs, secrets, Actions, deploy keys
