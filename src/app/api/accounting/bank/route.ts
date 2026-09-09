@@ -38,14 +38,20 @@ export async function GET(): Promise<Response> {
     );
 
   // Counting in the browser would need every line of every statement, which is
-  // the fixed-window mistake CLAUDE.md names. One grouped pass instead.
+  // the fixed-window mistake CLAUDE.md names. One grouped pass instead — but
+  // paged, because a bare select stops at PostgREST's 1000-row default and
+  // silently tallies nothing for whatever falls past it. Every Superbank
+  // statement read "0 transaksi" on the dashboard while holding 873 lines.
   const ids = (statements ?? []).map((s) => s.id);
   const tally = new Map<string, { lines: number; unclassified: number }>();
-  if (ids.length > 0) {
+  const PAGE = 1000;
+  for (let from = 0; ids.length > 0; from += PAGE) {
     const { data: lines, error: lineErr } = await db
       .from("bank_transactions")
       .select("statement_id, contra_account_code")
-      .in("statement_id", ids);
+      .in("statement_id", ids)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
     if (lineErr)
       return NextResponse.json(
         { ok: false, error: lineErr.message },
@@ -57,6 +63,7 @@ export async function GET(): Promise<Response> {
       if (!l.contra_account_code) t.unclassified++;
       tally.set(l.statement_id, t);
     }
+    if ((lines?.length ?? 0) < PAGE) break;
   }
 
   return NextResponse.json({

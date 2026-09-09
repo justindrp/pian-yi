@@ -1870,45 +1870,101 @@ function BankStatementsTab() {
     (a.code ?? "zzzz").localeCompare(b.code ?? "zzzz"),
   );
 
+  // One card per statement, flat and newest-first, put twenty-five cards from
+  // five different accounts in one grid and left the reader to spot which was
+  // which. A statement belongs to an account, so the account is the heading:
+  // BCA, then each Superbank account and pocket, then the USD sub-account.
+  const byAccount = new Map<
+    string,
+    { code: string; number: string; currency: string; label: string | null; items: BankStatement[] }
+  >();
+  for (const s of list) {
+    const key = `${s.account_code}|${s.account_number}|${s.currency}`;
+    const g =
+      byAccount.get(key) ??
+      {
+        code: s.account_code,
+        number: s.account_number,
+        currency: s.currency,
+        label: s.account_label,
+        items: [] as BankStatement[],
+      };
+    g.items.push(s);
+    byAccount.set(key, g);
+  }
+  const accountGroups = [...byAccount.values()].sort(
+    (a, b) =>
+      a.code.localeCompare(b.code) ||
+      a.number.localeCompare(b.number) ||
+      a.currency.localeCompare(b.currency),
+  );
+
   return (
     <div>
-      {/* Statement picker */}
-      <div className="grid gap-2 mb-4 sm:grid-cols-2 lg:grid-cols-3">
-        {list.map((s) => {
-          const active = s.id === selected;
+      {/* Statement picker, grouped by the account each statement belongs to */}
+      <div className="mb-6 space-y-5">
+        {accountGroups.map((g) => {
+          const open = g.items.reduce((n, s) => n + s.unclassified_count, 0);
           return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSelected(active ? null : s.id)}
-              className={`text-left rounded-xl border p-3 transition-colors ${
-                active
-                  ? "border-gray-900 bg-white"
-                  : "border-gray-100 bg-white hover:border-gray-300"
-              }`}
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium text-gray-900">
-                  {s.account_code} — {accountName(s.account_code)}
-                </span>
-                <span className="text-xs text-gray-400">{s.currency}</span>
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                {monthLabel(s.period_start, s.period_end)} · {s.account_number}
-              </div>
-              <div className="text-xs text-gray-500 mt-2">
-                Masuk {formatMoney(Number(s.total_credit), s.currency)} · Keluar{" "}
-                {formatMoney(Number(s.total_debit), s.currency)}
-              </div>
-              <div className="text-xs mt-1">
-                <span className="text-gray-400">{s.line_count} transaksi</span>
-                {s.unclassified_count > 0 && (
-                  <span className="text-amber-600 ml-2">
-                    {s.unclassified_count} belum berakun
+            <section key={`${g.code}|${g.number}|${g.currency}`}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-2">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    {g.code} — {accountName(g.code)}
+                  </h3>
+                  <span className="text-xs text-gray-400">
+                    {g.number}
+                    {g.currency !== "IDR" && ` · ${g.currency}`}
                   </span>
-                )}
+                </div>
+                <div className="text-xs text-gray-400">
+                  {g.label && <span className="mr-2">{g.label}</span>}
+                  {g.items.length} periode
+                  {open > 0 && (
+                    <span className="text-amber-600 ml-2">
+                      {open} belum berakun
+                    </span>
+                  )}
+                </div>
               </div>
-            </button>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {g.items.map((s) => {
+                  const active = s.id === selected;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSelected(active ? null : s.id)}
+                      className={`text-left rounded-xl border p-3 transition-colors ${
+                        active
+                          ? "border-gray-900 bg-white"
+                          : "border-gray-100 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="text-sm font-medium text-gray-900">
+                        {monthLabel(s.period_start, s.period_end)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1.5">
+                        Masuk {formatMoney(Number(s.total_credit), s.currency)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Keluar {formatMoney(Number(s.total_debit), s.currency)}
+                      </div>
+                      <div className="text-xs mt-1.5">
+                        <span className="text-gray-400">
+                          {s.line_count} transaksi
+                        </span>
+                        {s.unclassified_count > 0 && (
+                          <span className="text-amber-600 ml-2">
+                            {s.unclassified_count} belum berakun
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
           );
         })}
       </div>
