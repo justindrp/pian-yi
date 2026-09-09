@@ -528,6 +528,7 @@ async function recordClaimedEscalation(
     .update({
       pending_bot_response: true,
       pending_bot_question: question,
+      pending_bot_question_at: new Date().toISOString(),
     })
     .eq("customer_id", customerId);
 
@@ -1383,6 +1384,17 @@ export async function processWebhookAsync(
     ? (flags.pending_bot_question ?? "")
     : null;
   if (pendingAdminQuestion !== null) {
+    // The customer wrote again while their question is still with an admin, so
+    // restart its expiry clock. `expire-pending-questions` drops a flag that
+    // has gone quiet, and the whole point of dating it from the last customer
+    // message is that a thread which keeps chasing us never ages out: the
+    // Karawaci lead had been waiting five days on a no-MSG answer and asked
+    // again on the fifth, which is exactly the thread the sweep must not touch.
+    await db
+      .from("customer_flags")
+      .update({ pending_bot_question_at: new Date().toISOString() })
+      .eq("customer_id", customerId);
+
     await sendPushToAllAdmins(
       "New message — question still unanswered",
       `${customer.name ?? message.from}: ${pendingAdminQuestion.slice(0, 80)}`,
@@ -3763,6 +3775,7 @@ async function handleToolUse(
       .update({
         pending_bot_response: true,
         pending_bot_question: input.question,
+        pending_bot_question_at: new Date().toISOString(),
       })
       .eq("customer_id", customerId);
 

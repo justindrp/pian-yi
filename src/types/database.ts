@@ -553,6 +553,7 @@ export type Database = {
           last_human_activity_at: string | null;
           needs_human_review: boolean | null;
           pending_bot_question: string | null;
+          pending_bot_question_at: string | null;
           pending_bot_response: boolean;
           vip_status: boolean | null;
         };
@@ -567,6 +568,7 @@ export type Database = {
           last_human_activity_at?: string | null;
           needs_human_review?: boolean | null;
           pending_bot_question?: string | null;
+          pending_bot_question_at?: string | null;
           pending_bot_response?: boolean;
           vip_status?: boolean | null;
         };
@@ -581,6 +583,7 @@ export type Database = {
           last_human_activity_at?: string | null;
           needs_human_review?: boolean | null;
           pending_bot_question?: string | null;
+          pending_bot_question_at?: string | null;
           pending_bot_response?: boolean;
           vip_status?: boolean | null;
         };

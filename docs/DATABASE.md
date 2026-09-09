@@ -298,6 +298,8 @@ One row per customer. Holds boolean flags and escalation state. Users cannot edi
 
 The dashboard Inbox `Unanswered` filter is derived from this table: a thread is considered unanswered when either `pending_bot_response` or `escalated_to_human` is true.
 
+**A parked question expires when the customer stops chasing it** (migration 104). `pending_bot_response` is set in two places — the `ask_admin_for_help` tool and the webhook's claimed-escalation guard — and until 2026-09-09 only a human ever unset it: a takeover, a manual reply, `bot-reply`, or `scripts/manual-send.ts`. A question no admin got round to therefore stayed live forever, and 19 of the 25 threads on the Unanswered tab were flags whose question had stopped mattering months earlier (one running since 3 July with no question text at all). The tab read three times the real backlog, so nobody read it, so the real ones sat for days. `/api/cron/expire-pending-questions` (hourly at :40) now clears any flag whose `pending_bot_question_at` is older than `settings.pending_question_expiry_hours` (48), copying the question text into `edit_log` first because the flag is the only place it was ever kept. The clock is dated from the customer's last message, not from when we parked it, and the webhook restarts it on every inbound message while the flag stands — so a thread that keeps asking never ages out, while a flat age cutoff would have dropped a lead who was genuinely still waiting on day five. A row with a null `pending_bot_question_at` is left alone: a row we cannot date is a row we cannot say has gone quiet.
+
 | Column | Type | Notes |
 |--------|------|-------|
 | customer_id | uuid | Primary key, FK → customers |
@@ -307,6 +309,7 @@ The dashboard Inbox `Unanswered` filter is derived from this table: a thread is 
 | hold_until | timestamptz | Migration 090. While in the future, neither resume path hands the thread back however quiet the admin has been. NULL = the ordinary 30-minute rule, which is what every pre-090 row has. Always finite — set from a short menu (30 min / 2 jam / 24 jam) and cleared on resume |
 | pending_bot_response | boolean | True when bot is waiting for an admin's answer via Inbox |
 | pending_bot_question | text | The question the bot needs an admin to answer |
+| pending_bot_question_at | timestamptz | Migration 104. When the customer last wrote while this question was open — stamped on escalation and refreshed by the webhook on every later inbound message. `expire-pending-questions` sweeps on it. Backfilled from the thread's last message, so the first sweep cleared months-dead flags rather than granting them a fresh window. NULL = undatable pre-104 row, never swept |
 | is_blacklisted | boolean | Bot ignores all messages from blacklisted customers |
 | is_suspicious | boolean | Flagged by injection detection |
 | needs_human_review | boolean | General review flag |

@@ -90,6 +90,17 @@ const JOBS: Job[] = [
       (await import("@/app/api/cron/stalled-leads/route")).GET(req),
   },
   {
+    // Hourly rather than more often because the window it enforces is measured
+    // in days: a question quiet for 48 hours is no less quiet at 48h59m.
+    name: "expire-pending-questions",
+    schedule: "40 * * * *",
+    when: "hourly at :40",
+    method: "GET",
+    path: "/api/cron/expire-pending-questions",
+    run: async (req) =>
+      (await import("@/app/api/cron/expire-pending-questions/route")).GET(req),
+  },
+  {
     name: "cancel-unpaid",
     schedule: "0 * * * *",
     when: "hourly",
