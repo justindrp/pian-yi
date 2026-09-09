@@ -6,6 +6,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { logEdit } from "../src/lib/audit/log-edit";
+import { requiredEnv } from "../src/lib/env";
 
 const APPLY = process.argv.includes("--apply");
 const ACTOR = "drpramadyo@gmail.com";
@@ -14,8 +15,11 @@ const NEXT_NOTES = "Tidak pedas. Tidak bisa makan cumi.";
 
 async function main() {
   const db = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    requiredEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
+    requiredEnv(
+      "SUPABASE_SERVICE_ROLE_KEY",
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+    ),
   );
 
   const { data: before, error } = await db
