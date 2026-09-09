@@ -141,11 +141,37 @@ export async function recordDailyOrder(params: {
     candidates.map((o) => ({ id: o.id, package_size: o.package_size })),
   );
 
+  const { data: customerRow } = await db
+    .from("customers")
+    .select("address, sub_area, subcontractor_id")
+    .eq("id", customerId)
+    .maybeSingle();
+
+  // Which dapur cooks this booking: the customer's, not the package's. The
+  // package can be months old and its kitchen long since changed — galvent was
+  // moved to Thenie in August, and on 2026-09-08 the bot booked him 2 porsi for
+  // the 10th which landed on Perut Bahagia, the kitchen on the June order this
+  // drew against. Nobody at Thenie saw the order and Perut Bahagia had a row
+  // for a customer they do not serve. The order's kitchen is only the fallback,
+  // for a customer with none recorded.
+  const withUnbooked = candidates.map((o) => ({
+    ...o,
+    unbooked: unbookedPerOrder.get(o.id) ?? 0,
+  }));
+  const customerKitchenId = customerRow?.subcontractor_id ?? null;
+
   // Which package the rows bill to: the oldest one that still has undated
-  // portions, per pickDrawOrder. Nothing else narrows the field. Quota
-  // belongs to the customer, not to one package — an order records that they
-  // topped up their balance, and two orders held by the same customer are the
-  // same money.
+  // portions, per pickDrawOrder. Quota belongs to the customer, not to one
+  // package — an order records that they topped up their balance, and two
+  // orders held by the same customer are the same money.
+  //
+  // Packages bought from the kitchen doing the cooking come first, the same
+  // rule allocateDraws() applies: the ladders are per kitchen (migration 098),
+  // so charging a Thenie dinner to a Perut Bahagia package balances the portion
+  // ledger while spending the wrong ladder's money. It is a preference and not
+  // a filter because 70 customers currently hold undated portions only on a
+  // kitchen they have since been moved off; refusing those bookings would
+  // strand quota they have paid for.
   //
   // A meal filter used to run first, preferring orders whose
   // meal_time_preference covered the requested meal. Measured against
@@ -153,12 +179,16 @@ export async function recordDailyOrder(params: {
   // holding two or more active orders, and all 3 were wrong: it skipped the
   // older package and charged the newer one, which is the exact
   // misattribution pickDrawOrder was written to stop.
-  const order = pickDrawOrder(
-    candidates.map((o) => ({
-      ...o,
-      unbooked: unbookedPerOrder.get(o.id) ?? 0,
-    })),
-  );
+  const sameKitchen = customerKitchenId
+    ? withUnbooked.filter(
+        (o) =>
+          o.subcontractor_id == null ||
+          o.subcontractor_id === customerKitchenId,
+      )
+    : withUnbooked;
+  const order =
+    pickDrawOrder(sameKitchen.filter((o) => o.unbooked > 0)) ??
+    pickDrawOrder(withUnbooked);
 
   if (!order) {
     console.error(
@@ -172,7 +202,7 @@ export async function recordDailyOrder(params: {
     };
   }
 
-  // Whether the kitchen this order draws from will go to the address at all.
+  // Whether the kitchen cooking this booking will go to the address at all.
   //
   // Coverage is per kitchen at the neighborhood level (see
   // `kitchenCoverage`), and a customer whose package was sold before the
@@ -181,17 +211,12 @@ export async function recordDailyOrder(params: {
   // 2026-08-31. Booking another date there writes a row the kitchen will not
   // cook. Refuse the booking and say why: the model escalates, and an admin
   // moves the customer or the address.
-  const kitchenId = order.subcontractor_id;
+  const kitchenId = customerKitchenId ?? order.subcontractor_id;
   if (kitchenId) {
-    const { data: addressRow } = await db
-      .from("customers")
-      .select("address, sub_area")
-      .eq("id", customerId)
-      .maybeSingle();
     const { blocked } = coverageFor(
       await kitchenCoverage(db, kitchenId),
-      addressRow?.address,
-      addressRow?.sub_area,
+      customerRow?.address,
+      customerRow?.sub_area,
     );
     if (blocked) {
       console.warn(
@@ -325,7 +350,7 @@ export async function recordDailyOrder(params: {
       delivery_date,
       meal_type: input.meal_type,
       portions: perDate,
-      subcontractor_id: order.subcontractor_id,
+      subcontractor_id: kitchenId,
       notes: input.notes ?? null,
     })),
   );

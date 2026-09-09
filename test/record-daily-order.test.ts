@@ -36,7 +36,11 @@ function makeDb(config: {
         ? (config.orders ?? { data: [], error: null })
         : table === "daily_deliveries"
           ? (config.daily_deliveries ?? { data: [], error: null })
-          : (config.customers ?? { data: null, error: null });
+          : table === "customers"
+            ? (config.customers ?? { data: null, error: null })
+            : // `subcontractor_neighborhoods` (coverage) and `subcontractors`
+              // (delivery days). Neither narrows anything in these fixtures.
+              { data: [], error: null };
 
     const c: Record<string, unknown> = {};
     for (const m of ["select", "eq", "in", "range", "order", "limit"]) {
@@ -286,6 +290,75 @@ describe("recordDailyOrder", () => {
 
     expect(res.ok).toBe(true);
     expect(inserted[0].order_id).toBe("older");
+  });
+
+  // galvent, 2026-09-08. He was moved to Thenie in August and still held a June
+  // Perut Bahagia package; the booking for the 10th took its kitchen from that
+  // package, so the row went to a dapur he is not on and Thenie never saw it.
+  test("the row is cooked by the customer's dapur, not the drawn package's", async () => {
+    const thenieOrder = {
+      ...ORDER,
+      id: "thenie",
+      created_at: "2026-08-19T00:00:00Z",
+      start_date: "2026-08-20",
+      subcontractor_id: "thenie",
+    };
+    const oldOther = {
+      ...ORDER,
+      id: "perut-bahagia",
+      created_at: "2026-06-08T00:00:00Z",
+      start_date: "2026-06-06",
+      subcontractor_id: "perut-bahagia",
+    };
+    (unbookedByOrder as jest.Mock).mockResolvedValue(
+      new Map([
+        ["thenie", 8],
+        ["perut-bahagia", 5],
+      ]),
+    );
+    const { db, inserted } = makeDb({
+      orders: { data: [oldOther, thenieOrder], error: null },
+      customers: {
+        data: { address: "Pacific Garden", sub_area: null, subcontractor_id: "thenie" },
+        error: null,
+      },
+    });
+    const res = await call(db);
+
+    expect(res.ok).toBe(true);
+    expect(inserted[0]).toMatchObject({
+      subcontractor_id: "thenie",
+      order_id: "thenie",
+    });
+  });
+
+  // 70 customers hold undated portions only on a kitchen they have since been
+  // moved off. Their bookings still have to go through — the food is paid for —
+  // and the dapur that cooks it is the one they are on now.
+  test("quota left only on another kitchen's package still books, at the customer's dapur", async () => {
+    const oldOther = {
+      ...ORDER,
+      id: "perut-bahagia",
+      created_at: "2026-06-08T00:00:00Z",
+      subcontractor_id: "perut-bahagia",
+    };
+    (unbookedByOrder as jest.Mock).mockResolvedValue(
+      new Map([["perut-bahagia", 5]]),
+    );
+    const { db, inserted } = makeDb({
+      orders: { data: [oldOther], error: null },
+      customers: {
+        data: { address: "Pacific Garden", sub_area: null, subcontractor_id: "thenie" },
+        error: null,
+      },
+    });
+    const res = await call(db);
+
+    expect(res.ok).toBe(true);
+    expect(inserted[0]).toMatchObject({
+      subcontractor_id: "thenie",
+      order_id: "perut-bahagia",
+    });
   });
 
   test("the booked rows carry the meal type, portions, kitchen and notes", async () => {
