@@ -217,7 +217,6 @@ function sanitizeSearchTerm(raw: string) {
 const HOLD_LABELS: Record<number, string> = {
   30: "Hold 30 min",
   120: "Hold 2 jam",
-  1440: "Hold 24 jam",
 };
 
 export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {

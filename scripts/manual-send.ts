@@ -11,10 +11,13 @@ import { holdUntil } from "../src/lib/customers/takeover";
 import { createAdminClient } from "../src/lib/supabase/admin";
 import { sendTextMessage } from "../src/lib/whatsapp/client";
 
-// Longest a thread may be held from here. A hold is for waiting on something
-// that happens today — a transfer, a courier, a decision — and one that
-// outlives that is how a customer ends up talking to nobody.
-const MAX_HOLD_HOURS = 24;
+// Longest a thread may be held from here, matching the inbox's own menu. A hold
+// is for waiting on something that happens today — a transfer, a courier, a
+// decision — and one that outlives that is how a customer ends up talking to
+// nobody. It was 24 until 2026-09-09, when a hold set here at 19:28 WIB was
+// still silencing Sherine Fayola's thread the next morning, hours after the
+// complaint it was taken for had been settled.
+const MAX_HOLD_HOURS = 2;
 
 async function main() {
   const [phone, text] = process.argv.slice(2);

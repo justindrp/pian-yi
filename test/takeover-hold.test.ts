@@ -80,6 +80,16 @@ describe("a takeover outlives the admin's silence", () => {
     expect(HOLD_CHOICES_MINUTES[0]).toBe(TAKEOVER_INACTIVITY_MINUTES);
   });
 
+  // Nothing detects that the thing a hold was taken for has been settled, so
+  // the ceiling is the only protection. Sherine Fayola's complaint was settled
+  // the evening of 2026-09-08 under a 24-hour hold and her menu question the
+  // next morning went unanswered for three hours.
+  test("no hold runs longer than two hours", () => {
+    for (const minutes of HOLD_CHOICES_MINUTES) {
+      expect(minutes).toBeLessThanOrEqual(120);
+    }
+  });
+
   // A hold left on a resumed thread would silence the bot for whatever the
   // customer says next, which is the failure this column exists to avoid.
   test("resuming clears the hold with the rest of the flags", () => {

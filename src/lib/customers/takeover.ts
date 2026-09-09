@@ -16,11 +16,15 @@ export function takeoverCutoff(now: number = Date.now()): string {
 // The durations a takeover may be held for. Anything longer is a thread nobody
 // is really working, and an hour of silence in the inbox is how a customer ends
 // up talking to nobody for a day.
-export const HOLD_CHOICES_MINUTES = [
-  TAKEOVER_INACTIVITY_MINUTES,
-  120,
-  60 * 24,
-] as const;
+//
+// 24 hours was on this menu until 2026-09-09 and is gone. A hold outlives the
+// thing it was taken for — Sherine Fayola's address complaint was settled at
+// 20:09 WIB on 2026-09-08 under a 24-hour hold, and when she asked for the
+// week's menu at 09:31 the next morning the bot was still gagged and answered
+// nothing for three hours. Nothing detects that a wait has ended, so the only
+// protection is a ceiling: two hours of bot silence is a delay, a day of it is
+// a customer talking to nobody.
+export const HOLD_CHOICES_MINUTES = [TAKEOVER_INACTIVITY_MINUTES, 120] as const;
 
 export function holdUntil(minutes: number, now: number = Date.now()): string {
   return new Date(now + minutes * 60 * 1000).toISOString();
