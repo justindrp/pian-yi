@@ -369,6 +369,21 @@ function paragraphs(text: string): string[] {
  * re-addressed. Satisfied by `delete_deliveries` or `change_delivery_address`,
  * so it does not distinguish between them.
  */
+/**
+ * True when the text we are about to send was written in the same response
+ * that called a tool — so it was composed before the tool ran and cannot say
+ * what it did. The reply is asked for again with the results in hand.
+ */
+export function wroteTextBlind(
+  response: { content: { type: string }[] },
+  replyText: string,
+): boolean {
+  return (
+    replyText.trim().length > 0 &&
+    response.content.some((b) => b.type === "tool_use")
+  );
+}
+
 export function claimsSkipDone(replyText: string): boolean {
   return paragraphs(replyText).some(
     (p) => SKIP_CLAIM.test(p) && !SKIP_REFUSED.test(p),
@@ -2653,6 +2668,61 @@ export async function processSavedCustomerMessage(params: {
     await runTools(nextTools);
   }
 
+  // A reply written in the same response as the tool call was written *before*
+  // the tool ran, so it cannot say what the tool did — and the loop above never
+  // asks, because `replyText` is already filled and the loop only runs when it
+  // is empty. Febby asked on 2026-09-09 to skip Kamis 10 and Jumat 11;
+  // delete_deliveries removed both rows at 12:53:31 WIB and the sentence that
+  // went out six seconds later asked her "mau saya skip kedua tanggalnya?" —
+  // permission for something already done, from a model that had no way to know
+  // it was done. She was left waiting on a skip that had already happened, and
+  // an "iya" from her would have called the tool again on rows that no longer
+  // exist. The same hole sits at the end of the loop: a final round that writes
+  // text *and* calls a tool exits with that text unexamined too. So whenever the
+  // response we took the text from also called something, the results go back
+  // and the reply is written once more, knowing them.
+  //
+  // Sent without `tools`: the model has already called what it wanted and the
+  // results are in front of it, so a tool call here would be a duplicate write
+  // rather than a next step. The no-text loop above keeps its tools because
+  // there, a tool result naming the next tool is the whole point.
+  if (wroteTextBlind(lastResponse, replyText)) {
+    toolMessages.push(...toolResultTurn(lastResponse));
+    try {
+      const client = getAnthropicClient();
+      const informed = await client.messages.create({
+        model: SONNET_MODEL,
+        ...NO_THINKING,
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [
+          ...history,
+          { role: "user", content: text },
+          ...toolMessages,
+        ],
+      });
+      await updateTokenCount(
+        customerId,
+        informed.usage.input_tokens + informed.usage.output_tokens,
+      );
+      // An empty rewrite keeps the blind text: it is wrong about the tool, but
+      // it is a sentence, and silence on a turn that just changed the kitchen
+      // sheet is worse.
+      const informedText = extractText(informed);
+      if (informedText.trim()) {
+        lastResponse = informed;
+        replyText = informedText;
+      } else {
+        console.warn("[webhook] informed rewrite came back empty, keeping text");
+      }
+    } catch (err) {
+      console.error(
+        "[webhook] informed rewrite failed:",
+        (err as Error).message,
+      );
+    }
+  }
+
   // An order the conversation already contains must never die in a turn that
   // did not create it. Two named shapes used to trigger this — a promise the
   // model never kept ("saya catat pesanannya sekarang"), and a clarification
@@ -3110,20 +3180,30 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
         // with it is asked for, once. One round rather than the main loop's
         // three: the customer has already waited through a rejected reply and a
         // regeneration, and the fallback below still catches an empty answer.
-        if (retryTools.length > 0 && !retryText) {
+        //
+        // A retry that wrote text *and* called a tool is asked again too: that
+        // text was composed before the tool ran and cannot say what it did — the
+        // same blind reply the main path was fixed for after Febby was asked
+        // permission to skip two dates already deleted. That call goes without
+        // `tools`, because the model has already called what it wanted and a
+        // second call would be a duplicate write.
+        if (retryTools.length > 0) {
+          const blind = retryText.trim().length > 0;
           const followUp = await client.messages.create({
             model: SONNET_MODEL,
             ...NO_THINKING,
             max_tokens: 1000,
             system: systemPrompt,
             messages: [...retryMessages, ...toolResultTurn(retryResponse)],
-            tools,
+            ...(blind ? {} : { tools }),
           });
           await updateTokenCount(
             customerId,
             followUp.usage.input_tokens + followUp.usage.output_tokens,
           );
-          retryText = extractText(followUp);
+          // An empty answer keeps whatever the retry itself wrote rather than
+          // dropping the turn onto the fallback template.
+          retryText = extractText(followUp) || retryText;
           const followUpTools = followUp.content.filter(
             (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
           );
