@@ -231,7 +231,7 @@ const BCA_NOISE = [
 // and treating that as a new record splits one transaction into two, dating
 // the money a day early.
 const BCA_KEYWORDS =
-  /^\d{2}\/\d{2}\s+(TRSF|BI-FAST|SWITCHING|BIAYA|FLAZZ|DB |KR |TARIKAN|SETORAN|BUNGA|SALDO|TRANSAKSI|PAJAK|KOREKSI|ADM|CR )/;
+  /^\d{2}\/\d{2}\s+(TRSF|BI-FAST|SWITCHING|BIAYA|FLAZZ|DB |KR |DR |TARIKAN|SETORAN|BUNGA|SALDO|TRANSAKSI|PAJAK|KOREKSI|KARTU|ADM|CR )/;
 
 const AMT = String.raw`\d{1,3}(?:,\d{3})*\.\d{2}`;
 // The mutasi sits on a line of its own: the amount, an optional DB marker,
@@ -456,89 +456,130 @@ function idrNum(s: string): number {
   return Number.parseFloat(s.replace(/\./g, "").replace(",", "."));
 }
 
-export function parseSuperbankStatement(pages: string[]): ParsedStatement {
-  const text = pages.join("\n");
-  const warnings: string[] = [];
+// A Superbank statement is several accounts in one PDF. "Tabungan Utama" is
+// the account proper; under it sit named pockets ("Saku Catering PianYi",
+// "Saku Tabungan Ani") and the app's own savings products (OVO Nabung,
+// Celengan, Deposito, Kartu Untung). Their rows look identical to the main
+// account's, so reading the file as one account folds them all together and
+// the control totals miss by the pockets' turnover — Rp 4.088 in December
+// 2025, Rp 7.932.233 in May 2026.
+//
+// The pockets are not noise: "Saku Catering PianYi" is where the kitchens
+// were paid from May 2026 on. So each section is parsed as its own statement,
+// with its own account number and its own totals line, and stored separately.
+const SB_SECTION = /\n(Tabungan Utama|Saku [^\n]*?)\s*-\s*(\d{9,})\n/g;
 
-  const accountNumber =
-    text.match(/Tabungan Utama\s*-\s*(\d+)/)?.[1] ?? "unknown";
+// Every section closes on its own "out in balance" line. A transaction row
+// carries one signed amount and a balance; only a section total carries both
+// signs at once, so this cannot match a row.
+const SB_SECTION_TOTAL = /-Rp([\d.]+,\d{2}) \+Rp([\d.]+,\d{2}) Rp([\d.]+,\d{2})/g;
+
+// The pockets that carry no account number in their heading. Everything from
+// the first of them onwards belongs to no named section.
+const SB_TAIL = /\n(?:OVO Nabung|Celengan|Deposito|Kartu Untung)\n/;
+
+type Section = { name: string; account: string; text: string };
+
+function sbSections(text: string): Section[] {
+  const heads = [...text.matchAll(SB_SECTION)];
+  return heads.map((h, i) => {
+    const from = (h.index ?? 0) + h[0].length;
+    const to = i + 1 < heads.length ? (heads[i + 1].index ?? text.length) : text.length;
+    let body = text.slice(from, to);
+    const tail = body.search(SB_TAIL);
+    if (tail >= 0) body = body.slice(0, tail);
+    return { name: h[1].trim(), account: h[2], text: body };
+  });
+}
+
+export function parseSuperbankStatement(pages: string[]): ParsedStatement[] {
+  const text = pages.join("\n");
+
   const accountLabel =
     text.match(/\n([A-Z][A-Z ]{6,})\n[A-Z]/)?.[1]?.trim() ?? null;
 
-  const period = text.match(
-    /(\d{1,2})\s*-\s*(\d{1,2})\s+(\w{3})\s+(\d{4})/,
-  );
+  const period = text.match(/(\d{1,2})\s*-\s*(\d{1,2})\s+(\w{3})\s+(\d{4})/);
   if (!period) throw new Error("Superbank statement: could not read Periode");
   const month = MONTHS_SHORT[period[3]];
   const year = Number(period[4]);
   if (!month) throw new Error(`Superbank statement: unknown month ${period[3]}`);
 
-  // "Tabungan Utama Rp0,00 -Rp9.664.630,00 +Rp10.337.639,37 Rp673.009,37"
-  const sumRow = text.match(
-    /Tabungan Utama Rp([\d.]+,\d{2}) -Rp([\d.]+,\d{2}) \+Rp([\d.]+,\d{2}) Rp([\d.]+,\d{2})/,
-  );
-
   const bankAccountCode = resolveBankAccount("Superbank", "IDR");
-  const lines: ParsedLine[] = [];
-  for (const m of text.matchAll(SB_ROW)) {
-    const day = Number(m[1].split(" ")[0]);
-    const mon = MONTHS_SHORT[m[1].split(" ")[1]] ?? month;
-    const direction: Direction = m[4] === "+" ? "CR" : "DB";
-    const desc = m[3].trim();
-    const raw = `${m[1]} ${m[2]} ${desc}`;
-    lines.push({
-      rowIndex: lines.length,
-      txnDate: isoDate(year, mon, day),
-      txnTime: m[2],
-      direction,
-      amount: idrNum(m[5]),
-      balanceAfter: idrNum(m[6]),
-      counterparty: desc.replace(/^Transfer (ke|dari)\s+/, "") || null,
-      description: desc.slice(0, 500),
-      rawText: raw,
-      contraAccountCode: classify(desc, direction, bankAccountCode),
+  const sections = sbSections(text);
+  if (sections.length === 0)
+    throw new Error("Superbank statement: no account sections found");
+
+  const out: ParsedStatement[] = [];
+  for (const sec of sections) {
+    const warnings: string[] = [];
+    const lines: ParsedLine[] = [];
+    for (const m of sec.text.matchAll(SB_ROW)) {
+      const day = Number(m[1].split(" ")[0]);
+      const mon = MONTHS_SHORT[m[1].split(" ")[1]] ?? month;
+      const direction: Direction = m[4] === "+" ? "CR" : "DB";
+      const desc = m[3].trim();
+      lines.push({
+        rowIndex: lines.length,
+        txnDate: isoDate(year, mon, day),
+        txnTime: m[2],
+        direction,
+        amount: idrNum(m[5]),
+        balanceAfter: idrNum(m[6]),
+        counterparty: desc.replace(/^Transfer (ke|dari)\s+/, "") || null,
+        description: desc.slice(0, 500),
+        rawText: `${m[1]} ${m[2]} ${desc}`,
+        contraAccountCode: classify(desc, direction, bankAccountCode),
+      });
+    }
+
+    const totalCredit = round2(sum(lines.filter((l) => l.direction === "CR")));
+    const totalDebit = round2(sum(lines.filter((l) => l.direction === "DB")));
+    const opening = sec.text.match(/Saldo awal Rp([\d.]+,\d{2})/);
+    const totals = [...sec.text.matchAll(SB_SECTION_TOTAL)].at(-1);
+
+    // A pocket opened but never used prints "0,00 0,00 Rp0,00" instead of a
+    // totals line, and it has nothing to reconcile.
+    const empty = lines.length === 0 && !totals;
+    const statedDebit = totals ? idrNum(totals[1]) : empty ? 0 : null;
+    const statedCredit = totals ? idrNum(totals[2]) : empty ? 0 : null;
+    const ok =
+      statedCredit !== null &&
+      statedDebit !== null &&
+      Math.abs(statedCredit - totalCredit) < 0.01 &&
+      Math.abs(statedDebit - totalDebit) < 0.01;
+    if (!ok)
+      warnings.push(
+        `${sec.name}: control totals disagree: parsed CR ${totalCredit} / DB ${totalDebit}, statement says CR ${statedCredit} / DB ${statedDebit}`,
+      );
+
+    if (empty) continue;
+
+    out.push({
+      bank: "Superbank",
+      accountNumber: sec.account,
+      accountLabel: accountLabel
+        ? `${sec.name} — ${accountLabel}`
+        : sec.name,
+      currency: "IDR",
+      bankAccountCode,
+      periodStart: isoDate(year, month, Number(period[1])),
+      periodEnd: isoDate(year, month, Number(period[2])),
+      openingBalance: opening ? idrNum(opening[1]) : null,
+      closingBalance: totals ? idrNum(totals[3]) : null,
+      totalCredit,
+      totalDebit,
+      creditCount: lines.filter((l) => l.direction === "CR").length,
+      debitCount: lines.filter((l) => l.direction === "DB").length,
+      statedCredit,
+      statedDebit,
+      statedCreditCount: null,
+      statedDebitCount: null,
+      controlTotalsOk: ok,
+      lines,
+      warnings,
     });
   }
-
-  const totalCredit = round2(sum(lines.filter((l) => l.direction === "CR")));
-  const totalDebit = round2(sum(lines.filter((l) => l.direction === "DB")));
-
-  const statedDebit = sumRow ? idrNum(sumRow[2]) : null;
-  const statedCredit = sumRow ? idrNum(sumRow[3]) : null;
-  const ok =
-    statedCredit !== null &&
-    statedDebit !== null &&
-    Math.abs(statedCredit - totalCredit) < 0.01 &&
-    Math.abs(statedDebit - totalDebit) < 0.01;
-
-  if (!ok) {
-    warnings.push(
-      `control totals disagree: parsed CR ${totalCredit} / DB ${totalDebit}, statement says CR ${statedCredit} / DB ${statedDebit}`,
-    );
-  }
-
-  return {
-    bank: "Superbank",
-    accountNumber,
-    accountLabel,
-    currency: "IDR",
-    bankAccountCode,
-    periodStart: isoDate(year, month, Number(period[1])),
-    periodEnd: isoDate(year, month, Number(period[2])),
-    openingBalance: sumRow ? idrNum(sumRow[1]) : null,
-    closingBalance: sumRow ? idrNum(sumRow[4]) : null,
-    totalCredit,
-    totalDebit,
-    creditCount: lines.filter((l) => l.direction === "CR").length,
-    debitCount: lines.filter((l) => l.direction === "DB").length,
-    statedCredit,
-    statedDebit,
-    statedCreditCount: null,
-    statedDebitCount: null,
-    controlTotalsOk: ok,
-    lines,
-    warnings,
-  };
+  return out;
 }
 
 export async function parseStatementPdf(
@@ -547,7 +588,7 @@ export async function parseStatementPdf(
   const pages = await extractPdfPages(data);
   const format = detectFormat(pages.join("\n"));
   if (format === "BCA") return parseBcaStatement(pages);
-  if (format === "Superbank") return [parseSuperbankStatement(pages)];
+  if (format === "Superbank") return parseSuperbankStatement(pages);
   throw new Error("Unrecognised statement format (expected BCA or Superbank)");
 }
 
