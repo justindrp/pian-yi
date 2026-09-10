@@ -459,23 +459,23 @@
     "Rivans": {
       "customer": null,
       "payers": [
-        "JANE MARIANA/09-21",
-        "JANE MARIANA/11-23",
-        "JANE MARIANA/12-16"
+        "SOFIA TOMASOA/09-20",
+        "SOFIA TOMASOA/11-06",
+        "SOFIA TOMASOA/09-23"
       ],
       "confidence": "high",
-      "why": "Justin: 'paid by his mom'; 3 x catering 40x = 120p, ate exactly 120"
+      "why": "Sofia's Rp 1.600.000 lands 09-20 and Rivans starts eating 09-22; he eats exactly 80 by 11-06, the day her Rp 750.000 arrives. Refill at zero, same shape as Drake on Jane's money. Her Rp 10.000 of 09-23 is under a portion at any 2025 rate and reads as an ongkir top-up. The three 'catering 40x' transfers from Jane Mariana were read as his because 3 x 40 equals the 120 he ate, but that attribution left him with 40 portions on 09-21 against 70 eaten by 31 October, and it is Drake those transfers refill exactly. 110 bought against 120 eaten leaves 10 portions after 11-06 with no debit behind them - either the Rp 750.000 bought more than the 30 the ladder gives it, or they were paid in cash."
     },
     "Drake": {
       "customer": "Drake",
       "payers": [
         "JANE MARIANA/09-14",
-        "SOFIA TOMASOA/09-20",
-        "SOFIA TOMASOA/11-06",
-        "SOFIA TOMASOA/09-23"
+        "JANE MARIANA/09-21",
+        "JANE MARIANA/11-23",
+        "JANE MARIANA/12-16"
       ],
-      "confidence": "medium",
-      "why": "sisa 9 on 09-15 then 0 on 09-19 = a 10-pack; the five 250000 debits before 09-15 map one-to-one onto the five eaters showing sisa 9 that day, and Jane's is the only one left. 1600000 lands 09-20, the day after he ran out Her Rp 10.000 on 09-23 is under a portion at any 2025 rate and she is already his payer twice, so it reads as an ongkir top-up and buys nothing."
+      "confidence": "high",
+      "why": "Jane's money refills him at exactly zero, three times. sisa 9 on 09-15 falling to '0(habis)' on 09-19 is a 10-pack, and her Rp 250.000 of 09-14 is the only one of the five 250.000 debits before 09-15 not memo'd to another eater (Jason Therawan, Grace, Kezia, Jocelyn take the other four). He resumes 09-22 on her Rp 840.000 'catering 40x' of 09-21; that 40 runs out on 11-23, the day she sends 960.000; those 40 run out on 12-16, the day she sends 960.000 again. Cumulative eaten is 10 by 09-19, 50 by 11-23 and 90 by 12-16 against 10, 50 and 90 bought. Her 09-21 payment was previously read as Rivans's, which left Rivans 30 portions overdrawn through October."
     },
     "Kevin Mulia": {
       "customer": "Kevin M",

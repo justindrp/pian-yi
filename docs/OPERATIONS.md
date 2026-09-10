@@ -311,6 +311,14 @@ Which of the two is the real order is the opposite of what the rows suggest, and
 
 **A small order can be a goodwill credit rather than a purchase.** Fahmi's one-portion order (`4955fb91`, dinner_only, one row on 11 September) is a free portion given on 24 Agustus, compensation for a delivery of his we failed to create that day. It is not a botched amendment and it is not a billing error. Nothing on the row says so — there is no field for "this was on us" — which is why it reads as an anomaly to every audit that looks at it.
 
+## An order exists because money arrived, and a payer is proved by refill-at-zero
+
+`scripts/backfill-2025-history.ts` rebuilds Sep–Dec 2025 from the bank statements. **The debits are the only thing allowed to create an order.** The daily sheet says who ate; it never says who bought, and treating a delivery row as evidence of a purchase invents revenue.
+
+It did exactly that for one revision. A block closed each eater's gap by writing an order for the shortfall at Rp 26.000 so the ledger netted to zero rather than going negative — 30 orders and Rp 787.000 of revenue no debit supports. Worse than the fake money is what it hid: a payer nobody had identified and a payer mapped to the wrong eater both disappear into a plausible-looking order. Jane Mariana's four transfers had been split across Drake and Rivans; that left Rivans 30 portions overdrawn through October, and the invented order absorbed it without a word. The script now writes nothing for uncovered portions and lists them — eater, eaten, bought, shortfall, first and last delivery date — under "ate N portions no debit pays for". A staff meal is the one Rp 0 order it still writes, because nobody paid for it and that is the fact, not a gap.
+
+**Which eater a payer's money belongs to is settled by refill-at-zero, not by name similarity or by a total that happens to match.** Run the eater's deliveries as a running balance against the candidate's transfers: a real payer's money lands on the day the eater's balance reaches zero, over and over, and the wrong payer leaves the eater overdrawn for weeks. Drake eats 10 portions by 19 Sep and Jane sends Rp 250.000 on the 14th; he eats 50 by 23 Nov and she sends Rp 960.000 on the 23rd; 90 by 16 Dec and she sends Rp 960.000 on the 16th. Three exact refills is not a coincidence, and it beats the reasoning that first assigned her three "catering 40x" transfers to Rivans because 3 × 40 equalled the 120 he ate — a matching total says nothing about *when*, and that attribution had him eating 70 portions against 40 bought.
+
 ## Money arriving is a debit, whatever the statement prints
 
 A BCA statement heads its money-in column **CR**, and that is the bank's own books talking: the money it just received is a liability it owes us, so it credits us. Our books are the other side of that. Money landing in the account **debits 1002 Bank BCA**, and money leaving credits it.

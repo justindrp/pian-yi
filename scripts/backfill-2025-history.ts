@@ -593,10 +593,29 @@ async function main() {
     p.existingEaten = (ds ?? []).reduce((s, d) => s + d.portions, 0);
   }
 
-  // Portions we know were eaten but cannot tie to a transfer: a free grant for
-  // the two internal eaters, and for everyone else an order for the shortfall,
-  // so the ledger nets to zero rather than going negative. A customer whose
-  // existing orders already cover what they ate needs nothing.
+  // An order exists because money arrived. Nothing else may create one.
+  //
+  // This block used to close a customer's gap by inventing an order for the
+  // shortfall at Rp 26.000 so the ledger netted to zero instead of going
+  // negative, and that is backwards: it manufactured Rp 787.000 of revenue
+  // across 30 orders that no debit supports, and it hid the two things worth
+  // knowing — a payer we have not identified yet, and a mapping that sends one
+  // person's money to the wrong eater. Jane Mariana's four transfers were
+  // split across Drake and Rivans, which left Rivans 40 portions short, and
+  // the invented order swallowed the discrepancy silently instead of
+  // reporting it. Portions eaten with no money behind them are now listed in
+  // the report and nothing is written for them.
+  //
+  // The two internal eaters are the exception and not really one: a staff meal
+  // has no payment because nobody paid, so it is granted at Rp 0.
+  const uncovered: {
+    eater: string;
+    short: number;
+    eaten: number;
+    covered: number;
+    first: string;
+    last: string;
+  }[] = [];
   for (const p of plans) {
     const m = mapping.eaters[p.eater];
     // Event plans have no eater entry: their portions came from the payment,
@@ -609,14 +628,26 @@ async function main() {
       p.orders.reduce((s, o) => s + o.size, 0);
     const short = p.eaten - (free ? 0 : covered);
     if (short <= 0) continue;
-    const first = sheet.filter((r) => canonical(r.name) === p.eater)[0]?.date;
+    const rows = sheet.filter((r) => canonical(r.name) === p.eater);
+    const first = rows[0]?.date;
     if (!first) continue;
+    if (!free) {
+      uncovered.push({
+        eater: p.eater,
+        short,
+        eaten: p.eaten,
+        covered,
+        first,
+        last: rows[rows.length - 1]?.date ?? first,
+      });
+      continue;
+    }
     p.orders.push({
       date: first,
       size: short,
-      rate: free ? 0 : 26000,
-      total: free ? 0 : short * 26000,
-      payer: free ? "(free portions)" : "(no payment found)",
+      rate: 0,
+      total: 0,
+      payer: "(free portions)",
       free,
       dup: false,
     });
@@ -707,6 +738,20 @@ async function main() {
       `  ${fresh.length} new, ${rows.length - fresh.length} already in DB;` +
         ` ${fresh.reduce((s, o) => s + o.size, 0)} portions` +
         ` for Rp ${fresh.reduce((s, o) => s + o.total, 0).toLocaleString("id-ID")}`,
+    );
+  }
+
+  if (uncovered.length) {
+    const short = uncovered.reduce((t, u) => t + u.short, 0);
+    console.log(
+      `\n${uncovered.length} eaters ate ${short} portions no debit pays for — nothing is written for these:`,
+    );
+    for (const u of [...uncovered].sort((a, b) => b.short - a.short))
+      console.log(
+        `  ${u.eater.padEnd(24)} ate ${String(u.eaten).padStart(4)}, bought ${String(u.covered).padStart(4)}, short ${String(u.short).padStart(4)}  ${u.first}..${u.last}`,
+      );
+    console.log(
+      "  either the payer is not in the map, their money is mapped to another eater, or they paid in cash",
     );
   }
 
