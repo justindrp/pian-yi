@@ -516,8 +516,8 @@
         "DOMPET ANAK BANGSA/11-01"
       ],
       "confidence": "high",
-      "refunded": true,
-      "why": "Justin: Gita ordered in early November, ate a few portions, and the order was cancelled and refunded because her address was too far to deliver to. The money is the Rp 1.344.000 of 11-01 - 56 x 24.000 at the rack 40x rung - and it arrives through GoPay, so BCA writes the sender as DOMPET ANAK BANGSA (GoPay's own entity) rather than her name; the payer is pinned to the date for that reason. She ate 4 portions on 11-03 and 11-04. The refund left from the GoPay balance and never touched BCA, so the statement has no line for it. The order is written `refunded`, which carries no quota, so the 4 portions she ate stand as an overdraw and the revenue is nil."
+      "refundedOn": "2025-11-06",
+      "why": "Justin: Gita ordered in early November, ate a few portions, and the order was cancelled and refunded because her address was too far to deliver to. She paid twice on 11-01, both through GoPay, so BCA writes the sender as DOMPET ANAK BANGSA (GoPay's own entity) rather than her name and the payer is pinned to the date: Rp 1.344.000 for the package - 56 x 24.000 on the 40x rung - and Rp 35.000 for a week of ongkir. She ate 4 portions on 11-03 and 11-04. The refund went out on 11-06 as Rp 1.354.000, the package in full plus Rp 10.000 of the delivery fee; the remaining Rp 25.000 of ongkir was kept for the days she was delivered to. The order is written `refunded`, which carries no quota, so the 4 portions stand as an overdraw and the revenue is nil."
     },
     "Jenni": {
       "customer": null,

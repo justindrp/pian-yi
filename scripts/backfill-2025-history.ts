@@ -69,7 +69,20 @@ const NOT_A_PAYMENT =
  * recognised one at a time. Named here by date and amount; anything not on this
  * list stays float.
  */
-const GOPAY_CUSTOMER_PAYMENTS = new Set(["2025-11-01|1344000"]);
+const GOPAY_CUSTOMER_PAYMENTS = new Set([
+  "2025-11-01|1344000",
+  "2025-11-01|35000",
+]);
+
+/**
+ * Ongkir, not a package. Anything under Rp 20.000 is read that way already —
+ * it is below one portion at the cheapest rate — but a customer may prepay a
+ * week of delivery fees in one go, and that lands well above the threshold
+ * while buying no food at all. Named by date and amount, because nothing in
+ * the amount itself says which it is: Gita's Rp 35.000 of 1 Nov 2025 is a
+ * week's ongkir, and Rp 35.000 is also a plausible package on a legacy rate.
+ */
+const DELIVERY_FEES = new Set(["2025-11-01|35000"]);
 
 const ACTOR = systemActor("backfill-2025-history");
 const apply = process.argv.includes("--apply");
@@ -100,12 +113,13 @@ type Mapping = {
         portions: number;
       }[];
       /**
-       * The package was paid for, part-eaten, then cancelled and the money
-       * returned. The order is written `refunded`, which carries no quota, so
-       * what was eaten stands as an overdraw and the revenue is nil — the one
-       * honest shape for a sale that was undone.
+       * The date the money went back out. The package was paid for,
+       * part-eaten, then cancelled and refunded, so the order is written
+       * `refunded` — which carries no quota, leaving what was eaten as an
+       * overdraw and the revenue nil, the one honest shape for a sale that was
+       * undone.
        */
-      refunded?: boolean;
+      refundedOn?: string;
       why?: string;
     }
   >;
@@ -367,8 +381,8 @@ type Plan = {
     free: boolean;
     /** Why it is Rp 0, when it is: a staff meal or a marketing sample. */
     grant?: "internal — free portions" | "influencer sample — marketing";
-    /** Paid, then cancelled and returned: written `refunded`, no quota. */
-    refunded: boolean;
+    /** Paid, then cancelled and returned on this date: `refunded`, no quota. */
+    refundedOn: string | null;
     /** Already in the database from the December import; not written again. */
     dup: boolean;
   }[];
@@ -501,8 +515,9 @@ async function main() {
       continue;
     }
     // Below one portion at the cheapest rate this is an ongkir top-up or a
-    // rounding transfer, never a package.
-    if (c.amount < 20000) {
+    // rounding transfer, never a package — as is a prepaid week of delivery
+    // fees, whatever it comes to.
+    if (c.amount < 20000 || DELIVERY_FEES.has(`${c.date}|${c.amount}`)) {
       surcharges.push(c);
       continue;
     }
@@ -520,7 +535,7 @@ async function main() {
       total: c.amount,
       payer: c.counterparty || eater,
       free: false,
-      refunded: mapping.eaters[eater]?.refunded === true,
+      refundedOn: mapping.eaters[eater]?.refundedOn ?? null,
       dup: false,
     });
   }
@@ -564,7 +579,7 @@ async function main() {
       total: rule.orderTotal ?? c.amount,
       payer: c.counterparty || rule.customer,
       free: false,
-      refunded: false,
+      refundedOn: null,
       dup: false,
     });
     // An order the database already holds is matched, never counted twice.
@@ -701,7 +716,7 @@ async function main() {
         m.kind === "influencer"
           ? "influencer sample — marketing"
           : "internal — free portions",
-      refunded: false,
+      refundedOn: null,
       dup: false,
     });
   }
@@ -729,16 +744,16 @@ async function main() {
     // A refunded package is written, because it was really paid for and really
     // part-eaten, but it is not quota and it is not revenue. Counting it in
     // either would put back the phantom balance this backfill exists to remove.
-    const kept = fresh.filter((o) => !o.refunded);
+    const kept = fresh.filter((o) => !o.refundedOn);
     const buy = kept.reduce((s, o) => s + o.size, 0);
     const money = kept.reduce((s, o) => s + o.total, 0);
     bought2025 += buy;
     money2025 += money;
     refunded2025 += fresh
-      .filter((o) => o.refunded)
+      .filter((o) => o.refundedOn)
       .reduce((s, o) => s + o.size, 0);
     refundedMoney += fresh
-      .filter((o) => o.refunded)
+      .filter((o) => o.refundedOn)
       .reduce((s, o) => s + o.total, 0);
     const balance = p.existingBought + buy - (p.existingEaten + p.eaten);
     console.log(
@@ -759,7 +774,7 @@ async function main() {
 
   if (surcharges.length) {
     console.log(
-      `\n${surcharges.length} debits under Rp 20.000 totalling Rp ${surcharges.reduce((s, c) => s + c.amount, 0).toLocaleString("id-ID")} read as ongkir top-ups — no order:`,
+      `\n${surcharges.length} debits totalling Rp ${surcharges.reduce((s, c) => s + c.amount, 0).toLocaleString("id-ID")} read as ongkir — no order, and the journal backfill books them to 2101:`,
     );
     for (const c of surcharges)
       console.log(
@@ -992,7 +1007,8 @@ async function write(
           start_date: o.date,
           // `refunded` is outside PAID_STATUSES, so the package it names is not
           // quota — which is the point: the money went back.
-          status: o.refunded ? "refunded" : "completed",
+          status: o.refundedOn ? "refunded" : "completed",
+          cancelled_at: o.refundedOn ? `${o.refundedOn}T00:00:00+07:00` : null,
           source: o.free ? "free_quota" : "purchase",
           grant_reason: o.grant ?? null,
           granted_by: o.free ? ACTOR : null,
