@@ -100,7 +100,7 @@ type Mapping = {
     /** An order the database already holds for this event; reused, not doubled. */
     existingOrderId?: string;
     /**
-     * Restricts the rule to one credit. A payer with several events sizes each
+     * Restricts the rule to one debit. A payer with several events sizes each
      * one separately, and a rule that names an amount is tried before the bare
      * name rule that would otherwise swallow all of them.
      */
@@ -110,10 +110,10 @@ type Mapping = {
     meal?: "lunch" | "dinner";
     /**
      * An event is tendered, so its rate is a negotiated figure and not the
-     * credit divided by the portions: a deposit, a second instalment and a
+     * debit divided by the portions: a deposit, a second instalment and a
      * delivery fee all move the amount away from what was actually agreed.
      * Set both together, from what Justin quoted, or leave both unset and the
-     * credit is taken at face value.
+     * debit is taken at face value.
      */
     rate?: number;
     orderTotal?: number;
@@ -125,7 +125,7 @@ type Mapping = {
     deliveryFee?: number;
   }[];
 };
-type Credit = {
+type Debit = {
   date: string;
   amount: number;
   counterparty: string;
@@ -207,23 +207,28 @@ async function loadSheet(): Promise<SheetRow[]> {
   return out;
 }
 
-async function loadCredits(): Promise<Credit[]> {
-  const out: Credit[] = [];
+async function loadDebits(): Promise<Debit[]> {
+  const out: Debit[] = [];
   for (const file of STATEMENTS) {
     const statements = await parseStatementPdf(
       new Uint8Array(await readFile(file)),
     );
     for (const s of statements) {
       if (s.currency !== "IDR") continue;
-      // Only the credit side matters here, and it ties exactly in all four
-      // files; `controlTotalsOk` is false for October and November because each
-      // drops one debit line, which no order is built from.
+      // Money in is what this script is built from, and it ties exactly in
+      // all four files; `controlTotalsOk` is false for October and November
+      // because each drops one money-out line, which no order comes from.
+      //
+      // The statement's own column for money in is headed CR — the bank is
+      // describing its liability to us, not our books. In our ledger the same
+      // line debits 1002 Bank BCA, and a debit is what it is called
+      // everywhere the script speaks to a person.
       if (
         s.totalCredit !== s.statedCredit ||
         s.creditCount !== s.statedCreditCount
       )
         throw new Error(
-          `${path.basename(file)}: parsed credits ${s.totalCredit} × ${s.creditCount} do not match the statement's ${s.statedCredit} × ${s.statedCreditCount}`,
+          `${path.basename(file)}: parsed debits ${s.totalCredit} × ${s.creditCount} do not match the statement's ${s.statedCredit} × ${s.statedCreditCount}`,
         );
       for (const l of s.lines) {
         if (l.direction !== "CR") continue;
@@ -245,7 +250,7 @@ async function loadCredits(): Promise<Credit[]> {
 /**
  * BCA prints the account holder's own name and address into the last entry on a
  * page. Left in place it swallows the real payer's name and trips
- * NOT_A_PAYMENT, which silently dropped real customer credits.
+ * NOT_A_PAYMENT, which silently dropped real customer debits.
  */
 function trimFooter(raw: string): string {
   const cut = raw.search(
@@ -279,7 +284,7 @@ const canonical = (name: string) => SPELLING[norm(name)] ?? name;
 const slug = (s: string) => norm(s).replace(/ /g, "_");
 
 /**
- * Finds which mapped payer sent a credit.
+ * Finds which mapped payer sent a debit.
  *
  * The parsed `counterparty` is unreliable: BCA files an inbound transfer from
  * another bank as "/DBS MOBILE" or "INDONESIA", and occasionally runs the next
@@ -289,7 +294,7 @@ const slug = (s: string) => norm(s).replace(/ /g, "_");
  * same person paid several times for different people.
  */
 function findPayer(
-  c: Credit,
+  c: Debit,
   payers: { key: string; re: RegExp; date: string | null; eater: string }[],
 ): string | undefined {
   const hay = norm(`${c.counterparty} ${c.memo}`);
@@ -357,9 +362,9 @@ async function main() {
   );
 
   const sheet = await loadSheet();
-  const credits = await loadCredits();
+  const debits = await loadDebits();
   console.log(
-    `sheet: ${sheet.length} portions ${WINDOW_START}..${WINDOW_END} | statements: ${credits.length} customer credits\n`,
+    `sheet: ${sheet.length} portions ${WINDOW_START}..${WINDOW_END} | statements: ${debits.length} customer debits\n`,
   );
 
   // Every mapped payer, longest name first so a specific one is tried before a
@@ -390,7 +395,7 @@ async function main() {
       re: new RegExp(`\\b${norm(r.match).replace(/ /g, "\\s+")}\\b`),
     }))
     // A rule that names an amount is the specific one; try it before the bare
-    // name rule that matches every credit the same payer sent.
+    // name rule that matches every debit the same payer sent.
     .sort((a, b) => (b.amount ? 1 : 0) - (a.amount ? 1 : 0));
 
   // --- customers ----------------------------------------------------------
@@ -436,19 +441,19 @@ async function main() {
     p.eaten += p.eventDeliveries.reduce((s, d) => s + d.portions, 0);
 
   // --- orders from the statements -----------------------------------------
-  const unmatched: Credit[] = [];
-  const excluded: { credit: Credit; rule: Mapping["nonCustomer"][number] }[] =
+  const unmatched: Debit[] = [];
+  const excluded: { debit: Debit; rule: Mapping["nonCustomer"][number] }[] =
     [];
-  const unpriced: Credit[] = [];
-  const surcharges: Credit[] = [];
-  for (const c of credits) {
+  const unpriced: Debit[] = [];
+  const surcharges: Debit[] = [];
+  for (const c of debits) {
     const rule = nonCustomer.find(
       (r) =>
         (r.amount === undefined || r.amount === c.amount) &&
         r.re.test(norm(`${c.counterparty} ${c.memo}`)),
     );
     if (rule) {
-      excluded.push({ credit: c, rule });
+      excluded.push({ debit: c, rule });
       continue;
     }
     const eater = findPayer(c, payers);
@@ -485,12 +490,12 @@ async function main() {
   // bought. Give each one its own order and its own delivery, a day after the
   // payment, and the pair nets to zero instead of leaving a balance nobody
   // holds. A payer whose event size is still unknown is held back whole.
-  const eventUnsized: { credit: Credit; match: string }[] = [];
-  for (const { credit: c, rule } of excluded) {
+  const eventUnsized: { debit: Debit; match: string }[] = [];
+  for (const { debit: c, rule } of excluded) {
     if (rule.kind !== "event_order") continue;
     if (!rule.customer) throw new Error(`event rule ${rule.match} names no customer`);
     if (!rule.portions) {
-      eventUnsized.push({ credit: c, match: rule.match });
+      eventUnsized.push({ debit: c, match: rule.match });
       continue;
     }
     const existing = byName.get(norm(rule.customer));
@@ -561,7 +566,7 @@ async function main() {
       (o) => !String(o.status).startsWith("cancelled"),
     );
     p.existingBought = live.reduce((s, o) => s + (o.package_size ?? 0), 0);
-    // The December import already turned some of these same credits into
+    // The December import already turned some of these same debits into
     // orders; those are matched, not written twice. Its start_date came from
     // the first delivery rather than the transfer, so it can sit a day or two
     // either side — BCA books an evening transfer on the following day.
@@ -652,7 +657,7 @@ async function main() {
 
   if (surcharges.length) {
     console.log(
-      `\n${surcharges.length} credits under Rp 20.000 totalling Rp ${surcharges.reduce((s, c) => s + c.amount, 0).toLocaleString("id-ID")} read as ongkir top-ups — no order:`,
+      `\n${surcharges.length} debits under Rp 20.000 totalling Rp ${surcharges.reduce((s, c) => s + c.amount, 0).toLocaleString("id-ID")} read as ongkir top-ups — no order:`,
     );
     for (const c of surcharges)
       console.log(
@@ -676,7 +681,7 @@ async function main() {
 
   if (unpriced.length) {
     console.log(
-      `\n${unpriced.length} mapped credits have no package size — add them to backfill-2025-sizes.json:`,
+      `\n${unpriced.length} mapped debits have no package size — add them to backfill-2025-sizes.json:`,
     );
     for (const c of unpriced)
       console.log(
@@ -693,16 +698,16 @@ async function main() {
         account: e.rule.account,
       };
       k.n += 1;
-      k.sum += e.credit.amount;
+      k.sum += e.debit.amount;
       byKind.set(e.rule.kind, k);
     }
-    const total = excluded.reduce((s, e) => s + e.credit.amount, 0);
+    const total = excluded.reduce((s, e) => s + e.debit.amount, 0);
     console.log(
-      `\n${excluded.length} credits totalling Rp ${total.toLocaleString("id-ID")} are identified but buy no subscription package:`,
+      `\n${excluded.length} debits totalling Rp ${total.toLocaleString("id-ID")} are identified but buy no subscription package:`,
     );
     for (const [kind, k] of [...byKind].sort((a, b) => b[1].sum - a[1].sum))
       console.log(
-        `  ${kind.padEnd(20)} ${String(k.n).padStart(2)} credits  Rp ${k.sum.toLocaleString("id-ID").padStart(11)}  -> ${k.account}${kind === "event_order" ? "  (order + delivery written)" : ""}`,
+        `  ${kind.padEnd(20)} ${String(k.n).padStart(2)} ${k.n === 1 ? "debit " : "debits"} Rp ${k.sum.toLocaleString("id-ID").padStart(11)}  -> ${k.account}${kind === "event_order" ? "  (order + delivery written)" : ""}`,
       );
     console.log(
       "  every kind but event_order is left to the journal backfill; this script writes nothing for them",
@@ -711,17 +716,17 @@ async function main() {
 
   if (eventUnsized.length) {
     console.log(
-      `\n${eventUnsized.length} event credits totalling Rp ${eventUnsized.reduce((s, e) => s + e.credit.amount, 0).toLocaleString("id-ID")} have no portion count, so no order and no delivery is written:`,
+      `\n${eventUnsized.length} event debits totalling Rp ${eventUnsized.reduce((s, e) => s + e.debit.amount, 0).toLocaleString("id-ID")} have no portion count, so no order and no delivery is written:`,
     );
     for (const e of eventUnsized)
       console.log(
-        `  ${e.credit.date}  Rp ${String(e.credit.amount).padStart(9)}  ${e.match}`,
+        `  ${e.debit.date}  Rp ${String(e.debit.amount).padStart(9)}  ${e.match}`,
       );
   }
 
   if (unmatched.length) {
     console.log(
-      `\n${unmatched.length} credits totalling Rp ${unmatched.reduce((s, c) => s + c.amount, 0).toLocaleString("id-ID")} are not in the map — no order is written for these:`,
+      `\n${unmatched.length} debits totalling Rp ${unmatched.reduce((s, c) => s + c.amount, 0).toLocaleString("id-ID")} are not in the map — no order is written for these:`,
     );
     for (const c of unmatched)
       console.log(

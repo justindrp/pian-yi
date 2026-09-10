@@ -1,5 +1,5 @@
 {
-  "note": "eater (pre-Jan sheet name) -> bank payer counterparties (Sep-Nov 2025 only; Dec 2025 credits already have orders in the DB). confidence: high|medium|low. customer: existing customers.name to attach to, or null = create IMPORT_ placeholder.",
+  "note": "eater (pre-Jan sheet name) -> bank payer counterparties (Sep-Nov 2025 only; Dec 2025 debits already have orders in the DB). confidence: high|medium|low. customer: existing customers.name to attach to, or null = create IMPORT_ placeholder.",
   "eaters": {
     "Friska": {
       "customer": null,
@@ -475,7 +475,7 @@
         "SOFIA TOMASOA/09-23"
       ],
       "confidence": "medium",
-      "why": "sisa 9 on 09-15 then 0 on 09-19 = a 10-pack; the five 250000 credits before 09-15 map one-to-one onto the five eaters showing sisa 9 that day, and Jane's is the only one left. 1600000 lands 09-20, the day after he ran out Her Rp 10.000 on 09-23 is under a portion at any 2025 rate and she is already his payer twice, so it reads as an ongkir top-up and buys nothing."
+      "why": "sisa 9 on 09-15 then 0 on 09-19 = a 10-pack; the five 250000 debits before 09-15 map one-to-one onto the five eaters showing sisa 9 that day, and Jane's is the only one left. 1600000 lands 09-20, the day after he ran out Her Rp 10.000 on 09-23 is under a portion at any 2025 rate and she is already his payer twice, so it reads as an ongkir top-up and buys nothing."
     },
     "Kevin Mulia": {
       "customer": "Kevin M",
@@ -674,7 +674,7 @@
       "rate": 21000,
       "orderTotal": 1386000,
       "deliveryFee": 20000,
-      "why": "66 portions at 21.000 plus a 20.000 delivery fee, quoted by Justin, paid in two parts on 09-25: 1.280.000 here and 126.000 alongside. The two credits sum to 1.406.000, which is 1.386.000 of food and 20.000 of ongkir to the rupiah. The order is written once, here; the second credit writes nothing. The sheet dates it: 09-28 lunch, 'Timothy Emery', catatan '66 porsi event gereja'.",
+      "why": "66 portions at 21.000 plus a 20.000 delivery fee, quoted by Justin, paid in two parts on 09-25: 1.280.000 here and 126.000 alongside. The two debits sum to 1.406.000, which is 1.386.000 of food and 20.000 of ongkir to the rupiah. The order is written once, here; the second debit writes nothing. The sheet dates it: 09-28 lunch, 'Timothy Emery', catatan '66 porsi event gereja'.",
       "deliveryDate": "2025-09-28",
       "meal": "lunch"
     },
@@ -683,7 +683,7 @@
       "kind": "event_payment",
       "account": "4001",
       "amount": 126000,
-      "why": "The balance of the 66-portion event above, paid the same day. No order and no delivery - both belong to the 1.280.000 credit - and of this, 20.000 is the delivery fee, which is a pass-through and books to 2101 rather than 4001."
+      "why": "The balance of the 66-portion event above, paid the same day. No order and no delivery - both belong to the 1.280.000 debit - and of this, 20.000 is the delivery fee, which is a pass-through and books to 2101 rather than 4001."
     },
     {
       "match": "TIMOTHY EMERY HART",
@@ -728,7 +728,7 @@
       "portions": 75,
       "rate": 19000,
       "orderTotal": 1425000,
-      "why": "75 portions at 19.000, quoted by Justin. The Rp 1.068.750 credit of 12-16 is a 75% down payment on the 1.425.000 total; the remaining 356.250 never appears on any statement in the window, so it is either still owed or was settled in cash. The order carries the full 1.425.000 because that is what was bought."
+      "why": "75 portions at 19.000, quoted by Justin. The Rp 1.068.750 debit of 12-16 is a 75% down payment on the 1.425.000 total; the remaining 356.250 never appears on any statement in the window, so it is either still owed or was settled in cash. The order carries the full 1.425.000 because that is what was bought."
     },
     {
       "match": "ELEAZAR RECCA SALI",
@@ -761,7 +761,7 @@
       "match": "VINCENT PINNADI LO",
       "kind": "employee",
       "account": "6005",
-      "why": "Employee. Four credits 10-01..10-08 totalling Rp 250.000 — money coming back to the business, not a sale."
+      "why": "Employee. Four debits 10-01..10-08 totalling Rp 250.000 — money coming back to the business, not a sale."
     },
     {
       "match": "LIZY TANIA",
@@ -809,7 +809,7 @@
       "match": "WILLIAM GIAN TJAM",
       "kind": "already_in_db",
       "account": "2100",
-      "why": "Tjam, a Dec 2025 - Jan 2026 customer. Both credits already have orders: 12-18 Rp 135.000 is order 55077556 (5p, start 2025-12-17) and 12-25 Rp 1.840.000 is order 96519bf4 (80p, start 2025-12-25). Nothing to write."
+      "why": "Tjam, a Dec 2025 - Jan 2026 customer. Both debits already have orders: 12-18 Rp 135.000 is order 55077556 (5p, start 2025-12-17) and 12-25 Rp 1.840.000 is order 96519bf4 (80p, start 2025-12-25). Nothing to write."
     },
     {
       "match": "JENNIFER MIDDL",
@@ -827,13 +827,13 @@
       "match": "NATHANIEL DARREN M",
       "kind": "middleman_customer",
       "account": "4900",
-      "why": "Rp 25.000 on 09-10, one of a pair of identical 25.000 credits that share the reference block 1009/FTSCY/WS95031 with BRENDAN CHRISTOVIO. Middleman Kitchen customer, confirmed by Justin."
+      "why": "Rp 25.000 on 09-10, one of a pair of identical 25.000 debits that share the reference block 1009/FTSCY/WS95031 with BRENDAN CHRISTOVIO. Middleman Kitchen customer, confirmed by Justin."
     },
     {
       "match": "BRENDAN CHRISTOVIO",
       "kind": "middleman_customer",
       "account": "4900",
-      "why": "Rp 25.000 on 09-10, the twin of the NATHANIEL DARREN M credit on the same reference block. Middleman Kitchen customer, confirmed by Justin."
+      "why": "Rp 25.000 on 09-10, the twin of the NATHANIEL DARREN M debit on the same reference block. Middleman Kitchen customer, confirmed by Justin."
     },
     {
       "match": "AURELIA TERA PUSPI",
@@ -845,7 +845,7 @@
       "match": "KARIANNA MEGA ISWA",
       "kind": "middleman_customer",
       "account": "4900",
-      "why": "Rp 570.000 on 09-26, which is 30 x 19.000, and the pre-January sheet carries a '30 PORSI HONEY CHICKEN' lunch for Bernelle the next day. Honey chicken is Middleman Kitchen's menu and not ours, so the food was theirs even though the delivery was written on our sheet: Karianna is their customer and the credit is 4900, not 4001. Same reading as Aurelia Tera Puspi's 'honey chicken large' Rp 20.000 on 10-13."
+      "why": "Rp 570.000 on 09-26, which is 30 x 19.000, and the pre-January sheet carries a '30 PORSI HONEY CHICKEN' lunch for Bernelle the next day. Honey chicken is Middleman Kitchen's menu and not ours, so the food was theirs even though the delivery was written on our sheet: Karianna is their customer and the debit is 4900, not 4001. Same reading as Aurelia Tera Puspi's 'honey chicken large' Rp 20.000 on 10-13."
     }
   ]
 }
