@@ -84,6 +84,7 @@ export async function GET(): Promise<Response> {
       rawSubs.filter((s) => !!s.menu_image_url).map((s) => s.menu_week_start),
     ),
     servedAreas,
+    customerArea: null,
     neighborhoods,
     excludedNeighborhoods,
     coverageNotes: kitchenCoverageNotes,

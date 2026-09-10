@@ -119,6 +119,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -156,6 +157,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -205,6 +207,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -238,6 +241,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -269,6 +273,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -341,6 +346,7 @@ describe("customer chatbot system prompt", () => {
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
+        customerArea: null,
         neighborhoods: {},
         excludedNeighborhoods: [],
         coverageNotes: [],
@@ -374,6 +380,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -471,6 +478,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -525,6 +533,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -685,6 +694,7 @@ describe("customer chatbot system prompt", () => {
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
+      customerArea: null,
       neighborhoods: {},
       excludedNeighborhoods: [],
       coverageNotes: [],
@@ -757,6 +767,7 @@ describe("customer chatbot system prompt", () => {
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
+        customerArea: null,
         neighborhoods: {},
         excludedNeighborhoods: [],
         coverageNotes: [],
@@ -789,6 +800,7 @@ describe("customer chatbot system prompt", () => {
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Baru"],
+        customerArea: null,
         neighborhoods: {},
         excludedNeighborhoods: [],
         coverageNotes: [],
@@ -840,6 +852,7 @@ describe("customer chatbot system prompt", () => {
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["Alam Sutera"],
+        customerArea: null,
         neighborhoods: {},
         excludedNeighborhoods: [],
         coverageNotes: [],
@@ -967,6 +980,7 @@ describe("customer chatbot system prompt", () => {
         dapurMenuTexts: [],
         menuWeek: { relation: "unknown" as const, weekStart: null },
         servedAreas: ["BSD Lama"],
+        customerArea: null,
         neighborhoods: {},
         excludedNeighborhoods: [],
         coverageNotes: [],
@@ -1033,6 +1047,7 @@ describe("excluded neighborhoods", () => {
     ],
     menuWeek: { relation: "unknown" as const, weekStart: null },
     servedAreas: ["Alam Sutera"],
+    customerArea: null,
     neighborhoods: { "Alam Sutera": ["Sutera Onyx"] },
     coverageNotes: [],
     activeOrder: null,
@@ -1113,6 +1128,7 @@ describe("the customer's own dapur", () => {
     dapurMenuTexts: [],
     menuWeek: { relation: "unknown" as const, weekStart: null },
     servedAreas: ["Alam Sutera"],
+    customerArea: null,
     neighborhoods: {},
     excludedNeighborhoods: [],
     coverageNotes: [],
@@ -1197,6 +1213,7 @@ describe("the cacheable prefix", () => {
     dapurMenuTexts: [],
     menuWeek: { relation: "unknown" as const, weekStart: null },
     servedAreas: ["Alam Sutera"],
+    customerArea: null,
     neighborhoods: {},
     excludedNeighborhoods: [],
     coverageNotes: [],
@@ -1264,5 +1281,83 @@ describe("the cacheable prefix", () => {
     expect(block).toContain("This customer already cooks with Dapur Suplir");
     expect(block).toContain("## Daily quota ordering");
     expect(block).toContain("Customer name (if known): Budi");
+  });
+});
+
+// A lead asked for the menu photo and then for the prices, twice in a row on
+// 2026-09-10, and was told "Maaf kak, ternyata area pengirimannya belum
+// kucatat ya. Nanti dulu, aku catat dulu areanya" — no images, on the second
+// ask. The area gate had two halves and both were wrong: it made a missing
+// area a refusal rather than a question, and the area it gated on had never
+// reached the prompt in the first place. `dapurOptions` is narrowed by
+// `kitchensForCustomerArea()`, but nothing told the model that.
+describe("the area gate", () => {
+  const base = {
+    casual: false,
+    customerState: "new",
+    customerName: null,
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: false,
+    currentDapur: null,
+    dapurOptions: [
+      {
+        id: "a",
+        nickname: "Dapur Suplir",
+        offersM: true,
+        sameMenuBothMeals: true,
+      },
+      {
+        id: "b",
+        nickname: "Dapur Monstera",
+        offersM: false,
+        sameMenuBothMeals: false,
+      },
+    ],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Baru", "Bintaro"],
+    customerArea: null as string | null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("an area on file reaches the prompt and closes the gate", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      customerArea: "BSD Baru",
+    });
+
+    expect(prompt).toContain("Area customer ini: BSD Baru");
+    expect(prompt).toContain(
+      "This customer's area is already recorded (BSD Baru)",
+    );
+    expect(prompt).toContain("Do not ask which area they are in");
+  });
+
+  test("a missing area is a question, never a refusal", async () => {
+    const prompt = await buildSystemPrompt({ ...base, customerArea: null });
+
+    expect(prompt).toContain("Area customer ini: belum tercatat");
+    expect(prompt).toContain("A missing area is a question, never a refusal");
+    expect(prompt).toContain(
+      "Never say the menu or the price list cannot be sent yet",
+    );
+    // The half that invented "BSD Baru" for a customer who had named no place.
+    expect(prompt).toContain(
+      "Only ever pass record_customer_area an area the customer actually named",
+    );
+  });
+
+  test("neither half is rendered for a single-kitchen business", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [base.dapurOptions[0]],
+    });
+
+    expect(prompt).not.toContain("A missing area is a question");
   });
 });

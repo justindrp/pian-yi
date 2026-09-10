@@ -2059,7 +2059,7 @@ export async function processSavedCustomerMessage(params: {
   // link by hand outranks anything found in a chat.
   const { data: storedLinkRow } = await db
     .from("customers")
-    .select("google_maps_link, subcontractor_id")
+    .select("google_maps_link, subcontractor_id, area, area_2")
     .eq("id", customerId)
     .maybeSingle();
   let storedMapsLink = storedLinkRow?.google_maps_link ?? null;
@@ -2220,6 +2220,12 @@ export async function processSavedCustomerMessage(params: {
       rawSubs.filter((s) => !!s.menu_image_url).map((s) => s.menu_week_start),
     ),
     servedAreas,
+    // What we already hold about where they live. `dapurOptions` above is
+    // already narrowed by it, but the narrowing was invisible to the model.
+    customerArea:
+      [storedLinkRow?.area, storedLinkRow?.area_2]
+        .filter((a): a is string => !!a)
+        .join(" / ") || null,
     neighborhoods,
     excludedNeighborhoods,
     coverageNotes: kitchenCoverageNotes,
@@ -3705,6 +3711,54 @@ async function noProofReason(
   };
 }
 
+/**
+ * Whether the customer has actually named the area being recorded.
+ *
+ * `record_customer_area` decides which kitchens a customer is ever shown, which
+ * menu and which ladder, and it is the one area field no admin ever sees. On
+ * 2026-09-10 the model was asked twice for the menu photo and the price list by
+ * a lead who had named no place at all; it wrote "BSD Baru" — the second entry
+ * on the served list — and in the same turn told them their area was not
+ * recorded yet. Nearest-area rounding belongs to `extract_order`, where the
+ * order lands in front of a person; here it is a silent guess.
+ *
+ * Evidence is any word of the area, or any neighborhood name inside it,
+ * appearing in what the customer has typed recently — so "bsd" answers "BSD
+ * Baru" and "Foresta" answers it too. Deliberately loose: a false accept is one
+ * wrong area field, a false refuse costs the customer a turn.
+ */
+async function customerNamedArea(
+  db: ReturnType<typeof createAdminClient>,
+  customerId: string,
+  area: string,
+): Promise<boolean> {
+  const { data: inbound } = await db
+    .from("conversations")
+    .select("content")
+    .eq("customer_id", customerId)
+    .eq("role", "user")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const said = (inbound ?? [])
+    .map((m) => String(m.content ?? ""))
+    .join(" ")
+    .toLowerCase();
+  if (!said) return false;
+
+  // Every word of the area, not any of them: "baru" and "barat" are ordinary
+  // Indonesian, and one of them alone would accept the guess this guard exists
+  // to catch. A customer who typed only "BSD" gets asked which one, which is
+  // the right question anyway.
+  const words = area
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+  if (words.length > 0 && words.every((w) => said.includes(w))) return true;
+
+  const neighborhoods = (await getNeighborhoods())[area] ?? [];
+  return neighborhoods.some((n) => said.includes(n.toLowerCase()));
+}
+
 async function handleToolUse(
   tool: Anthropic.Messages.ToolUseBlock,
   customerId: string,
@@ -3878,6 +3932,12 @@ async function handleToolUse(
       return {
         ok: false,
         error: `Area "${given}" tidak dicatat — bukan salah satu area yang kami layani (${served.join(", ")}). Jangan bilang areanya sudah dicatat.`,
+      };
+    }
+    if (!(await customerNamedArea(db, customerId, matched))) {
+      return {
+        ok: false,
+        error: `Area "${matched}" tidak dicatat — customer belum pernah menyebut tempat itu. Tanyakan areanya, dan tetap kirim menu serta price list di giliran ini.`,
       };
     }
     const { data: current } = await db

@@ -110,6 +110,7 @@ async function main() {
       rawSubs.filter((s) => !!s.menu_image_url).map((s) => s.menu_week_start),
       today,
     ),
+    customerArea: null,
     servedAreas: [
       ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
     ].sort(),

@@ -86,6 +86,7 @@ async function main() {
         menuText: s.menu_text as string,
       })),
     menuWeek,
+    customerArea: null,
     servedAreas: [
       ...new Set(rawSubs.flatMap((s) => s.delivery_areas ?? [])),
     ].sort(),

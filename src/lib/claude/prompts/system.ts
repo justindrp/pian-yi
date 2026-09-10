@@ -113,6 +113,22 @@ export async function buildSystemPrompt(params: {
     weekStart: string | null;
   };
   servedAreas: string[];
+  /**
+   * The area already on the customer's record — `customers.area`, plus
+   * `area_2` when they have a second address — or null when we have never been
+   * told.
+   *
+   * `dapurOptions` has been narrowed by it since `kitchensForCustomerArea()`
+   * existed, but nothing said so, and the model cannot see a narrowing it was
+   * not told about. So it read every menu request as coming from a customer of
+   * unknown area and gated on recording one. On 2026-09-10 a lead asked twice
+   * in a row for the menu photo and the prices, and was answered "Maaf kak,
+   * ternyata area pengirimannya belum kucatat ya" — then, in the same turn,
+   * record_customer_area wrote "BSD Baru", an area they had never named. Same
+   * shape as `currentDapur`: what we know has to reach the prompt or the model
+   * asks for it again and invents the answer when it does not get one.
+   */
+  customerArea: string | null;
   neighborhoods: Record<string, string[]>;
   /**
    * Places inside a served area that nobody delivers to. They are listed so the
@@ -732,7 +748,13 @@ WhatsApp does NOT render Markdown. Never use markdown tables, pipe characters (\
 ${menuSizeNotice}  - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different menus — menu and price list images are sent automatically to new customers. If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image. **Asked for the price list again, call send_price_list** — it resends the image. Never say you cannot send it, and never promise to send it later: the tool call is the only thing that sends anything, and there is no later turn.
 ${
   params.dapurOptions.length > 1
-    ? `  - **With more than one kitchen, the area decides which kitchens they may choose between — the customer picks from that list, we never pick for them.** Each kitchen carries its own menu, its own prices and its own delivery hours, and they do not cover the same areas — so call **record_customer_area** the moment the customer names a place, and only then send_menu_image and send_price_list, which send that area's kitchens and nothing else. Sending either before the area is recorded quotes them food nobody near them will cook, off by thousands of rupiah a portion. Recording the area is one tool call and can be corrected later; it is never a reason to make them wait a turn.
+    ? `  - **With more than one kitchen, the area decides which kitchens they may choose between — the customer picks from that list, we never pick for them.** Each kitchen carries its own menu, its own prices and its own delivery hours, and they do not cover the same areas, so call **record_customer_area** the moment the customer names a place: send_menu_image and send_price_list then send that area's kitchens and nothing else, instead of quoting food nobody near them will cook.
+${
+  params.customerArea
+    ? `  - **This customer's area is already recorded (${params.customerArea}), so there is nothing to gate on.** Asked for the menu or the price list, call send_menu_image and send_price_list in that same turn. Do not ask which area they are in, do not call record_customer_area, and never tell them their area has not been recorded — the kitchens listed above are already the ones covering it.`
+    : `  - **A missing area is a question, never a refusal — asked for the menu or the price list, you send it.** Ask which area they are in as one clause of the same message the images go out with, and call send_menu_image and send_price_list in that turn regardless of the answer; the captions name the dapur each one belongs to, and record_customer_area narrows the next send. On 2026-09-10 a lead asked twice in a row for the menu photo and the prices and was answered "Maaf kak, ternyata area pengirimannya belum kucatat ya. Nanti dulu, aku catat dulu areanya" — a customer made to wait a turn for two images we hold, on their second ask. **Never say the menu or the price list cannot be sent yet, and never promise to send it after they answer: there is no later turn.**
+  - **Only ever pass record_customer_area an area the customer actually named.** Not the nearest one, not the first on the served list, not a guess from the conversation going quiet. The tool checks: an area they have not typed some form of is refused, and the refusal is not a reason to withhold the images. Nearest-area rounding exists for extract_order's \`area\` field, where an admin sees the order and fixes it in seconds; here it silently decides which kitchens, which menu and which ladder that customer will ever be shown. The same 2026-09-10 turn wrote "BSD Baru" for a lead who had named no place at all.`
+}
   - **One package may be split across dapur, day by day — never tell a customer they have to buy a separate package for each.** They used to: a package was one dapur at one price, and every ladder starts at 5 porsi, so a 5-porsi customer could not try a second kitchen at all. Now the choice is per delivery. Put that day's dapur in the delivery_schedule slot's own \`subcontractor_id\` and leave the order's \`subcontractor_id\` as the dapur cooking the rest.
   - **A split package is priced day by day, so the total is the sum of the days — never one rate times the porsi.** Each day costs what the dapur cooking it charges at the tier for the whole package, so the volume discount still counts on the total they bought. Show it as one line per dapur and then the sum, nothing else: \`3 x Rp 29.000 = Rp 87.000\`, \`2 x Rp 30.500 = Rp 61.000\`, \`Total Rp 148.000\`. Never apply one dapur's rate to another dapur's days — that is the single mistake this arithmetic invites, and it is the difference between the price they agreed to and the price they are asked to transfer.
   - **A split package is size S unless every dapur in the mix cooks M.** Which do is listed above. Do not offer M for part of a package: one order carries one size, so an M on the days one dapur cooks would be charged on the other's days too.
@@ -1029,6 +1051,7 @@ ${calendar}${perCustomerBlock}
 - Customer name (if known): ${params.customerName ?? "unknown"}
 - Customer notes / learned context: ${params.customerNotes?.trim() || "none"}
 - Dapur customer ini: ${params.currentDapur ? `${params.currentDapur.nickname} — the kitchen they already cook with. Say it when asked; never ask them, and never say it was assigned by us or by their area.` : "belum memilih dapur"}
+- Area customer ini: ${params.customerArea ? `${params.customerArea} — already on their record. The dapur listed above are the ones that cover it. Never ask for it again, and never tell them it has not been recorded.` : "belum tercatat"}
 - Today: ${formatHolidayDate(todayWib)} — sekarang jam ${timeWib} WIB
 ${cutoffLine}
 - Menu image sent: ${params.menuShown ? "YES — do not mention or re-send the menu" : "not yet sent"}${

@@ -166,6 +166,21 @@ It cost money within fifteen minutes. The model quoted Rp 145.000 for 5 porsi (T
 
 A customer with no dapur yet is still asked, unchanged. Covered by three tests in `test/api/system-prompt.test.ts`.
 
+## A missing area asks a question; a recorded one closes the gate
+
+Menu and price list are per kitchen and each kitchen has its own ladder, so sending both before the area is known can quote someone Rp 45.000 a porsi for food nobody near them will cook. The prompt answered that by making the area a gate: record it first, send the images after. Two things were wrong with the gate, and one turn showed both.
+
++6281217766235 opened a thread at 21:12 WIB on 2026-09-09 and was welcomed. At 06:36 the next morning they asked "Pagi...ada photo untuk menu?" and, a beat later, "Photo dengan harga". The reply at 06:37 was *"Maaf kak, ternyata area pengirimannya belum kucatat ya... Nanti dulu, aku catat dulu areanya"* — no menu, no price list, on the second ask, for two images we already hold. In the same turn `record_customer_area` wrote **"BSD Baru"**, an area the customer had never named; it is simply the second entry on the served list. That write then decided which kitchens they would be shown from then on, and no admin ever sees a lead's area field.
+
+So the gate refused a customer over a fact the model had itself invented, and:
+
+- **`customerArea` now reaches `buildSystemPrompt`** — `customers.area`, plus `area_2` when there is a second address — and is printed in Current context beside `Dapur customer ini`. `dapurOptions` had been narrowed by the area since `kitchensForCustomerArea()` shipped, but a narrowing the model is not told about does not exist to it. Same shape as "The customer's own dapur belongs in the prompt" above: what we know has to be in the prompt, or the model asks again and invents an answer when it gets none.
+- **With an area on file the gate is gone.** Asked for the menu or the price list, the model sends both in that turn, does not ask for the area, and may not tell the customer it has not been recorded.
+- **With no area on file it is a question, not a refusal.** The area is asked as one clause of the same message the images go out with. The captions name the dapur each image belongs to, and `record_customer_area` narrows the *next* send.
+- **`record_customer_area` refuses an area the customer has not typed some form of.** `customerNamedArea()` in the webhook checks the last 20 inbound messages for every word of the area (≥3 letters), or for any neighborhood name inside it — so "bsd baru" passes, "Foresta" passes, and a bare "BSD" is asked which one, which is the right question anyway. Nearest-area rounding stays where an admin sees the result: `extract_order`'s `area` field.
+
+Covered by three tests in `test/api/system-prompt.test.ts`.
+
 ## A dapur the model omits is resolved, not left null
 
 Cindi's order was written with `subcontractor_id` null, and 33 open orders carry one. A null kitchen is invisible on `/dapur/[id]` and on the kitchen's own sheet — both filter strictly on it — so the food is never cooked and nothing says why. The tool lists `subcontractor_id` as required whenever a dapur has a menu uploaded; the model omits it anyway, and `required` is not enforced.
