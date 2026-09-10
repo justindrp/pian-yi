@@ -87,6 +87,11 @@ type Mapping = {
     /** Contra account the journal line will face. */
     account: string;
     why: string;
+    /** `event_order` only: who the event was for, and how big it was. */
+    customer?: string;
+    portions?: number | null;
+    /** An order the database already holds for this event; reused, not doubled. */
+    existingOrderId?: string;
   }[];
 };
 type Credit = {
@@ -291,7 +296,22 @@ type Plan = {
   }[];
   existingBought: number;
   existingEaten: number;
+  /**
+   * Deliveries that come from a payment rather than from the daily sheet. A
+   * one-off event is cooked on one date and never appears on the subscription
+   * sheet, so nothing else would ever eat its portions.
+   */
+  eventDeliveries: { date: string; meal: string; portions: number }[];
+  /** Positional against `orders`; an id here is reused instead of inserted. */
+  reuseOrderIds: (string | undefined)[];
 };
+
+/** BCA books an evening transfer on the day it lands; the food is the next day. */
+function nextDay(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 async function main() {
   const db = createAdminClient();
@@ -371,12 +391,14 @@ async function main() {
       orders: [],
       existingBought: 0,
       existingEaten: 0,
+      eventDeliveries: [],
+      reuseOrderIds: [],
     });
   }
 
   // --- orders from the statements -----------------------------------------
   const unmatched: Credit[] = [];
-  const excluded: { credit: Credit; rule: { kind: string; account: string } }[] =
+  const excluded: { credit: Credit; rule: Mapping["nonCustomer"][number] }[] =
     [];
   const unpriced: Credit[] = [];
   const surcharges: Credit[] = [];
@@ -415,6 +437,57 @@ async function main() {
       free: false,
       dup: false,
     });
+  }
+
+  // --- one-off events ------------------------------------------------------
+  // These never touch the daily sheet, so the sheet can never eat what they
+  // bought. Give each one its own order and its own delivery, a day after the
+  // payment, and the pair nets to zero instead of leaving a balance nobody
+  // holds. A payer whose event size is still unknown is held back whole.
+  const eventUnsized: { credit: Credit; match: string }[] = [];
+  for (const { credit: c, rule } of excluded) {
+    if (rule.kind !== "event_order") continue;
+    if (!rule.customer) throw new Error(`event rule ${rule.match} names no customer`);
+    if (!rule.portions) {
+      eventUnsized.push({ credit: c, match: rule.match });
+      continue;
+    }
+    const existing = byName.get(norm(rule.customer));
+    let plan = plans.find((x) => x.eater === rule.customer);
+    if (!plan) {
+      plan = {
+        eater: rule.customer,
+        customerId: existing?.id ?? null,
+        customerName: existing?.name ?? rule.customer,
+        createCustomer: !existing,
+        phone: existing?.phone ?? `IMPORT_${slug(rule.customer)}`,
+        eaten: 0,
+        orders: [],
+        existingBought: 0,
+        existingEaten: 0,
+        eventDeliveries: [],
+        reuseOrderIds: [],
+      };
+      plans.push(plan);
+    }
+    plan.orders.push({
+      date: c.date,
+      size: rule.portions,
+      rate: Math.round(c.amount / rule.portions),
+      total: c.amount,
+      payer: c.counterparty || rule.customer,
+      free: false,
+      dup: false,
+    });
+    // An order the database already holds is matched, never counted twice.
+    if (rule.existingOrderId) plan.orders[plan.orders.length - 1].dup = true;
+    plan.reuseOrderIds.push(rule.existingOrderId);
+    plan.eventDeliveries.push({
+      date: nextDay(c.date),
+      meal: "lunch",
+      portions: rule.portions,
+    });
+    plan.eaten += rule.portions;
   }
 
   // --- what the database already holds ------------------------------------
@@ -459,6 +532,9 @@ async function main() {
   // existing orders already cover what they ate needs nothing.
   for (const p of plans) {
     const m = mapping.eaters[p.eater];
+    // Event plans have no eater entry: their portions came from the payment,
+    // not from the sheet, and are already balanced by their own delivery row.
+    if (!m) continue;
     const free = m.kind === "free_quota";
     const covered =
       p.existingBought -
@@ -480,6 +556,16 @@ async function main() {
   }
 
   // --- report -------------------------------------------------------------
+  // Event deliveries are not sheet rows, so the sheet's own totals miss them.
+  const eventPortions = plans.reduce(
+    (t, p) => t + p.eventDeliveries.reduce((s, d) => s + d.portions, 0),
+    0,
+  );
+  const eventRows = new Set(
+    plans.flatMap((p) =>
+      p.eventDeliveries.map((d) => `${d.date}|${p.eater}|${d.meal}`),
+    ),
+  ).size;
   console.log(
     "eater                    cust  2025 bought  2025 eaten | already bought  already ate | balance after",
   );
@@ -500,8 +586,8 @@ async function main() {
     `\ncustomers to create: ${plans.filter((p) => p.createCustomer).length}` +
       ` | orders to create: ${plans.reduce((s, p) => s + p.orders.filter((o) => !o.dup).length, 0)}` +
       ` | portions bought: ${bought2025} for Rp ${money2025.toLocaleString("id-ID")}` +
-      ` | portions eaten: ${sheet.length}` +
-      ` in ${new Set(sheet.map((r) => `${r.date}|${canonical(r.name)}|${r.meal}`)).size} delivery rows`,
+      ` | portions eaten: ${sheet.length + eventPortions}` +
+      ` in ${new Set(sheet.map((r) => `${r.date}|${canonical(r.name)}|${r.meal}`)).size + eventRows} delivery rows`,
   );
 
   if (surcharges.length) {
@@ -552,11 +638,24 @@ async function main() {
     }
     const total = excluded.reduce((s, e) => s + e.credit.amount, 0);
     console.log(
-      `\n${excluded.length} credits totalling Rp ${total.toLocaleString("id-ID")} are identified but buy no package — the journal backfill books these, this script writes nothing:`,
+      `\n${excluded.length} credits totalling Rp ${total.toLocaleString("id-ID")} are identified but buy no subscription package:`,
     );
     for (const [kind, k] of [...byKind].sort((a, b) => b[1].sum - a[1].sum))
       console.log(
-        `  ${kind.padEnd(20)} ${String(k.n).padStart(2)} credits  Rp ${k.sum.toLocaleString("id-ID").padStart(11)}  -> ${k.account}`,
+        `  ${kind.padEnd(20)} ${String(k.n).padStart(2)} credits  Rp ${k.sum.toLocaleString("id-ID").padStart(11)}  -> ${k.account}${kind === "event_order" ? "  (order + delivery written)" : ""}`,
+      );
+    console.log(
+      "  every kind but event_order is left to the journal backfill; this script writes nothing for them",
+    );
+  }
+
+  if (eventUnsized.length) {
+    console.log(
+      `\n${eventUnsized.length} event credits totalling Rp ${eventUnsized.reduce((s, e) => s + e.credit.amount, 0).toLocaleString("id-ID")} have no portion count, so no order and no delivery is written:`,
+    );
+    for (const e of eventUnsized)
+      console.log(
+        `  ${e.credit.date}  Rp ${String(e.credit.amount).padStart(9)}  ${e.match}`,
       );
   }
 
@@ -584,8 +683,10 @@ async function main() {
       .eq("customer_id", p.customerId)
       .gte("created_at", "2026-07-04")
       .lt("created_at", "2026-07-05");
+    // An order this run reuses on purpose is not a snapshot duplicate.
+    const reused = new Set(p.reuseOrderIds.filter(Boolean));
     for (const o of os ?? [])
-      if (o.package_size)
+      if (o.package_size && !reused.has(o.id))
         residual.push(
           `  ${p.eater.padEnd(20)} ${String(o.package_size).padStart(4)}p  Rp ${String(o.total_price).padStart(9)}  ${o.status}  ${o.id.slice(0, 8)}`,
         );
@@ -638,6 +739,11 @@ async function write(
       .eq("customer_id", p.customerId);
     const ids: string[] = [];
     for (const o of p.orders.sort((a, b) => a.date.localeCompare(b.date))) {
+      const reuse = p.reuseOrderIds[p.orders.indexOf(o)];
+      if (reuse) {
+        ids.push(reuse);
+        continue;
+      }
       const dup = (have ?? []).find(
         (h) => h.start_date === o.date && h.total_price === o.total,
       );
@@ -701,6 +807,24 @@ async function write(
     byKey.set(key, e);
   }
 
+  // A one-off event's delivery comes from its payment, not from the sheet. It
+  // goes through the same map so that two events for one person on one day
+  // become one row rather than colliding on the (date, customer, meal) key.
+  for (const plan of plans) {
+    for (const d of plan.eventDeliveries) {
+      if (!plan.customerId) throw new Error(`no customer for ${plan.eater}`);
+      const key = `${d.date}|${plan.customerId}|${d.meal}`;
+      const e = byKey.get(key) ?? {
+        p: plan,
+        date: d.date,
+        meal: d.meal,
+        portions: 0,
+      };
+      e.portions += d.portions;
+      byKey.set(key, e);
+    }
+  }
+
   const rows = [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date));
   // Charge each delivery to the oldest order of that customer with quota left,
   // and once those run out to the last one — never floor a per-order balance.
@@ -753,7 +877,7 @@ async function write(
   });
 
   console.log(
-    `\nWrote ${payload.length} delivery rows covering ${sheet.length} portions.`,
+    `\nWrote ${payload.length} delivery rows covering ${payload.reduce((s, r) => s + r.portions, 0)} portions.`,
   );
 }
 

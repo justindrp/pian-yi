@@ -100,6 +100,16 @@ The rule is written from the failure. On 2026-08-25 at 08:08 a lead asked for 40
 
 Two things went wrong and both matter: the bot **priced an event off the personal ladder**, and it **billed before it understood the order**. A subscription package is sellable the moment a size is named, which is why `extract_order` fires early and why that is right for the ordinary path. An event is not sellable until a kitchen has bid. Treating the two the same turns a live corporate lead into an unanswerable quote.
 
+### An event order carries its own delivery row, or its portions never get eaten
+
+A subscription package is drawn down by the daily sheet: the rows appear over weeks and the balance falls as they do. An event has no sheet. It is cooked once, on one date, and the subscription sheet never mentions it — so an event booked as an order and nothing else leaves portions bought against nothing eaten, and the customer appears to hold a balance forever. That is the same phantom quota that `docs/OVERDRAW.md` exists to unwind, arrived at from the opposite direction.
+
+So an event order is **two rows, always**: the order, and one `daily_deliveries` row on the day the food went out, for the full portion count. The pair nets to zero and the customer is left holding nothing, which is the truth.
+
+For the 2025 history this had to be reconstructed, and the reconstruction rule is Justin's: **the food goes out the day after the payment lands.** BCA books an evening transfer on the following day and an event is paid ahead of the date it is cooked for, so payment + 1 is the best single guess available and it is applied uniformly rather than argued case by case. `scripts/backfill-2025-history.ts` does this from the `nonCustomer` block of `scripts/data/backfill-2025-mapping.json`, where a rule of kind `event_order` names the customer and the portion count.
+
+**A portion count that nobody knows holds the whole payer back.** The script writes no order and no delivery for an event whose `portions` is null and lists it instead, because a guessed size is a wrong delivery row and a wrong delivery row is indistinguishable from a real one afterwards. The money is never lost by waiting — it is still on the statement, and the journal backfill books it to 4001 Catering Revenue either way.
+
 Tendering itself is manual today — the broadcast to the kitchens is composed by hand, bids may be split across two or three of them, and the customer's selling price is never shown to a bidder. There is no tool for it and no automated path; the bot's job is to gather the brief and hand it to an admin.
 
 ## Order sizes (S / M)

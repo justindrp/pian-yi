@@ -652,43 +652,56 @@
       "confidence": "none"
     }
   },
-  "nonCustomerNote": "Credits that reach our account but buy no Pian Yi package, so no order is written for them. Matched against the same haystack as `eaters` (raw counterparty + description), whole-word, before the eater map is tried. Each still needs a journal line in the 2025 journal backfill; `account` names the contra account that line faces.",
+  "nonCustomerNote": "Credits that reach our account but buy no Pian Yi subscription package. Matched against the same haystack as `eaters` (raw counterparty + description), whole-word, before the eater map is tried. `account` names the contra account the journal line will face.\n\nkind `event_order` is the exception that still writes rows: a one-off catered event is bought and eaten on one date, so it gets an order AND a delivery row dated the day after the payment, and the two cancel to a zero balance. `portions` is what the event was; null means nobody has told us yet and the payer is held back rather than guessed at. `existingOrderId` reuses an order the database already holds instead of inserting a second one.\n\nEvery other kind writes nothing here and is booked by the journal backfill.",
   "nonCustomer": [
     {
       "match": "TIMOTHY EMERY HART",
       "kind": "event_order",
       "account": "4001",
-      "why": "Custom event order. 09-25 Rp 1.280.000 + 09-26 Rp 575.000, plus the 09-25 Rp 126.000 filed under INDONESIA."
+      "why": "Custom event order. 09-25 Rp 1.280.000 + 09-26 Rp 575.000, plus the 09-25 Rp 126.000 filed under INDONESIA.",
+      "customer": "Timothy Emery Hart",
+      "portions": null
     },
     {
       "match": "TIMOTHY JASON HAND",
       "kind": "event_order",
       "account": "4001",
-      "why": "Custom event order, Rp 257.000 on 10-31 and again on 12-01."
+      "why": "Custom event order, Rp 257.000 on 10-31 and again on 12-01.",
+      "customer": "Timothy Jason Handoko",
+      "portions": 10
     },
     {
       "match": "EKA MAYA SARI",
       "kind": "event_order",
       "account": "4001",
-      "why": "Custom event order, Rp 540.000."
+      "why": "Custom event order, Rp 540.000.",
+      "customer": "Eka Maya Sari",
+      "portions": 20
     },
     {
       "match": "SAMUEL GOUW",
       "kind": "event_order",
       "account": "4001",
-      "why": "Custom event order paid as a 75% deposit, which is why Rp 1.068.750 is not round. Full value Rp 1.425.000."
+      "why": "Custom event order paid as a 75% deposit, which is why Rp 1.068.750 is not round. Full value Rp 1.425.000.",
+      "customer": "Samuel Gouw",
+      "portions": null
     },
     {
       "match": "ELEAZAR RECCA SALI",
-      "kind": "already_in_db",
-      "account": "2100",
-      "why": "Event order, 90 portions. 12-24 Rp 1.890.000 = 90 x 21.000, filed under INDONESIA. The order already exists as 2c719023 (90p, Rp 1.890.000) — it was written on 2026-07-04 with that date, so it is misdated, not missing."
+      "kind": "event_order",
+      "account": "4001",
+      "why": "Event order, 90 portions. 12-24 Rp 1.890.000 = 90 x 21.000, filed under INDONESIA. The order already exists as 2c719023 (90p, Rp 1.890.000) — it was written on 2026-07-04 with that date, so it is misdated, not missing.",
+      "customer": "Eleazar",
+      "portions": 90,
+      "existingOrderId": "2c719023-b6a4-47d5-9388-d1f335c60036"
     },
     {
       "match": "JESICA CHRISTINE",
       "kind": "event_order",
       "account": "4001",
-      "why": "5-portion order, Rp 165.000. Not on the daily sheet, so revenue rather than quota."
+      "why": "5-portion order, Rp 165.000. Not on the daily sheet, so revenue rather than quota.",
+      "customer": "Jesica Christine",
+      "portions": 5
     },
     {
       "match": "VENICIA CHRISTIN",
