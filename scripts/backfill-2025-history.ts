@@ -61,6 +61,16 @@ const STATEMENTS = [
 const NOT_A_PAYMENT =
   /KREDIFAZZ|DANIEL RAHARDYAN|DOMPET ANAK BANGSA|INTERCHANGE GOOGLE|INOVASI TERDEPAN/i;
 
+/**
+ * DOMPET ANAK BANGSA is GoPay's own entity, and almost every line it sends is
+ * our GoPay float coming back to BCA — which is why the blanket filter above
+ * drops it. A customer paying out of their GoPay balance arrives under exactly
+ * the same name, with no trace of who they are, so those debits can only be
+ * recognised one at a time. Named here by date and amount; anything not on this
+ * list stays float.
+ */
+const GOPAY_CUSTOMER_PAYMENTS = new Set(["2025-11-01|1344000"]);
+
 const ACTOR = systemActor("backfill-2025-history");
 const apply = process.argv.includes("--apply");
 
@@ -84,7 +94,18 @@ type Mapping = {
        * with no row against it is as often a gap in the sheet as an unclaimed
        * balance. A delivery named here is one Justin has confirmed happened.
        */
-      deliveries?: { date: string; meal: "lunch" | "dinner"; portions: number }[];
+      deliveries?: {
+        date: string;
+        meal: "lunch" | "dinner";
+        portions: number;
+      }[];
+      /**
+       * The package was paid for, part-eaten, then cancelled and the money
+       * returned. The order is written `refunded`, which carries no quota, so
+       * what was eaten stands as an overdraw and the revenue is nil — the one
+       * honest shape for a sale that was undone.
+       */
+      refunded?: boolean;
       why?: string;
     }
   >;
@@ -242,9 +263,13 @@ async function loadDebits(): Promise<Debit[]> {
         if (l.direction !== "CR") continue;
         const counterparty = l.counterparty ?? "";
         const memo = trimFooter(l.rawText.replace(/\s+/g, " "));
-        if (NOT_A_PAYMENT.test(counterparty) || NOT_A_PAYMENT.test(memo))
+        const gopay = GOPAY_CUSTOMER_PAYMENTS.has(`${l.txnDate}|${l.amount}`);
+        if (
+          !gopay &&
+          (NOT_A_PAYMENT.test(counterparty) || NOT_A_PAYMENT.test(memo))
+        )
           continue;
-        if (/^BUNGA|GoPay Bank Transfe/i.test(memo)) continue;
+        if (!gopay && /^BUNGA|GoPay Bank Transfe/i.test(memo)) continue;
         if (l.txnDate < WINDOW_START || l.txnDate > WINDOW_END) continue;
         out.push({ date: l.txnDate, amount: l.amount, counterparty, memo });
       }
@@ -285,6 +310,9 @@ const SPELLING: Record<string, string> = {
   glady: "Glady Calista",
   // The sheet writes the event's host, the statement writes his full name.
   "timothy emery": "Timothy Emery Hart",
+  // One man, two spellings, 38 rows and 2: ERICK LEE's Rp 960.000 buys 40
+  // portions and the two spellings eat exactly 40 between them.
+  "eric lee": "Erick",
 };
 
 const canonical = (name: string) => SPELLING[norm(name)] ?? name;
@@ -339,6 +367,8 @@ type Plan = {
     free: boolean;
     /** Why it is Rp 0, when it is: a staff meal or a marketing sample. */
     grant?: "internal — free portions" | "influencer sample — marketing";
+    /** Paid, then cancelled and returned: written `refunded`, no quota. */
+    refunded: boolean;
     /** Already in the database from the December import; not written again. */
     dup: boolean;
   }[];
@@ -452,8 +482,7 @@ async function main() {
 
   // --- orders from the statements -----------------------------------------
   const unmatched: Debit[] = [];
-  const excluded: { debit: Debit; rule: Mapping["nonCustomer"][number] }[] =
-    [];
+  const excluded: { debit: Debit; rule: Mapping["nonCustomer"][number] }[] = [];
   const unpriced: Debit[] = [];
   const surcharges: Debit[] = [];
   for (const c of debits) {
@@ -491,6 +520,7 @@ async function main() {
       total: c.amount,
       payer: c.counterparty || eater,
       free: false,
+      refunded: mapping.eaters[eater]?.refunded === true,
       dup: false,
     });
   }
@@ -503,7 +533,8 @@ async function main() {
   const eventUnsized: { debit: Debit; match: string }[] = [];
   for (const { debit: c, rule } of excluded) {
     if (rule.kind !== "event_order") continue;
-    if (!rule.customer) throw new Error(`event rule ${rule.match} names no customer`);
+    if (!rule.customer)
+      throw new Error(`event rule ${rule.match} names no customer`);
     if (!rule.portions) {
       eventUnsized.push({ debit: c, match: rule.match });
       continue;
@@ -533,6 +564,7 @@ async function main() {
       total: rule.orderTotal ?? c.amount,
       payer: c.counterparty || rule.customer,
       free: false,
+      refunded: false,
       dup: false,
     });
     // An order the database already holds is matched, never counted twice.
@@ -561,8 +593,7 @@ async function main() {
   );
   for (const p of plans) {
     const rows = sheetRows.filter((r) => canonical(r.name) === p.eater).length;
-    p.eaten =
-      rows + p.eventDeliveries.reduce((sum, d) => sum + d.portions, 0);
+    p.eaten = rows + p.eventDeliveries.reduce((sum, d) => sum + d.portions, 0);
   }
 
   // --- what the database already holds ------------------------------------
@@ -670,6 +701,7 @@ async function main() {
         m.kind === "influencer"
           ? "influencer sample — marketing"
           : "internal — free portions",
+      refunded: false,
       dup: false,
     });
   }
@@ -690,12 +722,24 @@ async function main() {
   );
   let bought2025 = 0;
   let money2025 = 0;
+  let refunded2025 = 0;
+  let refundedMoney = 0;
   for (const p of [...plans].sort((a, b) => b.eaten - a.eaten)) {
     const fresh = p.orders.filter((o) => !o.dup);
-    const buy = fresh.reduce((s, o) => s + o.size, 0);
-    const money = fresh.reduce((s, o) => s + o.total, 0);
+    // A refunded package is written, because it was really paid for and really
+    // part-eaten, but it is not quota and it is not revenue. Counting it in
+    // either would put back the phantom balance this backfill exists to remove.
+    const kept = fresh.filter((o) => !o.refunded);
+    const buy = kept.reduce((s, o) => s + o.size, 0);
+    const money = kept.reduce((s, o) => s + o.total, 0);
     bought2025 += buy;
     money2025 += money;
+    refunded2025 += fresh
+      .filter((o) => o.refunded)
+      .reduce((s, o) => s + o.size, 0);
+    refundedMoney += fresh
+      .filter((o) => o.refunded)
+      .reduce((s, o) => s + o.total, 0);
     const balance = p.existingBought + buy - (p.existingEaten + p.eaten);
     console.log(
       `${p.eater.padEnd(24)} ${(p.createCustomer ? "NEW " : "have").padEnd(5)} ${String(buy).padStart(11)} ${String(p.eaten).padStart(11)} | ${String(p.existingBought).padStart(14)} ${String(p.existingEaten).padStart(12)} | ${String(balance).padStart(13)}`,
@@ -708,6 +752,10 @@ async function main() {
       ` | portions eaten: ${sheet.length + eventPortions}` +
       ` in ${new Set(sheet.map((r) => `${r.date}|${canonical(r.name)}|${r.meal}`)).size + eventRows} delivery rows`,
   );
+  if (refunded2025)
+    console.log(
+      `${refunded2025} more portions of Rp ${refundedMoney.toLocaleString("id-ID")} were bought and refunded — the orders are written \`refunded\`, which is neither quota nor revenue`,
+    );
 
   if (surcharges.length) {
     console.log(
@@ -803,7 +851,10 @@ async function main() {
   }
 
   if (excluded.length) {
-    const byKind = new Map<string, { n: number; sum: number; account: string }>();
+    const byKind = new Map<
+      string,
+      { n: number; sum: number; account: string }
+    >();
     for (const e of excluded) {
       const k = byKind.get(e.rule.kind) ?? {
         n: 0,
@@ -939,7 +990,9 @@ async function write(
           price_per_portion: o.rate,
           total_price: o.total,
           start_date: o.date,
-          status: "completed",
+          // `refunded` is outside PAID_STATUSES, so the package it names is not
+          // quota — which is the point: the money went back.
+          status: o.refunded ? "refunded" : "completed",
           source: o.free ? "free_quota" : "purchase",
           grant_reason: o.grant ?? null,
           granted_by: o.free ? ACTOR : null,

@@ -504,18 +504,27 @@
     },
     "Eci": {
       "customer": null,
-      "payers": [],
-      "confidence": "none"
+      "payers": [
+        "JESICA CHRISTINE"
+      ],
+      "confidence": "high",
+      "why": "Justin: Eci is Jesica's nickname. JESICA CHRISTINE K sent Rp 165.000 on 09-30, exactly 5 x 33.000 at the rack 5x rung, and Eci ate 5 portions on 10-01..10-06 - bought and eaten agree to the portion, and the money lands the day before the first meal. This payment used to sit on Veren Jesica, who is a different person and now has no payer."
     },
     "Gita": {
       "customer": "Gita",
-      "payers": [],
-      "confidence": "none"
+      "payers": [
+        "DOMPET ANAK BANGSA/11-01"
+      ],
+      "confidence": "high",
+      "refunded": true,
+      "why": "Justin: Gita ordered in early November, ate a few portions, and the order was cancelled and refunded because her address was too far to deliver to. The money is the Rp 1.344.000 of 11-01 - 56 x 24.000 at the rack 40x rung - and it arrives through GoPay, so BCA writes the sender as DOMPET ANAK BANGSA (GoPay's own entity) rather than her name; the payer is pinned to the date for that reason. She ate 4 portions on 11-03 and 11-04. The refund left from the GoPay balance and never touched BCA, so the statement has no line for it. The order is written `refunded`, which carries no quota, so the 4 portions she ate stand as an overdraw and the revenue is nil."
     },
     "Jenni": {
       "customer": null,
       "payers": [],
-      "confidence": "none"
+      "confidence": "high",
+      "kind": "free_quota",
+      "why": "Justin's business partner until she quit on 2025-09-28. Her 3 portions on 09-26 and 09-27 are a partner's meals, not a sale - no debit was ever going to arrive for them."
     },
     "Jessy": {
       "customer": null,
@@ -524,11 +533,6 @@
       ],
       "confidence": "medium",
       "why": "Jessy's only two rows are both 09-26 dinner, and Jeslyn Verdita's Rp 72.000 on 09-25 is exactly 2 x 36.000, the discounted 2x rung, paid the day before. Justin says Jeslyn may have been paying for someone else, and this is the only two-portion eater the payment can be. NEEDS CONFIRMING: if Jessy is not who Jeslyn bought for, give Jeslyn her own eater with two deliveries on 09-26."
-    },
-    "Eric Lee": {
-      "customer": null,
-      "payers": [],
-      "confidence": "none"
     },
     "Pio": {
       "customer": null,
@@ -568,11 +572,9 @@
     },
     "Veren Jesica": {
       "customer": null,
-      "payers": [
-        "JESICA CHRISTINE"
-      ],
-      "confidence": "medium",
-      "why": "Rp 165.000 on 09-30 is a KUOTA 5X at the rack rate of 33.000, so a subscription package and not an event. The sheet carries exactly one Jesica row in the whole window — 'Veren Jesica', lunch 16 Oct — and it had no payer, while this payment had no eater. Matched on that, which leaves her holding 4 of the 5 she bought. NEEDS CONFIRMING: if Veren Jesica is a different person, split this into its own eater and she holds all 5."
+      "payers": [],
+      "confidence": "none",
+      "why": "One lunch row, 16 Oct, and no payment. She held JESICA CHRISTINE's Rp 165.000 until Justin said Eci is Jesica's nickname; that money pays for Eci's 5 portions exactly, so it moved. Veren Jesica is one uncovered portion in the middle of the October influencer run - NEEDS CONFIRMING whether she is a sample too."
     },
     "Ailicia": {
       "customer": null,
