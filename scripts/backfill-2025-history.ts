@@ -329,7 +329,20 @@ const SPELLING: Record<string, string> = {
   "eric lee": "Erick",
 };
 
-const canonical = (name: string) => SPELLING[norm(name)] ?? name;
+/**
+ * norm(mapping key) -> the key itself, filled once the map is loaded. The
+ * sheet is typed by hand and capitalises as it pleases: "Jason therawan" 30
+ * times against "Jason Therawan" 43, "Daryn DIor" 20, "rivans", "wendy",
+ * "dev". Matching the eater key case-sensitively silently dropped 89 delivery
+ * rows from their eater's count — and would have thrown at `--apply`, since a
+ * row whose eater is in no plan has no customer to write against.
+ */
+const CASE_INDEX = new Map<string, string>();
+
+const canonical = (name: string) => {
+  const spelled = SPELLING[norm(name)] ?? name;
+  return CASE_INDEX.get(norm(spelled)) ?? spelled;
+};
 
 const slug = (s: string) => norm(s).replace(/ /g, "_");
 
@@ -465,6 +478,8 @@ async function main() {
         name: c.name,
         phone: c.phone_number,
       });
+
+  for (const key of Object.keys(mapping.eaters)) CASE_INDEX.set(norm(key), key);
 
   const eatenBy = new Map<string, number>();
   for (const r of sheet) {
