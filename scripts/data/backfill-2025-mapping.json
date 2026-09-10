@@ -653,6 +653,22 @@
       "customer": null,
       "payers": [],
       "confidence": "none"
+    },
+    "Jeslyn Verdita": {
+      "customer": null,
+      "payers": [
+        "JESLYN VERDITA MAR"
+      ],
+      "confidence": "high",
+      "why": "Rp 72.000 on 09-25 is 2 x 36.000, the discounted 2x rung, one day past the promo's printed end - the promo ran a day long, confirmed by Justin. A customer, not an event. She has no row anywhere on the pre-January sheet, so she is left holding both portions."
+    },
+    "Jason Christian": {
+      "customer": null,
+      "payers": [
+        "JASON CHRISTIAN BU"
+      ],
+      "confidence": "high",
+      "why": "Rp 37.000 on 09-11 is the discounted 1x rate, so a single-portion order, confirmed by Justin. Distinct from Jason Therawan and from the sheet's bare 'Jason', both of which already have their own payers. No sheet row of his own, so he is left holding the portion."
     }
   },
   "nonCustomerNote": "Credits that reach our account but buy no Pian Yi subscription package. Matched against the same haystack as `eaters` (raw counterparty + description), whole-word, before the eater map is tried. `account` names the contra account the journal line will face.\n\nkind `event_order` is the exception that still writes rows: a one-off catered event is bought and eaten on one date, so it gets an order AND a delivery row dated the day after the payment, and the two cancel to a zero balance. `portions` is what the event was; null means nobody has told us yet and the payer is held back rather than guessed at. `existingOrderId` reuses an order the database already holds instead of inserting a second one.\n\nEvery other kind writes nothing here and is booked by the journal backfill.",
@@ -781,6 +797,24 @@
       "kind": "middleman_customer",
       "account": "4900",
       "why": "The memo names the brand outright: 'Middleman kitchen - elsa'. Rp 52.000 on 06-10, which is no rung on either 2025 ladder, so it is not one of our packages either way."
+    },
+    {
+      "match": "NATHANIEL DARREN M",
+      "kind": "middleman_customer",
+      "account": "4900",
+      "why": "Rp 25.000 on 09-10, one of a pair of identical 25.000 credits that share the reference block 1009/FTSCY/WS95031 with BRENDAN CHRISTOVIO. Middleman Kitchen customer, confirmed by Justin."
+    },
+    {
+      "match": "BRENDAN CHRISTOVIO",
+      "kind": "middleman_customer",
+      "account": "4900",
+      "why": "Rp 25.000 on 09-10, the twin of the NATHANIEL DARREN M credit on the same reference block. Middleman Kitchen customer, confirmed by Justin."
+    },
+    {
+      "match": "AURELIA TERA PUSPI",
+      "kind": "middleman_customer",
+      "account": "4900",
+      "why": "Rp 20.000 on 10-13, memo 'honey chicken large'. Middleman Kitchen customer, confirmed by Justin. The counterparty column reads INDONESIA because the parser takes the branch address instead of the name; the name is in the description, which is part of the haystack."
     }
   ]
 }
