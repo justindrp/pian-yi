@@ -281,6 +281,26 @@ Which of the two is the real order is the opposite of what the rows suggest, and
 
 **A small order can be a goodwill credit rather than a purchase.** Fahmi's one-portion order (`4955fb91`, dinner_only, one row on 11 September) is a free portion given on 24 Agustus, compensation for a delivery of his we failed to create that day. It is not a botched amendment and it is not a billing error. Nothing on the row says so — there is no field for "this was on us" — which is why it reads as an anomaly to every audit that looks at it.
 
+## Which kitchen cooked a past delivery is reconstructed from the bank, not from the sheet
+
+The operations spreadsheet has a `subcontractor` column and it is a broken VLOOKUP: it answers "Thenie" for 2220 of its rows and `#N/A` for 1062 more. The June import read it, so 2484 of the 2574 delivery rows between January and July 2026 carried Thenie and 105 carried anyone else, while the bank shows seven kitchens being paid over the same months. Every per-kitchen COGS figure, every kitchen bill and every margin computed off those rows was wrong. **Never read that column, and never trust a historical `subcontractor_id` that came from it.**
+
+What is trustworthy is the sheet's `cogs_per_portion`, which is not part of the VLOOKUP, together with the bank. Each kitchen charged a distinct rate, and **a kitchen is paid on day D for the food it cooks on day D+1** — that is the fact that makes a debit readable. Thenie's Rp 129.000 on 19 May is 6 × Rp 21.000 plus Rp 3.000 ongkir, and the sheet has exactly six Rp 21.000 portions on the 20th. The rates, with the bank name each kitchen pays under:
+
+| Kitchen | Rate | Bank counterparty |
+| --- | --- | --- |
+| Thenie | Rp 20.000, Rp 21.000 from 2026-03-29, plus Rp 3.000 ongkir a day from 2026-04-27 | `R Bg Andreas Kurnianto`, `Pembayaran ke Thenie Catering` |
+| Santapin | Rp 20.000, Rp 19.500 from 2026-02-20 | `Pembayaran ke Santapin Catering`, `Catering Santapin` |
+| Perut Bahagia | Rp 21.000 | `Aris Wibisono` |
+| Yuk Makan | Rp 23.000, Rp 27.000 for size M | `Stefano Mario Supit` |
+| Pangkha | Rp 21.000 then Rp 23.000 | `Fenti Afriltia` |
+| Hanvin | Rp 22.000 | `Elvina Puspita Dewi` |
+| Cendana | Rp 18.000 | `Grace Sinthike Kewas` |
+
+Two rates are shared, and only the money separates them. Rp 21.000 is Thenie's outright from 2026-03-29 — its payment equals the whole group to the rupiah on 31 of the 34 days to 6 May — except in two windows: 7–15 May, where Pangkha is paid Rp 2.085.000 while Thenie's exact share falls to 5–7 portions of a 41-portion group, and 5–18 June, where Thenie is paid **nothing at all** and Perut Bahagia is paid Rp 7.127.000 against 343 portions. Rp 23.000 starts on 13 May and is Yuk Makan's, whose bills tie exactly (Rp 418.000 on 24 May is 17 × 23.000 + 1 × 27.000 for the 25th); 14 and 15 May are Pangkha's last two bills. Before 2026-03-29 the rate column cannot separate Thenie from Santapin at all, so each day is a subset-sum over that day's customers for the portion count Thenie's payment covers: a customer in **every** exact subset is Thenie's for certain, one in **none** is Santapin's for certain, and the rest are settled by which customers Thenie demonstrably had in April and reported as inferred.
+
+`scripts/reattribute-kitchens.ts` is that reconstruction, dry run by default, `--apply` to write, one `edit_log` entry per row carrying the old kitchen and the reason. It ran on 2026-09-10 and moved 1673 rows. **Its report is the check that matters**: attributed portions × rate against what the bank actually paid each kitchen over January–June — Thenie 106%, Santapin 95%, Pangkha 94%, Cendana 108%. Two lines do not close and both are understood: Yuk Makan reads 187% because 177 portions over 16–24 May have no matching debit in any imported statement (the money left by some other route), and Hanvin reads 18% because only its daily Rp 22.000 debits map to sheet rows while Rp 1,09jt of lump payments — including Rp 595.000 on 22 April — buy no portions the sheet records. July is excluded from that comparison on purpose: the sheet stopped being maintained, so Thenie's Rp 8.961.000 of July bills imply 16–30 portions a day against 2–15 rows on the sheet, and 308 delivery rows have no sheet row at all. That is missing rows, not a wrong kitchen.
+
 ## Order flow stages
 
 `pending_payment` → `payment_proof_received` → `active` → `paused` (optional) → `completed`

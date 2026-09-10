@@ -1,0 +1,537 @@
+{
+  "note": "eater (pre-Jan sheet name) -> bank payer counterparties (Sep-Nov 2025 only; Dec 2025 credits already have orders in the DB). confidence: high|medium|low. customer: existing customers.name to attach to, or null = create IMPORT_ placeholder.",
+  "eaters": {
+    "Friska": {
+      "customer": null,
+      "payers": [],
+      "confidence": "high",
+      "kind": "free_quota",
+      "why": "Justin: girlfriend, free portions"
+    },
+    "Justin": {
+      "customer": null,
+      "payers": [],
+      "confidence": "high",
+      "kind": "free_quota",
+      "why": "Justin: himself, free portions"
+    },
+    "Charlie": {
+      "customer": null,
+      "payers": ["CHARLIE WIJAYA"],
+      "confidence": "high",
+      "why": "name; 840000 09-09 = 40p, sisa 30 on 09-15"
+    },
+    "Candra": {
+      "customer": null,
+      "payers": ["CANDRA WIJAYANTO"],
+      "confidence": "high",
+      "why": "name; 1160000 10-06, first meal 10-07"
+    },
+    "Charloz": {
+      "customer": "Charloz",
+      "payers": ["CHARLOZ REAVAN GER"],
+      "confidence": "high",
+      "why": "name; the three 260,000 of 12-05, 12-12 and 12-18 are already orders in the database"
+    },
+    "Christian": {
+      "customer": null,
+      "payers": ["CHRISTIAN PHOENIX"],
+      "confidence": "high",
+      "why": "name; 312000 11-08 = 12p, first meal 11-10, ate 12"
+    },
+    "Collin": {
+      "customer": null,
+      "payers": ["COLLIN PRATAMA LIE"],
+      "confidence": "high",
+      "why": "name; 56000 = 2p, ate 2"
+    },
+    "Dev": {
+      "customer": null,
+      "payers": ["DEVIN"],
+      "confidence": "high",
+      "why": "name; 1840000 10-13 = 80p, first meal 10-14"
+    },
+    "Vio": {
+      "customer": null,
+      "payers": ["Elvio Franstilo Ju"],
+      "confidence": "high",
+      "why": "name; 1152000 11-03 = 48p, first meal 11-03"
+    },
+    "Erick": {
+      "customer": null,
+      "payers": ["ERICK LEE"],
+      "confidence": "high",
+      "why": "name; 960000 10-09 = 40p, first meal 10-10, ate 38"
+    },
+    "Felice": {
+      "customer": null,
+      "payers": ["FELICE EDGINA ROSS"],
+      "confidence": "high",
+      "why": "name; 500000 11-03 = 20p, ate 20"
+    },
+    "Felicia": {
+      "customer": "Felicia",
+      "payers": ["FELICIA LAURYN ARI"],
+      "confidence": "high",
+      "why": "name; 135000 10-25 + 260000 11-09"
+    },
+    "Finna": {
+      "customer": null,
+      "payers": ["FINNA SUSANTI"],
+      "confidence": "high",
+      "why": "name; 56000 10-20 = 2p, ate 2"
+    },
+    "Fiona": {
+      "customer": null,
+      "payers": ["FIONA"],
+      "confidence": "high",
+      "why": "name; 264000 11-24, first meal 11-25"
+    },
+    "Glady Calista": {
+      "customer": null,
+      "payers": ["GLADY CALISTA CAKR"],
+      "confidence": "high",
+      "why": "name; memo 'Pembayaran Catering 5x' 135000, ate 5"
+    },
+    "Gracia": {
+      "customer": "Gracia",
+      "payers": ["GRACIA CHERLINE MA"],
+      "confidence": "high",
+      "why": "name; Dec order already in DB"
+    },
+    "Grady": {
+      "customer": null,
+      "payers": ["GRADY JESSLYN KIE"],
+      "confidence": "high",
+      "why": "name; 1840000 x2 = 160p, ate 133"
+    },
+    "Viona Kay": {
+      "customer": null,
+      "payers": ["ISABELLE VIONA KAY"],
+      "confidence": "high",
+      "why": "name; 540000 11-08 = 20p, first meal 11-10"
+    },
+    "Jason Therawan": {
+      "customer": "Jason T",
+      "payers": ["JASON THERAWAN"],
+      "confidence": "high",
+      "why": "name; DB already holds his 12-08 135000 order"
+    },
+    "Jennifer": {
+      "customer": "Jennifer Theophilia Hartoyo",
+      "payers": ["JENNIFER THEOPHILI"],
+      "confidence": "high",
+      "why": "memo 'an Jennifer'; same customer runs on in the Jan-Jun sheet"
+    },
+    "Jeremy": {
+      "customer": null,
+      "payers": ["JEREMY CHRISTIAN B"],
+      "confidence": "high",
+      "why": "name; 960000 10-12 = 40p, first meal 10-13, ate 40"
+    },
+    "Jocelyn Halim": {
+      "customer": null,
+      "payers": ["JOCELYN HALIM"],
+      "confidence": "high",
+      "why": "name; 1840000 09-30 = 80p, first meal 10-01, ate 82"
+    },
+    "Jocelyn Natalie": {
+      "customer": null,
+      "payers": ["JOCELYN NATALIE JO"],
+      "confidence": "high",
+      "why": "memos 'catering Jocelyn Natalie' + 'Jocelyn PG'; sisa 39 on 09-15 after 840000 = 40p"
+    },
+    "Jocelyn": {
+      "customer": "Jocelyn",
+      "payers": ["LYMURYATI"],
+      "confidence": "high",
+      "why": "DB already holds LYMURYATI's 12-02 and 12-08 payments as Jocelyn orders"
+    },
+    "Juliani": {
+      "customer": null,
+      "payers": ["JULIANI PRIMALIA"],
+      "confidence": "high",
+      "why": "name; memo 'catering 5hr' 135000, ate 5"
+    },
+    "Daryn Dior": {
+      "customer": "Daryn Dior",
+      "payers": ["KARMILAH"],
+      "confidence": "medium",
+      "why": "no name link; 4 payments 10-21..11-10 total 1541000 ~= 61p at ~25k, ate exactly 61"
+    },
+    "Kelvin": {
+      "customer": "Kelvin",
+      "payers": ["KELVIN LEE"],
+      "confidence": "high",
+      "why": "name; 56000 11-09 = 2p, ate 2"
+    },
+    "Kenny": {
+      "customer": null,
+      "payers": ["KENNY YANGTORO"],
+      "confidence": "high",
+      "why": "name; 260000 10-01 = 10p + 20000 top-up, first meal 10-02"
+    },
+    "Keren hana": {
+      "customer": "Keren Hana",
+      "payers": ["KEREN HANA SYALOMI"],
+      "confidence": "high",
+      "why": "name; Dec orders already in DB"
+    },
+    "Grace": {
+      "customer": "Grace",
+      "payers": ["KHO JOVIAN WRINTO", "DEVI TEJA KURNIAWA"],
+      "confidence": "high",
+      "why": "both memos say 'Grace/Paddington'; Grace eats at 061-PDS"
+    },
+    "Kiliang": {
+      "customer": "Kiliang",
+      "payers": ["KIANN TANDIAH"],
+      "confidence": "high",
+      "why": "name; 800000 11-25, first meal 11-25"
+    },
+    "Kynara": {
+      "customer": null,
+      "payers": ["KYNARA KLEINE TANU"],
+      "confidence": "high",
+      "why": "name + memo 'kynara'"
+    },
+    "Max": {
+      "customer": "Max",
+      "payers": ["MAX TWEMARZEFO"],
+      "confidence": "high",
+      "why": "name; 780000 10-31 + 468000 11-30, first meal 11-01"
+    },
+    "Kezia Wijaya": {
+      "customer": "Kezia WIjaya",
+      "payers": ["MIE LIAN"],
+      "confidence": "high",
+      "why": "memo 'kezia Wijaya PG TC'; sisa 9 on 09-15 after 250000 = 10p"
+    },
+    "Mikayla": {
+      "customer": null,
+      "payers": ["MIKAYLA LIMBIRTH"],
+      "confidence": "high",
+      "why": "name; 312000 10-12 = 12p, first meal 10-13, ate 12"
+    },
+    "Nathan": {
+      "customer": "Nathan",
+      "payers": ["NATHAN"],
+      "confidence": "high",
+      "why": "name + memo 'Kuota 2x Wed lunch n dinner pg', ate 2"
+    },
+    "Nazlisa": {
+      "customer": null,
+      "payers": ["NAZLISA RAYHANA HA"],
+      "confidence": "high",
+      "why": "name; memo 'catering' 260000 11-17 = 10p, ate 10"
+    },
+    "Vea": {
+      "customer": null,
+      "payers": ["PRAYSSI GRACELDA O"],
+      "confidence": "medium",
+      "why": "no name link; 500000 11-30 = 20p, first meal 12-01, ate exactly 20"
+    },
+    "Sky": {
+      "customer": "Sky",
+      "payers": ["SKY RAYMOND WILLYU"],
+      "confidence": "high",
+      "why": "name; 260000 10-30 = 10p, first meal 10-31, ate 10"
+    },
+    "Stefannie": {
+      "customer": null,
+      "payers": ["STEFFANIE AURELIA"],
+      "confidence": "high",
+      "why": "name; 260000 10-26 = 10p, first meal 10-27"
+    },
+    "Stevina Peni": {
+      "customer": null,
+      "payers": ["STEVINA PENI"],
+      "confidence": "high",
+      "why": "name; 29000 = 1p, ate 1"
+    },
+    "Chelsea": {
+      "customer": null,
+      "payers": ["SUGARA MULYANTO"],
+      "confidence": "high",
+      "why": "memo 'KATERING CHELSEA PADDINGTON' 260000 10-19, first meal 10-20, ate 10"
+    },
+    "Talitha": {
+      "customer": null,
+      "payers": ["TALITHA SAKHI"],
+      "confidence": "high",
+      "why": "name + memo 'Talitha'"
+    },
+    "Thierry": {
+      "customer": null,
+      "payers": ["THIERRY PUTRA WILA"],
+      "confidence": "high",
+      "why": "name + memo '5x an Thierry', ate 5"
+    },
+    "Verick": {
+      "customer": "Verick",
+      "payers": ["VERICK TANTONY"],
+      "confidence": "high",
+      "why": "name; sisa 35 on 09-15 after 840000 09-11 = 40p"
+    },
+    "Viorent": {
+      "customer": null,
+      "payers": ["VIORENT DEE VITTA"],
+      "confidence": "high",
+      "why": "name; 29000 = 1p same day"
+    },
+    "Wendy": {
+      "customer": "Wendy",
+      "payers": ["WENDY JONATHAN"],
+      "confidence": "high",
+      "why": "name; Dec orders already in DB"
+    },
+    "Wilson": {
+      "customer": null,
+      "payers": ["WILSON ANG"],
+      "confidence": "high",
+      "why": "name; 250000 09-17 = 10p, sisa 6 on 09-19"
+    },
+    "Axel": {
+      "customer": null,
+      "payers": ["AXEL TANUJAYA"],
+      "confidence": "high",
+      "why": "name; 135000 11-10 = 5p, first meal 11-11, ate 5"
+    },
+    "Evangeline": {
+      "customer": null,
+      "payers": ["EVANGELINE VENTYA"],
+      "confidence": "high",
+      "why": "name; 78000 09-30, first meal 10-01"
+    },
+    "Nabila": {
+      "customer": "Nabila",
+      "payers": ["SITI NABILA SHAYMA"],
+      "confidence": "high",
+      "why": "name; Dec order already in DB"
+    },
+    "Sensen": {
+      "customer": "Sensen",
+      "payers": ["GRYSON LENSRICH"],
+      "confidence": "high",
+      "why": "DB already holds GRYSON's 12-09 135000 and 12-10 25000 as Sensen orders"
+    },
+    "William": {
+      "customer": "William",
+      "payers": ["WILLIAM NATHANAEL"],
+      "confidence": "high",
+      "why": "DB already holds his 12-01 and 12-07 payments as William orders"
+    },
+    "Felix": {
+      "customer": null,
+      "payers": ["DESSY MAYORANTIKA"],
+      "confidence": "high",
+      "why": "memo 'AN Felix' 280000 10-08; earlier 280000 09-30 same payer, first meal 10-01"
+    },
+    "Fira": {
+      "customer": null,
+      "payers": ["STELLA SAFIRA MARY"],
+      "confidence": "high",
+      "why": "'Safira'; 840000 09-12 = 40p and Fira's own Sisa Kouta column reads 38 on 09-15"
+    },
+    "Jason": {
+      "customer": null,
+      "payers": ["MIKHAEL KEVIN NARE"],
+      "confidence": "high",
+      "why": "sheet's Sisa Kouta reads exactly 80 for Jason on 09-20, the day after this 1600000 = 80p landed"
+    },
+    "Florencia": {
+      "customer": null,
+      "payers": ["NETTY WIDJAYA"],
+      "confidence": "medium",
+      "why": "250000 09-17 = 10p, Florencia's first meal 09-18 and sisa 8 on 09-19; she ate exactly 10"
+    },
+    "Rivans": {
+      "customer": null,
+      "payers": [
+        "JANE MARIANA/09-21",
+        "JANE MARIANA/11-23",
+        "JANE MARIANA/12-16"
+      ],
+      "confidence": "high",
+      "why": "Justin: 'paid by his mom'; 3 x catering 40x = 120p, ate exactly 120"
+    },
+    "Drake": {
+      "customer": "Drake",
+      "payers": [
+        "JANE MARIANA/09-14",
+        "SOFIA TOMASOA/09-20",
+        "SOFIA TOMASOA/11-06"
+      ],
+      "confidence": "medium",
+      "why": "sisa 9 on 09-15 then 0 on 09-19 = a 10-pack; the five 250000 credits before 09-15 map one-to-one onto the five eaters showing sisa 9 that day, and Jane's is the only one left. 1600000 lands 09-20, the day after he ran out"
+    },
+    "Kevin Mulia": {
+      "customer": "Kevin M",
+      "payers": ["ALVIN MULIA"],
+      "confidence": "low",
+      "why": "surname Mulia; 1360000 11-20, first meal 11-21. Amount is far larger than the 21 he ate"
+    },
+    "Audrey": {
+      "customer": "Audrey",
+      "payers": ["DENISHA JEKLYN LEE"],
+      "confidence": "low",
+      "why": "220000 11-24, Audrey's first meal 11-25, she ate exactly 10. No name link"
+    },
+    "Toto": {
+      "customer": null,
+      "payers": ["ALBERTO JECKLYN RU", "MARIA ELISABETH MA"],
+      "confidence": "low",
+      "why": "260000 11-10 then 260000 11-22 straddle Toto's 11-11..12-06 run of 19. No name link"
+    },
+    "Eci": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Gita": {
+      "customer": "Gita",
+      "payers": [],
+      "confidence": "none"
+    },
+    "Jenni": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Jessy": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Eric Lee": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Pio": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Bila": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Timothy": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Bernelle": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Aurel Navira": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Neng Anisa": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Natasha": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Veren Jesica": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Ailicia": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Febi": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Luna Alisha": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Dina Addalia": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Shannon M": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Rahmawati Indah": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Vanessa": {
+      "customer": "Vanessa",
+      "payers": [],
+      "confidence": "none"
+    },
+    "Stephanie Seed": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Jeremy Adidya": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Tiffany": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Stella Widjaja": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Valleria": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Haikal Rifqi Kurniawan": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Jhihan Nursabilah": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Jaxine Thalia Kho": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    },
+    "Jordy": {
+      "customer": "Jordy",
+      "payers": [],
+      "confidence": "none"
+    },
+    "Lydia": {
+      "customer": null,
+      "payers": [],
+      "confidence": "none"
+    }
+  }
+}
