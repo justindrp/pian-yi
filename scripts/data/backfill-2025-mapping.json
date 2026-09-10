@@ -471,10 +471,11 @@
       "payers": [
         "JANE MARIANA/09-14",
         "SOFIA TOMASOA/09-20",
-        "SOFIA TOMASOA/11-06"
+        "SOFIA TOMASOA/11-06",
+        "SOFIA TOMASOA/09-23"
       ],
       "confidence": "medium",
-      "why": "sisa 9 on 09-15 then 0 on 09-19 = a 10-pack; the five 250000 credits before 09-15 map one-to-one onto the five eaters showing sisa 9 that day, and Jane's is the only one left. 1600000 lands 09-20, the day after he ran out"
+      "why": "sisa 9 on 09-15 then 0 on 09-19 = a 10-pack; the five 250000 credits before 09-15 map one-to-one onto the five eaters showing sisa 9 that day, and Jane's is the only one left. 1600000 lands 09-20, the day after he ran out Her Rp 10.000 on 09-23 is under a portion at any 2025 rate and she is already his payer twice, so it reads as an ongkir top-up and buys nothing."
     },
     "Kevin Mulia": {
       "customer": "Kevin M",
@@ -535,11 +536,6 @@
       "confidence": "none"
     },
     "Bila": {
-      "customer": null,
-      "payers": [],
-      "confidence": "none"
-    },
-    "Timothy": {
       "customer": null,
       "payers": [],
       "confidence": "none"
@@ -663,14 +659,7 @@
         "JASON CHRISTIAN BU"
       ],
       "confidence": "high",
-      "why": "Rp 37.000 on 09-11 is the discounted 1x rate, so a single-portion order, confirmed by Justin. Distinct from Jason Therawan and from the sheet's bare 'Jason', both of which already have their own payers. No sheet row of his own - the sheet carries nothing but Charlie between 09-09 and 09-14 - but Justin confirms the portion was delivered, so it is written here as 09-12 lunch, the day after payment.",
-      "deliveries": [
-        {
-          "date": "2025-09-12",
-          "meal": "lunch",
-          "portions": 1
-        }
-      ]
+      "why": "Rp 37.000 on 09-11 is the discounted 1x rate, so a single-portion order, confirmed by Justin. Distinct from Jason Therawan and from the sheet's bare 'Jason', both of which already have their own payers. The sheet was missing its first week when this was matched - 09-09 to 09-14 carried nothing but Charlie - and Justin has since added his 09-12 dinner row, so the sheet now carries the delivery itself."
     }
   },
   "nonCustomerNote": "Credits that reach our account but buy no Pian Yi subscription package. Matched against the same haystack as `eaters` (raw counterparty + description), whole-word, before the eater map is tried. `account` names the contra account the journal line will face.\n\nkind `event_order` is the exception that still writes rows: a one-off catered event is bought and eaten on one date, so it gets an order AND a delivery row dated the day after the payment, and the two cancel to a zero balance. `portions` is what the event was; null means nobody has told us yet and the payer is held back rather than guessed at. `existingOrderId` reuses an order the database already holds instead of inserting a second one.\n\nEvery other kind writes nothing here and is booked by the journal backfill.",
@@ -685,7 +674,9 @@
       "rate": 21000,
       "orderTotal": 1386000,
       "deliveryFee": 20000,
-      "why": "66 portions at 21.000 plus a 20.000 delivery fee, quoted by Justin, paid in two parts on 09-25: 1.280.000 here and 126.000 alongside. The two credits sum to 1.406.000, which is 1.386.000 of food and 20.000 of ongkir to the rupiah. The order is written once, here; the second credit writes nothing."
+      "why": "66 portions at 21.000 plus a 20.000 delivery fee, quoted by Justin, paid in two parts on 09-25: 1.280.000 here and 126.000 alongside. The two credits sum to 1.406.000, which is 1.386.000 of food and 20.000 of ongkir to the rupiah. The order is written once, here; the second credit writes nothing. The sheet dates it: 09-28 lunch, 'Timothy Emery', catatan '66 porsi event gereja'.",
+      "deliveryDate": "2025-09-28",
+      "meal": "lunch"
     },
     {
       "match": "TIMOTHY EMERY HART",
@@ -854,7 +845,7 @@
       "match": "KARIANNA MEGA ISWA",
       "kind": "middleman_customer",
       "account": "4900",
-      "why": "Rp 570.000 on 09-26. Middleman Kitchen customer, confirmed by Justin. WORTH A SECOND LOOK: the pre-January sheet carries a '30 PORSI HONEY CHICKEN' lunch for Bernelle the next day, 09-27, and 570.000 is exactly 30 x 19.000 - so this may be a Middleman order our own kitchen cooked. If it was ours the credit is 4001, not 4900."
+      "why": "Rp 570.000 on 09-26, which is 30 x 19.000, and the pre-January sheet carries a '30 PORSI HONEY CHICKEN' lunch for Bernelle the next day. Honey chicken is Middleman Kitchen's menu and not ours, so the food was theirs even though the delivery was written on our sheet: Karianna is their customer and the credit is 4900, not 4001. Same reading as Aurelia Tera Puspi's 'honey chicken large' Rp 20.000 on 10-13."
     }
   ]
 }

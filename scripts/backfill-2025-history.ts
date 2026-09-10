@@ -270,6 +270,8 @@ const SPELLING: Record<string, string> = {
   "kezia w": "Kezia Wijaya",
   "viona k": "Viona Kay",
   glady: "Glady Calista",
+  // The sheet writes the event's host, the statement writes his full name.
+  "timothy emery": "Timothy Emery Hart",
 };
 
 const canonical = (name: string) => SPELLING[norm(name)] ?? name;
@@ -529,6 +531,25 @@ async function main() {
     plan.eaten += rule.portions;
   }
 
+  // An event that also got written on the daily sheet is one row standing for
+  // the whole event — "Timothy Emery, 66 porsi event gereja" is a single line
+  // for 66 portions. Counting it as well as the event's own delivery would
+  // both inflate the row by one portion and leave the eater one short, so the
+  // event wins and the sheet row is dropped wherever the two coincide.
+  const eventKeys = new Set(
+    plans.flatMap((p) =>
+      p.eventDeliveries.map((d) => `${p.eater}|${d.date}|${d.meal}`),
+    ),
+  );
+  const sheetRows = sheet.filter(
+    (r) => !eventKeys.has(`${canonical(r.name)}|${r.date}|${r.meal}`),
+  );
+  for (const p of plans) {
+    const rows = sheetRows.filter((r) => canonical(r.name) === p.eater).length;
+    p.eaten =
+      rows + p.eventDeliveries.reduce((sum, d) => sum + d.portions, 0);
+  }
+
   // --- what the database already holds ------------------------------------
   for (const p of plans) {
     if (!p.customerId) continue;
@@ -741,7 +762,7 @@ async function main() {
     console.log("\nDry run. Nothing written. Re-run with --apply.");
     return;
   }
-  await write(db, plans, sheet);
+  await write(db, plans, sheetRows);
 }
 
 async function write(

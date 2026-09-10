@@ -126,6 +126,8 @@ Payment + 1 is only the fallback. **Where the sheet records the event itself, th
 
 An order is written for the full quoted total even when only part of it has been received. Samuel Gouw's 75 portions are booked at Rp 1.425.000 against a Rp 1.068.750 down payment, because that is what was bought; the Rp 356.250 that never reaches a statement is a receivable, and hiding it by shrinking the order would lose it.
 
+**Where an event also got written on the daily sheet, the event wins and the sheet row is dropped.** One sheet line stands for the whole event — `Timothy Emery, 66 porsi event gereja` is a single row for 66 portions — so counting it alongside the event's own delivery would add a portion to that day and leave the eater one short of what he bought. The backfill drops any sheet row whose eater, date and meal a written event already covers.
+
 **A portion count that nobody knows holds the whole payer back.** The script writes no order and no delivery for an event whose `portions` is null and lists it instead, because a guessed size is a wrong delivery row and a wrong delivery row is indistinguishable from a real one afterwards. The money is never lost by waiting — it is still on the statement, and the journal backfill books it to 4001 Catering Revenue either way.
 
 Tendering itself is manual today — the broadcast to the kitchens is composed by hand, bids may be split across two or three of them, and the customer's selling price is never shown to a bidder. There is no tool for it and no automated path; the bot's job is to gather the brief and hand it to an admin.
