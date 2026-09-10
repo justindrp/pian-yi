@@ -71,7 +71,13 @@ type Mapping = {
       customer: string | null;
       payers: string[];
       confidence: "high" | "medium" | "low" | "none";
-      kind?: "free_quota";
+      /**
+       * `free_quota` is a staff meal; `influencer` is a marketing sample.
+       * Both are Rp 0 orders, and both differ from an unpaid gap: nobody was
+       * ever going to pay. An influencer is **always exactly one portion** —
+       * the script refuses any other count rather than granting it.
+       */
+      kind?: "free_quota" | "influencer";
       /**
        * Portions the sheet never recorded. The sheet was barely kept in its
        * first fortnight — 9 to 14 September carries one name — so a payment
@@ -331,6 +337,8 @@ type Plan = {
     total: number;
     payer: string;
     free: boolean;
+    /** Why it is Rp 0, when it is: a staff meal or a marketing sample. */
+    grant?: "internal — free portions" | "influencer sample — marketing";
     /** Already in the database from the December import; not written again. */
     dup: boolean;
   }[];
@@ -621,7 +629,7 @@ async function main() {
     // Event plans have no eater entry: their portions came from the payment,
     // not from the sheet, and are already balanced by their own delivery row.
     if (!m) continue;
-    const free = m.kind === "free_quota";
+    const free = m.kind === "free_quota" || m.kind === "influencer";
     const covered =
       p.existingBought -
       p.existingEaten +
@@ -642,13 +650,26 @@ async function main() {
       });
       continue;
     }
+    // One portion is the whole definition of an influencer sample. A second
+    // one means either the name is a customer who also got a sample or the
+    // sheet has a row that belongs to somebody else, and granting it free
+    // would write off food that was sold.
+    if (m.kind === "influencer" && short !== 1)
+      throw new Error(
+        `${p.eater}: influencer grant is one portion, sheet has ${short}`,
+      );
     p.orders.push({
       date: first,
       size: short,
       rate: 0,
       total: 0,
-      payer: "(free portions)",
+      payer:
+        m.kind === "influencer" ? "(influencer sample)" : "(free portions)",
       free,
+      grant:
+        m.kind === "influencer"
+          ? "influencer sample — marketing"
+          : "internal — free portions",
       dup: false,
     });
   }
@@ -738,6 +759,22 @@ async function main() {
       `  ${fresh.length} new, ${rows.length - fresh.length} already in DB;` +
         ` ${fresh.reduce((s, o) => s + o.size, 0)} portions` +
         ` for Rp ${fresh.reduce((s, o) => s + o.total, 0).toLocaleString("id-ID")}`,
+    );
+  }
+
+  const samples = plans.flatMap((p) =>
+    p.orders
+      .filter((o) => o.grant === "influencer sample — marketing")
+      .map((o) => ({ eater: p.eater, date: o.date })),
+  );
+  if (samples.length) {
+    console.log(
+      `\n${samples.length} influencer samples, one portion each, Rp 0 — the food is real, the sale is not:`,
+    );
+    for (const g of [...samples].sort((a, b) => a.date.localeCompare(b.date)))
+      console.log(`  ${g.date}  ${g.eater}`);
+    console.log(
+      "  their COGS belongs in 6001 Marketing Expense, not 5001 — the journal backfill splits them out",
     );
   }
 
@@ -904,7 +941,7 @@ async function write(
           start_date: o.date,
           status: "completed",
           source: o.free ? "free_quota" : "purchase",
-          grant_reason: o.free ? "internal — free portions" : null,
+          grant_reason: o.grant ?? null,
           granted_by: o.free ? ACTOR : null,
           subcontractor_id: kitchenOn(o.date),
           paid_at: o.free ? null : `${o.date}T00:00:00+07:00`,
