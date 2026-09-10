@@ -108,6 +108,21 @@ type Mapping = {
     /** Where the sheet records the event, when it is not the day after payment. */
     deliveryDate?: string;
     meal?: "lunch" | "dinner";
+    /**
+     * An event is tendered, so its rate is a negotiated figure and not the
+     * credit divided by the portions: a deposit, a second instalment and a
+     * delivery fee all move the amount away from what was actually agreed.
+     * Set both together, from what Justin quoted, or leave both unset and the
+     * credit is taken at face value.
+     */
+    rate?: number;
+    orderTotal?: number;
+    /**
+     * Ongkir folded into the payment. It is a pass-through and belongs in 2101,
+     * not in 4001, so the journal backfill splits it off. It is not part of
+     * `orderTotal`.
+     */
+    deliveryFee?: number;
   }[];
 };
 type Credit = {
@@ -497,8 +512,8 @@ async function main() {
     plan.orders.push({
       date: c.date,
       size: rule.portions,
-      rate: Math.round(c.amount / rule.portions),
-      total: c.amount,
+      rate: rule.rate ?? Math.round(c.amount / rule.portions),
+      total: rule.orderTotal ?? c.amount,
       payer: c.counterparty || rule.customer,
       free: false,
       dup: false,

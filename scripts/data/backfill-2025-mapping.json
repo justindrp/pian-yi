@@ -679,6 +679,25 @@
       "match": "TIMOTHY EMERY HART",
       "kind": "event_order",
       "account": "4001",
+      "amount": 1280000,
+      "customer": "Timothy Emery Hart",
+      "portions": 66,
+      "rate": 21000,
+      "orderTotal": 1386000,
+      "deliveryFee": 20000,
+      "why": "66 portions at 21.000 plus a 20.000 delivery fee, quoted by Justin, paid in two parts on 09-25: 1.280.000 here and 126.000 alongside. The two credits sum to 1.406.000, which is 1.386.000 of food and 20.000 of ongkir to the rupiah. The order is written once, here; the second credit writes nothing."
+    },
+    {
+      "match": "TIMOTHY EMERY HART",
+      "kind": "event_payment",
+      "account": "4001",
+      "amount": 126000,
+      "why": "The balance of the 66-portion event above, paid the same day. No order and no delivery - both belong to the 1.280.000 credit - and of this, 20.000 is the delivery fee, which is a pass-through and books to 2101 rather than 4001."
+    },
+    {
+      "match": "TIMOTHY EMERY HART",
+      "kind": "event_order",
+      "account": "4001",
       "amount": 575000,
       "customer": "Timothy Emery Hart",
       "portions": 25,
@@ -714,9 +733,11 @@
       "match": "SAMUEL GOUW",
       "kind": "event_order",
       "account": "4001",
-      "why": "Custom event order paid as a 75% deposit, which is why Rp 1.068.750 is not round. Full value Rp 1.425.000.",
       "customer": "Samuel Gouw",
-      "portions": null
+      "portions": 75,
+      "rate": 19000,
+      "orderTotal": 1425000,
+      "why": "75 portions at 19.000, quoted by Justin. The Rp 1.068.750 credit of 12-16 is a 75% down payment on the 1.425.000 total; the remaining 356.250 never appears on any statement in the window, so it is either still owed or was settled in cash. The order carries the full 1.425.000 because that is what was bought."
     },
     {
       "match": "ELEAZAR RECCA SALI",
