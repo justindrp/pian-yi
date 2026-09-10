@@ -54,6 +54,11 @@ import {
 } from "@/lib/claude/sanitize-reply";
 import { validateReply } from "@/lib/claude/validate-reply";
 import {
+  describeCustomerImage,
+  readPaymentSlip,
+  slipMatchesTotals,
+} from "@/lib/claude/vision";
+import {
   hasCurrentOrder,
   normalizeCustomerState,
   shouldHandlePaymentProof,
@@ -1403,6 +1408,11 @@ export async function processWebhookAsync(
     );
   }
 
+  // What the model read off an uncaptioned photo, standing in for the caption
+  // the customer did not write. Null when vision is unavailable, which puts the
+  // branch below back on the "please send text" reply.
+  let visionCaption: string | null = null;
+
   // Payment proof: capture image when the latest order is still pending payment
   if (message.type === "image" && message.imageId) {
     // A customer who transfers before the bot ever called extract_order has no
@@ -1454,23 +1464,39 @@ export async function processWebhookAsync(
     }
 
     if (!message.imageCaption) {
-      await saveMessage({
-        customerId,
-        role: "user",
-        content: "[Image]",
-        messageId: message.messageId,
-        intent: "other",
-        messageType: "image",
-        mediaId: message.imageId,
-        mediaUrl: await inboundMediaUrl(),
+      // A photo with no caption used to dead-end here on the "please send
+      // text" template, which is the wrong answer to a menu screenshot, a
+      // Maps pin or a picture of yesterday's box. Read it instead and let the
+      // description stand in for the caption the turn never got, so the normal
+      // model turn below answers the customer.
+      const bytes = await downloadMedia(message.imageId).catch((err) => {
+        console.error(
+          "[webhook] image download for vision failed:",
+          (err as Error).message,
+        );
+        return null;
       });
-      const tmpl = await getTemplate("text_only");
-      await sendTextMessage(message.from, tmpl);
-      await db
-        .from("processed_messages")
-        .update({ processed_at: new Date().toISOString() })
-        .eq("message_id", message.messageId);
-      return;
+      visionCaption = bytes ? await describeCustomerImage(bytes) : null;
+
+      if (!visionCaption) {
+        await saveMessage({
+          customerId,
+          role: "user",
+          content: "[Image]",
+          messageId: message.messageId,
+          intent: "other",
+          messageType: "image",
+          mediaId: message.imageId,
+          mediaUrl: await inboundMediaUrl(),
+        });
+        const tmpl = await getTemplate("text_only");
+        await sendTextMessage(message.from, tmpl);
+        await db
+          .from("processed_messages")
+          .update({ processed_at: new Date().toISOString() })
+          .eq("message_id", message.messageId);
+        return;
+      }
     }
   }
 
@@ -1499,8 +1525,16 @@ export async function processWebhookAsync(
   let text: string;
   if (message.type === "location") {
     text = formatLocationMessage(message);
-  } else if (message.type === "image" && message.imageCaption) {
-    text = message.imageCaption;
+  } else if (
+    message.type === "image" &&
+    (message.imageCaption || visionCaption)
+  ) {
+    // The description is labelled as ours. Handing the model a read of the
+    // photo as if the customer had typed it invites a reply that answers words
+    // nobody said.
+    text =
+      message.imageCaption ??
+      `[Pelanggan mengirim foto tanpa teks. Isi foto: ${visionCaption}]`;
   } else if (message.type !== "text") {
     const tmpl = await getTemplate("text_only");
     await sendTextMessage(message.from, tmpl);
@@ -3484,9 +3518,11 @@ async function handlePaymentProofImage(
   const db = createAdminClient();
 
   let imageUrl: string | null = null;
+  let imageBytes: Buffer | null = null;
   if (message.imageId) {
     try {
       const imageBuffer = await downloadMedia(message.imageId);
+      imageBytes = imageBuffer;
       const today = new Date().toISOString().slice(0, 10);
       const storagePath = `${customerId}/${today}/${message.messageId}.jpg`;
       const { error: uploadErr } = await db.storage
@@ -3522,7 +3558,7 @@ async function handlePaymentProofImage(
   // for her 20-porsi package and Cila's 5, only her own flipped, and
   // cancel-unpaid was four hours from sweeping Cila's the evening before its
   // start date.
-  await db
+  const { data: flippedOrders } = await db
     .from("orders")
     .update({
       status: "payment_proof_received",
@@ -3530,7 +3566,35 @@ async function handlePaymentProofImage(
       payment_proof_received_at: new Date().toISOString(),
     })
     .or(`customer_id.eq.${customerId},paid_by_customer_id.eq.${customerId}`)
-    .eq("status", "pending_payment");
+    .eq("status", "pending_payment")
+    .select("id, total_price");
+
+  // Read the slip so the admin verifying at /payments sees the figure without
+  // opening the image. Advisory only — see migration 105. The proof is already
+  // banked above, so a model outage costs nothing here.
+  const slipRead = imageBytes ? await readPaymentSlip(imageBytes) : null;
+  if (slipRead && flippedOrders && flippedOrders.length > 0) {
+    const matchesTotal = slipMatchesTotals(
+      slipRead.amountIdr,
+      flippedOrders.map((o) => o.total_price ?? 0),
+    );
+    const payload = {
+      amount_idr: slipRead.amountIdr,
+      recipient_name: slipRead.recipientName,
+      bank: slipRead.bank,
+      datetime: slipRead.datetime,
+      is_transfer_receipt: slipRead.isTransferReceipt,
+      matches_total: matchesTotal,
+      read_at: new Date().toISOString(),
+    };
+    await db
+      .from("orders")
+      .update({ payment_proof_read: payload })
+      .in(
+        "id",
+        flippedOrders.map((o) => o.id),
+      );
+  }
 
   await saveMessage({
     customerId,

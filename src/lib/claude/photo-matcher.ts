@@ -6,8 +6,8 @@ import {
   NO_THINKING,
 } from "@/lib/claude/client";
 import { saveMessage, updateMessageReceipt } from "@/lib/claude/conversation";
-import { sendPushToAllAdmins } from "@/lib/push/send";
 import { pickDeliveryForPhoto } from "@/lib/deliveries/windows";
+import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   fetchAndUploadImage,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/whatsapp/client";
 import { windowIsOpen } from "@/lib/whatsapp/window";
 import { WINDOW_NOTICE_CLAUSE } from "@/lib/whatsapp/window-notice";
+import { askVision } from "./vision";
 
 interface DeliveryRow {
   id: string;
@@ -37,6 +38,18 @@ async function getTodayDeliveries(
   return (data ?? []) as unknown as DeliveryRow[];
 }
 
+/** Bytes of a stored proof image, or null — a fetch failure falls back to the
+ *  caption-only match that predates vision. */
+async function fetchProofImage(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 export async function matchDeliveryPhoto(proofId: string): Promise<void> {
   const db = createAdminClient();
 
@@ -52,7 +65,14 @@ export async function matchDeliveryPhoto(proofId: string): Promise<void> {
     ? await getTodayDeliveries(proof.subcontractor_id)
     : [];
 
-  if (!proof.caption || todayDeliveries.length === 0) {
+  // The photo itself is evidence now, so a missing caption is no longer the end
+  // of the road — a kitchen that photographs the label on the box says who it
+  // is for without typing it. Nothing to match against is still the end.
+  const imageBytes = proof.image_url
+    ? await fetchProofImage(proof.image_url as string)
+    : null;
+
+  if ((!proof.caption && !imageBytes) || todayDeliveries.length === 0) {
     await db
       .from("delivery_proofs")
       .update({ status: "needs_review" })
@@ -74,7 +94,11 @@ export async function matchDeliveryPhoto(proofId: string): Promise<void> {
     .join("\n");
 
   const prompt = `You are matching a delivery photo to a customer.
-Photo caption: "${proof.caption}"
+${
+  proof.caption
+    ? `Photo caption: "${proof.caption}"`
+    : "The photo has no caption. Read any name, label, unit number or handwriting visible in the image."
+}
 
 Today's customers for this subcontractor:
 ${customerList}
@@ -88,14 +112,28 @@ If no match is confident, return { "customer_id": null, "confidence": 0, "reason
     reasoning: string;
   };
   try {
-    const client = getAnthropicClient();
-    const res = await client.messages.create({
-      model: HAIKU_MODEL,
-      ...NO_THINKING,
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const text = extractJson(res) || "{}";
+    let text: string;
+    if (imageBytes) {
+      const raw = await askVision({
+        image: imageBytes,
+        prompt,
+        maxTokens: 1000,
+      });
+      text =
+        (raw ?? "")
+          .replace(/^```(?:json)?\n?/, "")
+          .replace(/\n?```$/, "")
+          .trim() || "{}";
+    } else {
+      const client = getAnthropicClient();
+      const res = await client.messages.create({
+        model: HAIKU_MODEL,
+        ...NO_THINKING,
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      });
+      text = extractJson(res) || "{}";
+    }
     match = JSON.parse(text);
   } catch {
     await db

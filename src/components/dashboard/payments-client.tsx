@@ -37,6 +37,48 @@ function paymentTime(order: OrderWithCustomer): string | null {
   return order.payment_proof_received_at ?? order.paid_at;
 }
 
+interface SlipReadShape {
+  amount_idr?: number | null;
+  recipient_name?: string | null;
+  bank?: string | null;
+  datetime?: string | null;
+  matches_total?: boolean | null;
+}
+
+/** What the model read off the transfer slip, so the figure can be checked
+ *  without opening the image. Advisory: the money is still verified by a
+ *  person, because "Mark as paid" writes the kitchen sheet and a misread or
+ *  forged screenshot would become cooked food. A blank read renders nothing —
+ *  an absent pre-read must not look like a failed one. */
+function SlipRead({ read }: { read: unknown }) {
+  if (!read || typeof read !== "object") return null;
+  const r = read as SlipReadShape;
+  if (r.amount_idr == null && !r.recipient_name) return null;
+
+  const parts = [
+    r.amount_idr == null ? "nominal tidak terbaca" : formatIDR(r.amount_idr),
+    r.recipient_name,
+    r.bank,
+    r.datetime,
+  ].filter(Boolean);
+
+  // One transfer often covers two orders, so the writer counts the sum as a
+  // match too — "beda" here means worth opening the image, not worth refusing.
+  const tone =
+    r.matches_total === true
+      ? "text-gray-500"
+      : r.matches_total === false
+        ? "text-amber-700"
+        : "text-gray-400";
+
+  return (
+    <p className={`text-xs mt-1 ${tone}`}>
+      Terbaca: {parts.join(" · ")}
+      {r.matches_total === false && " · beda dari total order"}
+    </p>
+  );
+}
+
 export default function PaymentsClient() {
   const [tab, setTab] = useState<Tab>("pending_verification");
   const [paidDate, setPaidDate] = useState(localToday());
@@ -276,6 +318,7 @@ export default function PaymentsClient() {
                           </p>
                         )
                       )}
+                      <SlipRead read={order.payment_proof_read} />
                     </div>
                     <div className="flex gap-2">
                       <Button

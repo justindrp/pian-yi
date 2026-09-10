@@ -921,6 +921,30 @@ Both early-return branches in the webhook — `escalated_to_human` and `pending_
 
 Capturing the proof is bookkeeping, not the bot talking, so both branches now call `handlePaymentProofImage(..., { sendConfirmation: false })` when the latest order is `pending_payment`. That advances the order and stores the image but sends the customer nothing — a thread a human is holding must not get an automated reply — and pushes to admins at **high** priority instead of medium, because on those threads no one else is watching. `scripts/rescue-payment-proof.ts` repairs a proof that was already swallowed.
 
+## The model reads images, and reading a slip is never paying it
+
+Every image path was caption-only until 2026-09-10: an uncaptioned photo dead-ended on the `text_only` template, a slip was stored without anyone reading it, and a kitchen photo with no caption went straight to `needs_review`. DeepSeek's flash model does vision on the same Anthropic-format endpoint we already use, so all three now pass the bytes to the model through `askVision()` (`src/lib/claude/vision.ts`).
+
+Three rules hold across all of them.
+
+- **Vision reads a payment slip. It never marks one paid.** `readPaymentSlip()` writes `orders.payment_proof_read` for the admin verifying at `/payments`, and stops there. `paid_at` stays a human decision, because `mark_paid` writes `daily_deliveries` rows and nothing filters the kitchen sheet by order status — a forged or misread screenshot would become cooked food, not a bad database row. The proof is banked before the read runs, so a model outage costs the pre-read and nothing else.
+- **A description is labelled as ours, never as the customer's words.** An uncaptioned photo reaches the turn as `[Pelanggan mengirim foto tanpa teks. Isi foto: …]`. Handing the model a read of a picture as if the customer had typed it invites a reply answering words nobody said. When vision is unavailable the branch falls back to the `text_only` template it used before.
+- **A figure the model could not read is `null`, never a guess and never `false`.** `slipMatchesTotals()` returns `null` for an unread amount rather than a mismatch, and `/payments` renders nothing rather than an empty read — an absent pre-read must not look like a failed one.
+
+Measured on 36 real slips from the `payment-proofs` bucket before any of it shipped, each read twice, with and without thinking mode:
+
+| | thinking off | thinking on |
+| --- | --- | --- |
+| identical amount | 33/36 | — |
+| exact-match a linked order total | 27/36 | 27/36 |
+| latency median / max | 1411ms / 2170ms | 2991ms / 7890ms |
+| output tokens over 36 calls | 2,529 | 21,664 |
+| returned no text at all | 0 | 1 |
+
+Thinking bought one fixed thousand-separator misread and cost one silent empty response — `stop_reason: "max_tokens"` with a thinking block and no text, at `max_tokens: 1500` on an ordinary slip, which is the failure `NO_THINKING` exists to prevent. It matched the order total no more often. So vision spreads `NO_THINKING` like every other call site; see "Reading model responses" in `DEV_REFERENCE.md`.
+
+Two findings from that run shape the code. The recipient name read as our account holder on 35 of 36 slips across several bank layouts, so it is a real signal that a transfer went somewhere else — the 36th read a transfer *description* off a `TRSF E-BANKING DB` statement line, not a payee. And most apparent mismatches are not model errors: one slip read 685.000 against orders of 540.000 and 145.000, which is one transfer covering both, read correctly. Genuine misreads were 2 of 36.
+
 ## Replaying real conversations against the bot
 
 `scripts/replay-orders.ts` plays the customer turns of the last N real ordering conversations back through the **live** pipeline — same prompt, same tools, same validator, same handlers — and checks whether the bot still produces the order and the deliveries the real conversation produced. The real `orders` / `daily_deliveries` rows are the ground truth, so the corpus needs no hand-written expectations. Built after 2026-08-18, when three separate defects (last-tool-only parsing, a validator blind to the conversation, a payment proof dropped on a parked thread) each reached a customer before anyone noticed.
