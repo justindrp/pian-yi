@@ -518,8 +518,11 @@
     },
     "Jessy": {
       "customer": null,
-      "payers": [],
-      "confidence": "none"
+      "payers": [
+        "JESLYN VERDITA MAR"
+      ],
+      "confidence": "medium",
+      "why": "Jessy's only two rows are both 09-26 dinner, and Jeslyn Verdita's Rp 72.000 on 09-25 is exactly 2 x 36.000, the discounted 2x rung, paid the day before. Justin says Jeslyn may have been paying for someone else, and this is the only two-portion eater the payment can be. NEEDS CONFIRMING: if Jessy is not who Jeslyn bought for, give Jeslyn her own eater with two deliveries on 09-26."
     },
     "Eric Lee": {
       "customer": null,
@@ -654,25 +657,35 @@
       "payers": [],
       "confidence": "none"
     },
-    "Jeslyn Verdita": {
-      "customer": null,
-      "payers": [
-        "JESLYN VERDITA MAR"
-      ],
-      "confidence": "high",
-      "why": "Rp 72.000 on 09-25 is 2 x 36.000, the discounted 2x rung, one day past the promo's printed end - the promo ran a day long, confirmed by Justin. A customer, not an event. She has no row anywhere on the pre-January sheet, so she is left holding both portions."
-    },
     "Jason Christian": {
       "customer": null,
       "payers": [
         "JASON CHRISTIAN BU"
       ],
       "confidence": "high",
-      "why": "Rp 37.000 on 09-11 is the discounted 1x rate, so a single-portion order, confirmed by Justin. Distinct from Jason Therawan and from the sheet's bare 'Jason', both of which already have their own payers. No sheet row of his own, so he is left holding the portion."
+      "why": "Rp 37.000 on 09-11 is the discounted 1x rate, so a single-portion order, confirmed by Justin. Distinct from Jason Therawan and from the sheet's bare 'Jason', both of which already have their own payers. No sheet row of his own - the sheet carries nothing but Charlie between 09-09 and 09-14 - but Justin confirms the portion was delivered, so it is written here as 09-12 lunch, the day after payment.",
+      "deliveries": [
+        {
+          "date": "2025-09-12",
+          "meal": "lunch",
+          "portions": 1
+        }
+      ]
     }
   },
   "nonCustomerNote": "Credits that reach our account but buy no Pian Yi subscription package. Matched against the same haystack as `eaters` (raw counterparty + description), whole-word, before the eater map is tried. `account` names the contra account the journal line will face.\n\nkind `event_order` is the exception that still writes rows: a one-off catered event is bought and eaten on one date, so it gets an order AND a delivery row dated the day after the payment, and the two cancel to a zero balance. `portions` is what the event was; null means nobody has told us yet and the payer is held back rather than guessed at. `existingOrderId` reuses an order the database already holds instead of inserting a second one.\n\nEvery other kind writes nothing here and is booked by the journal backfill.",
   "nonCustomer": [
+    {
+      "match": "TIMOTHY EMERY HART",
+      "kind": "event_order",
+      "account": "4001",
+      "amount": 575000,
+      "customer": "Timothy Emery Hart",
+      "portions": 25,
+      "deliveryDate": "2025-09-27",
+      "meal": "dinner",
+      "why": "The sheet sizes this one itself: 09-27 dinner, 'Timothy', catatan '25 PORSI!! MENU : CHICKEN SALTED EGG, KACANG PANJANG, SEMANGKA'. Rp 575.000 over 25 is exactly 23.000, and the payment landed the day before. The sheet's own 'Timothy' row counts as one portion eaten by a separate unpaid eater; the 25 are written here."
+    },
     {
       "match": "TIMOTHY EMERY HART",
       "kind": "event_order",
@@ -815,6 +828,12 @@
       "kind": "middleman_customer",
       "account": "4900",
       "why": "Rp 20.000 on 10-13, memo 'honey chicken large'. Middleman Kitchen customer, confirmed by Justin. The counterparty column reads INDONESIA because the parser takes the branch address instead of the name; the name is in the description, which is part of the haystack."
+    },
+    {
+      "match": "KARIANNA MEGA ISWA",
+      "kind": "middleman_customer",
+      "account": "4900",
+      "why": "Rp 570.000 on 09-26. Middleman Kitchen customer, confirmed by Justin. WORTH A SECOND LOOK: the pre-January sheet carries a '30 PORSI HONEY CHICKEN' lunch for Bernelle the next day, 09-27, and 570.000 is exactly 30 x 19.000 - so this may be a Middleman order our own kitchen cooked. If it was ours the credit is 4001, not 4900."
     }
   ]
 }

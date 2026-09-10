@@ -70,6 +70,13 @@ type Mapping = {
       payers: string[];
       confidence: "high" | "medium" | "low" | "none";
       kind?: "free_quota";
+      /**
+       * Portions the sheet never recorded. The sheet was barely kept in its
+       * first fortnight — 9 to 14 September carries one name — so a payment
+       * with no row against it is as often a gap in the sheet as an unclaimed
+       * balance. A delivery named here is one Justin has confirmed happened.
+       */
+      deliveries?: { date: string; meal: "lunch" | "dinner"; portions: number }[];
       why?: string;
     }
   >;
@@ -92,6 +99,15 @@ type Mapping = {
     portions?: number | null;
     /** An order the database already holds for this event; reused, not doubled. */
     existingOrderId?: string;
+    /**
+     * Restricts the rule to one credit. A payer with several events sizes each
+     * one separately, and a rule that names an amount is tried before the bare
+     * name rule that would otherwise swallow all of them.
+     */
+    amount?: number;
+    /** Where the sheet records the event, when it is not the day after payment. */
+    deliveryDate?: string;
+    meal?: "lunch" | "dinner";
   }[];
 };
 type Credit = {
@@ -351,10 +367,14 @@ async function main() {
 
   // Same haystack and the same whole-word rule as the payer map, so a name the
   // bank ran into the next line's text still matches.
-  const nonCustomer = (mapping.nonCustomer ?? []).map((r) => ({
-    ...r,
-    re: new RegExp(`\\b${norm(r.match).replace(/ /g, "\\s+")}\\b`),
-  }));
+  const nonCustomer = (mapping.nonCustomer ?? [])
+    .map((r) => ({
+      ...r,
+      re: new RegExp(`\\b${norm(r.match).replace(/ /g, "\\s+")}\\b`),
+    }))
+    // A rule that names an amount is the specific one; try it before the bare
+    // name rule that matches every credit the same payer sent.
+    .sort((a, b) => (b.amount ? 1 : 0) - (a.amount ? 1 : 0));
 
   // --- customers ----------------------------------------------------------
   const { data: allCustomers } = await db
@@ -391,10 +411,12 @@ async function main() {
       orders: [],
       existingBought: 0,
       existingEaten: 0,
-      eventDeliveries: [],
+      eventDeliveries: (m.deliveries ?? []).map((d) => ({ ...d })),
       reuseOrderIds: [],
     });
   }
+  for (const p of plans)
+    p.eaten += p.eventDeliveries.reduce((s, d) => s + d.portions, 0);
 
   // --- orders from the statements -----------------------------------------
   const unmatched: Credit[] = [];
@@ -403,8 +425,10 @@ async function main() {
   const unpriced: Credit[] = [];
   const surcharges: Credit[] = [];
   for (const c of credits) {
-    const rule = nonCustomer.find((r) =>
-      r.re.test(norm(`${c.counterparty} ${c.memo}`)),
+    const rule = nonCustomer.find(
+      (r) =>
+        (r.amount === undefined || r.amount === c.amount) &&
+        r.re.test(norm(`${c.counterparty} ${c.memo}`)),
     );
     if (rule) {
       excluded.push({ credit: c, rule });
@@ -483,8 +507,8 @@ async function main() {
     if (rule.existingOrderId) plan.orders[plan.orders.length - 1].dup = true;
     plan.reuseOrderIds.push(rule.existingOrderId);
     plan.eventDeliveries.push({
-      date: nextDay(c.date),
-      meal: "lunch",
+      date: rule.deliveryDate ?? nextDay(c.date),
+      meal: rule.meal ?? "lunch",
       portions: rule.portions,
     });
     plan.eaten += rule.portions;
