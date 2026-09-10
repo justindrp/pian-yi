@@ -563,8 +563,11 @@
     },
     "Veren Jesica": {
       "customer": null,
-      "payers": [],
-      "confidence": "none"
+      "payers": [
+        "JESICA CHRISTINE"
+      ],
+      "confidence": "medium",
+      "why": "Rp 165.000 on 09-30 is a KUOTA 5X at the rack rate of 33.000, so a subscription package and not an event. The sheet carries exactly one Jesica row in the whole window — 'Veren Jesica', lunch 16 Oct — and it had no payer, while this payment had no eater. Matched on that, which leaves her holding 4 of the 5 she bought. NEEDS CONFIRMING: if Veren Jesica is a different person, split this into its own eater and she holds all 5."
     },
     "Ailicia": {
       "customer": null,
@@ -694,14 +697,6 @@
       "customer": "Eleazar",
       "portions": 90,
       "existingOrderId": "2c719023-b6a4-47d5-9388-d1f335c60036"
-    },
-    {
-      "match": "JESICA CHRISTINE",
-      "kind": "event_order",
-      "account": "4001",
-      "why": "5-portion order, Rp 165.000. Not on the daily sheet, so revenue rather than quota.",
-      "customer": "Jesica Christine",
-      "portions": 5
     },
     {
       "match": "VENICIA CHRISTIN",

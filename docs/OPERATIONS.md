@@ -17,6 +17,16 @@ The data-history sections matter as much as the rules: this database has been th
 - Anthropic forced-tool extraction rejects conversations that end on an assistant turn; the inbox extraction path trims trailing assistant messages before calling Sonnet so old closed threads can still be parsed.
 - The inbox extracted-order review modal supports two admin confirm modes: create the `pending_payment` order only, or create it and immediately send the payment-details WhatsApp message. The shared helper defaults to sending payment info unless the caller explicitly disables it.
 - Manual order extraction now normalizes `package_size` to total portions when the chat clearly states a formula like `2 porsi x 5 hari = 10 porsi`, so the review modal prices recurring multi-portion orders correctly instead of treating day-count or per-delivery portions as the package size.
+### The 2025 ladder is not today's ladder, and it moved twice inside one quarter
+
+Nothing in `pricing_tiers` describes 2025. Anyone reconciling a Sep–Dec 2025 payment against a portion count needs the ladder that was actually printed on the menu card at the time, and there were two of them.
+
+Rack rate, from the 29 Sep – 4 Oct 2025 card: **1× 40.000, 2× 39.000, 5× 33.000, 10× 28.000, 20× 26.000, 40× 24.000, 80× 23.000.** From **8 Sep to 24 Sep** an opening discount — a one-time launch promo, never repeated — took **3.000 off every rung**: 37.000, 36.000, 30.000, 25.000, 23.000, 21.000, 20.000.
+
+Both are steeper than today's 29k→25k, and the top of the 2025 ladder went to 80 portions rather than 144. A 2025 credit read against the current ladder therefore prices to the wrong size, usually a larger one. The discount was a launch promo rather than a tier, so it never comes back: nothing dated after 24 Sep 2025 prices off the discounted ladder.
+
+`scripts/data/backfill-2025-sizes.json` is the lookup, amount → portions. Nine of its fourteen ladder rungs had already been derived from the December orders and from memos that name a size outright ("catering 40x", "kuota 10") before the menu card turned up, and the card agreed with all nine — which is the reason to trust the rest of the file. **40.000 is deliberately absent**: the rack ladder makes it one portion, but 20.000 is already one portion on a legacy rate, so it is equally two of those. An ambiguous rung is worse than a missing one, because a missing rung reports itself and a wrong one does not.
+
 ## Corporate customers buy at a negotiated rate, not off the ladder
 
 `customers.contract_price_per_portion` (migration 070) is a negotiated per-portion price. When it is set it **replaces the `pricing_tiers` lookup entirely** — `getExtractedOrderPricing(size, nasiMerah, customerId)` returns `contract × size` and never touches the ladder — and the 5-or-6 divisibility rule does not apply, because a company buys box counts, not packages. NULL means an ordinary customer, which is every customer but one.
