@@ -73,6 +73,21 @@ type Mapping = {
       why?: string;
     }
   >;
+  /**
+   * Credits that land in the account but buy no Pian Yi package: event orders,
+   * another kitchen's people, staff, refunds, personal transfers. They are not
+   * unknowns and must not sit in the unmatched list pretending to be, but they
+   * are not eaters either — writing them as packages would create exactly the
+   * phantom quota this backfill exists to remove. Matched, reported by kind,
+   * and left for the journal backfill, which is where they belong.
+   */
+  nonCustomer: {
+    match: string;
+    kind: string;
+    /** Contra account the journal line will face. */
+    account: string;
+    why: string;
+  }[];
 };
 type Credit = {
   date: string;
@@ -314,6 +329,13 @@ async function main() {
   );
   payers.sort((a, b) => b.norm.length - a.norm.length);
 
+  // Same haystack and the same whole-word rule as the payer map, so a name the
+  // bank ran into the next line's text still matches.
+  const nonCustomer = (mapping.nonCustomer ?? []).map((r) => ({
+    ...r,
+    re: new RegExp(`\\b${norm(r.match).replace(/ /g, "\\s+")}\\b`),
+  }));
+
   // --- customers ----------------------------------------------------------
   const { data: allCustomers } = await db
     .from("customers")
@@ -354,9 +376,18 @@ async function main() {
 
   // --- orders from the statements -----------------------------------------
   const unmatched: Credit[] = [];
+  const excluded: { credit: Credit; rule: { kind: string; account: string } }[] =
+    [];
   const unpriced: Credit[] = [];
   const surcharges: Credit[] = [];
   for (const c of credits) {
+    const rule = nonCustomer.find((r) =>
+      r.re.test(norm(`${c.counterparty} ${c.memo}`)),
+    );
+    if (rule) {
+      excluded.push({ credit: c, rule });
+      continue;
+    }
     const eater = findPayer(c, payers);
     if (!eater) {
       unmatched.push(c);
@@ -504,6 +535,28 @@ async function main() {
     for (const c of unpriced)
       console.log(
         `  ${c.date}  Rp ${String(c.amount).padStart(9)}  ${c.counterparty}  ${c.memo.slice(0, 60)}`,
+      );
+  }
+
+  if (excluded.length) {
+    const byKind = new Map<string, { n: number; sum: number; account: string }>();
+    for (const e of excluded) {
+      const k = byKind.get(e.rule.kind) ?? {
+        n: 0,
+        sum: 0,
+        account: e.rule.account,
+      };
+      k.n += 1;
+      k.sum += e.credit.amount;
+      byKind.set(e.rule.kind, k);
+    }
+    const total = excluded.reduce((s, e) => s + e.credit.amount, 0);
+    console.log(
+      `\n${excluded.length} credits totalling Rp ${total.toLocaleString("id-ID")} are identified but buy no package — the journal backfill books these, this script writes nothing:`,
+    );
+    for (const [kind, k] of [...byKind].sort((a, b) => b[1].sum - a[1].sum))
+      console.log(
+        `  ${kind.padEnd(20)} ${String(k.n).padStart(2)} credits  Rp ${k.sum.toLocaleString("id-ID").padStart(11)}  -> ${k.account}`,
       );
   }
 
