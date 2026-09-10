@@ -24,6 +24,8 @@
  *
  *   pnpm exec tsx --env-file=.env.local scripts/backfill-2025-history.ts
  *   pnpm exec tsx --env-file=.env.local scripts/backfill-2025-history.ts --apply
+ *   ... --why <name>              one eater's orders and who paid each
+ *   ... --orders [from] [to]      every order it would write, oldest first
  *
  * Dry run by default. It prints every customer, order and delivery row it would
  * write and the balance each customer ends up with.
@@ -677,6 +679,35 @@ async function main() {
           `  ${o.date}  ${String(o.size).padStart(3)}p  Rp ${String(o.total).padStart(9)}  ${o.dup ? "already in DB" : "NEW         "}  ${o.payer}`,
         );
     }
+  }
+
+  // `--orders [from] [to]` prints every order the run would write, oldest
+  // first, with who ate and who paid — the two names are different for a
+  // sixth of them and the payer is the only thing the bank line carries.
+  if (process.argv.includes("--orders")) {
+    const i = process.argv.indexOf("--orders");
+    const from = process.argv[i + 1] ?? WINDOW_START;
+    const to = process.argv[i + 2] ?? WINDOW_END;
+    const rows = plans
+      .flatMap((p) => p.orders.map((o) => ({ ...o, eater: p.eater, plan: p })))
+      .filter((o) => o.date >= from && o.date <= to)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    console.log(
+      `\n${rows.length} orders ${from}..${to}, oldest first:\n` +
+        "date        portions        total  status         customer                  payer",
+    );
+    for (const o of rows)
+      console.log(
+        `${o.date}  ${String(o.size).padStart(5)}p  Rp ${String(o.total).padStart(9)}  ` +
+          `${(o.dup ? "already in DB" : "new").padEnd(13)}  ` +
+          `${o.plan.customerName.padEnd(24)}  ${o.payer}`,
+      );
+    const fresh = rows.filter((o) => !o.dup);
+    console.log(
+      `  ${fresh.length} new, ${rows.length - fresh.length} already in DB;` +
+        ` ${fresh.reduce((s, o) => s + o.size, 0)} portions` +
+        ` for Rp ${fresh.reduce((s, o) => s + o.total, 0).toLocaleString("id-ID")}`,
+    );
   }
 
   if (unpriced.length) {
