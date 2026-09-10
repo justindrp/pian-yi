@@ -775,6 +775,12 @@
       "kind": "middleman_customer",
       "account": "4900",
       "why": "Middleman Kitchen customer. 09-08 Rp 304.000, described 'jennifer middleman 16x' = 16 x 19.000. Counterparty parses as INDONESIA and the PDF wraps the word, so the match stops at 'middl' on purpose — a bare 'JENNIFER' would swallow our own four Jennifers."
+    },
+    {
+      "match": "ELSA YUNIAR",
+      "kind": "middleman_customer",
+      "account": "4900",
+      "why": "The memo names the brand outright: 'Middleman kitchen - elsa'. Rp 52.000 on 06-10, which is no rung on either 2025 ladder, so it is not one of our packages either way."
     }
   ]
 }
