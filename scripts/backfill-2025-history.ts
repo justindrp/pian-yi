@@ -315,6 +315,14 @@ const norm = (s: string) =>
     .trim();
 
 /** Spelling variants only; never merges two people who share a first name. */
+/**
+ * The sheet itself was normalised on 2026-09-11 — a find-and-replace over
+ * `deliveries_old!F2:F3853` stripped the padding and folded every case and
+ * abbreviation variant, taking column F from 119 distinct names to 92 without
+ * changing the 2283 row count. This map stays as the fallback for archived
+ * exports (`.backup/deliveries_old-2026-09-11-pre-rename.csv`) and for the next
+ * hand-typed variant; against the live sheet most entries are now no-ops.
+ */
 const SPELLING: Record<string, string> = {
   jocelryn: "Jocelyn",
   "jasaon therawan": "Jason Therawan",
