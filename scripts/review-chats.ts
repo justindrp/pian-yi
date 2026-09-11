@@ -6,6 +6,8 @@
  *   pnpm review --since 6h      # ...in the last 6 hours
  *   pnpm review --since 2026-09-11T06:30:00Z
  *   pnpm review --last 2        # the 2 most recently active threads, window ignored
+ *   pnpm review --waiting      # threads a human still owes an answer, active in
+ *                              # the last 3 days (--days N to widen)
  *   pnpm review --phone +62818755030
  *   pnpm review --last 2 --messages 120   # deeper transcript (default 60)
  *
@@ -24,21 +26,32 @@ type Args = {
   sinceIso: string | null;
   last: number | null;
   phone: string | null;
+  waiting: boolean;
+  days: number;
   messages: number;
 };
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { sinceIso: null, last: null, phone: null, messages: 60 };
+  const args: Args = {
+    sinceIso: null,
+    last: null,
+    phone: null,
+    waiting: false,
+    days: 3,
+    messages: 60,
+  };
   let since = "24h";
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--since") since = argv[++i] ?? since;
     else if (a === "--last") args.last = Number(argv[++i]);
     else if (a === "--phone") args.phone = argv[++i] ?? null;
+    else if (a === "--waiting") args.waiting = true;
+    else if (a === "--days") args.days = Number(argv[++i]);
     else if (a === "--messages") args.messages = Number(argv[++i]);
     else throw new Error(`unknown argument ${a}`);
   }
-  if (args.last === null && args.phone === null) {
+  if (args.last === null && args.phone === null && !args.waiting) {
     const hours = /^(\d+)h$/.exec(since);
     args.sinceIso = hours
       ? new Date(Date.now() - Number(hours[1]) * 3_600_000).toISOString()
@@ -79,6 +92,40 @@ async function selectThreads(
     if (error) throw new Error(error.message);
     if (!data) throw new Error(`no customer ${args.phone}`);
     return [data.id];
+  }
+
+  // Every flag that means a person owes this thread an answer. They are not
+  // interchangeable and only two of them reach the inbox's Unanswered filter,
+  // which is how +6281212021234 sat nine hours on needs_human_review alone.
+  if (args.waiting) {
+    const { data, error } = await db
+      .from("customer_flags")
+      .select("customer_id")
+      .or(
+        "needs_human_review.eq.true,pending_bot_response.eq.true,escalated_to_human.eq.true",
+      );
+    if (error) throw new Error(error.message);
+    const flagged = (data ?? [])
+      .map((r) => r.customer_id)
+      .filter((id): id is string => id !== null);
+    if (flagged.length === 0) return [];
+
+    // The flags are a dumping ground — 38 threads carry one, most of them
+    // settled months ago and never cleared. What a review can act on is a
+    // flagged thread that is still warm, newest first.
+    const cutoff = new Date(
+      Date.now() - args.days * 86_400_000,
+    ).toISOString();
+    const { data: threads, error: threadErr } = await db
+      .from("inbox_threads")
+      .select("customer_id, created_at")
+      .in("customer_id", flagged)
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false });
+    if (threadErr) throw new Error(threadErr.message);
+    return (threads ?? [])
+      .map((r) => r.customer_id)
+      .filter((id): id is string => id !== null);
   }
 
   if (args.last) {
@@ -229,7 +276,9 @@ async function main() {
   console.log(
     args.sinceIso
       ? `${ids.length} thread(s) with inbound since ${wib(args.sinceIso)} WIB`
-      : `${ids.length} thread(s)`,
+      : args.waiting
+        ? `${ids.length} thread(s) flagged as owing someone an answer, active in the last ${args.days} day(s)`
+        : `${ids.length} thread(s)`,
   );
   for (const id of ids) await printThread(db, id, args.messages);
 }
