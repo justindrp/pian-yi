@@ -5,13 +5,18 @@ import {
 } from "@/app/api/tasks/[id]/route";
 import { GET as getTasks, POST as postTask } from "@/app/api/tasks/route";
 import { STATUS_RANK, validateTaskInput } from "@/app/api/tasks/validate";
+import { DEFAULT_WIP_LIMIT, wipLimit, wipRefusal } from "@/app/api/tasks/wip";
 import { logEdit } from "@/lib/audit/log-edit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getSetting } from "@/lib/cache/settings";
 import { createClient } from "@/lib/supabase/server";
 
 jest.mock("@/lib/supabase/server", () => ({ createClient: jest.fn() }));
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/audit/log-edit", () => ({ logEdit: jest.fn() }));
+// The limit lives in settings; the cache behind it would otherwise try to load
+// five tables through the stubbed admin client.
+jest.mock("@/lib/cache/settings", () => ({ getSetting: jest.fn() }));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,6 +101,7 @@ async function json(res: Response) {
 beforeEach(() => {
   jest.clearAllMocks();
   signedIn();
+  (getSetting as jest.Mock).mockResolvedValue("3");
 });
 
 // ---------------------------------------------------------------------------
@@ -597,5 +603,93 @@ describe("STATUS_RANK", () => {
     for (const s of ["blocked", "in_progress", "open"]) {
       expect(STATUS_RANK[s]).toBeLessThan(STATUS_RANK.done);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The work-in-progress limit. `in_progress` existed for a year and carried one
+// row out of 334, because nothing surfaced it and nothing capped it. The cap is
+// what makes the "Working on" strip an answer rather than a second backlog.
+// ---------------------------------------------------------------------------
+
+/** A counting stub: `select(..., {head: true})` resolves to a count, not rows. */
+function mockCount(count: number, error: unknown = null) {
+  const chain: Record<string, unknown> = {};
+  for (const m of ["select", "eq"]) chain[m] = jest.fn().mockReturnValue(chain);
+  // biome-ignore lint/suspicious/noThenProperty: supabase query builder is thenable
+  chain.then = (resolve: (v: unknown) => unknown) =>
+    Promise.resolve({ count, error }).then(resolve);
+  return chain;
+}
+
+describe("wipRefusal", () => {
+  it("allows a start below the limit", async () => {
+    const db = { from: jest.fn(() => mockCount(2)) };
+    expect(await wipRefusal(db as never)).toBeNull();
+  });
+
+  it("refuses the fourth start", async () => {
+    const db = { from: jest.fn(() => mockCount(3)) };
+    expect(await wipRefusal(db as never)).toBe(
+      "3 tasks are already in progress and the limit is 3. Stop one first.",
+    );
+  });
+
+  // A count that fails must not read as room. The alternative to refusing is a
+  // silent fourth, which is the exact state the limit exists to prevent.
+  it("refuses when the count cannot be read", async () => {
+    const db = { from: jest.fn(() => mockCount(0, { message: "boom" })) };
+    expect(await wipRefusal(db as never)).toBe(
+      "Could not check how many tasks are in progress",
+    );
+  });
+
+  it("falls back to 3 when the setting is missing or unparseable", async () => {
+    for (const bad of ["", "lots", "0", "-1"]) {
+      (getSetting as jest.Mock).mockResolvedValue(bad);
+      expect(await wipLimit()).toBe(DEFAULT_WIP_LIMIT);
+    }
+  });
+
+  it("takes the limit from settings when it is a number", async () => {
+    (getSetting as jest.Mock).mockResolvedValue("5");
+    expect(await wipLimit()).toBe(5);
+  });
+});
+
+describe("PATCH /api/tasks/[id] — starting a task", () => {
+  it("refuses to start a fourth", async () => {
+    const before = { id: ID, title: "Ship it", status: "open" };
+    const { from } = mockDb({ data: before, error: null });
+    from.mockImplementationOnce(() => makeChain({ data: before, error: null }));
+    from.mockImplementationOnce(() => mockCount(3) as never);
+    const res = await patchTask(req("PATCH", { status: "in_progress" }), params);
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toContain("Stop one first");
+  });
+
+  // Editing a task that is already started is not a start, and must not be
+  // counted against a limit it is itself part of.
+  it("lets an already-started task be edited at the limit", async () => {
+    const before = { id: ID, title: "Ship it", status: "in_progress" };
+    mockDb(
+      { data: before, error: null },
+      { data: { ...before, title: "Ship it now" }, error: null },
+    );
+    const res = await patchTask(
+      req("PATCH", { title: "Ship it now", status: "in_progress" }),
+      params,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("never blocks a stop", async () => {
+    const before = { id: ID, title: "Ship it", status: "in_progress" };
+    mockDb(
+      { data: before, error: null },
+      { data: { ...before, status: "open" }, error: null },
+    );
+    const res = await patchTask(req("PATCH", { status: "open" }), params);
+    expect(res.status).toBe(200);
   });
 });

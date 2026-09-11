@@ -31,6 +31,9 @@ type Task = {
   blocked_on: string | null;
   due_date: string | null;
   created_at: string;
+  // What the stale marker on the "Working on" strip counts from. Every PATCH
+  // bumps it, so it reads as "when I last did anything to this".
+  updated_at: string;
   done_at: string | null;
   customers: LinkedCustomer | null;
   orders: LinkedOrder | null;
@@ -81,19 +84,35 @@ function rupiah(v: number | null): string {
   return v == null ? "—" : `Rp ${v.toLocaleString("id-ID")}`;
 }
 
-async function fetchTasks(): Promise<Task[]> {
+type TaskList = { tasks: Task[]; wipLimit: number };
+
+async function fetchTasks(): Promise<TaskList> {
   const res = await fetch("/api/tasks");
   const json = await res.json();
   if (!json.ok) throw new Error(json.error ?? "Failed to load tasks");
-  return json.data ?? [];
+  // The limit comes from settings, so it is the server's to state — reading it
+  // here keeps the button and the route refusing at the same number.
+  return { tasks: json.data ?? [], wipLimit: json.wipLimit ?? 3 };
 }
+
+/** Whole days since a timestamp. Used to mark work that stopped moving. */
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+// A task in progress that nobody has touched in a week is usually one that was
+// put down and not stopped. Left unmarked it takes up a slot of three forever,
+// and the strip goes back to being a list nobody trusts.
+const STALE_DAYS = 7;
 
 export default function TasksClient() {
   const qc = useQueryClient();
-  const { data: tasks = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["tasks"],
     queryFn: fetchTasks,
   });
+  const tasks = data?.tasks ?? [];
+  const limit = data?.wipLimit ?? 3;
 
   const [status, setStatus] = useState<string>("not_done");
   const [area, setArea] = useState<string>("");
@@ -109,6 +128,12 @@ export default function TasksClient() {
       [...new Set(tasks.map((t) => t.area).filter(Boolean) as string[])].sort(),
     [tasks],
   );
+
+  const inProgress = useMemo(
+    () => tasks.filter((t) => t.status === "in_progress"),
+    [tasks],
+  );
+  const atLimit = inProgress.length >= limit;
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { not_done: 0 };
@@ -153,6 +178,16 @@ export default function TasksClient() {
       qc.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
+
+  // Starting and stopping is one press from the list. It used to mean opening
+  // the drawer, changing a dropdown and saving, which is three acts of
+  // bookkeeping for a fact that is true for an afternoon — so it was never
+  // done, and `in_progress` carried 1 row out of 334.
+  const toggleStart = (t: Task) =>
+    save.mutate({
+      id: t.id,
+      patch: { status: t.status === "in_progress" ? "open" : "in_progress" },
+    });
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
@@ -199,6 +234,51 @@ export default function TasksClient() {
         </a>
         .
       </p>
+
+      {/* Pinned above the filters and outside the table: this is the answer to
+          "what am I on right now", and it is worthless if a filter can hide it
+          or it has to be found among 190 rows sorted by priority. */}
+      {!isLoading && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="text-xs font-medium text-amber-800">
+            Working on ({inProgress.length} of {limit})
+          </div>
+          {inProgress.length === 0 ? (
+            <p className="text-xs text-amber-700 mt-1">
+              Nothing started. Press Start on a task to put it here.
+            </p>
+          ) : (
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {inProgress.map((t) => {
+                const age = daysSince(t.updated_at);
+                return (
+                  <li key={t.id} className="flex items-start gap-2 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => toggleStart(t)}
+                      className="shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-xs text-amber-800 hover:bg-amber-100"
+                    >
+                      Stop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpenId(t.id)}
+                      className="text-left text-gray-900 hover:underline"
+                    >
+                      {t.title}
+                      {age >= STALE_DAYS && (
+                        <span className="ml-2 rounded bg-amber-200 px-1 py-0.5 text-xs text-amber-900">
+                          untouched {age}d
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5 mb-3">
         <FilterChip
@@ -304,11 +384,32 @@ export default function TasksClient() {
                     {t.assignee ?? "—"}
                   </td>
                   <td className="px-3 py-2">
-                    <span
-                      className={`inline-block rounded px-1.5 py-0.5 text-xs ${STATUS_STYLE[t.status] ?? "bg-gray-100 text-gray-600"}`}
-                    >
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`inline-block rounded px-1.5 py-0.5 text-xs ${STATUS_STYLE[t.status] ?? "bg-gray-100 text-gray-600"}`}
+                      >
+                        {STATUS_LABEL[t.status] ?? t.status}
+                      </span>
+                      {t.status !== "done" && (
+                        <button
+                          type="button"
+                          // The row opens the drawer; this must not.
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStart(t);
+                          }}
+                          disabled={atLimit && t.status !== "in_progress"}
+                          title={
+                            atLimit && t.status !== "in_progress"
+                              ? `${limit} tasks are already in progress. Stop one first.`
+                              : undefined
+                          }
+                          className="rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {t.status === "in_progress" ? "Stop" : "Start"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

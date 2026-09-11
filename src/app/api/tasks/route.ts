@@ -10,6 +10,7 @@ import {
   text,
   validateTaskInput,
 } from "./validate";
+import { wipLimit, wipRefusal } from "./wip";
 
 // A task may point at the customer or order it is about. The embed is the whole
 // reason this lives in the app rather than in Asana: "Cindi — second address
@@ -65,7 +66,9 @@ export async function GET(): Promise<Response> {
       (a.priority ?? 2) - (b.priority ?? 2) ||
       (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9),
   );
-  return NextResponse.json({ ok: true, data });
+  // The limit rides along with the list so the page can grey out the start
+  // button before it is pressed, rather than only reporting the refusal after.
+  return NextResponse.json({ ok: true, data, wipLimit: await wipLimit() });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -102,6 +105,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (invalid) return badRequest(invalid);
 
   const db = createAdminClient();
+  // A task can be created straight into in_progress, and that is a start like
+  // any other. Nothing in the UI does it today, which is exactly why the guard
+  // belongs here rather than only on the path that happens to be used.
+  if (body.status === "in_progress") {
+    const refusal = await wipRefusal(db);
+    if (refusal) return badRequest(refusal);
+  }
   // id, created_at, updated_at and done_at are server-controlled and never
   // accepted from the client (CLAUDE.md, "server-controlled fields").
   const { data, error } = await db

@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/types/database";
 import { badRequest, validateTaskInput } from "../validate";
+import { wipRefusal } from "../wip";
 
 // Explicit allowlist, never mass assignment (CLAUDE.md, "allowlist field
 // updates"). done_at and updated_at are derived below, not taken from input.
@@ -83,6 +84,13 @@ export async function PATCH(
   // it when a task reopens keeps the two from disagreeing.
   if (update.status !== undefined) {
     update.done_at = update.status === "done" ? new Date().toISOString() : null;
+  }
+
+  // Only a task arriving at in_progress is counted against the limit — editing
+  // the title of one that is already started must not be refused.
+  if (update.status === "in_progress" && before.status !== "in_progress") {
+    const refusal = await wipRefusal(db);
+    if (refusal) return badRequest(refusal);
   }
 
   if (Object.keys(changes).length === 0) {

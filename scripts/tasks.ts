@@ -34,6 +34,15 @@ async function main() {
   if (error) throw new Error(error.message);
   const tasks = data ?? [];
 
+  // Printed before the areas, for the same reason the page pins it above the
+  // filters: a session starts by asking what is already underway, and finding
+  // that by scanning ~200 grouped lines for a "~" does not happen.
+  const started = tasks.filter((t) => t.status === "in_progress");
+  if (started.length > 0) {
+    console.log(`\n## Working on (${started.length})`);
+    for (const t of started) console.log(`[~] ${t.title}`);
+  }
+
   const byArea = new Map<string, typeof tasks>();
   for (const t of tasks) {
     const key = t.area ?? "(no area)";
