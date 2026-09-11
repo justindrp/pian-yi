@@ -18,6 +18,7 @@ import {
 } from "@/lib/claude/client";
 import {
   loadHistory,
+  loadValidationTranscript,
   saveMessage,
   updateMessageReceipt,
   type WhatsAppMessageStatus,
@@ -2765,7 +2766,9 @@ export async function processSavedCustomerMessage(params: {
         lastResponse = informed;
         replyText = informedText;
       } else {
-        console.warn("[webhook] informed rewrite came back empty, keeping text");
+        console.warn(
+          "[webhook] informed rewrite came back empty, keeping text",
+        );
       }
     } catch (err) {
       console.error(
@@ -3131,18 +3134,12 @@ export async function processSavedCustomerMessage(params: {
     const validationParams = {
       customerName,
       customerNotes,
-      transcript: [
-        ...history.slice(-10).map((m) => ({
-          role: m.role as string,
-          content:
-            typeof m.content === "string"
-              ? m.content
-              : m.content
-                  .map((b) => (b.type === "text" ? b.text : `[${b.type}]`))
-                  .join(" "),
-        })),
-        { role: "user", content: text },
-      ],
+      // Re-read rather than reusing `history`: the model's copy carries no
+      // authorship, and an outbound line an admin hand-typed is a fact the
+      // validator must accept. See `loadValidationTranscript`. The customer's
+      // incoming message is already a row by the time this function runs (both
+      // callers save it first), so the tail ends on it and nothing is appended.
+      transcript: await loadValidationTranscript(customerId),
       customerState: stateRow?.state ?? "new",
       activeOrder: activeOrder
         ? {

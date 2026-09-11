@@ -61,6 +61,42 @@ export async function loadHistory(
   }));
 }
 
+/**
+ * The same tail `loadHistory` feeds the model, plus the one column the model
+ * does not need and the validator cannot work without: who wrote each outbound
+ * line. `conversations.sent_by` is set only when an admin hand-typed the
+ * message, so those lines are facts a person asserted, not model output.
+ *
+ * Without this the validator treats every outbound line as the bot's own and
+ * therefore unsupported. On 2026-09-11 an admin quoted +6281212021234 12 porsi
+ * for Rp 336.000 through `scripts/manual-send.ts`; no order row exists for an
+ * untendered event, so CONTEXT said "no active order" and every draft that read
+ * our own offer back was a hallucination by construction. Two drafts were
+ * blocked, the customer got the fallback template, and a simple day-swap
+ * question went unanswered overnight.
+ */
+export async function loadValidationTranscript(
+  customerId: string,
+  limit = 10,
+): Promise<{ role: string; content: string; sentBy: string | null }[]> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("conversations")
+    .select("role, content, message_type, sent_by")
+    .eq("customer_id", customerId)
+    .in("role", ["user", "assistant"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (!data) return [];
+
+  return data.reverse().map((row) => ({
+    role: row.role,
+    content: historyContent(row),
+    sentBy: row.sent_by,
+  }));
+}
+
 export async function saveMessage(params: {
   customerId: string;
   role: "user" | "assistant";

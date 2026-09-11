@@ -31,8 +31,13 @@ export interface ValidateReplyParams {
    * an order back before it exists — "8 porsi, mulai Rabu 19 Agustus" — is
    * unsupported by construction, and every new customer's confirmation is
    * blocked.
+   *
+   * `sentBy` carries the admin who hand-typed an outbound line (see
+   * `loadValidationTranscript`). Those lines are rendered ADMIN and count as
+   * verified; the bot's own lines are rendered BOT and count as nothing, or the
+   * model could launder a hallucination by repeating it next turn.
    */
-  transcript?: { role: string; content: string }[];
+  transcript?: { role: string; content: string; sentBy?: string | null }[];
 }
 
 export interface ValidateReplyResult {
@@ -51,13 +56,15 @@ export interface ValidateReplyResult {
  */
 const VALIDATOR_SYSTEM = `You check a customer service bot's draft reply against verified data about the customer.
 
-The user turn gives you CONTEXT (verified data about this customer), optionally CONVERSATION SO FAR (what the customer has told us in this chat), and REPLY (the draft, in Indonesian).
+The user turn gives you CONTEXT (verified data about this customer), optionally CONVERSATION SO FAR (this chat, each line marked CUSTOMER, ADMIN or BOT), and REPLY (the draft, in Indonesian).
 
 Does REPLY state any customer-specific fact (the customer's name, remaining quota/portions, package size, order status, or payment status) that is NOT supported by CONTEXT? A field marked "unknown"/"none"/"no active order" in CONTEXT means that fact is not known — if REPLY states a specific value for it anyway, that is unsupported.
 
 Do NOT flag general business info (menu, prices, delivery areas, policies, how quota works) — only flag claims about THIS customer's own data.
 
-Anything the customer stated in CONVERSATION SO FAR is supported, even if CONTEXT does not have it yet: an order being agreed has not been saved, so reading back the portions, dates, address or requests the customer just gave is correct behaviour, not a hallucination.
+Anything a CUSTOMER line stated in CONVERSATION SO FAR is supported, even if CONTEXT does not have it yet: an order being agreed has not been saved, so reading back the portions, dates, address or requests the customer just gave is correct behaviour, not a hallucination.
+
+An ADMIN line was typed by a human colleague of ours, not produced by the bot, so whatever it states — a price, a portion count, dates, an arrangement — is a verified fact as well, even when CONTEXT has no order for it. A draft that repeats or builds on an offer we ourselves made is correct behaviour. A BOT line is the bot's own earlier draft and supports nothing on its own: a claim that appears only in a BOT line and nowhere else is still unsupported.
 
 Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["..."]}`;
 
@@ -74,12 +81,15 @@ Active order quota: ${
   }`;
 
   const transcript = (params.transcript ?? [])
-    .map((m) => `${m.role === "assistant" ? "BOT" : "CUSTOMER"}: ${m.content}`)
+    .map((m) => {
+      if (m.role !== "assistant") return `CUSTOMER: ${m.content}`;
+      return `${m.sentBy ? "ADMIN" : "BOT"}: ${m.content}`;
+    })
     .join("\n");
 
   const prompt = `CONTEXT (verified data about this customer):
 ${context}
-${transcript ? `\nCONVERSATION SO FAR (what the customer has told us in this chat):\n${transcript}\n` : ""}
+${transcript ? `\nCONVERSATION SO FAR (CUSTOMER = the customer, ADMIN = a human colleague of ours, BOT = the bot itself):\n${transcript}\n` : ""}
 REPLY (a customer service bot's draft reply, in Indonesian):
 """
 ${params.reply}

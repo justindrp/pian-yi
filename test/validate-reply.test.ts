@@ -58,7 +58,9 @@ describe("validateReply", () => {
     // twice and she got the fallback template instead.
     const create = jest
       .fn()
-      .mockResolvedValue({ content: [{ type: "text", text: '{"valid": true}' }] });
+      .mockResolvedValue({
+        content: [{ type: "text", text: '{"valid": true}' }],
+      });
     (getAnthropicClient as jest.Mock).mockReturnValue({
       messages: { create },
     });
@@ -72,6 +74,44 @@ describe("validateReply", () => {
     const prompt = create.mock.calls[0][0].messages[0].content as string;
     expect(prompt).toContain("2 portions bought and not yet delivered");
     expect(prompt).toContain("0 have no delivery date booked yet");
+  });
+
+  test("a hand-typed outbound line is labelled ADMIN, the bot's own BOT", async () => {
+    // +6281212021234 on 2026-09-11: an admin quoted 12 porsi / Rp 336.000 by
+    // hand, no order row exists for an untendered event, so with every outbound
+    // line marked BOT the draft reading our own offer back was unsupported by
+    // construction and the customer got the fallback template.
+    const create = jest
+      .fn()
+      .mockResolvedValue({
+        content: [{ type: "text", text: '{"valid": true}' }],
+      });
+    (getAnthropicClient as jest.Mock).mockReturnValue({
+      messages: { create },
+    });
+
+    await validateReply({
+      ...baseParams,
+      reply: "Betul kak, 12 porsi Rp 336.000 ya",
+      transcript: [
+        {
+          role: "assistant",
+          content: "12 porsi Rp 336.000",
+          sentBy: "annie@x",
+        },
+        {
+          role: "assistant",
+          content: "Ada lagi yang bisa dibantu?",
+          sentBy: null,
+        },
+        { role: "user", content: "harinya bisa tukar?" },
+      ],
+    });
+
+    const prompt = create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain("ADMIN: 12 porsi Rp 336.000");
+    expect(prompt).toContain("BOT: Ada lagi yang bisa dibantu?");
+    expect(prompt).toContain("CUSTOMER: harinya bisa tukar?");
   });
 
   test("malformed JSON fails open (valid: true)", async () => {
