@@ -1525,6 +1525,7 @@ export type Database = {
           offers_size_m: boolean
           price_list_image_url: string | null
           same_menu_both_meals: boolean
+          takes_events: boolean
           total_delivery_count: number | null
           updated_at: string | null
         }
@@ -1555,6 +1556,7 @@ export type Database = {
           offers_size_m?: boolean
           price_list_image_url?: string | null
           same_menu_both_meals?: boolean
+          takes_events?: boolean
           total_delivery_count?: number | null
           updated_at?: string | null
         }
@@ -1585,6 +1587,7 @@ export type Database = {
           offers_size_m?: boolean
           price_list_image_url?: string | null
           same_menu_both_meals?: boolean
+          takes_events?: boolean
           total_delivery_count?: number | null
           updated_at?: string | null
         }
