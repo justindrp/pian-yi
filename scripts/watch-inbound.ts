@@ -17,6 +17,8 @@
 import { createAdminClient } from "../src/lib/supabase/admin";
 
 const POLL_MS = 30_000;
+/** ~5 minutes of dead polls. Long enough to ride out a blip, short enough to notice. */
+const MAX_FAILURES = 10;
 
 async function main() {
   const phone = process.argv[2];
@@ -33,19 +35,37 @@ async function main() {
   const who = cust.name ?? phone;
   // Start from now: the backlog has already been read by whoever started this.
   let cursor = new Date().toISOString();
+  let failures = 0;
   console.log(`watching ${who} — every inbound needs a human`);
 
   for (;;) {
-    const { data, error } = await db
-      .from("conversations")
-      .select("created_at, content, message_type")
-      .eq("customer_id", cust.id)
-      .eq("role", "user")
-      .gt("created_at", cursor)
-      .order("created_at");
+    const poll = () =>
+      db
+        .from("conversations")
+        .select("created_at, content, message_type")
+        .eq("customer_id", cust.id)
+        .eq("role", "user")
+        .gt("created_at", cursor)
+        .order("created_at");
 
-    // One failed poll must not end the watch.
-    if (error) console.log(`poll failed: ${error.message}`);
+    // A socket kept alive across a 30s idle is dead by the time the next poll
+    // reuses it, and undici surfaces that as `TypeError: fetch failed` rather
+    // than retrying. The failed attempt evicts it, so the immediate second try
+    // opens a fresh connection and succeeds — without this the watch polls
+    // forever and never sees another message.
+    let { data, error } = await poll();
+    if (error) ({ data, error } = await poll());
+
+    // One failed poll must not end the watch. A run of them must: a watcher
+    // that logs and keeps looping is indistinguishable from a quiet thread,
+    // which is the hold-with-no-watcher failure this script exists to prevent.
+    if (error) {
+      console.log(`poll failed: ${error.message}`);
+      if (++failures >= MAX_FAILURES)
+        throw new Error(`${failures} polls failed in a row, last: ${error.message}`);
+    } else {
+      failures = 0;
+    }
 
     for (const m of data ?? []) {
       cursor = m.created_at ?? cursor;
