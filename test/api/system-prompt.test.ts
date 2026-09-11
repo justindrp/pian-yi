@@ -494,7 +494,12 @@ describe("customer chatbot system prompt", () => {
       });
 
       expect(prompt).toContain("This is your first reply to this customer");
-      expect(prompt).toContain("one question that moves the order forward");
+      // The first question is always which product they want — daily catering
+      // and an event run on different rules, and the QBig BSD lead was answered
+      // out of the wrong set on 2026-09-11.
+      expect(prompt).toContain(
+        "ini untuk langganan harian atau untuk acara sekali jalan ya kak?",
+      );
       expect(prompt).toContain("Never stall");
       expect(prompt).toContain("Aku cek dulu");
     });
