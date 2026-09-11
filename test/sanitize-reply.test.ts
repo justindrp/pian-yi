@@ -308,3 +308,65 @@ describe("sanitizeReply — a shortlist of openings instead of one reply", () =>
     expect(sanitizeReply(t)).toBe(t);
   });
 });
+
+describe("sanitizeReply — a clause abandoned mid-sentence", () => {
+  it("drops the accusation the model retracts to a first-contact lead", () => {
+    // 2026-09-11 07.57, +628128889718, asking about a 07.00 event delivery.
+    const t =
+      "Soal kirim jam 7 pagi ke lokasi, itu belum bisa kami pastikan ya kak — jam kirim berbeda per dapur, dan kamu terlambat ya kak... maksudku, boleh tahu alamat pengirimannya di area mana?";
+    expect(sanitizeReply(t)).toBe(
+      "Soal kirim jam 7 pagi ke lokasi, itu belum bisa kami pastikan ya kak — jam kirim berbeda per dapur, boleh tahu alamat pengirimannya di area mana?",
+    );
+  });
+
+  it("corrects a date inside the bracket the model opened", () => {
+    // 2026-08-23 21.37.
+    const t =
+      "Deadline order untuk besok (Senin 25 Agustus... eh, maksudku Senin 24 Agustus ya kak) udah lewat di jam 16.00 WIB.";
+    expect(sanitizeReply(t)).toBe(
+      "Deadline order untuk besok (Senin 24 Agustus ya kak) udah lewat di jam 16.00 WIB.",
+    );
+  });
+
+  it("drops a false start behind 'hmm'", () => {
+    // 2026-08-24 12.02.
+    const t =
+      "Sebenarnya sih kak, kalau mau mulai Minggu lalu... hmm, malam ini pesan untuk besok masih bisa kok.";
+    expect(sanitizeReply(t)).toBe(
+      "Sebenarnya sih kak, malam ini pesan untuk besok masih bisa kok.",
+    );
+  });
+
+  it("recapitalises when the abandoned clause was a whole sentence", () => {
+    const t = "Baik kak. Paketnya 12 porsi... eh, maksudku 15 porsi ya kak.";
+    expect(sanitizeReply(t)).toBe("Baik kak. 15 porsi ya kak.");
+  });
+
+  it("keeps us asking the customer what they meant", () => {
+    const t = "Maaf kak, maksudnya mau ambil paket berapa porsi?";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+
+  it("keeps a hesitation word with no broken-off clause before it", () => {
+    const t = "Oh maksudnya angka 1 di paket 260 rb ya kak?";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+
+  it("keeps an ellipsis the model does not correct itself after", () => {
+    const t = "Ditunggu ya kak... nanti aku kabari begitu ada jawabannya.";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+
+  it("keeps us asking the customer to hold on", () => {
+    // 2026-08-25 15.18. "Tunggu sebentar" is a real pause we mean, and the
+    // first draft of this guard ate the sentence after it.
+    const t =
+      "Tanggalnya 26, 27, 28, 29 (Selasa\u2013Jumat), dan 31 (Minggu)...\n\nTunggu sebentar kak, saya cek dulu.";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+
+  it("keeps a fresh sentence the model starts after a paragraph break", () => {
+    const t = "Paketnya 12 porsi...\n\nEh, maksudku 15 porsi ya kak.";
+    expect(sanitizeReply(t)).toBe(t);
+  });
+});

@@ -186,6 +186,78 @@ function stripRetraction(text: string): string {
 }
 
 /**
+ * Drops a clause the model abandons mid-sentence and immediately rewrites.
+ *
+ * The smallest of the self-correction shapes, and the one `stripRetraction`
+ * cannot see: there is no retraction phrase and no sentence boundary, just an
+ * ellipsis, a hesitation word, and the model starting the clause again. On
+ * 2026-09-11 at 07.57 a first-contact lead asking about a 07.00 delivery was
+ * sent "... jam kirim berbeda per dapur, dan kamu terlambat ya kak...
+ * maksudku, boleh tahu alamat pengirimannya di area mana?" — an accusation
+ * aimed at nobody, retracted in front of her. Earlier: "besok (Senin 25
+ * Agustus... eh, maksudku Senin 24 Agustus ya kak)" on 2026-08-23, and
+ * "kalau mau mulai Minggu lalu... hmm, malam ini pesan untuk besok" on
+ * 2026-08-24. Every one is Indonesian, addressed to the customer, and inside a
+ * single paragraph, so nothing above fires.
+ *
+ * What comes off is the abandoned clause, not the whole sentence: the text
+ * back to the nearest clause boundary, plus the hesitation, leaving the
+ * rewrite joined to the words the model had already got right.
+ *
+ * The ellipsis is what makes this safe to cut. "Maksudnya mau berapa porsi?"
+ * is us asking the customer what they meant and must survive; a hesitation
+ * word is only a correction when it follows a sentence the model just broke
+ * off.
+ */
+// "tunggu" and "wait" are deliberately absent. They read as a real pause we
+// often mean — "Tunggu sebentar kak, saya cek dulu" is us asking the customer
+// to hold — and cutting on them ate a valid sentence in the 2026-08-25 replay.
+// What is left are markers that only ever introduce a correction.
+const HESITATION =
+  "(?:eh|hmm+|oh|ups|aduh|sorry|bukan|maksudku|maksud saya|maksudnya)";
+// No newline between the ellipsis and the hesitation: a paragraph break means
+// the model stopped and started a fresh sentence, which reads fine as it is.
+const SELF_CORRECTION = new RegExp(
+  `(?:\\.{2,}|…)[^\\S\\n]*(?:${HESITATION}\\b[,.!]?[^\\S\\n]*){1,3}`,
+  "i",
+);
+
+// Where the abandoned clause began. A bracket is kept and not spaced after —
+// the rewrite belongs inside it, which is where the model opened it.
+const CLAUSE_BOUNDARY = /[,;:—–(\n.!?]/g;
+
+function stripSelfCorrection(text: string): string {
+  // Each cut can expose another; three is more than any observed reply.
+  let out = text;
+  for (let pass = 0; pass < 3; pass++) {
+    const m = SELF_CORRECTION.exec(out);
+    if (!m || m.index === undefined) return out;
+
+    const before = out.slice(0, m.index);
+    const after = out.slice(m.index + m[0].length).trimStart();
+    if (after.length === 0) return out;
+
+    CLAUSE_BOUNDARY.lastIndex = 0;
+    let boundary = -1;
+    for (
+      let b = CLAUSE_BOUNDARY.exec(before);
+      b !== null;
+      b = CLAUSE_BOUNDARY.exec(before)
+    ) {
+      boundary = b.index;
+    }
+
+    const head = boundary === -1 ? "" : before.slice(0, boundary + 1);
+    const opensSentence = head === "" || /[.!?\n]$/.test(head);
+    const rewrite = opensSentence
+      ? after.charAt(0).toUpperCase() + after.slice(1)
+      : after;
+    out = head.endsWith("(") ? head + rewrite : `${head} ${rewrite}`.trim();
+  }
+  return out;
+}
+
+/**
  * Drops a bracketed stage direction standing in for an image.
  *
  * `historyContent()` rewrites every image we have sent to
@@ -283,7 +355,9 @@ function normalizeBold(text: string): string {
 export function sanitizeReply(text: string): string {
   const paragraphs = stripDraftAlternatives(
     stripReasoning(
-      stripMetaBrackets(stripStageDirections(stripRetraction(unquote(text))))
+      stripMetaBrackets(
+        stripStageDirections(stripSelfCorrection(stripRetraction(unquote(text)))),
+      )
         .split(/\n{2,}/)
         .map((p) => unquote(p))
         .filter((p) => p.length > 0),
