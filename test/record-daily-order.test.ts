@@ -2,12 +2,19 @@ import {
   loadCustomerSchedule,
   unbookedByOrder,
 } from "@/lib/orders/customer-schedule";
+import { loadDeadlineHour } from "@/lib/orders/delivery-state";
 import { recordDailyOrder } from "@/lib/orders/record-daily-order";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 
 jest.mock("@/lib/orders/customer-schedule", () => ({
   loadCustomerSchedule: jest.fn(),
   unbookedByOrder: jest.fn(),
+}));
+// Only the settings read is stubbed. `isLocked()` is the thing under test in
+// the cutoff cases, so it stays real — mocking it would assert nothing.
+jest.mock("@/lib/orders/delivery-state", () => ({
+  ...jest.requireActual("@/lib/orders/delivery-state"),
+  loadDeadlineHour: jest.fn(),
 }));
 jest.mock("@/lib/push/send", () => ({
   sendPushToAllAdmins: jest.fn().mockResolvedValue(undefined),
@@ -125,6 +132,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (unbookedByOrder as jest.Mock).mockResolvedValue(new Map([["order-1", 10]]));
   (loadCustomerSchedule as jest.Mock).mockResolvedValue({ unbooked: 10 });
+  (loadDeadlineHour as jest.Mock).mockResolvedValue(16);
 });
 
 describe("recordDailyOrder", () => {
@@ -150,6 +158,50 @@ describe("recordDailyOrder", () => {
 
     expect(res.ok).toBe(true);
     expect(inserted).toHaveLength(1);
+  });
+
+  // The clock is 10:00 WIB on 2026-08-25 in these fixtures, so today is locked
+  // and tomorrow is not yet.
+  //
+  // Thenie was never paid for 2026-09-12 and cancelled the day; six rows were
+  // deleted at 11:57 WIB and at 13:38 the bot booked Puspa Marcom a fresh row
+  // for that same date. The sheet had gone out the evening before and nobody
+  // re-reads it, so nothing cooked the row — but the insert still spent her
+  // quota, and the tool still said ok, so the bot told her it was booked.
+  test("a date past the H-1 cutoff books nothing and says the cutoff passed", async () => {
+    const { db, inserted } = makeDb({ orders: { data: [ORDER], error: null } });
+    const res = await call(db, { delivery_dates: ["2026-08-25"] });
+
+    expect(res.ok).toBe(false);
+    expect(inserted).toHaveLength(0);
+    if (!res.ok) expect(res.error).toContain("16.00 WIB");
+  });
+
+  // Dropped and named, the way a libur is: the open half of the run still books.
+  test("a locked date inside a run drops that date and books the rest", async () => {
+    const { db, inserted } = makeDb({ orders: { data: [ORDER], error: null } });
+    const res = await call(db, {
+      delivery_dates: ["2026-08-25", "2026-08-27"],
+    });
+
+    expect(res.ok).toBe(true);
+    expect(inserted.map((r) => r.delivery_date)).toEqual(["2026-08-27"]);
+    if (res.ok) expect(res.message).toContain("2026-08-25");
+  });
+
+  // Tomorrow is bookable right up to the deadline and not after it.
+  test("tomorrow books before 16:00 and is refused after", async () => {
+    const before = makeDb({ orders: { data: [ORDER], error: null } });
+    const open = await call(before.db, { delivery_dates: ["2026-08-26"] });
+    expect(open.ok).toBe(true);
+    expect(before.inserted).toHaveLength(1);
+
+    jest.setSystemTime(new Date("2026-08-25T09:30:00Z")); // 16:30 WIB
+    const after = makeDb({ orders: { data: [ORDER], error: null } });
+    const shut = await call(after.db, { delivery_dates: ["2026-08-26"] });
+    expect(shut.ok).toBe(false);
+    expect(after.inserted).toHaveLength(0);
+    jest.setSystemTime(new Date("2026-08-25T03:00:00Z"));
   });
 
   test("a customer with no active order books nothing", async () => {
@@ -319,7 +371,11 @@ describe("recordDailyOrder", () => {
     const { db, inserted } = makeDb({
       orders: { data: [oldOther, thenieOrder], error: null },
       customers: {
-        data: { address: "Pacific Garden", sub_area: null, subcontractor_id: "thenie" },
+        data: {
+          address: "Pacific Garden",
+          sub_area: null,
+          subcontractor_id: "thenie",
+        },
         error: null,
       },
     });
@@ -348,7 +404,11 @@ describe("recordDailyOrder", () => {
     const { db, inserted } = makeDb({
       orders: { data: [oldOther], error: null },
       customers: {
-        data: { address: "Pacific Garden", sub_area: null, subcontractor_id: "thenie" },
+        data: {
+          address: "Pacific Garden",
+          sub_area: null,
+          subcontractor_id: "thenie",
+        },
         error: null,
       },
     });
