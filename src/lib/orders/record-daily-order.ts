@@ -1,9 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  coverageFor,
-  kitchenCoverage,
-} from "@/lib/subcontractors/coverage";
+import { coverageFor, kitchenCoverage } from "@/lib/subcontractors/coverage";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
+import { isLocked, loadDeadlineHour } from "@/lib/orders/delivery-state";
 import {
   loadCustomerSchedule,
   unbookedByOrder,
@@ -107,6 +105,43 @@ export async function recordDailyOrder(params: {
     return {
       ok: false,
       error: `Tanggal yang diminta (${pastDates.join(", ")}) sudah lewat, hari ini ${todayWib}. Tidak ada yang tercatat — pastikan tahunnya benar dan tanyakan tanggalnya lagi ke customer.`,
+    };
+  }
+
+  // Past the kitchen's cutoff. The filter above only catches a date that has
+  // already gone; the deadline is 16:00 WIB the *day before*, so both today and
+  // — after 16:00 — tomorrow are already committed. `delete_deliveries` and
+  // `change_delivery_address` have refused a locked date since they were
+  // written; this one never checked, which left the bot able to add a meal to a
+  // day it was not allowed to cancel a meal from. Adding is the worse half:
+  // the sheet went to the kitchen hours ago and is not re-read, so the row is
+  // cooked by nobody, while the insert still spends the customer's quota and
+  // the tool still returns ok — so the bot tells them it is booked.
+  //
+  // 2026-09-12 is the case. Thenie was never paid for that day and cancelled
+  // it; six rows were deleted at 11:57 WIB. At 13:38 the bot booked Puspa a
+  // fresh row for that same date. Nothing cooked it, her package went back to
+  // fully dated, and her next request — a real one, for the 15th — was refused
+  // by the unbooked<=0 gate below, which pushed the admin an alert about the
+  // second failure while the first stayed silent.
+  //
+  // Dropped rather than refused outright, the way a libur and a kitchen's off
+  // day are: the rest of the run still books and the dropped dates are named
+  // in the result, so the model does not confirm one that was thrown away.
+  const deadlineHour = await loadDeadlineHour();
+  const lockedDates = futureDates.filter((d) => isLocked(d, { deadlineHour }));
+  const openDeadlineDates = futureDates.filter(
+    (d) => !isLocked(d, { deadlineHour }),
+  );
+
+  if (openDeadlineDates.length === 0) {
+    console.warn(
+      "[record-daily-order] every requested date is past the kitchen cutoff",
+      JSON.stringify({ lockedDates, deadlineHour }),
+    );
+    return {
+      ok: false,
+      error: `Tanggal yang diminta (${lockedDates.join(", ")}) sudah lewat batas pemesanan jam ${deadlineHour}.00 WIB H-1, jadi tidak ada yang tercatat. Jangan janjikan tanggal itu — tawarkan tanggal yang masih bisa.`,
     };
   }
 
@@ -259,8 +294,8 @@ export async function recordDailyOrder(params: {
   // straight through one — it put 25 Agustus (Maulid Nabi) in an eight-day run
   // in the simulator even with the holiday list in its prompt. Dropping the
   // date here is the guarantee; the prompt rule is the first layer.
-  const closedDates = futureDates.filter((d) => isClosedHoliday(d));
-  const businessDates = futureDates.filter((d) => !isClosedHoliday(d));
+  const closedDates = openDeadlineDates.filter((d) => isClosedHoliday(d));
+  const businessDates = openDeadlineDates.filter((d) => !isClosedHoliday(d));
 
   // A weekday the kitchen cooking this package does not work. `isClosedHoliday`
   // answers for the business and used to be the whole calendar, because every
@@ -276,8 +311,12 @@ export async function recordDailyOrder(params: {
         .maybeSingle()
     : { data: null };
   const kitchenDays = kitchenDaysRow?.delivery_days ?? null;
-  const offDates = businessDates.filter((d) => !kitchenDeliversOn(kitchenDays, d));
-  const openDates = businessDates.filter((d) => kitchenDeliversOn(kitchenDays, d));
+  const offDates = businessDates.filter(
+    (d) => !kitchenDeliversOn(kitchenDays, d),
+  );
+  const openDates = businessDates.filter((d) =>
+    kitchenDeliversOn(kitchenDays, d),
+  );
 
   if (openDates.length === 0 && offDates.length > 0) {
     console.warn(
@@ -429,6 +468,9 @@ export async function recordDailyOrder(params: {
   // confirmed the whole run to the customer.
   const notBooked = [
     ...pastDates.map((d) => `${d} (sudah lewat)`),
+    ...lockedDates.map(
+      (d) => `${d} (sudah lewat batas jam ${deadlineHour}.00 WIB H-1)`,
+    ),
     ...closedDates.map((d) => `${d} (libur nasional)`),
     ...offDates.map((d) => `${d} (dapur tidak kirim hari itu)`),
     ...[...alreadyBooked].map((d) => `${d} (sudah ada di jadwal)`),
