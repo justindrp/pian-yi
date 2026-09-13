@@ -11,6 +11,7 @@
  *
  * Usage:
  *   pnpm tsx --env-file=.env.local scripts/menu-card.ts [--kitchen <nickname|name|id>]
+ *                                                       [--upload] [--week YYYY-MM-DD]
  *
  * Without `--kitchen` it draws the first active kitchen that has a `menu_text`,
  * which is what it always did. Naming one draws that kitchen whether it is
@@ -25,11 +26,18 @@
  * `delivery_areas`, not from the union across active kitchens: a card promising
  * an area this kitchen does not drive to is a delivery we cannot make.
  *
- * Writes .menu-photos/card-<nickname>.png. Nothing is uploaded and nothing is sent.
+ * Writes .menu-photos/card-<nickname>.png. Without `--upload` nothing leaves the
+ * machine; with it the card goes through the same compression and the same
+ * storage path as the dashboard form, and that kitchen's `menu_image_url` and
+ * `menu_week_start` point at it. `--week` states the Monday the card covers when
+ * the day-of-week default would guess wrong. Nothing is sent to a customer.
  */
 
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
+import { logEdit } from "@/lib/audit/log-edit";
+import { compressUploadedImage } from "@/lib/images/compress";
+import { defaultMenuWeekStart, jakartaDateString } from "@/lib/menu/week";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { daysLabel } from "@/lib/subcontractors/days";
@@ -253,6 +261,14 @@ async function main() {
   if (argv.includes("--kitchen") && !asked)
     throw new Error("--kitchen needs a nickname, a name or an id");
 
+  const upload = argv.includes("--upload");
+  const statedWeek = argv.includes("--week")
+    ? (argv[argv.indexOf("--week") + 1] ?? "").trim()
+    : "";
+  if (statedWeek && !/^\d{4}-\d{2}-\d{2}$/.test(statedWeek))
+    throw new Error("--week needs a Monday as YYYY-MM-DD");
+  const weekStart = statedWeek || defaultMenuWeekStart(jakartaDateString());
+
   const db = createAdminClient();
   const [{ data: kitchens, error }, fallbackAreas, surcharge] =
     await Promise.all([
@@ -358,6 +374,51 @@ async function main() {
   await browser.close();
   console.log(
     `${DIR}/card-${slug}.png — ${kitchen.customer_nickname ?? kitchen.name}, ${menu.batch}, ${menu.days.length} days`,
+  );
+
+  if (!upload) return console.log("Nothing uploaded. Re-run with --upload.");
+
+  // Exactly what the dashboard's Subcontractors → menu image form does
+  // (src/app/api/subcontractors/[id]/menu-image/route.ts): the same
+  // compression, the same storage path, the same two columns, the same audit
+  // row. A card the customer never receives changes nothing, and the upload was
+  // a browser-only step — so a week could be rendered and then left on disk.
+  const image = await compressUploadedImage(
+    readFileSync(`${DIR}/card-${slug}.png`),
+  );
+  const storagePath = `subcontractors/${kitchen.id}/${Date.now()}.${image.extension}`;
+  const { error: upErr } = await db.storage
+    .from("menu-images")
+    .upload(storagePath, image.buffer, {
+      contentType: image.contentType,
+      upsert: true,
+    });
+  if (upErr) throw new Error(`upload failed: ${upErr.message}`);
+  const url = db.storage.from("menu-images").getPublicUrl(storagePath)
+    .data.publicUrl;
+
+  // Which week the image covers is what lets the bot call it "next week's
+  // menu"; the day-of-week default is a guess and `--week` is the correction.
+  const { error: updErr } = await db
+    .from("subcontractors")
+    .update({
+      menu_image_url: url,
+      menu_week_start: weekStart,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", kitchen.id);
+  if (updErr) throw new Error(updErr.message);
+
+  await logEdit({
+    db,
+    actor: "script:menu-card",
+    entityType: "subcontractors",
+    entityId: kitchen.id,
+    action: "update",
+    changes: { menu_image_url: url, menu_week_start: weekStart },
+  });
+  console.log(
+    `  → menu_image_url = ${url}\n  → menu_week_start = ${weekStart} (${(image.buffer.length / 1024).toFixed(0)} KB)`,
   );
 }
 

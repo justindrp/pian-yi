@@ -15,7 +15,7 @@
  * shot against and haloes on any other ground.
  *
  * Usage:
- *   npx tsx --env-file=.env.local scripts/menu-photos.ts [--day 1] [--quality low|medium|high]
+ *   npx tsx --env-file=.env.local scripts/menu-photos.ts [--kitchen <nickname|name|id>] [--day 1] [--quality low|medium|high]
  *
  * Costs money on every run: ~$0.041 per image at medium, ~$0.005 at low.
  * Writes .menu-photos/<kitchen>/t1.png … t5.png. Nothing is uploaded and nothing is sent.
@@ -240,17 +240,43 @@ async function main() {
   const quality = arg("--quality") ?? "medium";
   const only = arg("--day") ? Number(arg("--day")) : null;
 
+  // Same matcher as scripts/menu-card.ts, because the two have to draw the same
+  // kitchen: without it this script took the first active kitchen with a
+  // `menu_text` and the card took the one it was asked for, so Batch 54's run
+  // would have billed five photos of Dapur Palem's week and written them under
+  // Dapur Suplir's dish names.
+  const wanted = args[args.indexOf("--kitchen") + 1];
+  const asked = args.includes("--kitchen") ? (wanted ?? "").trim() : "";
+  if (args.includes("--kitchen") && !asked)
+    throw new Error("--kitchen needs a nickname, a name or an id");
+
   const db = createAdminClient();
   const { data: kitchens, error } = await db
     .from("subcontractors")
-    .select("id, customer_nickname, menu_text")
-    .eq("is_active", true);
+    .select("id, name, customer_nickname, menu_text, is_active");
   if (error) throw new Error(error.message);
 
-  const kitchen = (kitchens ?? []).find(
-    (k) => (k.menu_text ?? "").trim().length > 0,
-  );
-  if (!kitchen) throw new Error("no active kitchen has a menu_text to draw");
+  const hasMenu = (k: { menu_text: string | null }) =>
+    (k.menu_text ?? "").trim().length > 0;
+  const needle = asked.toLowerCase();
+  const kitchen = asked
+    ? (kitchens ?? []).find(
+        (k) =>
+          k.id === asked ||
+          (k.customer_nickname ?? "").toLowerCase().includes(needle) ||
+          k.name.toLowerCase().includes(needle),
+      )
+    : (kitchens ?? []).find((k) => k.is_active === true && hasMenu(k));
+  if (!kitchen)
+    throw new Error(
+      asked
+        ? `no kitchen matches "${asked}"`
+        : "no active kitchen has a menu_text to draw",
+    );
+  if (!hasMenu(kitchen))
+    throw new Error(
+      `${kitchen.customer_nickname ?? kitchen.name} has no menu_text — write the week into that column first`,
+    );
   // A kitchen whose lunch and dinner are different menus has two line-ups a day
   // and this script draws one tray per day. Drawing either one would put food on
   // the card that half the customers are not getting.
@@ -265,7 +291,7 @@ async function main() {
   // Per kitchen, because the card reads them back per kitchen: flat files put
   // Thenie's five trays under Homey's dish names the first time a second
   // kitchen was drawn.
-  const slug = (kitchen.customer_nickname ?? "kitchen")
+  const slug = (kitchen.customer_nickname ?? kitchen.name)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
