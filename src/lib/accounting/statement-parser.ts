@@ -107,11 +107,17 @@ export function classify(
     const account = known.contraAccountCode as AccountCode;
     // The same counterparty means different things on different statements.
     // Justin's name on his own BCA line is a drawing or an injection (2002);
-    // on Agnes's Superbank it is the float arriving from BCA (1002), and
-    // booking that to 2002 would double-count him as a creditor.
+    // on the Superbank — Annie's until 3 Juli 2026, Agnes's after — it is the
+    // float arriving from BCA (1002), and booking that to 2002 would
+    // double-count him as a creditor. Annie's own spending out of that account
+    // is not this case: those rules carry 2003 and are pinned to 1003.
     if (account === "2002" && bankAccountCode !== "1002") return "1002";
-    // A line never faces its own account.
-    if (account === bankAccountCode) return "1002";
+    // A line normally never faces its own account — except a move between two
+    // pockets of one account, which is exactly a line facing itself. Superbank
+    // shows Tabungan Utama and Saku Catering PianYi separately and both are
+    // 1003, so the move nets to nothing and is recorded to stop the line
+    // reading as money that left. Only an `internal` rule may say so.
+    if (account === bankAccountCode && known.kind !== "internal") return "1002";
     return account;
   }
   // A known identity with no account decided yet — the ingredient suppliers,
