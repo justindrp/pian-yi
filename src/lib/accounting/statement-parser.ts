@@ -349,18 +349,21 @@ function parseBcaSection(
     const parts = [body0, ...rec.slice(1)];
 
     let hit: RegExpMatchArray | null = null;
-    for (const p of parts) {
-      const m = p.match(AMT_WHOLE);
+    let hitAt = -1;
+    for (let i = 0; i < parts.length; i++) {
+      const m = parts[i].match(AMT_WHOLE);
       if (m) {
         hit = m;
+        hitAt = i;
         break;
       }
     }
     if (!hit) {
-      for (const p of parts) {
-        const m = p.match(AMT_TAIL);
+      for (let i = 0; i < parts.length; i++) {
+        const m = parts[i].match(AMT_TAIL);
         if (m) {
           hit = m;
+          hitAt = i;
           break;
         }
       }
@@ -370,13 +373,26 @@ function parseBcaSection(
       continue;
     }
 
-    const raw = parts.join(" ").replace(/\s+/g, " ").trim();
+    // The mutasi ends the transaction. A record that is the last one on a page
+    // swallows everything printed below it — the letter-spaced branch name, our
+    // own address, the CATATAN block — because no keyword line closes it until
+    // the next page's first transaction. All of that sits after the amount, so
+    // cutting there is what separates the transaction from the page it was
+    // printed on.
+    const body = parts.slice(0, hitAt + 1);
+
+    const raw = body.join(" ").replace(/\s+/g, " ").trim();
     const direction: Direction = hit[2] ? "DB" : "CR";
-    // The counterparty is the last all-caps or name-cased fragment before the
-    // amount; BCA truncates it to 18 characters.
+    // The counterparty is the last name fragment before the amount; BCA
+    // truncates it to 18 characters. A fragment opening with "/" is the
+    // sending bank's channel on a SWITCHING line ("/DBS MOBILE") printed
+    // after the name, never the sender.
     const counterparty =
-      parts
-        .filter((p) => !AMT_WHOLE.test(p) && /[A-Za-z]{3}/.test(p) && p !== "-")
+      body
+        .slice(0, hitAt)
+        .filter(
+          (p) => !AMT_WHOLE.test(p) && /[A-Za-z]{3}/.test(p) && p !== "-" && !p.startsWith("/"),
+        )
         .pop()
         ?.slice(0, 60) ?? null;
 
