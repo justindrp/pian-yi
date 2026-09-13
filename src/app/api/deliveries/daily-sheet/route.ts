@@ -1,11 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { createJournalEntry } from "@/lib/accounting/journal";
+import { accrueDeliveryDate } from "@/lib/accounting/accrue-deliveries";
 import { deleteDelivery } from "@/lib/orders/delivery-state";
-import {
-  kitchenCostPerPortion,
-  normalizeSize,
-  type OrderSize,
-} from "@/lib/orders/size";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -103,28 +98,6 @@ export async function PUT(req: NextRequest): Promise<Response> {
     );
   }
 
-  // Pre-fetch subcontractor costs to avoid N+1 queries in the loop
-  const { data: rawSubs } = await db
-    .from("subcontractors")
-    .select(
-      "id, cost_per_portion, cost_per_portion_route1, cost_per_portion_m, cost_per_portion_route1_m",
-    );
-  // Keyed by kitchen; the rate is picked per line, because it depends on the
-  // order's size and the customer's route, neither of which is known here.
-  const subRateMap = new Map((rawSubs ?? []).map((s) => [s.id, s] as const));
-
-  // Accumulate per-meal journal data; journals created after loop (one per meal_type per day)
-  type JournalAccum = {
-    portions: number;
-    pricePerPortion: number;
-    addonCostPerPortion: number;
-    surchargePerDelivery: number;
-    subcontractorId: string | null;
-    customerId: string;
-    size: OrderSize;
-  };
-  const journalAccum = new Map<string, JournalAccum[]>(); // key: meal_type
-
   for (const row of body.rows) {
     // Skip and cancel are the same act: take the row off the sheet. Both used
     // to write a status ('skipped' / 'cancelled') and leave the row in place,
@@ -180,192 +153,30 @@ export async function PUT(req: NextRequest): Promise<Response> {
       .eq("meal_type", row.meal_type)
       .maybeSingle();
 
-    const { data: upserted } = await db
-      .from("daily_deliveries")
-      .upsert(
-        {
-          delivery_date: body.date,
-          customer_id: row.customer_id,
-          order_id: row.order_id,
-          meal_type: row.meal_type,
-          portions: row.portions,
-          subcontractor_id: row.subcontractor_id,
-          price_per_portion: priorRow?.price_per_portion ?? null,
-          notes: row.notes,
-          address_slot: row.address_slot ?? 1,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "delivery_date,customer_id,meal_type" },
-      )
-      .select("id")
-      .single();
-
-    // Journals created after the loop, one per meal_type per day.
-    if (upserted?.id && row.order_id) {
-      const { data: ord } = await db
-        .from("orders")
-        .select(
-          "price_per_portion, addon_cost_per_portion, size, delivery_surcharge_per_delivery",
-        )
-        .eq("id", row.order_id)
-        .single();
-
-      if (ord?.price_per_portion) {
-        const mealType = row.meal_type;
-        const lines = journalAccum.get(mealType) ?? [];
-        if (lines.length === 0) journalAccum.set(mealType, lines);
-        lines.push({
-          portions: row.portions,
-          // The row's own rate wins. It is set only when this delivery is
-          // cooked by a kitchen the order was not bought from, and then the
-          // order's rate is the wrong one: revenue recognition draws 2100 down
-          // by portions x rate, and the deposit was taken at the mix.
-          pricePerPortion: priorRow?.price_per_portion ?? ord.price_per_portion,
-          addonCostPerPortion: ord.addon_cost_per_portion ?? 0,
-          surchargePerDelivery: ord.delivery_surcharge_per_delivery ?? 0,
-          subcontractorId: row.subcontractor_id,
-          customerId: row.customer_id,
-          size: normalizeSize(ord.size),
-        });
-      }
-    }
-  }
-
-  // Create one revenue + one COGS journal per meal_type (idempotent: skipped if already exists)
-  if (journalAccum.size > 0) {
-    const allEntries = [...journalAccum.values()].flat();
-    const uniqueCustomerIds = [...new Set(allEntries.map((e) => e.customerId))];
-
-    const { data: custRoutes } = await db
-      .from("customers")
-      .select("id, delivery_route")
-      .in("id", uniqueCustomerIds);
-    const routeMap = new Map<string, string | null>(
-      (custRoutes ?? []).map((c) => [c.id, c.delivery_route as string | null]),
+    await db.from("daily_deliveries").upsert(
+      {
+        delivery_date: body.date,
+        customer_id: row.customer_id,
+        order_id: row.order_id,
+        meal_type: row.meal_type,
+        portions: row.portions,
+        subcontractor_id: row.subcontractor_id,
+        price_per_portion: priorRow?.price_per_portion ?? null,
+        notes: row.notes,
+        address_slot: row.address_slot ?? 1,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "delivery_date,customer_id,meal_type" },
     );
-
-    for (const [mealType, entries] of journalAccum.entries()) {
-      // Revenue: group by price_per_portion
-      const revenueByRate = new Map<number, number>();
-      for (const e of entries) {
-        revenueByRate.set(
-          e.pricePerPortion,
-          (revenueByRate.get(e.pricePerPortion) ?? 0) + e.portions,
-        );
-      }
-      const totalRevenue = [...revenueByRate.entries()].reduce(
-        (s, [price, p]) => s + price * p,
-        0,
-      );
-      if (totalRevenue > 0) {
-        const totalPortions = entries.reduce((s, e) => s + e.portions, 0);
-        const revParts = [...revenueByRate.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([price, p]) => `${p}p × Rp${price.toLocaleString("id-ID")}`);
-        createJournalEntry({
-          description: `Revenue recognition ${body.date} ${mealType}`,
-          date: body.date,
-          sourceType: "delivery",
-          sourceId: `rev_${body.date}_${mealType}`,
-          notes: `${totalPortions} porsi: ${revParts.join(", ")} = Rp${totalRevenue.toLocaleString("id-ID")}`,
-          lines: [
-            { accountCode: "2100", debit: totalRevenue, credit: 0 },
-            { accountCode: "4001", debit: 0, credit: totalRevenue },
-          ],
-        }).catch((err) =>
-          console.error("[delivery] revenue journal error:", err),
-        );
-      }
-
-      // COGS: group by effective cost per portion (route-aware)
-      const cogsByRate = new Map<number, number>();
-      for (const e of entries) {
-        const sub = e.subcontractorId
-          ? subRateMap.get(e.subcontractorId)
-          : undefined;
-        const route = routeMap.get(e.customerId) === "1" ? 1 : 2;
-        // M is a second dish the kitchen bills us for, so it carries its own
-        // pair of route rates; costing an M portion at the S rate reports a
-        // margin wider than it is.
-        const subCost = sub ? kitchenCostPerPortion(sub, e.size, route) : 0;
-        const totalRate = subCost + e.addonCostPerPortion;
-        if (totalRate > 0) {
-          cogsByRate.set(
-            totalRate,
-            (cogsByRate.get(totalRate) ?? 0) + e.portions,
-          );
-        }
-      }
-      const totalCogs = [...cogsByRate.entries()].reduce(
-        (s, [rate, p]) => s + rate * p,
-        0,
-      );
-      if (totalCogs > 0) {
-        const totalCogsPortions = [...cogsByRate.values()].reduce(
-          (s, p) => s + p,
-          0,
-        );
-        const cogsParts = [...cogsByRate.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([rate, p]) => `${p}p × Rp${rate.toLocaleString("id-ID")}`);
-        createJournalEntry({
-          description: `COGS ${body.date} ${mealType}`,
-          date: body.date,
-          sourceType: "delivery_cogs",
-          sourceId: `cogs_${body.date}_${mealType}`,
-          notes: `${totalCogsPortions} porsi: ${cogsParts.join(", ")} = Rp${totalCogs.toLocaleString("id-ID")}`,
-          lines: [
-            { accountCode: "5001", debit: totalCogs, credit: 0 },
-            { accountCode: "2001", debit: 0, credit: totalCogs },
-          ],
-        }).catch((err) => console.error("[delivery] cogs journal error:", err));
-      }
-
-      // Ongkir is a pass-through, never revenue: we collect Rp 10.000 a drop
-      // from a customer in a surcharged neighbourhood and owe the kitchen the
-      // same Rp 10.000 for driving there. It is held as 2101 Unearned Delivery
-      // Fee when the customer pays, and moves to 2001 Accounts Payable here —
-      // per delivery day, because that is how the kitchen is paid, and because
-      // a drop that never happens is a fee we never owe. Nothing touches 4001
-      // or 5001, so a zero-margin fee does not inflate either side of the P&L.
-      //
-      // Counted in **drops, not portions**: three portions to one door is one
-      // fee. `entries` holds one element per delivery row, which is one drop.
-      const ongkirDrops = entries.filter((e) => e.surchargePerDelivery > 0);
-      const totalOngkir = ongkirDrops.reduce(
-        (s, e) => s + e.surchargePerDelivery,
-        0,
-      );
-      if (totalOngkir > 0) {
-        const ongkirByRate = new Map<number, number>();
-        for (const e of ongkirDrops) {
-          ongkirByRate.set(
-            e.surchargePerDelivery,
-            (ongkirByRate.get(e.surchargePerDelivery) ?? 0) + 1,
-          );
-        }
-        const ongkirParts = [...ongkirByRate.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(
-            ([rate, drops]) =>
-              `${drops} drop × Rp${rate.toLocaleString("id-ID")}`,
-          );
-        createJournalEntry({
-          description: `Ongkir terutang ke dapur ${body.date} ${mealType}`,
-          date: body.date,
-          sourceType: "delivery_ongkir",
-          sourceId: `ongkir_${body.date}_${mealType}`,
-          notes: `${ongkirParts.join(", ")} = Rp${totalOngkir.toLocaleString("id-ID")}`,
-          lines: [
-            { accountCode: "2101", debit: totalOngkir, credit: 0 },
-            { accountCode: "2001", debit: 0, credit: totalOngkir },
-          ],
-        }).catch((err) =>
-          console.error("[delivery] ongkir journal error:", err),
-        );
-      }
-    }
   }
+
+  // Recognise the day into the books off the rows themselves, not off this
+  // payload. Idempotent, so a second Save posts nothing; the nightly cron
+  // (`/api/cron/accrue-deliveries`) catches every date nobody saved by hand,
+  // which since 21 Agustus 2026 was all of them.
+  await accrueDeliveryDate(db, body.date).catch((err) =>
+    console.error("[delivery] accrual error:", err),
+  );
 
   await db.from("edit_log").insert({
     entity_type: "daily_deliveries",

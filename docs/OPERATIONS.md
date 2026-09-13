@@ -348,6 +348,29 @@ So in this project a customer transfer in is a **debit**, in prose, in a report 
 
 Which also means the two backlogs are different work and must not be quoted at each other. The backfill's "unmatched" is a **debit whose sender the map cannot name** — 3 lines, Rp 104.500, at the time of writing. The reconcile queue's "belum berakun" on `/accounting` is a line with **no `contra_account_code`**, and across Sep–Dec 2025 every one of those is money out (175 lines, Rp 38,66jt: kitchen payments, courier kasbon, ads, admin fees). Every money-in line in that window already carries a contra code. A count from one is not an answer about the other.
 
+## Recognition runs off the delivery rows, not off anyone pressing Save
+
+Revenue, COGS and the ongkir hand-off used to be posted inside `PUT /api/deliveries/daily-sheet`, from the payload that route was handed. That made the books a side effect of an admin saving the Deliveries page — and rows also arrive from `record_daily_order`, from `mark_paid` and from order creation, none of which touch that button. So when the humans stopped saving sheets on **21 Agustus 2026** recognition stopped with them: three weeks, Rp 10.683.000 of revenue and Rp 8.112.000 of kitchen cost, on food that was cooked and paid for, with nothing wrong on any screen. `delivery_ongkir` had never fired at all.
+
+The accrual now lives in `accrueDeliveryDate()` (`src/lib/accounting/accrue-deliveries.ts`) and reads `daily_deliveries` for the date. A delivery row means the food is cooked and delivered (migration 075), which is exactly the event being recognised, so the rows are the only honest source. `/api/cron/accrue-deliveries` walks the last 14 days nightly at 21:30 WIB (`catchUp: true`, `days` overrides the window up to 120 for a backfill); the Save button still calls the same function, so a hand-edited sheet posts immediately instead of waiting for the night. It walks a window rather than yesterday alone because a row can be added to a past date.
+
+It stays idempotent on the same `rev_{date}_{meal}` / `cogs_{date}_{meal}` / `ongkir_{date}_{meal}` source keys the inline version used, so re-walking a settled day writes nothing and the historic journals are not rebuilt. The flip side is unchanged and still true: **a date whose journal already exists is not re-posted when the sheet changes afterwards** — that needs a manual adjusting entry. `createJournalEntry()` returns `{ id, created }` for this, so a re-walk reports zero rather than claiming revenue it did not post.
+
+The 22 Agustus – 11 September gap was backfilled on 2026-09-13: 19 dates, Rp 10.683.000 revenue, Rp 8.112.000 COGS, Rp 111.000 ongkir — the first ongkir journals the system has ever posted.
+
+## A kitchen payment is posted from the bank line that proves it
+
+Account 2001 Accounts Payable had 297 credits and no kitchen debits at all: every portion cooked accrued what we owe a kitchen and nothing ever paid it down, so the books said we had never settled with anyone. (Its only debits were six `manual` courier-salary entries, Rp 3.015.000.) The money had in fact left — 197 transfers, Rp 37.211.000 — and was sitting in `bank_transactions` with `journal_id` null, which is the state that column exists to name: the money moved and the books do not know it.
+
+So a settlement is never typed in. `settleBankLines()` (`src/lib/accounting/settle-bank-lines.ts`) posts it from the statement line, at the bank's own date and the bank's own amount, and writes the journal id back onto the line. `POST /api/accounting/bank/settle` is the owner-only button behind it — per row ("Catat") and in bulk ("Catat N pembayaran dapur") on the Rekening Koran tab — and the rules live in the lib rather than the route so a backfill script and the button cannot drift on what counts as settleable. A debit posts `Dr 2001 / Cr <bank>`; a credit on a payable line is money coming back from a kitchen and posts the other way.
+
+Two guards, both deliberate:
+
+- **Only contra `2001` may be settled.** 2100 customer payments are already journalised by `mark_paid`, and posting them here would count every deposit twice — `scripts/link-bank-journals.ts` exists because those journals were written without the bank link, so an unjournalised 2100 line means a missing *link*, not a missing journal. Courier kasbon 1201, outside delivery 5002, ads 6001 and infrastructure 6003 each still need their own decision about which side they land on and whether an accrual already exists. Widen the allowlist one account at a time.
+- **The books start 1 Juli 2026.** The 133 kitchen transfers before it (Rp 16.446.000) predate the accounting system and have no accrual to clear; posting them would leave 2001 a large debit for cost that was never recognised, which reads as the kitchens owing us money. They stay in `bank_transactions` as unposted evidence until someone decides how the pre-system period is opened.
+
+The 64 July-onward lines were posted on 2026-09-13, Rp 20.765.000. 2001 then stands at Rp 23.780.000 debit against Rp 23.516.000 credit — Rp 264.000 net paid ahead, which is what a kitchen paid on a rounded figure looks like, not an error to chase.
+
 ## Which kitchen cooked a past delivery is reconstructed from the bank, not from the sheet
 
 The operations spreadsheet has a `subcontractor` column and it is a broken VLOOKUP: it answers "Thenie" for 2220 of its rows and `#N/A` for 1062 more. The June import read it, so 2484 of the 2574 delivery rows between January and July 2026 carried Thenie and 105 carried anyone else, while the bank shows seven kitchens being paid over the same months. Every per-kitchen COGS figure, every kitchen bill and every margin computed off those rows was wrong. **Never read that column, and never trust a historical `subcontractor_id` that came from it.**

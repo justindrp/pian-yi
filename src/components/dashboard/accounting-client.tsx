@@ -580,7 +580,8 @@ function LedgerTab({ from, to }: { from: string; to: string }) {
         };
       } | null;
       if (!json) throw new Error(`Server balas ${res.status} tanpa JSON`);
-      if (!json.ok) throw new Error(json.error ?? `Gagal memuat (${res.status})`);
+      if (!json.ok)
+        throw new Error(json.error ?? `Gagal memuat (${res.status})`);
       return json;
     },
   });
@@ -675,7 +676,9 @@ function LedgerTab({ from, to }: { from: string; to: string }) {
                           <table className="w-full">
                             <tbody>
                               {r.entries.map((e) => (
-                                <tr key={`${rowKey}-${e.code}-${e.debit}-${e.credit}`}>
+                                <tr
+                                  key={`${rowKey}-${e.code}-${e.debit}-${e.credit}`}
+                                >
                                   <td className="py-1 pl-3 text-gray-500 w-64">
                                     <span className="font-mono">{e.code}</span>{" "}
                                     {e.name}
@@ -1727,6 +1730,19 @@ function ContraSelect({
   );
 }
 
+// A bank line can be journalised when it faces a payable, carries no journal
+// yet, and falls inside the period the books cover. Same three tests the
+// settle route applies; it refuses anything else, so this only decides which
+// lines get a button.
+const BOOKS_START = "2026-07-01";
+function settleable(l: BankTransaction) {
+  return (
+    l.contra_account_code === "2001" &&
+    !l.journal_id &&
+    l.txn_date >= BOOKS_START
+  );
+}
+
 function BankStatementsTab() {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -1743,6 +1759,7 @@ function BankStatementsTab() {
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [settling, setSettling] = useState(false);
 
   const { data: accountsData } = useQuery({
     queryKey: ["accounting-accounts"],
@@ -1753,7 +1770,9 @@ function BankStatementsTab() {
   });
   const accounts = accountsData?.data ?? [];
   const accountName = (code: string | null) =>
-    code ? (accounts.find((a) => a.code === code)?.name ?? code) : "Belum ditentukan";
+    code
+      ? (accounts.find((a) => a.code === code)?.name ?? code)
+      : "Belum ditentukan";
 
   const statements = useQuery({
     queryKey: ["bank-statements"],
@@ -1795,12 +1814,47 @@ function BankStatementsTab() {
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (!json.ok) throw new Error(json.error ?? "Gagal menyimpan");
-      await queryClient.invalidateQueries({ queryKey: ["bank-statement", selected] });
+      await queryClient.invalidateQueries({
+        queryKey: ["bank-statement", selected],
+      });
       await queryClient.invalidateQueries({ queryKey: ["bank-statements"] });
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Gagal menyimpan");
     } finally {
       setSaving(null);
+    }
+  }
+
+  // Posting is what pays the payable down: 2001 accrues what a kitchen is owed
+  // for every portion cooked, and until these lines are journalised nothing
+  // ever debits it, so the balance sheet reads as if no kitchen had ever been
+  // paid. The amount and the date are the bank's, never typed.
+  async function settle(ids: string[]) {
+    setSettling(true);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/accounting/bank/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const json = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        data?: { posted: number; skipped: { reason: string }[] };
+      };
+      if (!json.ok) throw new Error(json.error ?? "Gagal mencatat");
+      const skipped = json.data?.skipped ?? [];
+      if (json.data?.posted === 0 && skipped.length > 0)
+        setSaveError(`Tidak ada yang dicatat: ${skipped[0].reason}`);
+      await queryClient.invalidateQueries({
+        queryKey: ["bank-statement", selected],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["accounting"] });
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Gagal mencatat");
+    } finally {
+      setSettling(false);
     }
   }
 
@@ -1825,7 +1879,8 @@ function BankStatementsTab() {
       <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm">
         Belum ada rekening koran. Import dengan{" "}
         <code className="text-gray-600">
-          pnpm tsx --env-file=.env.local scripts/import-bank-statements.ts &lt;file.pdf&gt;
+          pnpm tsx --env-file=.env.local scripts/import-bank-statements.ts
+          &lt;file.pdf&gt;
         </code>
       </div>
     );
@@ -1847,6 +1902,12 @@ function BankStatementsTab() {
     );
   });
 
+  // Kitchen payments on this statement that the books have not heard about
+  // yet. Computed over every line rather than over `shown`, so a search box or
+  // the "belum berakun" filter cannot quietly shrink what the bulk button
+  // settles.
+  const pending = lines.filter(settleable);
+
   // The running balance, so the table reads like a ledger rather than a list
   // of amounts. Superbank prints a balance on every line; BCA prints one on
   // about 40% of them, so the rest are carried forward from the statement's
@@ -1860,8 +1921,7 @@ function BankStatementsTab() {
   {
     let running = Number(detail.data?.statement.opening_balance ?? 0);
     for (const l of [...lines].sort((a, b) => a.row_index - b.row_index)) {
-      running +=
-        l.direction === "CR" ? Number(l.amount) : -Number(l.amount);
+      running += l.direction === "CR" ? Number(l.amount) : -Number(l.amount);
       if (l.balance_after !== null) running = Number(l.balance_after);
       balances.set(l.id, running);
     }
@@ -1870,13 +1930,23 @@ function BankStatementsTab() {
   // Grouped by contra account: the answer to "is this in the right account?"
   const groups = new Map<
     string,
-    { code: string | null; inCount: number; inSum: number; outCount: number; outSum: number }
+    {
+      code: string | null;
+      inCount: number;
+      inSum: number;
+      outCount: number;
+      outSum: number;
+    }
   >();
   for (const l of lines) {
     const key = l.contra_account_code ?? "";
-    const g =
-      groups.get(key) ??
-      { code: l.contra_account_code, inCount: 0, inSum: 0, outCount: 0, outSum: 0 };
+    const g = groups.get(key) ?? {
+      code: l.contra_account_code,
+      inCount: 0,
+      inSum: 0,
+      outCount: 0,
+      outSum: 0,
+    };
     if (l.direction === "CR") {
       g.inCount++;
       g.inSum += Number(l.amount);
@@ -1896,19 +1966,23 @@ function BankStatementsTab() {
   // BCA, then each Superbank account and pocket, then the USD sub-account.
   const byAccount = new Map<
     string,
-    { code: string; number: string; currency: string; label: string | null; items: BankStatement[] }
+    {
+      code: string;
+      number: string;
+      currency: string;
+      label: string | null;
+      items: BankStatement[];
+    }
   >();
   for (const s of list) {
     const key = `${s.account_code}|${s.account_number}|${s.currency}`;
-    const g =
-      byAccount.get(key) ??
-      {
-        code: s.account_code,
-        number: s.account_number,
-        currency: s.currency,
-        label: s.account_label,
-        items: [] as BankStatement[],
-      };
+    const g = byAccount.get(key) ?? {
+      code: s.account_code,
+      number: s.account_number,
+      currency: s.currency,
+      label: s.account_label,
+      items: [] as BankStatement[],
+    };
     g.items.push(s);
     byAccount.set(key, g);
   }
@@ -2038,10 +2112,14 @@ function BankStatementsTab() {
                     <td className="p-3">
                       <span
                         className={
-                          g.code ? "text-gray-900" : "text-amber-600 font-medium"
+                          g.code
+                            ? "text-gray-900"
+                            : "text-amber-600 font-medium"
                         }
                       >
-                        {g.code ? `${g.code} — ${accountName(g.code)}` : "Belum berakun"}
+                        {g.code
+                          ? `${g.code} — ${accountName(g.code)}`
+                          : "Belum berakun"}
                       </span>
                     </td>
                     <td className="p-3 text-right text-gray-400">
@@ -2083,9 +2161,23 @@ function BankStatementsTab() {
             <span className="text-xs text-gray-400 pb-2">
               {shown.length} dari {lines.length}
             </span>
+            {pending.length > 0 && (
+              <button
+                type="button"
+                disabled={settling}
+                onClick={() => settle(pending.map((l) => l.id))}
+                className="text-xs rounded-lg px-3 py-2 bg-gray-900 text-white disabled:opacity-50"
+              >
+                {settling
+                  ? "Mencatat..."
+                  : `Catat ${pending.length} pembayaran dapur`}
+              </button>
+            )}
           </div>
 
-          {saveError && <p className="text-sm text-red-600 mb-2">{saveError}</p>}
+          {saveError && (
+            <p className="text-sm text-red-600 mb-2">{saveError}</p>
+          )}
 
           <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
             <table className="w-full text-xs">
@@ -2098,15 +2190,21 @@ function BankStatementsTab() {
                   <th className="text-right p-3 font-normal w-32">Saldo</th>
                   <th className="text-left p-3 font-normal w-64">Debit</th>
                   <th className="text-left p-3 font-normal w-64">Kredit</th>
+                  <th className="text-left p-3 font-normal w-24">Jurnal</th>
                 </tr>
               </thead>
               <tbody>
                 {shown.map((l) => (
-                  <tr key={l.id} className="border-b border-gray-50 last:border-0">
+                  <tr
+                    key={l.id}
+                    className="border-b border-gray-50 last:border-0"
+                  >
                     <td className="p-3 text-gray-500 whitespace-nowrap align-top">
                       {l.txn_date.slice(5)}
                       {l.txn_time && (
-                        <span className="block text-gray-300">{l.txn_time}</span>
+                        <span className="block text-gray-300">
+                          {l.txn_time}
+                        </span>
                       )}
                     </td>
                     <td className="p-3 align-top">
@@ -2114,7 +2212,9 @@ function BankStatementsTab() {
                         {l.counterparty ?? l.description}
                       </span>
                       {l.counterparty && (
-                        <span className="block text-gray-400">{l.description}</span>
+                        <span className="block text-gray-400">
+                          {l.description}
+                        </span>
                       )}
                     </td>
                     <td className="p-3 text-right align-top text-gray-700">
@@ -2129,7 +2229,9 @@ function BankStatementsTab() {
                     </td>
                     <td
                       className={`p-3 text-right align-top whitespace-nowrap ${
-                        l.balance_after === null ? "text-gray-400" : "text-gray-600"
+                        l.balance_after === null
+                          ? "text-gray-400"
+                          : "text-gray-600"
                       }`}
                       title={
                         l.balance_after === null
@@ -2141,7 +2243,10 @@ function BankStatementsTab() {
                     </td>
                     <td className="p-3 align-top">
                       {l.direction === "CR" ? (
-                        <BankSide code={bankCode} name={accountName(bankCode)} />
+                        <BankSide
+                          code={bankCode}
+                          name={accountName(bankCode)}
+                        />
                       ) : (
                         <ContraSelect
                           line={l}
@@ -2160,7 +2265,26 @@ function BankStatementsTab() {
                           onChange={(code) => setAccount(l.id, code)}
                         />
                       ) : (
-                        <BankSide code={bankCode} name={accountName(bankCode)} />
+                        <BankSide
+                          code={bankCode}
+                          name={accountName(bankCode)}
+                        />
+                      )}
+                    </td>
+                    <td className="p-3 align-top whitespace-nowrap">
+                      {l.journal_id ? (
+                        <span className="text-gray-400">tercatat</span>
+                      ) : settleable(l) ? (
+                        <button
+                          type="button"
+                          disabled={settling}
+                          onClick={() => settle([l.id])}
+                          className="rounded-lg border border-gray-200 px-2 py-1 text-gray-700 hover:border-gray-400 disabled:opacity-50"
+                        >
+                          Catat
+                        </button>
+                      ) : (
+                        <span className="text-gray-300">—</span>
                       )}
                     </td>
                   </tr>

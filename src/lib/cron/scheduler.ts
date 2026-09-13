@@ -168,6 +168,20 @@ const JOBS: Job[] = [
       (await import("@/app/api/cron/post-delivery-followup/route")).GET(req),
   },
   {
+    // After the last dinner drop and after the sheet has stopped moving, so a
+    // day is recognised once and in its final shape. Catch-up matters here:
+    // the whole point of this job is that nothing else posts the accrual, so a
+    // firing missed to a deploy is a day the books never hear about.
+    name: "accrue-deliveries",
+    catchUp: true,
+    schedule: "30 21 * * *",
+    when: "21:30 WIB",
+    method: "POST",
+    path: "/api/cron/accrue-deliveries",
+    run: async (req) =>
+      (await import("@/app/api/cron/accrue-deliveries/route")).POST(req),
+  },
+  {
     name: "deduct-daily-quota",
     catchUp: true,
     schedule: "0 21 * * *",

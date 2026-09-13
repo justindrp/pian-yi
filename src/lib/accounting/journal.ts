@@ -16,17 +16,24 @@ interface CreateJournalOptions {
     | "delivery_ongkir"
     // A refund reverses the payment journal. Keyed on the order, so an order
     // can only be refunded into the books once.
-    | "refund";
+    | "refund"
+    // Money that actually left the bank, journalised from the statement line
+    // that is its evidence. Keyed on the bank_transactions row, so one line
+    // can only be posted once however many times the button is pressed.
+    | "bank_settlement";
   sourceId: string;
   notes?: string;
   lines: JournalLine[];
 }
 
-// Returns true if a journal already exists for this source (idempotency guard)
-async function journalExists(
+// The journal already posted for this source, if there is one (idempotency
+// guard). Returns its id rather than a boolean because a caller that holds the
+// evidence — a bank line — needs to point at the journal even when an earlier
+// press of the same button is what created it.
+async function existingJournalId(
   sourceType: string,
   sourceId: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const db = createAdminClient();
   const { data } = await db
     .from("journals")
@@ -34,13 +41,24 @@ async function journalExists(
     .eq("source_type", sourceType)
     .eq("source_id", sourceId)
     .maybeSingle();
-  return data !== null;
+  return data?.id ?? null;
 }
 
+/**
+ * Posts one balanced journal, once per (sourceType, sourceId).
+ *
+ * Returns the journal id and whether this call is what wrote it — a caller
+ * re-walking a settled period needs to tell "posted Rp 2jt" from "Rp 2jt was
+ * already posted", and a caller holding the evidence needs the id either way.
+ * Null means nothing could be posted. It deliberately does not throw: every
+ * caller posts *after* the business write has landed, and failing their
+ * request over bookkeeping would undo nothing.
+ */
 export async function createJournalEntry(
   opts: CreateJournalOptions,
-): Promise<void> {
-  if (await journalExists(opts.sourceType, opts.sourceId)) return;
+): Promise<{ id: string; created: boolean } | null> {
+  const already = await existingJournalId(opts.sourceType, opts.sourceId);
+  if (already) return { id: already, created: false };
 
   const db = createAdminClient();
 
@@ -53,7 +71,7 @@ export async function createJournalEntry(
 
   if (acctErr || !accounts?.length) {
     console.error("[accounting] failed to resolve accounts:", acctErr?.message);
-    return;
+    return null;
   }
 
   const codeToId = Object.fromEntries(accounts.map((a) => [a.code, a.id]));
@@ -62,7 +80,7 @@ export async function createJournalEntry(
   for (const code of codes) {
     if (!codeToId[code]) {
       console.error("[accounting] unknown account code:", code);
-      return;
+      return null;
     }
   }
 
@@ -76,7 +94,7 @@ export async function createJournalEntry(
       "[accounting] failed to generate reference:",
       refErr?.message,
     );
-    return;
+    return null;
   }
 
   const { data: journal, error: journalErr } = await db
@@ -97,7 +115,7 @@ export async function createJournalEntry(
       "[accounting] failed to insert journal:",
       journalErr?.message,
     );
-    return;
+    return null;
   }
 
   const { error: linesErr } = await db.from("journal_lines").insert(
@@ -116,5 +134,8 @@ export async function createJournalEntry(
     );
     // Clean up orphaned header
     await db.from("journals").delete().eq("id", journal.id);
+    return null;
   }
+
+  return { id: journal.id, created: true };
 }
