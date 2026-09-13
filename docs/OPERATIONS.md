@@ -435,7 +435,15 @@ Migration 112 ruled the 32 QRIS merchant lines on Justin's BCA, and the split is
 
 **Every personal rule here is pinned to `1002`.** Several of these merchants also appear on Annie's Superbank, where they are her spending (2003) under the `^Pembayaran ke ` catch-all. An unpinned 2002 rule outranks that catch-all at priority 25, and `classify()` then rewrites a 2002 on a non-1002 statement to 1002 — so her bubble tea would have been booked as a transfer from BCA that never happened. Two patterns are also narrower than the merchant name: `1013-HERO` rather than `HERO`, and `MALA KITCH` rather than `MALA`, because both short forms are inside a customer's name elsewhere in the same table.
 
-121 money-out lines (Rp 27,4 juta) are still nobody. The largest group is the eleven GoPay wallet top-ups (Rp 15,6 juta), which cannot be ruled as a group — each is a different purpose — and the rest is the Sep–Des 2025 tail of unnamed individuals on both statements.
+### The fourth pass, and the three lines a pattern cannot hold
+
+Migration 113 wrote nineteen more identities and classified 30 lines, Rp 2,9 juta: Turisno (chicken, 5003), Muhamad Diva (courier, 5002), eight more staff plus Dnid Rezx on 6005, five refunds on 2100, Annie's Shiro Milk on 2003 pinned to 1003, and the Rp 0,04 `DR KOREKSI BUNGA` against 4900, where the interest it corrects was booked.
+
+**Nany Widjaya is a kitchen we had never entered.** Her single Rp 120.000 line of 19 Desember 2025 is the only trace of Cahaya 99, a kitchen used once. A `kitchen` counterparty row needs a `subcontractor_id`, so the subcontractor has to exist before the identity can: the row is inactive, carries a placeholder nickname (`Dapur Kenanga`, following the plant convention) and no areas, because a customer never saw it.
+
+**Three lines are written by transaction id, not by pattern, and must stay that way.** Glady Calista is an employee who is also a customer — a Rp 27.000 reimbursement out and a Rp 135.000 catering payment in — and Lyh Novita Catrina's Rp 23.000 went out and came straight back the same day on the same reference. `bank_counterparties` says who a person is, not what a direction means, so a rule naming either of them would rewrite their credit side on the next import. The Rp 1.354.000 GoPay line of 6 November is a refund to a customer but shares its text exactly with ten wallet top-ups, so there is nothing to match on. All three carry `matched_by`, which is what stops a re-import touching them.
+
+88 money-out lines (Rp 22.792.212) are still nobody. The largest group is the ten GoPay wallet top-ups (Rp 14.257.000), which cannot be ruled as a group — each is a different purpose — then Vincent Pinnadi Lo's six lines (Rp 2.051.400), and the rest is the tail of unnamed individuals on both statements, mostly under Rp 100.000.
 
 ## Order flow stages
 
