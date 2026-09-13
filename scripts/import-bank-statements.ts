@@ -11,6 +11,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { loadCounterpartyRules } from "../src/lib/accounting/counterparties";
 import {
   type ParsedStatement,
   parseStatementPdf,
@@ -125,13 +126,19 @@ async function main() {
   }
 
   const db = createAdminClient();
+  // Who each counterparty is. Read once for the whole run — every line in
+  // every file is classified against the same set.
+  const counterpartyRules = await loadCounterpartyRules(db);
   let ok = 0;
   let failed = 0;
 
   for (const file of files) {
     console.log(basename(file));
     try {
-      const statements = await parseStatementPdf(new Uint8Array(await readFile(file)));
+      const statements = await parseStatementPdf(
+        new Uint8Array(await readFile(file)),
+        counterpartyRules,
+      );
       for (const s of statements) {
         if (await store(db, s, file)) ok++;
         else failed++;

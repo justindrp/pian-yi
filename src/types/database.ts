@@ -188,6 +188,73 @@ export type Database = {
           },
         ]
       }
+      bank_counterparties: {
+        Row: {
+          bank_account_code: string | null
+          contra_account_code: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          kind: string
+          label: string
+          notes: string | null
+          pattern: string
+          priority: number
+          subcontractor_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          bank_account_code?: string | null
+          contra_account_code?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind: string
+          label: string
+          notes?: string | null
+          pattern: string
+          priority?: number
+          subcontractor_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bank_account_code?: string | null
+          contra_account_code?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind?: string
+          label?: string
+          notes?: string | null
+          pattern?: string
+          priority?: number
+          subcontractor_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_counterparties_bank_account_code_fkey"
+            columns: ["bank_account_code"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "bank_counterparties_contra_account_code_fkey"
+            columns: ["contra_account_code"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "bank_counterparties_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_statements: {
         Row: {
           account_code: string

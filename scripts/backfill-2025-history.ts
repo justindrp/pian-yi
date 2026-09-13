@@ -32,6 +32,7 @@
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { loadCounterpartyRules } from "../src/lib/accounting/counterparties";
 import { parseStatementPdf } from "../src/lib/accounting/statement-parser";
 import { logEdit, systemActor } from "../src/lib/audit/log-edit";
 import { createAdminClient } from "../src/lib/supabase/admin";
@@ -257,11 +258,15 @@ async function loadSheet(): Promise<SheetRow[]> {
   return out;
 }
 
-async function loadDebits(): Promise<Debit[]> {
+async function loadDebits(
+  db: ReturnType<typeof createAdminClient>,
+): Promise<Debit[]> {
+  const counterpartyRules = await loadCounterpartyRules(db);
   const out: Debit[] = [];
   for (const file of STATEMENTS) {
     const statements = await parseStatementPdf(
       new Uint8Array(await readFile(file)),
+      counterpartyRules,
     );
     for (const s of statements) {
       if (s.currency !== "IDR") continue;
@@ -444,7 +449,7 @@ async function main() {
   );
 
   const sheet = await loadSheet();
-  const debits = await loadDebits();
+  const debits = await loadDebits(db);
   console.log(
     `sheet: ${sheet.length} portions ${WINDOW_START}..${WINDOW_END} | statements: ${debits.length} customer debits\n`,
   );

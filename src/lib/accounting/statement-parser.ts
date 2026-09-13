@@ -11,6 +11,10 @@
 // caller refuses the import.
 
 import { extractText, getDocumentProxy } from "unpdf";
+import {
+  type CounterpartyRule,
+  matchCounterparty,
+} from "@/lib/accounting/counterparties";
 
 export type Direction = "CR" | "DB";
 
@@ -83,66 +87,39 @@ export function detectFormat(text: string): "BCA" | "Superbank" | null {
 // buckets — a bucket that maps to no account is a line that can never be
 // journalised.
 //
-// The statements name individuals, not roles. Andreas Kurnianto is Thenie's
-// owner — Thenie — and every daily kitchen settlement is in his name; the
-// masked "Dnid Sal…Put…" is the courier's kasbon. Without these, Rp 17jt of
-// kitchen cost reads as unexplained personal transfers.
-const RULES: { re: RegExp; account: AccountCode }[] = [
-  // Settling what the kitchen is already owed: 5001/2001 accrued it, this
-  // pays it down.
-  { re: /ANDREAS KURNI|LILI ANGGRAINI/i, account: "2001" },
-  { re: /Dnid Sal\w*\s+Put|Dnid Donx Kur/i, account: "1201" },
-  // Delivery bought from outside. The two masked Superbank payees are
-  // Lalamove drivers hired on 27 and 28 Juli 2026, one ride each — the two
-  // drops our own courier did not make. He is paid by the drop, not the day
-  // (Rp 3.000.000 a month over 22 days at 2 deliveries a day), so those two
-  // rides cost his wage 2 x Rp 68.181,82, not two days' pay. Daevin Thomas is
-  // a courier who worked a five-day trial. Superbank masks external payees,
-  // so all three read as strangers.
-  {
-    re: /LALAMOVE|GOJEK|GRAB ?BIKE|Dnid Sxx Asrx|Dnid Als\w*\s+Ros|DAEVIN THOMAS/i,
-    account: "5002",
-  },
-  // Molls Kitchen — Ika Purnama Sari is its owner. Cooked Ade Dian's ICE BSD
-  // event on 20 Agustus 2026.
-  { re: /IKA PURNAMA SARI/i, account: "2001" },
-  { re: /FACEBK|FACEBOOK|\bMETA PLATFORMS\b/i, account: "6001" },
-  // GOOGLE*CHROME is a card authorisation hold from trying to pay an AI
-  // provider; the debit and credit reverse the same day and net to nothing.
-  {
-    re: /DEEPSEEK|ANTHROPIC|OPENAI|RAILWAY|SUPABASE|VERCEL|GOOGLE\*CHROME/i,
-    account: "6003",
-  },
-  { re: /BIAYA ADM|PAJAK BUNGA/i, account: "6002" },
-  { re: /^BUNGA\b|Bunga Didapat/i, account: "4900" },
-  { re: /SHOPEEPAY/i, account: "1005" },
-  { re: /POKET VALAS|FTMCA/i, account: "1006" },
-  { re: /AGNESIA/i, account: "1003" },
-  // Loan proceeds. Justin borrows in his own name and puts the money in, so
-  // what the business owes is owed to him — 2002, not a loan account.
-  { re: /KREDIT UTAMA|INFO TEKNO|Transfer Other Ban/i, account: "2002" },
-  {
-    re: /FLAZZ|\/DANA\b|TARIKAN ATM|SPBU|SETORAN VIA CDM|ESPAY|RAHMA MAULIDA|PINTR\.ID|BICARAKAN\.ID|DANIEL RAHARDYAN P|Daniel Rahardyan Pramady/i,
-    account: "2002",
-  },
-];
+// Who each counterparty is comes from `bank_counterparties`, not from this
+// file. It used to be a hardcoded array here, and the same identities were
+// also written in `docs/OPERATIONS.md` and in `scripts/reattribute-kitchens.ts`
+// while the rest lived only in chat — so a classification pass that consulted
+// none of the three asked the owner to identify people he had already
+// identified, and a new supplier needed a deploy. The rules are a required
+// argument rather than an optional one on purpose: a caller that has not
+// loaded them classifies nothing, and that must not be possible by accident.
 
 export function classify(
   text: string,
   direction: Direction,
   bankAccountCode: AccountCode,
+  counterpartyRules: CounterpartyRule[],
 ): AccountCode | null {
-  for (const r of RULES) {
-    if (!r.re.test(text)) continue;
+  const known = matchCounterparty(counterpartyRules, text, bankAccountCode);
+  if (known?.contraAccountCode) {
+    const account = known.contraAccountCode as AccountCode;
     // The same counterparty means different things on different statements.
     // Justin's name on his own BCA line is a drawing or an injection (2002);
     // on Agnes's Superbank it is the float arriving from BCA (1002), and
     // booking that to 2002 would double-count him as a creditor.
-    if (r.account === "2002" && bankAccountCode !== "1002") return "1002";
+    if (account === "2002" && bankAccountCode !== "1002") return "1002";
     // A line never faces its own account.
-    if (r.account === bankAccountCode) return "1002";
-    return r.account;
+    if (account === bankAccountCode) return "1002";
+    return account;
   }
+  // A known identity with no account decided yet — the ingredient suppliers,
+  // whose purchases have nowhere to land until the periodic-inventory accounts
+  // exist. Naming them is not the same as knowing where they go, so the line
+  // stays unclassified rather than being guessed into an account.
+  if (known) return null;
+
   // An unrecognised credit is almost always a customer paying ahead of
   // delivery, which is where order_payment already books it. An unrecognised
   // debit could be anything, so it is left for a human rather than guessed
@@ -258,7 +235,10 @@ function lastDayOfMonth(y: number, m: number): number {
  * has moved, the USD Poket Valas. They close on separate control totals, so
  * they are returned as separate statements.
  */
-export function parseBcaStatement(pages: string[]): ParsedStatement[] {
+export function parseBcaStatement(
+  pages: string[],
+  counterpartyRules: CounterpartyRule[],
+): ParsedStatement[] {
   const full = pages.join("\n");
   const accountNumber =
     full.match(/NO\. REKENING\s*:\s*(\d+)/)?.[1] ?? "unknown";
@@ -286,13 +266,11 @@ export function parseBcaStatement(pages: string[]): ParsedStatement[] {
   const out: ParsedStatement[] = [];
   for (const [currency, sectionPages] of sections) {
     out.push(
-      parseBcaSection(sectionPages.join("\n"), {
-        accountNumber,
-        accountLabel,
-        currency,
-        month,
-        year,
-      }),
+      parseBcaSection(
+        sectionPages.join("\n"),
+        { accountNumber, accountLabel, currency, month, year },
+        counterpartyRules,
+      ),
     );
   }
   return out;
@@ -307,6 +285,7 @@ function parseBcaSection(
     month: number;
     year: number;
   },
+  counterpartyRules: CounterpartyRule[],
 ): ParsedStatement {
   const warnings: string[] = [];
   const { month, year } = meta;
@@ -406,7 +385,12 @@ function parseBcaSection(
       counterparty,
       description: raw.slice(0, 500),
       rawText: raw,
-      contraAccountCode: classify(raw, direction, bankAccountCode),
+      contraAccountCode: classify(
+        raw,
+        direction,
+        bankAccountCode,
+        counterpartyRules,
+      ),
     });
   }
 
@@ -508,7 +492,10 @@ function sbSections(text: string): Section[] {
   });
 }
 
-export function parseSuperbankStatement(pages: string[]): ParsedStatement[] {
+export function parseSuperbankStatement(
+  pages: string[],
+  counterpartyRules: CounterpartyRule[],
+): ParsedStatement[] {
   const text = pages.join("\n");
 
   const accountLabel =
@@ -544,7 +531,12 @@ export function parseSuperbankStatement(pages: string[]): ParsedStatement[] {
         counterparty: desc.replace(/^Transfer (ke|dari)\s+/, "") || null,
         description: desc.slice(0, 500),
         rawText: `${m[1]} ${m[2]} ${desc}`,
-        contraAccountCode: classify(desc, direction, bankAccountCode),
+        contraAccountCode: classify(
+          desc,
+          direction,
+          bankAccountCode,
+          counterpartyRules,
+        ),
       });
     }
 
@@ -600,11 +592,13 @@ export function parseSuperbankStatement(pages: string[]): ParsedStatement[] {
 
 export async function parseStatementPdf(
   data: Uint8Array,
+  counterpartyRules: CounterpartyRule[],
 ): Promise<ParsedStatement[]> {
   const pages = await extractPdfPages(data);
   const format = detectFormat(pages.join("\n"));
-  if (format === "BCA") return parseBcaStatement(pages);
-  if (format === "Superbank") return parseSuperbankStatement(pages);
+  if (format === "BCA") return parseBcaStatement(pages, counterpartyRules);
+  if (format === "Superbank")
+    return parseSuperbankStatement(pages, counterpartyRules);
   throw new Error("Unrecognised statement format (expected BCA or Superbank)");
 }
 
