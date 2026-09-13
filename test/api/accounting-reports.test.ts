@@ -12,7 +12,17 @@ jest.mock("@/lib/supabase/get-role", () => ({
 
 function makeChain(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {};
-  const methods = ["select", "eq", "in", "order", "gte", "lte", "lt", "limit"];
+  const methods = [
+    "select",
+    "eq",
+    "in",
+    "order",
+    "gte",
+    "lte",
+    "lt",
+    "limit",
+    "range",
+  ];
   for (const m of methods) chain[m] = jest.fn().mockReturnValue(chain);
   chain.single = jest.fn().mockResolvedValue(result);
   chain.maybeSingle = jest.fn().mockResolvedValue(result);

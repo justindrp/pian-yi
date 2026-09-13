@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { getSessionWithRole, isOwner } from "@/lib/supabase/get-role";
 
 export const dynamic = "force-dynamic";
@@ -31,20 +32,25 @@ async function fetchTallies(
   from: string | null,
   to: string,
 ): Promise<Tally[] | { error: string }> {
-  let query = db
-    .from("journal_lines")
-    .select(
-      "debit, credit, account:accounts!inner(code, name, type, normal_balance), journals!inner(date)",
-    )
-    .lte("journals.date", to)
-    .limit(10000);
-  if (from) query = query.gte("journals.date", from);
-
-  const { data, error } = await query;
-  if (error) return { error: error.message };
+  // Every line in the range, walked with `.range()`. The balance-sheet call
+  // passes no `from` at all, so this is the whole ledger: `.limit(10000)` was
+  // a bigger window, not a complete one, and a trial balance short a few
+  // thousand lines still balances — it is simply the wrong balance, with
+  // nothing on the page to say so.
+  const { rows, error } = await fetchAllRows<RawLine>((f, t) => {
+    let query = db
+      .from("journal_lines")
+      .select(
+        "debit, credit, account:accounts!inner(code, name, type, normal_balance), journals!inner(date)",
+      )
+      .lte("journals.date", to);
+    if (from) query = query.gte("journals.date", from);
+    return query.order("id", { ascending: true }).range(f, t);
+  });
+  if (error) return { error };
 
   const byCode = new Map<string, Tally>();
-  for (const line of (data ?? []) as unknown as RawLine[]) {
+  for (const line of rows) {
     const a = line.account;
     if (!a) continue;
     const t = byCode.get(a.code) ?? {

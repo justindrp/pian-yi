@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { modelRole } from "@/lib/claude/model-tag";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -65,33 +66,49 @@ export async function GET(req: NextRequest): Promise<Response> {
       .from("customer_flags")
       .select("escalated_to_human")
       .eq("escalated_to_human", true),
-    // Recognized revenue: credits on account 4001 from delivery journals
-    db
-      .from("journal_lines")
-      .select(
-        "credit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
-      )
-      .eq("account.code", "4001")
-      .eq("journal.source_type", "delivery")
-      .gte("journal.date", sinceDate),
-    db
-      .from("journal_lines")
-      .select(
-        "credit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
-      )
-      .eq("account.code", "4001")
-      .eq("journal.source_type", "delivery")
-      .gte("journal.date", prevSinceDate)
-      .lt("journal.date", sinceDate),
+    // Recognized revenue: credits on account 4001 from delivery journals.
+    // Walked with `.range()`: one delivery journal carries a 4001 line, so
+    // this counts one row per delivery posted in the window and passes 1000
+    // long before a month of deliveries is up. A capped read here does not
+    // fail — it just reports less revenue than we earned.
+    fetchAllRows<{ credit: number | null }>((f, t) =>
+      db
+        .from("journal_lines")
+        .select(
+          "credit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
+        )
+        .eq("account.code", "4001")
+        .eq("journal.source_type", "delivery")
+        .gte("journal.date", sinceDate)
+        .order("id", { ascending: true })
+        .range(f, t),
+    ),
+    fetchAllRows<{ credit: number | null }>((f, t) =>
+      db
+        .from("journal_lines")
+        .select(
+          "credit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
+        )
+        .eq("account.code", "4001")
+        .eq("journal.source_type", "delivery")
+        .gte("journal.date", prevSinceDate)
+        .lt("journal.date", sinceDate)
+        .order("id", { ascending: true })
+        .range(f, t),
+    ),
     // COGS: debits on account 5001 from delivery_cogs journals
-    db
-      .from("journal_lines")
-      .select(
-        "debit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
-      )
-      .eq("account.code", "5001")
-      .eq("journal.source_type", "delivery_cogs")
-      .gte("journal.date", sinceDate),
+    fetchAllRows<{ debit: number | null }>((f, t) =>
+      db
+        .from("journal_lines")
+        .select(
+          "debit, account:accounts!inner(code), journal:journals!inner(date, source_type)",
+        )
+        .eq("account.code", "5001")
+        .eq("journal.source_type", "delivery_cogs")
+        .gte("journal.date", sinceDate)
+        .order("id", { ascending: true })
+        .range(f, t),
+    ),
   ]);
 
   const orders = ordersRes.data ?? [];
@@ -101,15 +118,12 @@ export async function GET(req: NextRequest): Promise<Response> {
   const conversations = conversationsRes.data ?? [];
 
   // Recognized revenue and COGS from journal lines
-  const revenue = (revenueRes.data ?? []).reduce(
+  const revenue = revenueRes.rows.reduce((sum, r) => sum + (r.credit ?? 0), 0);
+  const prevRevenue = prevRevenueRes.rows.reduce(
     (sum, r) => sum + (r.credit ?? 0),
     0,
   );
-  const prevRevenue = (prevRevenueRes.data ?? []).reduce(
-    (sum, r) => sum + (r.credit ?? 0),
-    0,
-  );
-  const cogs = (cogsRes.data ?? []).reduce((sum, r) => sum + (r.debit ?? 0), 0);
+  const cogs = cogsRes.rows.reduce((sum, r) => sum + (r.debit ?? 0), 0);
   const grossProfit = revenue - cogs;
 
   // Portions. Every row counts: a skipped delivery is a deleted row, and a
