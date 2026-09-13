@@ -427,7 +427,15 @@ Migration 109 added **`1300 Inventory`** and **`5003 Purchases - Ingredients & P
 
 **Three seeded patterns had never matched the memo they were written for**, which is the quiet failure mode of this table — a rule that names someone and fires on nothing. `PAJAK BUNGA` missed Superbank's "Pajak atas Bunga"; `GOOGLE\*CHROME` missed BCA's "GOOGLE *CHROME TEM", which has a space; and the Jocelyn pattern arrived through a shell heredoc with its backslashes doubled. Migration 110's first attempt at the Chrome fix also updated nothing, because it matched with `LIKE '%GOOGLE\*CHROME%'` and backslash is LIKE's own escape character in Postgres — so `\*` matched a literal asterisk and the stored pattern was never found. **After changing a pattern, read it back and re-run the classify pass**; a successful `UPDATE` that touched zero rows looks exactly like one that worked.
 
-151 money-out lines (Rp 29,0 juta) are still nobody. The largest group is the eleven GoPay wallet top-ups (Rp 15,6 juta), which cannot be ruled as a group — each is a different purpose — and the rest is the Sep–Des 2025 tail of unnamed individuals plus Justin's own QRIS merchant spend on BCA.
+### The BCA merchants, and why the date decides them
+
+Migration 112 ruled the 32 QRIS merchant lines on Justin's BCA, and the split is chronological rather than by merchant type. **Sep–Des 2025 is the in-house period**, when we cooked ourselves: a payment to a market stall, a plastic shop or a supermarket then is stock, so Sayur Kita, PS 8, Toko Aneka and Hero go to 5003. **From April 2026 the kitchens cook**, so a payment to a bubble tea shop is lunch — Chatime, Auntie Anne's, Teazzi, Five Grams, Ambrosia, EasyEat, Mala Kitchen, Es Oyen, Martabak, Bakmie Bule, Daiichi, Fuwitymix, Matcha Store, Rebis Kitchen, Millions, VJ Family, WJB Suratna, Pusdik, Apotek and Indomaret all go to 2002. One line is neither: Multi Guna, Rp 37.000 of A4 paper for printing Pian Yi flyers, which is 6001.
+
+**Angkasa Plastik is Lizy Tania.** Angkasa is the shop, Lizy is the owner, and the same supplier therefore reaches the statements two ways — a bank transfer under her name and a QRIS payment under the shop's. Both are 5003, and her row's notes now say so, because the next pass to see "Angkasa pl" on a line would otherwise treat it as a supplier we had never met.
+
+**Every personal rule here is pinned to `1002`.** Several of these merchants also appear on Annie's Superbank, where they are her spending (2003) under the `^Pembayaran ke ` catch-all. An unpinned 2002 rule outranks that catch-all at priority 25, and `classify()` then rewrites a 2002 on a non-1002 statement to 1002 — so her bubble tea would have been booked as a transfer from BCA that never happened. Two patterns are also narrower than the merchant name: `1013-HERO` rather than `HERO`, and `MALA KITCH` rather than `MALA`, because both short forms are inside a customer's name elsewhere in the same table.
+
+121 money-out lines (Rp 27,4 juta) are still nobody. The largest group is the eleven GoPay wallet top-ups (Rp 15,6 juta), which cannot be ruled as a group — each is a different purpose — and the rest is the Sep–Des 2025 tail of unnamed individuals on both statements.
 
 ## Order flow stages
 
