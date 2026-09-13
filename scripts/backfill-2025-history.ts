@@ -38,7 +38,14 @@ import { createAdminClient } from "../src/lib/supabase/admin";
 
 const SHEET_ID = "13cKpPcqdqXTpqWrWL5sDiZVNrYClzSBcrypO_CPZTgI";
 const PRE_JAN_GID = "650194403";
-/** The Jan–Jun tab starts 2025-12-29 and is already imported, so we stop here. */
+/**
+ * The `deliveries_old` tab (gid 1975392427) starts 2025-12-29 and is already
+ * imported, so we stop here. The pre-January tab's own last row is 2025-12-19
+ * and that is not a gap in it: **we did not deliver 20–28 December 2025**,
+ * confirmed by Justin on 2026-09-14. So the sheet side of this window is
+ * complete at 2283 portions, and a payment landing in those nine days bought
+ * food eaten either side of them.
+ */
 const WINDOW_START = "2025-09-01";
 const WINDOW_END = "2025-12-28";
 /**
