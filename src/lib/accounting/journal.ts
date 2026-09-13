@@ -20,7 +20,14 @@ interface CreateJournalOptions {
     // Money that actually left the bank, journalised from the statement line
     // that is its evidence. Keyed on the bank_transactions row, so one line
     // can only be posted once however many times the button is pressed.
-    | "bank_settlement";
+    | "bank_settlement"
+    // A kitchen paid today, entered by hand because the statement that proves
+    // it does not exist until next month. Keyed on a generated id — there is
+    // no document to key it on yet, which is the whole reason it exists — so
+    // the guard against a second one is the human, and the guard against the
+    // statement double-posting it is `settleBankLines`, which links the line
+    // to this journal instead of writing another.
+    | "kitchen_payment";
   sourceId: string;
   notes?: string;
   lines: JournalLine[];

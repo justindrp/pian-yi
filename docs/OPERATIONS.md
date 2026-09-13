@@ -371,6 +371,16 @@ Two guards, both deliberate:
 
 The 64 July-onward lines were posted on 2026-09-13, Rp 20.765.000. 2001 then stands at Rp 23.780.000 debit against Rp 23.516.000 credit — Rp 264.000 net paid ahead, which is what a kitchen paid on a rounded figure looks like, not an error to chase.
 
+### The statement arrives a month late, so a payment can be entered on the day it is made
+
+A BCA e-statement for September does not exist until October. Waiting for the bank line would leave a kitchen paid this afternoon unbooked for weeks, with 2001 reading as money still owed to someone who has been paid — which is the same hole this whole section closes, just shifted by a month.
+
+So there are two entry points and one journal. **Accounting → Jurnal → Bayar Dapur** (`POST /api/accounting/kitchen-payment`, `recordKitchenPayment()`) posts `Dr 2001 / Cr <bank>` at the moment of the transfer, keyed `kitchen_payment` on a generated id. When the statement is finally imported, `settleBankLines()` looks for an unlinked `kitchen_payment` journal before posting anything: same amount, same bank account, within `MATCH_WINDOW_DAYS` (5) of the statement's date. If it finds one, the bank line is pointed at that journal and **nothing new is posted** — the settle result reports it as `linked` rather than `posted`. Each journal is consumed by at most one line, so two identical transfers in one week still need two entries and get one link each.
+
+**Use the button, not Tambah Jurnal.** A hand-typed `manual` journal debiting 2001 is invisible to that matching, so next month's statement posts the payment a second time and halves the payable — the same double-count `scripts/link-bank-journals.ts` exists to clean up on the customer side. The amount is what left the bank, not what the day's food cost: 2001 is a running balance per kitchen, not an invoice queue, so a transfer covering three days or rounded up is one entry against the balance.
+
+A re-import does not break the link: `scripts/import-bank-statements.ts` carries `journal_id`, `matched_at`, `matched_by` and a hand-set `contra_account_code` across by `row_index`.
+
 ## Which kitchen cooked a past delivery is reconstructed from the bank, not from the sheet
 
 The operations spreadsheet has a `subcontractor` column and it is a broken VLOOKUP: it answers "Thenie" for 2220 of its rows and `#N/A` for 1062 more. The June import read it, so 2484 of the 2574 delivery rows between January and July 2026 carried Thenie and 105 carried anyone else, while the bank shows seven kitchens being paid over the same months. Every per-kitchen COGS figure, every kitchen bill and every margin computed off those rows was wrong. **Never read that column, and never trust a historical `subcontractor_id` that came from it.**

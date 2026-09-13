@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createJournalEntry } from "@/lib/accounting/journal";
+import { addDays } from "@/lib/time/jakarta";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -44,8 +45,81 @@ const SETTLEABLE = new Set(["2001"]);
 // unposted, until someone decides how the pre-system period is opened.
 const BOOKS_START = "2026-07-01";
 
+// How far a hand-entered `kitchen_payment` journal may sit from the statement
+// line that turns out to be the same payment. The two dates are the same event
+// seen twice — the afternoon someone transferred, and the day the bank booked
+// it — and they disagree by a day over a weekend or a late-evening transfer.
+// Five days is wide enough for that and narrow enough that two payments of the
+// identical amount from the identical account would have to fall inside one
+// working week to be confusable; the amount and the bank account must match
+// exactly, and a journal already pointed at by a bank line is never reused.
+const MATCH_WINDOW_DAYS = 5;
+
+function daysApart(a: string, b: string): number {
+  return Math.abs(
+    (Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+type Candidate = { id: string; date: string; amount: number; accountId: string };
+
+/**
+ * Hand-entered kitchen payments that no bank line points at yet.
+ *
+ * A payment recorded the day it was made (`recordKitchenPayment`) is the same
+ * money as the statement line that shows up a month later. Posting the line
+ * too would debit 2001 twice and halve the payable — the exact failure
+ * `scripts/link-bank-journals.ts` was written to clean up on the customer
+ * side. So the line is linked to the journal that already exists instead.
+ */
+async function unlinkedKitchenPayments(
+  db: Db,
+  from: string,
+  to: string,
+): Promise<Candidate[]> {
+  const { data: journals } = await db
+    .from("journals")
+    .select("id, date, journal_lines(account_id, debit, credit)")
+    .eq("source_type", "kitchen_payment")
+    .gte("date", from)
+    .lte("date", to);
+  if (!journals?.length) return [];
+
+  const { data: taken } = await db
+    .from("bank_transactions")
+    .select("journal_id")
+    .in(
+      "journal_id",
+      journals.map((j) => j.id),
+    );
+  const used = new Set((taken ?? []).map((t) => t.journal_id));
+
+  const out: Candidate[] = [];
+  for (const j of journals) {
+    if (used.has(j.id)) continue;
+    const lines = (j.journal_lines ?? []) as {
+      account_id: string;
+      debit: number;
+      credit: number;
+    }[];
+    // The credit side is the bank the money left, and its amount is the
+    // payment. A journal with more than one credit line is not something this
+    // route wrote, so it is left alone.
+    const credits = lines.filter((l) => Number(l.credit) > 0);
+    if (credits.length !== 1) continue;
+    out.push({
+      id: j.id,
+      date: j.date,
+      amount: Number(credits[0].credit),
+      accountId: credits[0].account_id,
+    });
+  }
+  return out;
+}
+
 export type SettleResult = {
   posted: number;
+  linked: number;
   amount: number;
   skipped: { id: string; reason: string }[];
 };
@@ -69,7 +143,21 @@ export async function settleBankLines(
     .in("id", [...new Set((txns ?? []).map((t) => t.statement_id))]);
   const statementById = new Map((statements ?? []).map((s) => [s.id, s]));
 
+  const dates = (txns ?? []).map((t) => t.txn_date).sort();
+  const candidates = dates.length
+    ? await unlinkedKitchenPayments(
+        db,
+        addDays(dates[0], -MATCH_WINDOW_DAYS),
+        addDays(dates[dates.length - 1], MATCH_WINDOW_DAYS),
+      )
+    : [];
+  const { data: accountRows } = await db.from("accounts").select("id, code");
+  const accountIdByCode = new Map(
+    (accountRows ?? []).map((a) => [a.code, a.id] as const),
+  );
+
   let posted = 0;
+  let linked = 0;
   let amount = 0;
   const skipped: { id: string; reason: string }[] = [];
 
@@ -114,6 +202,32 @@ export async function settleBankLines(
             { accountCode: "2001", debit: 0, credit: value },
           ];
 
+    // Already recorded by hand on the day it was paid? Point the line at that
+    // journal. Nothing is posted, and the payment counts once.
+    const bankAccountId = accountIdByCode.get(statement.account_code);
+    const matchIndex =
+      txn.direction === "DB" && bankAccountId
+        ? candidates.findIndex(
+            (c) =>
+              c.amount === value &&
+              c.accountId === bankAccountId &&
+              daysApart(c.date, txn.txn_date) <= MATCH_WINDOW_DAYS,
+          )
+        : -1;
+    if (matchIndex >= 0) {
+      const match = candidates.splice(matchIndex, 1)[0];
+      await db
+        .from("bank_transactions")
+        .update({
+          journal_id: match.id,
+          matched_at: new Date().toISOString(),
+          matched_by: actor,
+        })
+        .eq("id", txn.id);
+      linked++;
+      continue;
+    }
+
     const res = await createJournalEntry({
       description:
         txn.direction === "DB"
@@ -148,5 +262,5 @@ export async function settleBankLines(
     }
   }
 
-  return { posted, amount, skipped };
+  return { posted, linked, amount, skipped };
 }

@@ -231,6 +231,7 @@ function JournalTab({ from, to }: { from: string; to: string }) {
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showKitchenPayment, setShowKitchenPayment] = useState(false);
   const [editingJournal, setEditingJournal] = useState<Journal | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -267,12 +268,25 @@ function JournalTab({ from, to }: { from: string; to: string }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-400">{total} jurnal</p>
-        <Button type="button" size="sm" onClick={() => setShowModal(true)}>
-          Tambah Jurnal
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setShowKitchenPayment(true)}
+          >
+            Bayar Dapur
+          </Button>
+          <Button type="button" size="sm" onClick={() => setShowModal(true)}>
+            Tambah Jurnal
+          </Button>
+        </div>
       </div>
 
       {showModal && <NewJournalModal onClose={() => setShowModal(false)} />}
+      {showKitchenPayment && (
+        <KitchenPaymentModal onClose={() => setShowKitchenPayment(false)} />
+      )}
       {editingJournal && (
         <EditJournalModal
           journal={editingJournal}
@@ -1199,6 +1213,192 @@ interface DraftLine {
   credit: string;
 }
 
+/**
+ * "I paid a kitchen today" — the entry point for a payment whose statement
+ * does not exist yet.
+ *
+ * A BCA e-statement for September lands in October, so waiting for the bank
+ * line would leave today's transfer unbooked for a month and 2001 reading as
+ * money still owed to a kitchen that has been paid. This posts it now; when
+ * the statement is imported, the settle path finds this journal and links the
+ * line to it instead of posting a second one.
+ *
+ * Deliberately not the same thing as Tambah Jurnal: a hand-typed 2001 journal
+ * is invisible to that matching and would be double-counted next month.
+ */
+function KitchenPaymentModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [date, setDate] = useState(today);
+  const [amount, setAmount] = useState("");
+  const [bankAccountCode, setBankAccountCode] = useState("1002");
+  const [subcontractorId, setSubcontractorId] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const { data: accountsData } = useQuery({
+    queryKey: ["accounting-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/accounting/accounts");
+      return (await res.json()) as { ok: boolean; data: Account[] };
+    },
+  });
+  // Only an asset account can be the source of the money that left.
+  // `accounts.type` is stored capitalised ("Asset"), so compare lowered — a
+  // strict "asset" match renders an empty dropdown and nothing can be paid.
+  const bankAccounts = (accountsData?.data ?? []).filter(
+    (a) => a.type?.toLowerCase() === "asset",
+  );
+
+  const { data: subs } = useQuery({
+    queryKey: ["subcontractors"],
+    queryFn: async () => {
+      const res = await fetch("/api/subcontractors");
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: { id: string; name: string }[];
+      };
+      return json.data;
+    },
+  });
+
+  const canSubmit = Number(amount) > 0 && bankAccountCode !== "" && !saving;
+
+  async function submit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/accounting/kitchen-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date,
+          amount: Number(amount),
+          bankAccountCode,
+          subcontractorId: subcontractorId || null,
+          note: note.trim() || null,
+        }),
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error ?? "Gagal mencatat pembayaran");
+        setSaving(false);
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["accounting"] });
+      onClose();
+    } catch {
+      setError("Gagal terhubung ke server");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-xl w-full max-w-lg my-8 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-semibold text-gray-900">Bayar Dapur</h2>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Tutup
+          </Button>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">
+          Catat transfer ke dapur sekarang, sebelum rekening koran terbit. Saat
+          mutasinya diimpor nanti, baris banknya akan menunjuk ke jurnal ini —
+          bukan membuat jurnal kedua.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">
+              Tanggal transfer
+            </Label>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">
+              Jumlah (Rp)
+            </Label>
+            <Input
+              type="number"
+              min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">
+              Sumber dana
+            </Label>
+            <select
+              value={bankAccountCode}
+              onChange={(e) => setBankAccountCode(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              {bankAccounts.map((a) => (
+                <option key={a.code} value={a.code}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label className="block text-xs text-gray-500 mb-1">Dapur</Label>
+            <select
+              value={subcontractorId}
+              onChange={(e) => setSubcontractorId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Pilih dapur…</option>
+              {(subs ?? []).map((sub) => (
+                <option key={sub.id} value={sub.id}>
+                  {sub.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <Label className="block text-xs text-gray-500 mb-1">
+            Catatan (opsional)
+          </Label>
+          <Input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Tagihan 14 September"
+          />
+        </div>
+
+        <p className="text-xs text-gray-400 mb-4">
+          Jurnal: debit 2001 Accounts Payable, kredit {bankAccountCode}.
+        </p>
+
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Batal
+          </Button>
+          <Button type="button" onClick={submit} disabled={!canSubmit}>
+            {saving ? "Menyimpan…" : "Catat Pembayaran"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NewJournalModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -1841,11 +2041,18 @@ function BankStatementsTab() {
       const json = (await res.json()) as {
         ok: boolean;
         error?: string;
-        data?: { posted: number; skipped: { reason: string }[] };
+        data?: {
+          posted: number;
+          linked: number;
+          skipped: { reason: string }[];
+        };
       };
       if (!json.ok) throw new Error(json.error ?? "Gagal mencatat");
       const skipped = json.data?.skipped ?? [];
-      if (json.data?.posted === 0 && skipped.length > 0)
+      // "Linked" is not a failure: the payment was already recorded by hand on
+      // the day it was made, so the line points at that journal.
+      const touched = (json.data?.posted ?? 0) + (json.data?.linked ?? 0);
+      if (touched === 0 && skipped.length > 0)
         setSaveError(`Tidak ada yang dicatat: ${skipped[0].reason}`);
       await queryClient.invalidateQueries({
         queryKey: ["bank-statement", selected],
