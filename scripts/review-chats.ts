@@ -234,11 +234,15 @@ async function printThread(
     // it are dead. Booked is what exists, remaining is what is still to eat.
     const { data: rows } = await db
       .from("daily_deliveries")
-      .select("delivery_date")
+      .select("delivery_date, portions")
       .eq("order_id", o.id);
     const today = wib(new Date().toISOString()).slice(0, 10);
-    const booked = rows?.length ?? 0;
-    const delivered = (rows ?? []).filter((r) => r.delivery_date <= today).length;
+    // package_size is portions, so these must be portions too — a row may carry
+    // several. Counting rows reported a 20-portion order as "booked 10".
+    const booked = (rows ?? []).reduce((n, r) => n + (r.portions ?? 0), 0);
+    const delivered = (rows ?? [])
+      .filter((r) => r.delivery_date <= today)
+      .reduce((n, r) => n + (r.portions ?? 0), 0);
     console.log(
       `  order ${o.id.slice(0, 8)} ${o.status} ${o.package_size}p @${o.price_per_portion} start ${o.start_date ?? "-"}${
         o.paid_at ? ` paid ${wib(o.paid_at).slice(0, 16)}` : " UNPAID"
