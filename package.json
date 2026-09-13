@@ -21,7 +21,8 @@
     "test:coverage": "jest --coverage",
     "test:webhook": "tsx scripts/test-webhook.ts",
     "tasks": "tsx --env-file=.env.local scripts/tasks.ts",
-    "review": "tsx --env-file=.env.local scripts/review-chats.ts"
+    "review": "tsx --env-file=.env.local scripts/review-chats.ts",
+    "sheet": "tsx --env-file=.env.local scripts/delivery-audit.ts"
   },
   "engines": {
     "node": "26.3.1"
