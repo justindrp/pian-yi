@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { asAreas } from "@/lib/subcontractors/areas";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -26,7 +27,7 @@ export type CustomerKitchen = {
 
 function serves(kitchen: CustomerKitchen, areas: string[]): boolean {
   if (areas.length === 0) return true;
-  const own = (kitchen.delivery_areas as string[] | null) ?? [];
+  const own = asAreas(kitchen.delivery_areas);
   return own.some((a) => areas.includes(a));
 }
 

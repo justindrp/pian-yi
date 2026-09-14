@@ -4,6 +4,22 @@ import type { Database } from "@/types/database";
 type Db = SupabaseClient<Database>;
 
 /**
+ * `delivery_areas` as a list of area names, whatever the column actually holds.
+ *
+ * The column is jsonb, so it can hold anything that is valid JSON, and on
+ * 2026-09-14 one row held `{}` — migration 113 wrote the Postgres array literal
+ * into a jsonb column. `?? []` does not catch an object, so `.join` and `.some`
+ * threw and the Settings Subcontractors tab went blank for every admin over a
+ * kitchen nobody has used since Desember 2025. Migration 115 fixed the row and
+ * constrained the column; this is what keeps a screen alive if one ever gets
+ * past it again. Non-string entries are dropped rather than rendered.
+ */
+export function asAreas(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((a): a is string => typeof a === "string");
+}
+
+/**
  * The deduplicated, sorted union of `delivery_areas` over subcontractor rows
  * already in hand. Four call sites had written this same flatMap/Set/sort out
  * by hand.
@@ -12,9 +28,7 @@ export function unionAreas(
   rows: { delivery_areas?: unknown }[] | null | undefined,
 ): string[] {
   return [
-    ...new Set(
-      (rows ?? []).flatMap((s) => (s.delivery_areas as string[] | null) ?? []),
-    ),
+    ...new Set((rows ?? []).flatMap((s) => asAreas(s.delivery_areas))),
   ].sort();
 }
 

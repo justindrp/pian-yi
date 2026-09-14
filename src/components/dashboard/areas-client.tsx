@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useDeliveryAreas, withCurrentAreas } from "@/hooks/use-delivery-areas";
+import { asAreas } from "@/lib/subcontractors/areas";
 
 type Neighborhood = {
   id: string;
@@ -75,7 +76,7 @@ export default function AreasClient() {
   // With a kitchen selected the list narrows to what that kitchen carries —
   // ruling on an area it does not serve at all would say nothing.
   const areas = selected
-    ? allAreas.filter((a) => (selected.delivery_areas ?? []).includes(a))
+    ? allAreas.filter((a) => asAreas(selected.delivery_areas).includes(a))
     : allAreas;
 
   const addMutation = useMutation({

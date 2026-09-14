@@ -26,7 +26,7 @@ import {
 } from "@/lib/orders/size";
 import { priceForPortions, tiersForKitchen } from "@/lib/pricing/tiers";
 import { sendPushToAllAdmins } from "@/lib/push/send";
-import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import { activeDeliveryAreas, asAreas } from "@/lib/subcontractors/areas";
 import {
   coverageFor,
   exclusionFor,
@@ -1633,7 +1633,7 @@ export async function createOrderFromExtraction(
     const area = (input.area ?? addressRow?.area ?? "").trim().toLowerCase();
     const covering = area
       ? (activeSubs ?? []).filter((sub) =>
-          ((sub.delivery_areas as string[] | null) ?? []).some(
+          asAreas(sub.delivery_areas).some(
             (a) => a.trim().toLowerCase() === area,
           ),
         )

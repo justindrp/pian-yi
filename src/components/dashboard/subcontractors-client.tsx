@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useDeliveryAreas, withCurrentAreas } from "@/hooks/use-delivery-areas";
+import { asAreas } from "@/lib/subcontractors/areas";
 
 function parseDapurNumber(nickname: string | null | undefined): number | null {
   if (!nickname) return null;
@@ -366,7 +367,7 @@ export default function SubcontractorsClient() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-500">
-                      {(s.delivery_areas ?? []).join(", ")}
+                      {asAreas(s.delivery_areas).join(", ")}
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {s.admin_phone ?? "—"}
@@ -482,10 +483,10 @@ export default function SubcontractorsClient() {
                 Delivery areas
               </Label>
               <AreaChips
-                selected={(editForm.delivery_areas ?? []) as string[]}
+                selected={asAreas(editForm.delivery_areas)}
                 onToggle={(a) =>
                   setEditForm((f) => {
-                    const areas = (f.delivery_areas ?? []) as string[];
+                    const areas = asAreas(f.delivery_areas);
                     return {
                       ...f,
                       delivery_areas: areas.includes(a)
