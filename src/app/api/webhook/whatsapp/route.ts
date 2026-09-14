@@ -1126,13 +1126,21 @@ export async function processWebhookAsync(
     return;
   }
 
-  // An admin forwarding a delivery photo from their own handset. Images only:
-  // the same number may be an ordinary `customers` row (it is, for Justin's),
-  // and swallowing its text as well would take that thread away from the bot
-  // for good. A photo with a customer name in the caption is unambiguous; a
-  // text message from the same number is not.
-  if (message.type === "image" && (await isProofForwarder(message.from))) {
-    await handleForwardedProof(message);
+  // Our own handsets — `settings.proof_forwarder_phones`. An image is a
+  // delivery photo being forwarded to the customer named in its caption;
+  // everything else is dropped, because nothing sent from one of our numbers
+  // is a customer talking to us. This used to route images only, so a bare
+  // text fell through to the customer path and the bot answered it: on
+  // 2026-09-14 Justin typed "Clara" — the caption for the photo he was about
+  // to forward — and was welcomed as a new customer named Clara. The cost of
+  // the wider guard is that the bot can no longer be tested by chatting it
+  // from these numbers; take a phone out of the setting to test.
+  if (await isProofForwarder(message.from)) {
+    if (message.type === "image") await handleForwardedProof(message);
+    else
+      console.log(
+        `[webhook] ignored ${message.type} from proof forwarder ${message.from}`,
+      );
     await db
       .from("processed_messages")
       .update({ processed_at: new Date().toISOString() })
