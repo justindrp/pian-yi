@@ -2,14 +2,14 @@
  * Prints whole customer threads for a chat review — the recurring "read the
  * last N chats / everything since X and tell me what needs a human" job.
  *
- *   pnpm review                 # threads with inbound in the last 24h
- *   pnpm review --since 6h      # ...in the last 6 hours
- *   pnpm review --since 2026-09-11T06:30:00Z
- *   pnpm review --last 2        # the 2 most recently active threads, window ignored
- *   pnpm review --waiting      # threads a human still owes an answer, active in
- *                              # the last 3 days (--days N to widen)
- *   pnpm review --phone +62818755030
- *   pnpm review --last 2 --messages 120   # deeper transcript (default 60)
+ *   pnpm review-chats                 # threads with inbound in the last 24h
+ *   pnpm review-chats --since 6h      # ...in the last 6 hours
+ *   pnpm review-chats --since 2026-09-11T06:30:00Z
+ *   pnpm review-chats --last 2        # the 2 most recently active threads, window ignored
+ *   pnpm review-chats --waiting       # threads a human still owes an answer, active in
+ *                                    # the last 3 days (--days N to widen)
+ *   pnpm review-chats --phone +62818755030
+ *   pnpm review-chats --last 2 --messages 120   # deeper transcript (default 60)
  *
  * Every review before this one was a throwaway script written from scratch,
  * which is why each one selected threads differently and none of them printed

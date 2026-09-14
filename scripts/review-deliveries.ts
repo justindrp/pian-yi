@@ -4,10 +4,10 @@
  * order cutoff has just passed, tomorrow's sheet is final, and this is the last
  * moment a wrong row can be fixed before the kitchen cooks it.
  *
- *   pnpm sheet                          # tomorrow, Dapur Suplir
- *   pnpm sheet --date 2026-09-15
- *   pnpm sheet --kitchen monstera
- *   pnpm sheet --messages 40            # deeper transcript (default 25)
+ *   pnpm review-deliveries                          # tomorrow, Dapur Suplir
+ *   pnpm review-deliveries --date 2026-09-15
+ *   pnpm review-deliveries --kitchen monstera
+ *   pnpm review-deliveries --messages 40            # deeper transcript (default 25)
  *
  * It prints two sections. The rows on the sheet, each with the customer's
  * kitchen_notes, address slot and drawn order — and under each, their chat.
