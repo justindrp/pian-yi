@@ -136,6 +136,25 @@ beforeEach(() => {
 });
 
 describe("recordDailyOrder", () => {
+  // A row is one meal. Until 2026-09-14 the tool's enum offered "both" and this
+  // function wrote it straight through, producing a row every sheet's
+  // meal_type equality test skipped — invisible food that still spent the
+  // quota. Three reached production; Veronica Catherine's two owed portions sat
+  // on one for two days. The model still copies "both" out of older histories.
+  test("a meal_type that is not one meal books nothing and asks for two calls", async () => {
+    const { db, inserted } = makeDb({});
+    const res = await call(db, {
+      meal_type: "both" as "lunch" | "dinner",
+      delivery_dates: ["2026-08-27"],
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toContain("lunch");
+      expect(res.error).toContain("dinner");
+    }
+    expect(inserted).toHaveLength(0);
+  });
+
   test("a call with no usable date books nothing and says so", async () => {
     const { db, inserted } = makeDb({});
     const res = await call(db, {

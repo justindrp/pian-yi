@@ -21,7 +21,7 @@ type Db = SupabaseClient<Database>;
 export type RecordDailyOrderInput = {
   delivery_dates?: string[];
   delivery_date?: string;
-  meal_type: "lunch" | "dinner" | "both";
+  meal_type: "lunch" | "dinner";
   portions: number;
   notes?: string;
 };
@@ -59,6 +59,26 @@ export async function recordDailyOrder(params: {
   input: RecordDailyOrderInput;
 }): Promise<RecordDailyOrderResult> {
   const { db, customerId, phone, customerName, input } = params;
+
+  // A row is one meal. Until 2026-09-14 this function wrote `input.meal_type`
+  // straight through and the tool's enum offered "both", so a customer asking
+  // for lunch *and* dinner got a single row carrying both — and every sheet
+  // buckets by an equality test on meal_type, so that row rendered nowhere,
+  // reached no kitchen and was counted in no total while still spending the
+  // quota. Veronica Catherine's two owed portions sat on one for two days.
+  // The model still copies "both" out of older conversation history, so the
+  // refusal has to name the fix: two calls, one per meal.
+  if (input.meal_type !== "lunch" && input.meal_type !== "dinner") {
+    console.error(
+      "[record-daily-order] meal_type is not a single meal",
+      JSON.stringify({ customerId, meal_type: input.meal_type }),
+    );
+    return {
+      ok: false,
+      error:
+        'Satu baris pengiriman hanya boleh satu waktu makan. Tidak ada yang tercatat. Panggil lagi dengan meal_type "lunch", lalu panggil sekali lagi dengan meal_type "dinner" kalau customer memang minta dua-duanya.',
+    };
+  }
 
   // One call books the whole run. delivery_date is still read because older
   // conversation histories carry it, and the model copies what it sees.

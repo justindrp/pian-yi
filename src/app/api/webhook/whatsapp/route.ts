@@ -439,7 +439,7 @@ async function extractPromisedSchedule(params: {
   defaultPortions: number;
 }): Promise<{
   delivery_dates: string[];
-  meal_type: "lunch" | "dinner" | "both";
+  meal_types: ("lunch" | "dinner")[];
   portions: number;
 } | null> {
   const today = jakartaDateString();
@@ -452,13 +452,15 @@ async function extractPromisedSchedule(params: {
       system: `Hari ini ${today} (WIB). Baca balasan admin di bawah dan tentukan tanggal pengiriman yang SUDAH dijanjikan ke customer.
 
 Jawab HANYA JSON, tanpa penjelasan:
-{"delivery_dates":["YYYY-MM-DD"],"meal_type":"lunch"|"dinner"|"both","portions":<angka per tanggal>}
+{"delivery_dates":["YYYY-MM-DD"],"meal_types":["lunch"]|["dinner"]|["lunch","dinner"],"portions":<angka per tanggal per waktu makan>}
 
 Aturan:
 - Kembalikan {"delivery_dates":[]} kalau balasan itu hanya menawarkan, bertanya, atau belum memastikan tanggal.
 - "mulai <tanggal>" tanpa tanggal akhir berarti SATU tanggal saja: tanggal itu.
 - Jangan pernah menebak tanggal yang tidak disebut. Jangan masukkan tanggal sebelum ${today}.
-- Jangan menyaring tanggal berdasarkan nama hari. Hari kerja berbeda per dapur — ada dapur yang masak hari Minggu — jadi ambil tanggal yang admin janjikan apa adanya.`,
+- Jangan menyaring tanggal berdasarkan nama hari. Hari kerja berbeda per dapur — ada dapur yang masak hari Minggu — jadi ambil tanggal yang admin janjikan apa adanya.
+- meal_types selalu array. Kalau admin menjanjikan makan siang dan makan malam di tanggal yang sama, isi ["lunch","dinner"] — bukan satu nilai gabungan.
+- portions adalah jumlah porsi per tanggal PER waktu makan, bukan total dua-duanya.`,
       messages: [
         {
           role: "user",
@@ -471,6 +473,7 @@ Aturan:
     if (!match) return null;
     const parsed = JSON.parse(match[0]) as {
       delivery_dates?: unknown;
+      meal_types?: unknown;
       meal_type?: unknown;
       portions?: unknown;
     };
@@ -483,18 +486,28 @@ Aturan:
         )
       : [];
     if (dates.length === 0) return null;
-    const meal =
-      parsed.meal_type === "lunch" ||
-      parsed.meal_type === "dinner" ||
-      parsed.meal_type === "both"
-        ? parsed.meal_type
-        : null;
-    if (!meal) return null;
+    // A promised "lunch & dinner" is two bookings, never one row carrying both:
+    // a row with meal_type "both" renders on no sheet and reaches no kitchen.
+    // `meal_type` singular is still read because the model answers with the
+    // shape it saw in older histories, and "both" there means both meals.
+    const rawMeals = Array.isArray(parsed.meal_types)
+      ? parsed.meal_types
+      : parsed.meal_type === "both"
+        ? ["lunch", "dinner"]
+        : [parsed.meal_type];
+    const meals = rawMeals.filter(
+      (m): m is "lunch" | "dinner" => m === "lunch" || m === "dinner",
+    );
+    if (meals.length === 0) return null;
     const portions =
       typeof parsed.portions === "number" && parsed.portions > 0
         ? Math.floor(parsed.portions)
         : params.defaultPortions;
-    return { delivery_dates: dates, meal_type: meal, portions };
+    return {
+      delivery_dates: dates,
+      meal_types: Array.from(new Set(meals)),
+      portions,
+    };
   } catch (err) {
     console.error(
       "[webhook] schedule recovery extraction failed:",
@@ -2321,12 +2334,14 @@ export async function processSavedCustomerMessage(params: {
           },
           meal_type: {
             type: "string",
-            enum: ["lunch", "dinner", "both"],
+            enum: ["lunch", "dinner"],
+            description:
+              'One meal per call. A customer who wants lunch AND dinner on the same dates needs two calls — one with "lunch", one with "dinner". A single row cannot carry two meals.',
           },
           portions: {
             type: "number",
             description:
-              "Portions per delivery date, not the total (e.g. 2 for a 1-portion keduanya order — 1 lunch + 1 dinner on that date). Total deducted is this number times the number of dates.",
+              "Portions per delivery date for THIS meal, not the total, and not both meals added together. A customer taking 1 porsi lunch and 1 porsi dinner is two calls of 1, never one call of 2. Total deducted is this number times the number of dates.",
           },
           notes: { type: "string" },
         },
@@ -2348,9 +2363,9 @@ export async function processSavedCustomerMessage(params: {
           },
           meal_type: {
             type: "string",
-            enum: ["lunch", "dinner", "both"],
+            enum: ["lunch", "dinner"],
             description:
-              'Which meal to remove on those dates. Omit, or "both", to remove everything scheduled that day — which is what a plain skip means. Pass "lunch" or "dinner" only when the customer has both meals that day and is keeping one.',
+              'Which meal to remove on those dates. Omit it to remove everything scheduled that day — which is what a plain skip means. Pass "lunch" or "dinner" only when the customer has both meals that day and is keeping one.',
           },
           reason: {
             type: "string",
@@ -3001,30 +3016,38 @@ export async function processSavedCustomerMessage(params: {
     });
     if (promisedSchedule) {
       console.log(
-        `[webhook] schedule promised but never booked — recording ${promisedSchedule.delivery_dates.join(", ")} for ${customerId}`,
+        `[webhook] schedule promised but never booked — recording ${promisedSchedule.delivery_dates.join(", ")} (${promisedSchedule.meal_types.join(", ")}) for ${customerId}`,
       );
-      const recovered = await handleToolUse(
-        {
-          type: "tool_use",
-          id: "schedule-promise",
-          name: "record_daily_order",
-          input: promisedSchedule,
-          caller: null,
-        } as unknown as Anthropic.Messages.ToolUseBlock,
-        customerId,
-        phone,
-        customerName,
-      );
-      // record_daily_order pushes on its own for the failures it can name, but
-      // not for the ones it only logs — and the customer has already been told
-      // the dates are set, so silence here is the worst outcome.
-      if (!recovered.ok) {
-        await sendPushToAllAdmins(
-          `Jadwal dijanjikan tapi tidak tercatat — ${customerName ?? phone}`,
-          recovered.error,
-          "/deliveries",
-          "high",
-        ).catch(console.error);
+      // One call per meal. A day promised as lunch *and* dinner is two rows,
+      // because a row carrying both renders on no sheet and reaches no kitchen.
+      for (const mealType of promisedSchedule.meal_types) {
+        const recovered = await handleToolUse(
+          {
+            type: "tool_use",
+            id: "schedule-promise",
+            name: "record_daily_order",
+            input: {
+              delivery_dates: promisedSchedule.delivery_dates,
+              meal_type: mealType,
+              portions: promisedSchedule.portions,
+            },
+            caller: null,
+          } as unknown as Anthropic.Messages.ToolUseBlock,
+          customerId,
+          phone,
+          customerName,
+        );
+        // record_daily_order pushes on its own for the failures it can name, but
+        // not for the ones it only logs — and the customer has already been told
+        // the dates are set, so silence here is the worst outcome.
+        if (!recovered.ok) {
+          await sendPushToAllAdmins(
+            `Jadwal dijanjikan tapi tidak tercatat — ${customerName ?? phone}`,
+            `${mealType}: ${recovered.error}`,
+            "/deliveries",
+            "high",
+          ).catch(console.error);
+        }
       }
     } else {
       console.warn(

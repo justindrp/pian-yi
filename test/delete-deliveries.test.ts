@@ -139,14 +139,21 @@ test("the meal the customer is keeping is left alone", async () => {
   });
 });
 
-test("half of a keduanya row cannot be removed by deleting it", async () => {
+// "both" is not a meal any more — migration 114 forbids the value and
+// record_daily_order refuses to write it, so no row can carry two meals. The
+// model still sends it here out of older conversation history, where it meant
+// "skip the whole day", and that is what an unrecognised meal has to mean:
+// omitting the field says the same thing, and a plain skip is the common case.
+test("a meal_type the model invented removes the whole day", async () => {
   const res = await call(
-    makeDb([{ id: "d1", delivery_date: OPEN, meal_type: "both", portions: 2 }]),
-    { delivery_dates: [OPEN], meal_type: "lunch" },
+    makeDb([
+      { id: "d1", delivery_date: OPEN, meal_type: "lunch", portions: 1 },
+      { id: "d2", delivery_date: OPEN, meal_type: "dinner", portions: 1 },
+    ]),
+    { delivery_dates: [OPEN], meal_type: "both" as "lunch" | "dinner" },
   );
-  expect(res.ok).toBe(false);
-  if (!res.ok) expect(res.error).toContain("ask_admin_for_help");
-  expect(deleteDelivery).not.toHaveBeenCalled();
+  expect(res.ok).toBe(true);
+  expect(deleteDelivery).toHaveBeenCalledTimes(2);
 });
 
 test("a delete that throws is reported as failed and pushed", async () => {

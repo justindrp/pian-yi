@@ -183,7 +183,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         type: "object",
         properties: {
           delivery_dates: { type: "array", items: { type: "string" } },
-          meal_type: { type: "string", enum: ["lunch", "dinner", "both"] },
+          meal_type: {
+            type: "string",
+            enum: ["lunch", "dinner"],
+            description:
+              "One meal per call. Lunch AND dinner on the same dates is two calls — a single row cannot carry two meals.",
+          },
           portions: { type: "number" },
           notes: { type: "string" },
         },
@@ -198,7 +203,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         type: "object",
         properties: {
           delivery_dates: { type: "array", items: { type: "string" } },
-          meal_type: { type: "string", enum: ["lunch", "dinner", "both"] },
+          meal_type: {
+            type: "string",
+            enum: ["lunch", "dinner"],
+            description:
+              "Omit to remove everything scheduled that day, which is what a plain skip means.",
+          },
           reason: { type: "string" },
         },
         required: ["delivery_dates"],

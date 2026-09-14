@@ -13,8 +13,13 @@ type Db = SupabaseClient<Database>;
 /** What the model asked to remove. */
 export type DeleteDeliveriesInput = {
   delivery_dates?: string[];
-  /** Omitted, or "both", means every meal scheduled on those dates. */
-  meal_type?: "lunch" | "dinner" | "both";
+  /**
+   * Omitted means every meal scheduled on those dates, which is what a plain
+   * skip is. Anything that is not a single meal is read as omitted — the model
+   * still sends the old "both" out of older conversation history, and there it
+   * meant exactly that.
+   */
+  meal_type?: "lunch" | "dinner";
   reason?: string;
 };
 
@@ -78,7 +83,9 @@ export async function deleteDeliveries(params: {
   }
 
   const wantedMeal =
-    input.meal_type && input.meal_type !== "both" ? input.meal_type : null;
+    input.meal_type === "lunch" || input.meal_type === "dinner"
+      ? input.meal_type
+      : null;
 
   const { data: rows } = await db
     .from("daily_deliveries")
@@ -98,18 +105,13 @@ export async function deleteDeliveries(params: {
   const deleted: string[] = [];
   const locked: string[] = [];
   const wrongMeal: string[] = [];
-  // A row written as "both" is one row carrying two meals, so half of it cannot
-  // be removed by deleting it. Refuse and let an admin split it, rather than
-  // cancelling the meal the customer still wants.
-  const undividable: string[] = [];
   const failed: string[] = [];
 
   for (const row of scheduled) {
     const date = row.delivery_date;
     const meal = row.meal_type ?? "lunch";
     if (wantedMeal && meal !== wantedMeal) {
-      if (meal === "both") undividable.push(date);
-      else wrongMeal.push(`${date} (${meal})`);
+      wrongMeal.push(`${date} (${meal})`);
       continue;
     }
     if (isLocked(date, { deadlineHour })) {
@@ -139,9 +141,6 @@ export async function deleteDeliveries(params: {
   const dropped = [
     ...locked.map((d) => `${d} (sudah TERKUNCI, dapur sudah memasaknya)`),
     ...wrongMeal.map((d) => `${d} — yang terjadwal meal lain`),
-    ...undividable.map(
-      (d) => `${d} (terjadwal siang dan malam dalam satu catatan)`,
-    ),
     ...failed.map((d) => `${d} (gagal disimpan)`),
   ];
 
@@ -157,12 +156,6 @@ export async function deleteDeliveries(params: {
         ok: false,
         error:
           "Gagal menghapus jadwalnya dari database. Tidak ada yang dibatalkan — jangan bilang sudah dibatalkan, bilang saja sedang dicek admin.",
-      };
-    }
-    if (undividable.length > 0) {
-      return {
-        ok: false,
-        error: `Tanggal ${undividable.join(", ")} tercatat siang dan malam sekaligus dalam satu baris, jadi salah satunya tidak bisa dibatalkan sendiri. Tidak ada yang berubah — panggil ask_admin_for_help dengan tanggal dan meal yang dimaksud.`,
       };
     }
     if (locked.length > 0) {
