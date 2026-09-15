@@ -68,6 +68,22 @@ Rules for it:
 - Never quote it as a general contact channel to customers, and never let the bot mention it — one person answers it, and it has none of the guards the API path has.
 - **Both numbers are in `settings` as of migration 081** — `whatsapp_manual_number` and `whatsapp_business_number` — because they lived only in this file and every session that needed one grepped for it or dug it out of an old transcript. Nothing in code reads either key, and the prompt builder reads settings **by name**, so adding `whatsapp_manual_number` to `src/lib/claude/prompts/system.ts` is what would break the rule above. Don't.
 
+## The chat-review cron replies to customers by itself
+
+The every-2-hours chat review (`pnpm review-chats`, then `pnpm review-chats --waiting`) reads the waiting threads and, since 2026-09-16, **answers them itself** with `pnpm reply-chat` (`scripts/reply-chat.ts`). Justin asked for this after four threads sat unanswered for five hours across three review passes on 15 September — every one of them a thread the bot had parked with "Bentar ya kak, aku cek dulu sama admin" and no tool call behind it (task b2d78590). A review that only files tasks is a review nobody acts on overnight.
+
+Nothing human reads these replies before the customer does, so the script runs the bot's own pipeline on every one:
+
+- **`sanitizeReply()`** — strips stage directions, retractions, draft alternatives and duplicate paragraphs.
+- **`looksEnglish()`** — refuses an English reply outright. Customers are written to in Indonesian, always.
+- **`validateReply()`** — checks every customer-specific claim (quota, package size, order and payment status) against the ledger and **refuses the send** if one is unsupported. Verified against galvent on 2026-09-16: "sisa kuota kakak 25 porsi dan pesanan kakak sudah lunas" was blocked on both claims; the true figure, 6, passed.
+
+A refusal is the system working. The reply is rewritten or the thread is left to a person — it is never forced through.
+
+The send goes out on the compose-box path (`sendHumanMessage()`, shared with `scripts/manual-send.ts`), so it writes `conversations.sent_by = "script:review-reply"`, resets `last_human_activity_at` so the bot cannot talk over it, and records an `edit_log` entry naming the same actor. It is refused out of window, because a closed window is a `131042` whatever we do — those threads still become tasks, and the manual number is still the only way to reach them.
+
+**What it must not do:** send anything that is a decision rather than an answer. A price off the ladder, a refund, a goodwill portion, a bill waived — those are Justin's, and the review files them as tasks. The line is whether the answer can be derived from the database: a cutoff date, a quota count, a ladder price, a delivery window can; what we are willing to give away cannot.
+
 ## Idempotency strategy
 
 - Every incoming WhatsApp `message_id` is checked against `processed_messages` table before processing
