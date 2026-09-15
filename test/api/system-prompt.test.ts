@@ -559,6 +559,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur 1",
             offersM: true,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
       });
@@ -580,6 +581,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur 1",
             offersM: true,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
         activeOrder: {
@@ -607,6 +609,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur 1",
             offersM: true,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
         activeOrder: {
@@ -630,6 +633,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur 1",
             offersM: false,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
       });
@@ -651,12 +655,14 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur Suplir",
             offersM: true,
             sameMenuBothMeals: true,
+            noRiceDiscount: null,
           },
           {
             id: "2",
             nickname: "Dapur Palem",
             offersM: false,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
       });
@@ -677,6 +683,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur Suplir",
             offersM: true,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
       });
@@ -720,6 +727,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur 1",
             offersM: true,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
       });
@@ -738,6 +746,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur 1",
             offersM: false,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
       });
@@ -767,6 +776,7 @@ describe("customer chatbot system prompt", () => {
             nickname: "Dapur 1",
             offersM: false,
             sameMenuBothMeals: false,
+            noRiceDiscount: null,
           },
         ],
         dapurMenuTexts: [],
@@ -1122,12 +1132,14 @@ describe("the customer's own dapur", () => {
         nickname: "Dapur Suplir",
         offersM: true,
         sameMenuBothMeals: true,
+        noRiceDiscount: null,
       },
       {
         id: "b",
         nickname: "Dapur Palem",
         offersM: false,
         sameMenuBothMeals: false,
+        noRiceDiscount: null,
       },
     ],
     dapurMenuTexts: [],
@@ -1207,12 +1219,14 @@ describe("the cacheable prefix", () => {
         nickname: "Dapur Suplir",
         offersM: true,
         sameMenuBothMeals: true,
+        noRiceDiscount: null,
       },
       {
         id: "b",
         nickname: "Dapur Palem",
         offersM: false,
         sameMenuBothMeals: false,
+        noRiceDiscount: null,
       },
     ],
     dapurMenuTexts: [],
@@ -1311,12 +1325,14 @@ describe("the area gate", () => {
         nickname: "Dapur Suplir",
         offersM: true,
         sameMenuBothMeals: true,
+        noRiceDiscount: null,
       },
       {
         id: "b",
         nickname: "Dapur Monstera",
         offersM: false,
         sameMenuBothMeals: false,
+        noRiceDiscount: null,
       },
     ],
     dapurMenuTexts: [],
@@ -1364,5 +1380,106 @@ describe("the area gate", () => {
     });
 
     expect(prompt).not.toContain("A missing area is a question");
+  });
+});
+
+// "Tanpa nasi harganya sama, tidak ada biaya tambahan" was a literal in this
+// prompt while `subcontractors.no_rice_discount` sat unread by any code path,
+// so a kitchen that knocks money off a box without rice quoted the full rate to
+// every customer it had. The line is rendered from the column now, and what it
+// must never say is that the price is the same when it is not.
+describe("tanpa nasi is quoted from each dapur's own column", () => {
+  const dapur = (
+    nickname: string,
+    noRiceDiscount: number | null,
+    id = nickname,
+  ) => ({
+    id,
+    nickname,
+    offersM: false,
+    sameMenuBothMeals: true,
+    noRiceDiscount,
+  });
+
+  const base = {
+    casual: false,
+    customerState: "ordering",
+    customerName: "Veronica Catherine",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null as { id: string; nickname: string } | null,
+    dapurOptions: [] as ReturnType<typeof dapur>[],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["Alam Sutera"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("names the discount per dapur when the kitchens differ", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", null), dapur("Dapur Palem", 4000)],
+    });
+
+    expect(prompt).toContain(
+      "**Dapur Suplir** harga sama, tidak ada biaya tambahan; **Dapur Palem** potongan Rp 4.000 per porsi",
+    );
+    expect(prompt).toContain("never one price for all of them");
+  });
+
+  test("says the price is the same only when every dapur charges the same", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", null), dapur("Dapur Palem", 0)],
+    });
+
+    expect(prompt).toContain("tanpa nasi bisa, harganya sama ya");
+  });
+
+  test("with no dapur to quote, asks rather than promising the same price", async () => {
+    const prompt = await buildSystemPrompt({ ...base, dapurOptions: [] });
+
+    expect(prompt).toContain("**Never say the price is the same**");
+    expect(prompt).not.toContain("harganya sama ya");
+  });
+
+  test("accepts it at every dapur, whatever the column says", async () => {
+    // Null is "charges the same", never "does not sell it": refusing lauk-only
+    // is what lost the 2026-08-26 lead.
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", null)],
+    });
+
+    expect(prompt).toContain(
+      "**Tidak ada nasi** — accepted, always, by every dapur",
+    );
+    expect(prompt).toContain("Never answer that we only sell a complete package");
+    expect(prompt).toContain("tanpa_nasi: true");
+  });
+
+  test("the quote stays in the cacheable prefix", async () => {
+    // A line keyed on `currentDapur` would push the whole price list into the
+    // per-customer tail and cost a cache miss on every turn.
+    const withDapur = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Palem", 4000)],
+      currentDapur: { id: "Dapur Palem", nickname: "Dapur Palem" },
+    });
+    const without = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Palem", 4000)],
+    });
+    const marker = "\n\n## Gaya bahasa\n";
+
+    expect(withDapur.slice(0, withDapur.indexOf(marker))).toBe(
+      without.slice(0, without.indexOf(marker)),
+    );
   });
 });

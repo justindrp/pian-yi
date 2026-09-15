@@ -93,6 +93,12 @@ export async function buildSystemPrompt(params: {
     nickname: string;
     offersM: boolean;
     sameMenuBothMeals: boolean;
+    /**
+     * IDR off per portion for a box without rice, from
+     * `subcontractors.no_rice_discount`. Null or 0 means this kitchen charges
+     * the same either way — never that it refuses the request (migration 116).
+     */
+    noRiceDiscount: number | null;
   }[];
   /**
    * The dapur this customer already cooks with, when they have one. The model
@@ -379,6 +385,44 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     sameMenuKitchens.length === 0
       ? ""
       : `  - ${sameMenuKitchens.map((d) => d.nickname).join(", ")} serve${sameMenuKitchens.length === 1 ? "s" : ""} the same menu for lunch and dinner — asked whether siang and malam differ for ${sameMenuKitchens.length === 1 ? "that dapur" : "one of those"}, answer: sama (same menu for both meals).\n`;
+
+  /**
+   * What tanpa nasi costs, per kitchen.
+   *
+   * This paragraph used to end "harga sama, tidak ada biaya tambahan" in the
+   * prompt text itself — one kitchen's arrangement written as a fact about the
+   * business, exactly the shape the +25% sayur claim had before it.
+   * `subcontractors.no_rice_discount` has carried the real figure per kitchen
+   * since migration 098 and nothing read it: Dapur Palem take Rp 2.000 off a
+   * portion and Dapur Monstera Rp 4.000, so every tanpa-nasi customer on
+   * either was told their box cost the same as anyone else's. On 2026-09-15 a
+   * BSD Lama lead was told it at 08:47 WIB before she had even named an area.
+   *
+   * Null or 0 is "charges the same", never "does not sell it" — refusing is
+   * what lost the 2026-08-26 lead who asked "kl hanya lauknya bisa kak ?".
+   */
+  const noRiceOff = (d: { noRiceDiscount: number | null }) =>
+    (d.noRiceDiscount ?? 0) > 0 ? (d.noRiceDiscount as number) : 0;
+  const noRicePhrase = (off: number) =>
+    off > 0
+      ? `potongan Rp ${off.toLocaleString("id-ID")} per porsi`
+      : "harga sama, tidak ada biaya tambahan";
+  // Keyed on the kitchens this customer may buy from and never on which one is
+  // already theirs: everything above the "## Gaya bahasa" marker is the shared
+  // prefix the cache is paid for once, and a sentence that changes with
+  // `currentDapur` moves the whole price list into the per-customer tail. Which
+  // dapur is theirs is already in that tail — the model reads the figure for it
+  // off this list.
+  const noRicePricingLine =
+    params.dapurOptions.length === 0
+      ? `You do not know which dapur this customer will buy from, so you do not know what tanpa nasi costs them. Say tanpa nasi bisa, ask which area they are in or which dapur they want, and quote the price once you know. **Never say the price is the same** — at some dapur it is lower.`
+      : params.dapurOptions.every((d) => noRiceOff(d) === 0)
+        ? `Every dapur this customer can buy from charges the same for it: "Oke kak, tanpa nasi bisa, harganya sama ya."`
+        : `What it costs depends on the dapur: ${params.dapurOptions
+            .map((d) => `**${d.nickname}** ${noRicePhrase(noRiceOff(d))}`)
+            .join(
+              "; ",
+            )}. Quote the figure for the dapur this customer is on, with that dapur's name attached — never one price for all of them. If they have not picked a dapur yet, say tanpa nasi bisa and give the figures per dapur, or ask which one they want first.`;
 
   /**
    * The ladders, and the days, of the kitchens this customer can buy from.
@@ -967,10 +1011,10 @@ We do not accommodate custom requests, with exactly five exceptions:
 1. **Tidak pedas** — accepted. Note it in the order.
 2. **Tidak ada daging sapi** — accepted. On days when the menu contains beef, we will replace it with chicken. Tell the customer: "Oke kak, kalau menu hari itu ada daging sapi, kami ganti dengan ayam ya."
 3. **Tidak ada seafood** — accepted. On days when the menu contains seafood, we will replace it with chicken, exactly like beef. Tell the customer: "Oke kak, kalau menu hari itu ada seafood, kami ganti dengan ayam ya." This is a protein substitution, not an allergy accommodation — never fold it in with tanpa susu / tanpa kacang, which we decline.
-4. **Tidak ada nasi** — accepted, **harga sama, tidak ada biaya tambahan**. Tell the customer: "Oke kak, tanpa nasi bisa, harganya sama ya." Say nothing about what we put in the box instead. This line used to promise "porsi protein kami tambah 25% sebagai gantinya", which was wrong twice over: the arrangement is extra *sayur*, not protein, and it is Thenie's arrangement alone. It was written when Thenie were the only kitchen, so a fact about them read as a fact about us, and on 2026-09-05 it started being promised on behalf of two kitchens that never agreed to it — to customers whose boxes then arrive with an ordinary portion minus the rice. It comes back as a per-kitchen sentence, rendered the way the size-M and shared-menu facts already are, once a column carries which kitchens do it. Never say you have to check the price for this: there is no tanpa-nasi rate anywhere in the code, only the normal ladder. On 2026-08-20 the bot answered "perlu saya cek dulu ke tim terkait macam lauk dan harganya", asked for a portion count instead, and the customer left with "Batal..ribet". A customer asking for **lauk only** is asking for this exception, not for something new: "hanya lauknya", "cuma lauk", "lauk saja", "lauk doang", "tanpa nasi aja", "no rice" all mean tidak ada nasi — accept them with the sentence above. The portion still has its sayur and sambal; only the nasi is dropped. **Never answer that we only sell a complete package.** On 2026-08-26 a lead asked "kl hanya lauknya bisa kak ?" and the bot replied "kami hanya melayani paket lengkap ya ... kami belum bisa melayani lauk saja" — a phrase that appears nowhere in these rules — and the lead left with "oke .makasih ya".;
+4. **Tidak ada nasi** — accepted, always, by every dapur. ${noRicePricingLine} Say nothing about what we put in the box instead. Never say you have to check the price for this: the figure is in front of you. On 2026-08-20 the bot answered "perlu saya cek dulu ke tim terkait macam lauk dan harganya", asked for a portion count instead, and the customer left with "Batal..ribet". This line used to promise "porsi protein kami tambah 25% sebagai gantinya", which was wrong twice over: the arrangement is extra *sayur*, not protein, and it is one dapur's arrangement alone — it was written when they were the only kitchen, so a fact about them read as a fact about us, and on 2026-09-05 it started being promised on behalf of two kitchens that never agreed to it. It comes back as a per-dapur sentence, rendered the way this price now is, once a column carries which kitchens do it. A customer asking for **lauk only** is asking for this exception, not for something new: "hanya lauknya", "cuma lauk", "lauk saja", "lauk doang", "tanpa nasi aja", "no rice" all mean tidak ada nasi — accept them. The portion still has its sayur and sambal; only the nasi is dropped. **Never answer that we only sell a complete package.** On 2026-08-26 a lead asked "kl hanya lauknya bisa kak ?" and the bot replied "kami hanya melayani paket lengkap ya ... kami belum bisa melayani lauk saja" — a phrase that appears nowhere in these rules — and the lead left with "oke .makasih ya". **Pass \`tanpa_nasi: true\` to extract_order**, as well as writing "tanpa nasi" in \`catatan\`: the flag is what takes the discount off the price, the words are what the dapur cooks from.
 5. **Nasi merah** — accepted, **+Rp 5.000 per porsi**. Say so and quote the higher total: "Bisa kak, nasi merah tambah Rp 5.000 per porsi ya." Then pass nasi_merah: true to extract_order — that is what makes the price and our cost line up. We do sell this: on 2026-08-10 the bot told Cindy Angelia twice that nasi merah "belum bisa kami sediakan" and never created her order, while her real order was written at Rp 34.000 (29.000 + 5.000).
 
-**An accepted request must be passed in \`catatan\` when you call extract_order** — items 1 to 4, written plainly ("tanpa nasi", "tidak pedas", "tidak ada daging sapi", "tidak ada seafood"), comma-separated if there is more than one. Nasi merah is the exception: it goes in \`nasi_merah\`, not here, because it changes the price. Saying yes in the chat is not enough on its own — \`catatan\` is what reaches the kitchen's delivery sheet, and a request that is agreed but never passed is a promise only the customer knows about. On 2026-08-25 Surya ordered 15 porsi tanpa nasi, every delivery row was written with no note, and the kitchen would have cooked rice for all five days if an admin had not typed the note in by hand. Write only what the customer asked for, never what we do about it internally: "tanpa nasi", never "tanpa nasi (protein +25%)". The protein increase is our arrangement with the kitchen and is said to the customer only, never written to their record.
+**An accepted request must be passed in \`catatan\` when you call extract_order** — items 1 to 4, written plainly ("tanpa nasi", "tidak pedas", "tidak ada daging sapi", "tidak ada seafood"), comma-separated if there is more than one. Two of them also have a field of their own because they change the price: nasi merah goes in \`nasi_merah\` and tanpa nasi in \`tanpa_nasi\` — tanpa nasi goes in **both**, the field for the price and \`catatan\` for the dapur. Saying yes in the chat is not enough on its own — \`catatan\` is what reaches the kitchen's delivery sheet, and a request that is agreed but never passed is a promise only the customer knows about. On 2026-08-25 Surya ordered 15 porsi tanpa nasi, every delivery row was written with no note, and the kitchen would have cooked rice for all five days if an admin had not typed the note in by hand. Write only what the customer asked for, never what we do about it internally: "tanpa nasi", never "tanpa nasi (protein +25%)". The protein increase is our arrangement with the kitchen and is said to the customer only, never written to their record.
 
 A note is never a reason to re-confirm an order. "Porsi 1/2", "tanpa lemak", a nickname or a room number added after the summary — record it and call extract_order. Do not print the summary again.
 

@@ -121,3 +121,29 @@ export function sameLadder(a: PriceTier[], b: PriceTier[]): boolean {
       t.price_per_portion === b[i].price_per_portion,
   );
 }
+
+/**
+ * What one kitchen takes off a portion sold without rice.
+ *
+ * `subcontractors.no_rice_discount` (migration 098) sat unread for six weeks
+ * while the prompt told the bot the price was identical for every kitchen —
+ * true of Thenie alone, and wrong by Rp 4.000 a portion at Dapur Monstera.
+ * Migration 116 settles what NULL means: nothing to take off, never a reason
+ * to refuse the request.
+ *
+ * Returns 0 for a kitchen we cannot name, which is the house ladder's answer:
+ * the house rate is Thenie's, and Thenie charge the same either way.
+ */
+export async function noRiceDiscount(
+  db: Db,
+  subcontractorId: string | null,
+): Promise<number> {
+  if (!subcontractorId) return 0;
+  const { data } = await db
+    .from("subcontractors")
+    .select("no_rice_discount")
+    .eq("id", subcontractorId)
+    .maybeSingle();
+  const off = data?.no_rice_discount ?? 0;
+  return typeof off === "number" && off > 0 ? off : 0;
+}

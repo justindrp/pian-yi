@@ -104,6 +104,7 @@ async function main() {
         nickname: s.customer_nickname as string,
         offersM: s.offers_size_m === true,
         sameMenuBothMeals: s.same_menu_both_meals === true,
+        noRiceDiscount: null,
       })),
     dapurMenuTexts: [],
     menuWeek: describeMenuWeeks(

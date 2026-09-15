@@ -1253,6 +1253,7 @@ export type Database = {
           granted_by: string | null
           id: string
           lunch_address_slot: number
+          no_rice: boolean
           package_size: number
           paid_at: string | null
           paid_by_customer_id: string | null
@@ -1294,6 +1295,7 @@ export type Database = {
           granted_by?: string | null
           id?: string
           lunch_address_slot?: number
+          no_rice?: boolean
           package_size: number
           paid_at?: string | null
           paid_by_customer_id?: string | null
@@ -1335,6 +1337,7 @@ export type Database = {
           granted_by?: string | null
           id?: string
           lunch_address_slot?: number
+          no_rice?: boolean
           package_size?: number
           paid_at?: string | null
           paid_by_customer_id?: string | null

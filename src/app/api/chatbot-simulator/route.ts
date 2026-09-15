@@ -40,7 +40,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const { data: activeSubs } = await db
     .from("subcontractors")
     .select(
-      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals",
+      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals, no_rice_discount",
     )
     .eq("is_active", true)
     .not("customer_nickname", "is", null);
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       delivery_areas: string[] | null;
       offers_size_m: boolean;
       same_menu_both_meals: boolean;
+      no_rice_discount: number | null;
     } => s.customer_nickname !== null,
   );
 
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       nickname: s.customer_nickname,
       offersM: s.offers_size_m === true,
       sameMenuBothMeals: s.same_menu_both_meals === true,
+      noRiceDiscount: s.no_rice_discount ?? null,
     }));
 
   const dapurMenuTexts = rawSubs

@@ -24,7 +24,11 @@ import {
   type OrderSize,
   sizeMSurcharge,
 } from "@/lib/orders/size";
-import { priceForPortions, tiersForKitchen } from "@/lib/pricing/tiers";
+import {
+  noRiceDiscount,
+  priceForPortions,
+  tiersForKitchen,
+} from "@/lib/pricing/tiers";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { activeDeliveryAreas, asAreas } from "@/lib/subcontractors/areas";
 import {
@@ -86,6 +90,14 @@ export interface ExtractedOrderInput {
   subcontractor_id?: string;
   size?: string;
   nasi_merah?: boolean;
+  /**
+   * The customer bought this package without rice.
+   *
+   * Separate from `catatan` because it changes the price: each kitchen carries
+   * its own `no_rice_discount` and the prompt used to assert the price was the
+   * same for all of them. `catatan` still carries the words the kitchen reads.
+   */
+  tanpa_nasi?: boolean;
   catatan?: string;
 }
 
@@ -97,6 +109,26 @@ export interface ExtractedOrderPricing {
 export type ExtractedOrderReview = ExtractedOrderInput & ExtractedOrderPricing;
 const LEARNED_CONTEXT_START = "[AI learned context]";
 const LEARNED_CONTEXT_END = "[/AI learned context]";
+
+/**
+ * Whether a `catatan` already says the box comes without rice.
+ *
+ * The flag and the note are written by the same model turn and it will send
+ * one without the other — the words were the only channel for six weeks, so
+ * "tanpa nasi" in `catatan` with no `tanpa_nasi: true` is the shape to expect
+ * first. Read as a price signal here and as a kitchen instruction there; the
+ * phrasings are the ones the prompt lists as meaning this exception.
+ */
+export function mentionsTanpaNasi(catatan: string | null | undefined): boolean {
+  if (!catatan) return false;
+  const text = catatan.toLowerCase();
+  return (
+    /\btanpa nasi\b/.test(text) ||
+    /\bno rice\b/.test(text) ||
+    /\b(hanya|cuma) lauk/.test(text) ||
+    /\blauk (saja|doang|aja)\b/.test(text)
+  );
+}
 
 /**
  * Merge an accepted custom request into `customers.kitchen_notes`.
@@ -237,6 +269,11 @@ const EXTRACT_ORDER_PROPERTIES_BASE = {
     type: "boolean",
     description:
       "True when the customer asked for nasi merah. Adds Rp 5.000 per portion to the price and records the same amount as what the kitchen charges us.",
+  },
+  tanpa_nasi: {
+    type: "boolean",
+    description:
+      "True when the customer asked for the food without rice (tanpa nasi, lauk saja, hanya lauknya, no rice). Some dapur sell a box without rice for less, so this is what takes the discount off the price. Still write 'tanpa nasi' in catatan as well — that is what the kitchen reads.",
   },
   catatan: {
     type: "string",
@@ -566,6 +603,7 @@ async function packageSizeMatchingPayment(
   customerId: string,
   nasiMerah: boolean,
   subcontractorId: string | null,
+  tanpaNasi: boolean,
 ): Promise<number | null> {
   const messages = await customerMessages(customerId, 10);
   const amounts = messages
@@ -592,6 +630,7 @@ async function packageSizeMatchingPayment(
       null,
       "s",
       subcontractorId,
+      tanpaNasi,
     );
     if (total_price === paid) return tier.portions;
   }
@@ -726,7 +765,17 @@ export async function getExtractedOrderPricing(
   customerId?: string | null,
   portionSize: OrderSize = "s",
   subcontractorId: string | null = null,
+  tanpaNasi = false,
 ): Promise<ExtractedOrderPricing> {
+  // Nasi merah is an upgrade to the rice in the box, so it cannot be bought
+  // for a box with no rice in it. The model can send both; the request the
+  // customer actually made is the one that removes the rice.
+  if (tanpaNasi && nasiMerah) {
+    console.warn(
+      "[extract-order] tanpa_nasi and nasi_merah on the same order — pricing tanpa nasi",
+    );
+    nasiMerah = false;
+  }
   // M is folded into price_per_portion rather than carried beside it, so the
   // rate an order locks at creation is the rate the customer agreed to and
   // every downstream reader — total_price, the ledger, accounting — keeps
@@ -737,6 +786,9 @@ export async function getExtractedOrderPricing(
   // porsi at Rp 35.000 — above every tier — so tier lookup can only ever get
   // their order wrong. Add-ons still stack: what the kitchen charges extra is
   // charged through at cost regardless of who the customer is.
+  // The tanpa-nasi discount does not come off a negotiated rate. That rate is
+  // an agreement about what this customer pays, not a lookup on our ladder, and
+  // moving it because of a box change is a price change nobody agreed to.
   const contract = await contractPrice(customerId);
   if (contract !== null) {
     const pricePerPortion =
@@ -755,8 +807,14 @@ export async function getExtractedOrderPricing(
   const db = createAdminClient();
   const tiers = await tiersForKitchen(db, subcontractorId);
   const basePrice = priceForPortions(tiers, packageSize) ?? 0;
-  const pricePerPortion =
-    basePrice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0) + sizeExtra;
+  // Flat IDR off every tier, per kitchen, and only for a kitchen we can name:
+  // the house ladder is Thenie's and Thenie charge the same either way. Never
+  // below zero — a discount larger than the tier would sell food for nothing.
+  const noRice = tanpaNasi ? await noRiceDiscount(db, subcontractorId) : 0;
+  const pricePerPortion = Math.max(
+    0,
+    basePrice - noRice + (nasiMerah ? NASI_MERAH_SURCHARGE : 0) + sizeExtra,
+  );
   return {
     price_per_portion: pricePerPortion,
     total_price: pricePerPortion * packageSize,
@@ -793,6 +851,7 @@ export async function priceScheduleSlots(params: {
   nasiMerah: boolean;
   customerId: string | null;
   portionSize: OrderSize;
+  tanpaNasi: boolean;
 }): Promise<{ rated: RatedSlot[]; portionsPrice: number }> {
   const {
     slots,
@@ -802,6 +861,7 @@ export async function priceScheduleSlots(params: {
     nasiMerah,
     customerId,
     portionSize,
+    tanpaNasi,
   } = params;
 
   const kitchenFor = (slot: DeliveryScheduleSlot): string | null => {
@@ -821,12 +881,16 @@ export async function priceScheduleSlots(params: {
     const kitchen = kitchenFor(slot);
     const key = kitchen ?? "";
     if (rates.has(key)) continue;
+    // Each kitchen takes its own tanpa-nasi discount off its own ladder, the
+    // same way it quotes its own tier: an away day at Dapur Monstera is worth
+    // Monstera's rate less Monstera's discount, not the order kitchen's.
     const { price_per_portion } = await getExtractedOrderPricing(
       packageSize,
       nasiMerah,
       customerId,
       portionSize,
       kitchen,
+      tanpaNasi,
     );
     rates.set(key, price_per_portion);
   }
@@ -1083,7 +1147,9 @@ export async function resizePendingOrderFromMessage(
   const db = createAdminClient();
   const { data: order } = await db
     .from("orders")
-    .select("id, package_size, addon_cost_per_portion, size, subcontractor_id")
+    .select(
+      "id, package_size, addon_cost_per_portion, size, subcontractor_id, no_rice",
+    )
     .eq("customer_id", customerId)
     .eq("status", "pending_payment")
     .order("created_at", { ascending: false })
@@ -1119,6 +1185,10 @@ export async function resizePendingOrderFromMessage(
   // Re-priced on the order's own kitchen. Its ladder is what the customer was
   // quoted; re-pricing off the house one would move the total the moment they
   // changed the portion count, with nothing in the chat saying why.
+  // Tanpa nasi is the order's, the same way the S/M size is: it is folded into
+  // price_per_portion, so re-pricing without it would quietly charge a
+  // tanpa-nasi customer the full rate the moment they changed the portion
+  // count. A bare number in a chat message cannot express it either way.
   const { price_per_portion: pricePerPortion, total_price: totalPrice } =
     await getExtractedOrderPricing(
       size,
@@ -1126,6 +1196,7 @@ export async function resizePendingOrderFromMessage(
       customerId,
       portionSize,
       order.subcontractor_id ?? null,
+      order.no_rice === true,
     );
 
   const { error } = await db
@@ -1703,10 +1774,19 @@ export async function createOrderFromExtraction(
       : null;
 
   const nasiMerah = input.nasi_merah === true;
+  // Tanpa nasi is a price, not just a note: each kitchen carries its own
+  // `no_rice_discount` (migration 116). The words still go in `catatan` — that
+  // is what the kitchen sheet prints — but the money comes off here.
+  const tanpaNasi = input.tanpa_nasi === true || mentionsTanpaNasi(input.catatan);
   // Money that has moved outranks every number in the conversation.
   const paidSize =
     beneficiary.kind === "self"
-      ? await packageSizeMatchingPayment(customerId, nasiMerah, subcontractorId)
+      ? await packageSizeMatchingPayment(
+          customerId,
+          nasiMerah,
+          subcontractorId,
+          tanpaNasi,
+        )
       : null;
 
   // Every one of these overrides is read out of the buyer's chat, and in a
@@ -1789,10 +1869,11 @@ export async function createOrderFromExtraction(
         (below === null ? [above] : [below, above]).map(async (n) => {
           const { total_price } = await getExtractedOrderPricing(
             n,
-            input.nasi_merah === true,
+            nasiMerah,
             orderCustomerId,
             normalizeSize(input.size),
             subcontractorId,
+            tanpaNasi,
           );
           return `*${n} porsi (${formatIDR(total_price)})*`;
         }),
@@ -1995,6 +2076,7 @@ export async function createOrderFromExtraction(
     orderCustomerId,
     portionSize,
     subcontractorId,
+    tanpaNasi,
   );
   // The rate the order locks: the kitchen it was sold under. Every row that
   // kitchen cooks is worth this, and a row cooked elsewhere carries its own.
@@ -2018,6 +2100,7 @@ export async function createOrderFromExtraction(
           nasiMerah,
           customerId: orderCustomerId,
           portionSize,
+          tanpaNasi,
         })
       : null;
   if (namedKitchens.size > 0 && !mixed) {
@@ -2101,6 +2184,10 @@ export async function createOrderFromExtraction(
     price_per_portion: pricePerPortion,
     total_price: totalPrice,
     addon_cost_per_portion: nasiMerah ? NASI_MERAH_SURCHARGE : 0,
+    // What the rate above was computed from, so an amendment reprices with the
+    // discount instead of silently dropping it — the same reason
+    // addon_cost_per_portion is stored beside the price it is folded into.
+    no_rice: tanpaNasi,
     // Frozen at creation like price_per_portion: what the address cost per
     // drop when it was sold, and what that added to total_price.
     delivery_surcharge_per_delivery: surchargePerDelivery,
@@ -2224,9 +2311,16 @@ export async function createOrderFromExtraction(
   // The kitchen has no other way to learn about an accepted custom request:
   // nothing that materialises a delivery row writes a per-row note, and the AI
   // summary is written later and only sometimes mentions it.
+  // The flag alone is not enough for the cook. `no_rice` is a price; the sheet
+  // prints `kitchen_notes` and nothing else (migration 089), so an order whose
+  // model sent `tanpa_nasi: true` and an empty `catatan` would be charged less
+  // and still arrive with rice in it.
+  const catatan = input.catatan?.trim() ?? "";
   const kitchenNote = mergeKitchenNote(
     existingCustomer?.kitchen_notes ?? null,
-    input.catatan ?? "",
+    tanpaNasi && !mentionsTanpaNasi(catatan)
+      ? [catatan, "tanpa nasi"].filter(Boolean).join(", ")
+      : catatan,
   );
   // Someone else's record is not ours to rewrite. Every field below is taken
   // from the order being placed, and on a third-party order that order was
