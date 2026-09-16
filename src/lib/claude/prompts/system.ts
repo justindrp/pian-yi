@@ -614,7 +614,8 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
       ? `- Delivery windows: siang ${houseLunch.label} WIB, malam ${houseDinner.label} WIB`
       : `- **Delivery windows are per dapur** — ${kitchenWindows
           .map(
-            (k) => `${k.nickname}: siang ${k.lunch.label}, malam ${k.dinner.label}`,
+            (k) =>
+              `${k.nickname}: siang ${k.lunch.label}, malam ${k.dinner.label}`,
           )
           .join(
             "; ",
@@ -652,21 +653,34 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
 
   const mKitchens = params.dapurOptions.filter((d) => d.offersM);
   const mExtra = mKitchens.length > 0 ? await sizeMSurcharge() : 0;
-  const offersM = mKitchens.length > 0 && mExtra > 0;
+  // `sizeMSurcharge()` reads 0 when the settings row is missing or unparseable,
+  // and `extract_order` still writes an M order as M at the S price when it
+  // does. A prompt keyed on `mExtra > 0` told the customer M did not exist at a
+  // kitchen that cooks it, so the two halves disagreed about the same order.
+  // M is offered whenever a kitchen cooks it; the surcharge only changes what
+  // it costs.
+  const offersM = mKitchens.length > 0;
   const mNames = mKitchens.map((d) => d.nickname).join(", ");
+  const mMore =
+    mExtra > 0 ? `for Rp ${rp(mExtra)}/porsi more` : "at the same price";
   const sizeSection = offersM
-    ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). M costs **Rp ${mExtra.toLocaleString("id-ID")}/porsi more than the price list below**, on every tier.
+    ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). ${mExtra > 0 ? `M costs **Rp ${rp(mExtra)}/porsi more than the price list below**, on every tier.` : `M costs **the same as the price list below** — no tambahan is set right now, so one figure covers either size.`}
 - Only ${mNames} cook${mKitchens.length === 1 ? "s" : ""} M. Every other dapur is S only — never offer M for them, and never promise a size a dapur does not cook.
-- Quote M as the tier's per-meal price plus Rp ${mExtra.toLocaleString("id-ID")}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, M = 40 × Rp ${rp(rateFor(40) + mExtra)} = *Rp ${rp((rateFor(40) + mExtra) * 40)}*.
-- **Name both sizes the first time you quote a price, and whenever they ask what is in a box or how big a porsi is.** One line, in the same message as the total — S is what the price list shows, M adds one more side dish for Rp ${mExtra.toLocaleString("id-ID")}/porsi more. Do not wait to be asked. Naya ordered on 2026-08-24, ate S all week, and found out M existed on 2026-08-31 only because an admin told her: "kyanya gada diinfo deh kak", "gaada diinfo kak". The price list image shows the S box, so the customer has no other way to learn this.
-- Say it as an option, never as a question they must answer first: quote S as the default total, add the M line, and let them upgrade if they want. If they do not say which size, use S.${
-        params.activeOrder?.onSizeSWithMAvailable
-          ? `
-- **This customer is eating a paket size S they bought before anyone told them M existed.** If nothing in the conversation above has mentioned size M, say it once — one line at the end of whatever you are already answering, whatever they asked about: M adds one more side dish for Rp ${mExtra.toLocaleString("id-ID")}/porsi more, and their sisa porsi can be switched to M. Once it is anywhere in the history, never raise it again — it is an offer, not a campaign.
-- If they want to switch, call escalate_to_human and say an admin will confirm the difference. Never say it is done, and never call extract_order — changing a running package is an admin edit, and extract_order would sell them a second paket.`
-          : ""
-      }`
+- ${mExtra > 0 ? `Quote M as the tier's per-meal price plus Rp ${rp(mExtra)}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, M = 40 × Rp ${rp(rateFor(40) + mExtra)} = *Rp ${rp((rateFor(40) + mExtra) * 40)}*.` : `Quote M at the tier's per-meal price, the same total as S: 20 hari siang + malam = 40 porsi = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, either size.`}
+- **Name both sizes the first time you quote a price, and whenever they ask what is in a box or how big a porsi is.** One line, in the same message as the total — S is what the price list shows, M adds one more side dish ${mMore}. Do not wait to be asked. Naya ordered on 2026-08-24, ate S all week, and found out M existed on 2026-08-31 only because an admin told her: "kyanya gada diinfo deh kak", "gaada diinfo kak". The price list image shows the S box, so the customer has no other way to learn this.
+- Say it as an option, never as a question they must answer first: quote S as the default total, add the M line, and let them upgrade if they want. If they do not say which size, use S.`
     : "- Only size S is available. Never ask whether the customer wants S or M.";
+
+  // Per-customer, so it lives in the tail with the rest of them — see the note
+  // above `currentDapurBlock`.
+  const sizeMOfferBlock =
+    offersM && params.activeOrder?.onSizeSWithMAvailable
+      ? `
+
+## Ukuran M untuk customer ini
+- **This customer is eating a paket size S they bought before anyone told them M existed.** If nothing in the conversation above has mentioned size M, say it once — one line at the end of whatever you are already answering, whatever they asked about: M adds one more side dish ${mMore}, and their sisa porsi can be switched to M. Once it is anywhere in the history, never raise it again — it is an offer, not a campaign.
+- If they want to switch, call escalate_to_human and say an admin will confirm the difference. Never say it is done, and never call extract_order — changing a running package is an admin edit, and extract_order would sell them a second paket.`
+      : "";
 
   // The weekly menu card is drawn with the M line-up and marks nothing, so an S
   // customer reads five items as what they bought. Naya ate four all week
@@ -686,6 +700,7 @@ Work the total out the same way as always and multiply:
 - porsi (or box) per pengiriman × jumlah hari, doubled if they take siang and malam
 - Example: 22 box × 5 hari = 110 porsi → 110 × Rp ${contract.toLocaleString("id-ID")} = *Rp ${(contract * 110).toLocaleString("id-ID")}*
 
+${offersM ? `\nUkuran M — one more side dish — is sold to this customer as well, and only at ${mNames}. ${mExtra > 0 ? `It is the contract rate plus Rp ${rp(mExtra)}/porsi: **Rp ${rp(contract + mExtra)}/porsi**.` : `It is the same **Rp ${rp(contract)}/porsi** — no tambahan is set right now.`} Every other dapur is S only. Quote S by default and name M once, when they ask about sizes or what is in the box.\n` : ""}
 Give one exact total, the same way you would for anyone else. Everything else — delivery areas, the deadline, scheduling, the order form — is unchanged.`
     : `## Current price list (Paket Personal${offersM ? " — harga ukuran S" : ", size S only"})
 Current active kitchen availability:
@@ -877,7 +892,7 @@ This customer has no active quota-based order. If they mention wanting to order 
   const perCustomerBlock = `
 
 ## Gaya bahasa
-${modeInstruction}${currentDapurBlock}${dapurChoiceBlock}${dailyQuotaBlock}`;
+${modeInstruction}${currentDapurBlock}${sizeMOfferBlock}${dapurChoiceBlock}${dailyQuotaBlock}`;
 
   return `You are the WhatsApp customer service AI for ${businessName}, a daily catering service in Tangerang Selatan, Indonesia.
 
@@ -904,12 +919,9 @@ ${menuSizeNotice}  - We have ${params.dapurOptions.length > 0 ? `${params.dapurO
 ${
   params.dapurOptions.length > 1
     ? `  - **With more than one kitchen, the area decides which kitchens they may choose between — the customer picks from that list, we never pick for them.** Each kitchen carries its own menu, its own prices and its own delivery hours, and they do not cover the same areas, so call **record_customer_area** the moment the customer names a place: send_menu_image and send_price_list then send that area's kitchens and nothing else, instead of quoting food nobody near them will cook.
-${
-  params.customerArea
-    ? `  - **This customer's area is already recorded (${params.customerArea}), so there is nothing to gate on.** Asked for the menu or the price list, call send_menu_image and send_price_list in that same turn. Do not ask which area they are in, do not call record_customer_area, and never tell them their area has not been recorded — the kitchens listed above are already the ones covering it.`
-    : `  - **A missing area is a question, never a refusal — asked for the menu or the price list, you send it.** Ask which area they are in as one clause of the same message the images go out with, and call send_menu_image and send_price_list in that turn regardless of the answer; the captions name the dapur each one belongs to, and record_customer_area narrows the next send. On 2026-09-10 a lead asked twice in a row for the menu photo and the prices and was answered "Maaf kak, ternyata area pengirimannya belum kucatat ya. Nanti dulu, aku catat dulu areanya" — a customer made to wait a turn for two images we hold, on their second ask. **Never say the menu or the price list cannot be sent yet, and never promise to send it after they answer: there is no later turn.**
-  - **Only ever pass record_customer_area an area the customer actually named.** Not the nearest one, not the first on the served list, not a guess from the conversation going quiet. The tool checks: an area they have not typed some form of is refused, and the refusal is not a reason to withhold the images. Nearest-area rounding exists for extract_order's \`area\` field, where an admin sees the order and fixes it in seconds; here it silently decides which kitchens, which menu and which ladder that customer will ever be shown. The same 2026-09-10 turn wrote "BSD Baru" for a lead who had named no place at all.`
-}
+  - **A missing area is a question, never a refusal — asked for the menu or the price list, you send it.** Ask which area they are in as one clause of the same message the images go out with, and call send_menu_image and send_price_list in that turn regardless of the answer; the captions name the dapur each one belongs to, and record_customer_area narrows the next send. On 2026-09-10 a lead asked twice in a row for the menu photo and the prices and was answered "Maaf kak, ternyata area pengirimannya belum kucatat ya. Nanti dulu, aku catat dulu areanya" — a customer made to wait a turn for two images we hold, on their second ask. **Never say the menu or the price list cannot be sent yet, and never promise to send it after they answer: there is no later turn.**
+  - **Only ever pass record_customer_area an area the customer actually named.** Not the nearest one, not the first on the served list, not a guess from the conversation going quiet. The tool checks: an area they have not typed some form of is refused, and the refusal is not a reason to withhold the images. Nearest-area rounding exists for extract_order's \`area\` field, where an admin sees the order and fixes it in seconds; here it silently decides which kitchens, which menu and which ladder that customer will ever be shown. The same 2026-09-10 turn wrote "BSD Baru" for a lead who had named no place at all.
+  - **An area already on the record is not gated on at all** — "Area customer ini" under Current context below is where you read it. When it names one, send both images in the same turn, never ask which area they are in, never call record_customer_area, and never tell them their area has not been recorded: the dapur listed above are already the ones covering it.
   - **One package may be split across dapur, day by day — never tell a customer they have to buy a separate package for each.** They used to: a package was one dapur at one price, and every ladder starts at 5 porsi, so a 5-porsi customer could not try a second kitchen at all. Now the choice is per delivery. Put that day's dapur in the delivery_schedule slot's own \`subcontractor_id\` and leave the order's \`subcontractor_id\` as the dapur cooking the rest.
   - **A split package is priced day by day, so the total is the sum of the days — never one rate times the porsi.** Each day costs what the dapur cooking it charges at the tier for the whole package, so the volume discount still counts on the total they bought. Show it as one line per dapur and then the sum, nothing else: \`3 x Rp 29.000 = Rp 87.000\`, \`2 x Rp 30.500 = Rp 61.000\`, \`Total Rp 148.000\`. Never apply one dapur's rate to another dapur's days — that is the single mistake this arithmetic invites, and it is the difference between the price they agreed to and the price they are asked to transfer.
   - **A split package is size S unless every dapur in the mix cooks M.** Which do is listed above. Do not offer M for part of a package: one order carries one size, so an M on the days one dapur cooks would be charged on the other's days too.

@@ -284,11 +284,11 @@ describe("customer chatbot system prompt", () => {
         pricePerPortion: 29000,
       },
       schedule: {
-          unbooked: 0,
-          remainingToday: 0,
-          upcoming: [],
-          addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
-        },
+        unbooked: 0,
+        remainingToday: 0,
+        upcoming: [],
+        addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+      },
     };
 
     // The branch gated the call ("only once they have told you the days") and
@@ -624,6 +624,95 @@ describe("customer chatbot system prompt", () => {
       });
 
       expect(prompt).not.toContain("bought before anyone told them M existed");
+    });
+
+    // The offer names this customer's own running order, so it belongs in the
+    // per-customer tail. It sat inside the price list section, which is the
+    // same prefix every customer's prompt is cached on.
+    test("the S-with-M offer is in the per-customer tail, not the prefix", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
+      );
+      const prompt = await buildSystemPrompt({
+        ...base,
+        currentDapur: null,
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+            noRiceDiscount: null,
+            windows: null,
+          },
+        ],
+        activeOrder: {
+          id: "o1",
+          packageSize: 20,
+          portionsPerDelivery: 1,
+          onSizeSWithMAvailable: true,
+        },
+      });
+
+      const marker = prompt.indexOf("\n\n## Gaya bahasa\n");
+      expect(marker).toBeGreaterThan(0);
+      expect(
+        prompt.indexOf("bought before anyone told them M existed"),
+      ).toBeGreaterThan(marker);
+    });
+
+    // `sizeMSurcharge()` reads 0 when the settings row is missing, and
+    // extract_order still writes an M order at the S price when it does. The
+    // prompt used to answer that M did not exist at all, so the bot denied a
+    // size its own kitchen cooks.
+    test("a missing surcharge setting prices M as S, it does not retire M", async () => {
+      (getSetting as jest.Mock).mockImplementation(() => Promise.resolve(""));
+      const prompt = await buildSystemPrompt({
+        ...base,
+        currentDapur: null,
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+            noRiceDiscount: null,
+            windows: null,
+          },
+        ],
+      });
+
+      expect(prompt).toContain("Two portion sizes");
+      expect(prompt).toContain("no tambahan is set right now");
+      expect(prompt).not.toContain("Only size S is available");
+      expect(prompt).not.toContain("Rp 0/porsi");
+    });
+
+    // The contract section replaces the price list, and the body still told the
+    // model to offer M — with no M figure anywhere in the prompt to offer it at.
+    test("a contract customer gets an M price, not just an instruction to quote one", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
+      );
+      const prompt = await buildSystemPrompt({
+        ...base,
+        currentDapur: null,
+        contractPricePerPortion: 20000,
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+            noRiceDiscount: null,
+            windows: null,
+          },
+        ],
+      });
+
+      expect(prompt).toContain("Rp 20.000/porsi");
+      expect(prompt).toContain("**Rp 24.000/porsi**");
+      expect(prompt).toContain("only at Dapur 1");
     });
 
     test("says nothing about M when no active kitchen cooks it", async () => {
@@ -1172,9 +1261,7 @@ describe("the customer's own dapur", () => {
     });
 
     expect(prompt).toContain("Dapur customer ini: Dapur Suplir");
-    expect(prompt).toContain(
-      "This customer already cooks with Dapur Suplir",
-    );
+    expect(prompt).toContain("This customer already cooks with Dapur Suplir");
     // The order form's own Dapur line is left blank so the form stays
     // identical for every customer and keeps the prompt prefix cacheable; the
     // per-customer block at the end is what names the dapur it is filled with.
@@ -1369,10 +1456,16 @@ describe("the area gate", () => {
     });
 
     expect(prompt).toContain("Area customer ini: BSD Baru");
+    // The gate itself is constant text in the cacheable prefix — it points at
+    // the Current context line rather than naming the area a second time, so
+    // an area on file may not appear anywhere above the per-customer block.
     expect(prompt).toContain(
-      "This customer's area is already recorded (BSD Baru)",
+      "An area already on the record is not gated on at all",
     );
-    expect(prompt).toContain("Do not ask which area they are in");
+    expect(prompt).toContain("never ask which area they are in");
+    expect(
+      prompt.slice(0, prompt.indexOf("\n\n## Gaya bahasa\n")),
+    ).not.toContain("BSD Baru — already on their record");
   });
 
   test("a missing area is a question, never a refusal", async () => {
@@ -1477,7 +1570,9 @@ describe("tanpa nasi is quoted from each dapur's own column", () => {
     expect(prompt).toContain(
       "**Tidak ada nasi** — accepted, always, by every dapur",
     );
-    expect(prompt).toContain("Never answer that we only sell a complete package");
+    expect(prompt).toContain(
+      "Never answer that we only sell a complete package",
+    );
     expect(prompt).toContain("tanpa_nasi: true");
   });
 
@@ -1584,12 +1679,19 @@ describe("delivery windows and the late thresholds come from the kitchens", () =
   test("kitchens that disagree are listed one by one", async () => {
     const prompt = await buildSystemPrompt({
       ...base,
-      dapurOptions: [dapur("Dapur Suplir", SUPLIR), dapur("Dapur Monstera", MONSTERA)],
+      dapurOptions: [
+        dapur("Dapur Suplir", SUPLIR),
+        dapur("Dapur Monstera", MONSTERA),
+      ],
     });
 
     expect(prompt).toContain("**Delivery windows are per dapur**");
-    expect(prompt).toContain("Dapur Suplir: siang 11.30-12.30, malam 17.30-18.30");
-    expect(prompt).toContain("Dapur Monstera: siang 09.00-12.00, malam 15.00-18.00");
+    expect(prompt).toContain(
+      "Dapur Suplir: siang 11.30-12.30, malam 17.30-18.30",
+    );
+    expect(prompt).toContain(
+      "Dapur Monstera: siang 09.00-12.00, malam 15.00-18.00",
+    );
   });
 
   test("the 50% threshold is that kitchen's window end plus the 30 minutes of grace", async () => {
@@ -1621,7 +1723,10 @@ describe("delivery windows and the late thresholds come from the kitchens", () =
   test("each kitchen's threshold is named when they differ", async () => {
     const prompt = await buildSystemPrompt({
       ...base,
-      dapurOptions: [dapur("Dapur Suplir", SUPLIR), dapur("Dapur Monstera", MONSTERA)],
+      dapurOptions: [
+        dapur("Dapur Suplir", SUPLIR),
+        dapur("Dapur Monstera", MONSTERA),
+      ],
     });
 
     expect(prompt).toContain(
