@@ -565,7 +565,6 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     : `- Deadline ${deadlineTime} untuk besok masih terbuka (sekarang ${timeWib} WIB). Soonest deliverable date: ${earliestDisplay}.`;
 
   const kitchenLadders = params.dapurOptions.map((d) => ({
-    id: d.id,
     nickname: d.nickname,
     days: daysLabel(daysById.get(d.id)),
     tiers: byKitchen.get(d.id) ?? house,
@@ -587,13 +586,19 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   // under the customer's own ladder and followed by "if the total is on that
   // list, use its listed price". A Dapur Monstera lead's prompt therefore told
   // the model to sell 40 porsi at Rp 26.000 against a cost of Rp 42.000.
-  // With one ladder in play it is that one; with several it is the customer's
-  // own dapur, and the examples say whose rates they are.
+  // With one ladder in play it is that one. With several, the pick is the
+  // alphabetically first — deterministic, and never the customer's own dapur.
+  // Keying it on `currentDapur` (as it did until 2026-09-16) is the defect
+  // noRicePricingLine's comment above describes: two customers offered the same
+  // dapur but cooking with different ones diverge here, thousands of tokens
+  // before their own record starts, so every token after this point is a
+  // full-price cache miss for one of them. The note below names whose rates
+  // these are, which is what makes any pick safe to read.
   const exampleLadder = oneLadder
     ? (kitchenLadders[0] ?? null)
-    : (kitchenLadders.find((k) => k.id === params.currentDapur?.id) ??
-      kitchenLadders[0] ??
-      null);
+    : ([...kitchenLadders].sort((a, b) =>
+        a.nickname.localeCompare(b.nickname),
+      )[0] ?? null);
   const exampleTiers = exampleLadder?.tiers ?? house;
   const sizesAsc = [...exampleTiers].sort((a, b) => a.portions - b.portions);
   const floorSize = sizesAsc[0]?.portions ?? 5;

@@ -2102,3 +2102,92 @@ describe("the soonest date is the customer's own dapur's soonest", () => {
     expect(prompt).toContain("Soonest deliverable date: Senin 21 September 2026");
   });
 });
+
+// Every worked price example in the order rules is arithmetic done on one real
+// ladder at build time, and which ladder that is used to be `currentDapur`'s.
+// That put a few thousand tokens of shared prompt behind a per-customer fact:
+// two customers offered the same dapur but cooking with different ones diverged
+// at the examples, so everything after them — most of the file — was a
+// full-price cache miss for one of the two. DeepSeek caches on prompt prefix
+// and a hit costs a tenth of a miss. The pick is deterministic now, and the
+// note above the examples names whose rates they are, which is what makes any
+// pick safe to read.
+describe("the worked examples never key on the customer's own dapur", () => {
+  const kitchen = (id: string, nickname: string) => ({
+    id,
+    nickname,
+    offersM: false,
+    sameMenuBothMeals: false,
+    noRiceDiscount: null,
+    windows: null,
+  });
+
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "Rina",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [kitchen("a", "Dapur Suplir"), kitchen("b", "Dapur Palem")],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Lama"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  beforeEach(() => {
+    // Two ladders that share no rate, so an example built off the wrong one is
+    // visible in every figure rather than only in the cheap sizes.
+    mockKitchenTiers.a = [
+      { portions: 5, price_per_portion: 31000 },
+      { portions: 10, price_per_portion: 30000 },
+      { portions: 20, price_per_portion: 29000 },
+    ];
+    mockKitchenTiers.b = [
+      { portions: 5, price_per_portion: 27000 },
+      { portions: 10, price_per_portion: 26000 },
+      { portions: 20, price_per_portion: 25000 },
+    ];
+  });
+
+  test("the same two dapur give the same examples whoever the customer cooks with", async () => {
+    const onSuplir = await buildSystemPrompt({
+      ...base,
+      currentDapur: { id: "a", nickname: "Dapur Suplir" },
+    } as never);
+    const onPalem = await buildSystemPrompt({
+      ...base,
+      currentDapur: { id: "b", nickname: "Dapur Palem" },
+    } as never);
+
+    const examples = (prompt: string) =>
+      prompt.slice(prompt.indexOf("Examples:"), prompt.indexOf("Examples:") + 400);
+
+    expect(examples(onSuplir)).toBe(examples(onPalem));
+  });
+
+  test("the pick is alphabetical, and the note says whose rates they are", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      currentDapur: { id: "a", nickname: "Dapur Suplir" },
+    } as never);
+
+    // Dapur Palem sorts first, so its rates are the ones worked through even
+    // though this customer cooks with Dapur Suplir.
+    expect(prompt).toContain(
+      "**Every figure in the examples below is Dapur Palem's rate.**",
+    );
+    expect(prompt).toContain("1 × 5 = 5 porsi → Rp 27.000/porsi");
+    // Dapur Suplir's own rates are still in the prompt — its price list is
+    // printed like every other dapur's. What may not happen is an *example*
+    // worked at them because this customer happens to be on that kitchen.
+    expect(prompt).toContain("1 × 2 × 5 = 10 porsi → Rp 26.000/porsi");
+  });
+});
