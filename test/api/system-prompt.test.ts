@@ -1536,6 +1536,56 @@ describe("the required fields are the same four in both places", () => {
   });
 });
 
+// Two bullets, one after the other, disagreed about whether a maps pin can
+// settle the area. "Area never blocks the order" told the model to "pick the
+// served area nearest to their address or maps pin yourself"; the next bullet
+// said "you cannot open one, so a link on its own tells you nothing about which
+// area the pin sits in. Never fill `area` from a link." The Sarah Sinaga
+// incident cited in the second is what the first authorised: a pin for an
+// office, recorded as "BSD Baru", quoted Rp 336.000, bank details sent, and the
+// office out of coverage too. Rounding is off the address in words or not at
+// all.
+describe("rounding an area is off words, never off a pin", () => {
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "Sarah",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null as { id: string; nickname: string } | null,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Baru", "BSD Lama"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("the rounding bullet no longer offers the pin as a basis", async () => {
+    const prompt = await buildSystemPrompt({ ...base });
+
+    expect(prompt).not.toContain("nearest to their address or maps pin");
+    expect(prompt).toContain(
+      "pick the served area nearest to **the address they wrote in words** yourself",
+    );
+  });
+
+  test("the two bullets now say the same thing about a link", async () => {
+    const prompt = await buildSystemPrompt({ ...base });
+
+    expect(prompt).toContain("**And never round off a maps link or a shared pin**");
+    expect(prompt).toContain("Never fill `area` from a link");
+    expect(prompt).toContain(
+      "A customer whose only address is a link has not given you an area to round",
+    );
+  });
+});
+
 describe("the area gate", () => {
   const base = {
     casual: false,

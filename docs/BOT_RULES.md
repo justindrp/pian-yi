@@ -535,6 +535,17 @@ So: never fill `area` from a link, never write an address whose whole content is
 link-only address. Ask which area the place is in, in words, and wait. Pinned by
 "does not let a maps link settle the area" in `test/api/system-prompt.test.ts`.
 
+**A third rule was still handing the pin back** (2026-09-16). The bullet directly
+above this one in the prompt — "Area never blocks the order", which exists so a
+cluster nobody recognises never costs an order — told the model to "pick the
+served area nearest to their address **or maps pin** yourself, call extract_order
+with it". Two sentences later the rule above said never to fill `area` from a
+link. The lenient one won, because it is the one that ends in a tool call: it
+authorised, in as many words, exactly the write that put Sarah Sinaga's office in
+BSD Baru. Rounding is off the address the customer wrote in words, or it does not
+happen — a link gives you nothing to be near, so a link-only address still has to
+be asked about. Pinned by "rounding an area is off words, never off a pin".
+
 ## The Maps link is required, and a share-location is not it
 
 The bullet above asked once, folded into a message already going out, and let
