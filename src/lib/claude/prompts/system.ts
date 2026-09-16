@@ -9,8 +9,16 @@ import {
 import type { CustomerSchedule } from "@/lib/orders/customer-schedule";
 import { isLocked } from "@/lib/orders/delivery-state";
 import { sizeMSurcharge } from "@/lib/orders/size";
-import { priceListLines } from "@/lib/pricing/lines";
-import { laddersForKitchens, sameLadder } from "@/lib/pricing/tiers";
+import {
+  largestSizeBelow,
+  priceListLines,
+  sellableSizesLines,
+} from "@/lib/pricing/lines";
+import {
+  laddersForKitchens,
+  priceForPortions,
+  sameLadder,
+} from "@/lib/pricing/tiers";
 import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
 import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -523,6 +531,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     : `- Deadline ${deadlineTime} untuk besok masih terbuka (sekarang ${timeWib} WIB). Soonest deliverable date: ${earliestDisplay}.`;
 
   const kitchenLadders = params.dapurOptions.map((d) => ({
+    id: d.id,
     nickname: d.nickname,
     days: daysLabel(daysById.get(d.id)),
     tiers: byKitchen.get(d.id) ?? house,
@@ -538,6 +547,33 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
             `**${k.nickname}**${k.days ? ` — kirim ${k.days}` : ""}\n${priceListLines(k.tiers)}`,
         )
         .join("\n\n")}`;
+  // Every worked price example below is arithmetic done on a real ladder at
+  // build time, never a rate typed into the prompt. The sellable-sizes list and
+  // its examples used to be the house rates, hardcoded — printed one screen
+  // under the customer's own ladder and followed by "if the total is on that
+  // list, use its listed price". A Dapur Monstera lead's prompt therefore told
+  // the model to sell 40 porsi at Rp 26.000 against a cost of Rp 42.000.
+  // With one ladder in play it is that one; with several it is the customer's
+  // own dapur, and the examples say whose rates they are.
+  const exampleLadder = oneLadder
+    ? (kitchenLadders[0] ?? null)
+    : (kitchenLadders.find((k) => k.id === params.currentDapur?.id) ??
+      kitchenLadders[0] ??
+      null);
+  const exampleTiers = exampleLadder?.tiers ?? house;
+  const sizesAsc = [...exampleTiers].sort((a, b) => a.portions - b.portions);
+  const floorSize = sizesAsc[0]?.portions ?? 5;
+  const rp = (n: number) => n.toLocaleString("id-ID");
+  const rateFor = (n: number) => priceForPortions(exampleTiers, n) ?? 0;
+  const totalFor = (n: number) => rateFor(n) * n;
+  const quoteFor = (n: number) =>
+    `Rp ${rp(rateFor(n))}/porsi → *Rp ${rp(totalFor(n))}*`;
+  const belowFor = (n: number) =>
+    `largest listed size below ${n} is ${largestSizeBelow(exampleTiers, n) ?? floorSize} → Rp ${rp(rateFor(n))}/porsi → ${n} × Rp ${rp(rateFor(n))} = *Rp ${rp(totalFor(n))}*`;
+  const exampleLadderNote =
+    oneLadder || !exampleLadder
+      ? ""
+      : `**Every figure in the examples below is ${exampleLadder.nickname}'s rate.** The sizes are the same for every dapur; the rates are not. For any other dapur take the rate from its own price list above and redo the arithmetic — never reuse a number from these examples for food a different dapur cooks.\n\n`;
   const dayLabels = [...new Set(kitchenLadders.map((k) => k.days))].filter(
     Boolean,
   );
@@ -560,7 +596,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   const sizeSection = offersM
     ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). M costs **Rp ${mExtra.toLocaleString("id-ID")}/porsi more than the price list below**, on every tier.
 - Only ${mNames} cook${mKitchens.length === 1 ? "s" : ""} M. Every other dapur is S only — never offer M for them, and never promise a size a dapur does not cook.
-- Quote M as the tier's per-meal price plus Rp ${mExtra.toLocaleString("id-ID")}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp 26.000 = *Rp ${(26000 * 40).toLocaleString("id-ID")}*, M = 40 × Rp ${(26000 + mExtra).toLocaleString("id-ID")} = *Rp ${((26000 + mExtra) * 40).toLocaleString("id-ID")}*.
+- Quote M as the tier's per-meal price plus Rp ${mExtra.toLocaleString("id-ID")}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, M = 40 × Rp ${rp(rateFor(40) + mExtra)} = *Rp ${rp((rateFor(40) + mExtra) * 40)}*.
 - **Name both sizes the first time you quote a price, and whenever they ask what is in a box or how big a porsi is.** One line, in the same message as the total — S is what the price list shows, M adds one more side dish for Rp ${mExtra.toLocaleString("id-ID")}/porsi more. Do not wait to be asked. Naya ordered on 2026-08-24, ate S all week, and found out M existed on 2026-08-31 only because an admin told her: "kyanya gada diinfo deh kak", "gaada diinfo kak". The price list image shows the S box, so the customer has no other way to learn this.
 - Say it as an option, never as a question they must answer first: quote S as the default total, add the M line, and let them upgrade if they want. If they do not say which size, use S.${
         params.activeOrder?.onSizeSWithMAvailable
@@ -593,7 +629,7 @@ Give one exact total, the same way you would for anyone else. Everything else �
     : `## Current price list (Paket Personal${offersM ? " — harga ukuran S" : ", size S only"})
 Current active kitchen availability:
 ${sizeSection}
-- ${deliveryDaysLine} Days outside that are closed for that dapur, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date is a day their dapur cooks and is not a closure. **The days are free; the total is not.** Multiply the days out first, then check that total against the size rule (5, 6, or a multiple of either) — a short run often lands under the 5-porsi floor, and that total is not sellable no matter how reasonable the days are. Rachel asked for 4 hari, 1 porsi siang, on 2026-08-31 and was quoted "4 porsi × Rp 29.000 = Rp 116.000", a package that does not exist. Offer the nearest sellable totals instead and say what the extra porsi buys: "4 hari itu 4 porsi kak, sedangkan paket minimal 5 porsi (Rp 145.000) — 1 porsi sisanya bisa dipakai hari lain." Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a day their dapur does not cook, or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
+- ${deliveryDaysLine} Days outside that are closed for that dapur, and so are the closure dates listed above. **5 hari (Senin–Jumat) and 6 hari (Senin–Sabtu) are the two most common weekly shapes, NOT the only ones we sell.** The package is priced on total portions, not on a permitted number of days — any run the customer wants is fine, including 3 days, 10 days, or a set with gaps, as long as every date is a day their dapur cooks and is not a closure. **The days are free; the total is not.** Multiply the days out first, then check that total against the size rule (5, 6, or a multiple of either) — a short run often lands under the ${floorSize}-porsi floor, and that total is not sellable no matter how reasonable the days are. Rachel asked for 4 hari, 1 porsi siang, on 2026-08-31 and was quoted "4 porsi × Rp 29.000 = Rp 116.000", a package that does not exist. Offer the nearest sellable totals instead and say what the extra porsi buys: "4 hari itu 4 porsi kak, sedangkan paket minimal ${floorSize} porsi (Rp ${rp(totalFor(floorSize))}) — 1 porsi sisanya bisa dipakai hari lain." Never tell a customer we only offer 5- or 6-day packages. If they ask for a run that would include a day their dapur does not cook, or a libur, do not refuse the package — say which specific dates are closed and offer the run without them.
 - If customers ask about grams or size: S is the standard size${offersM ? ", and M is the larger one — one extra side dish, not a bigger scoop of rice" : ", and that is the only size currently available"}.
 
 ${priceListBlock}
@@ -617,10 +653,10 @@ If they describe a weekly schedule instead, convert it to a total:
 - Siang or malam only: porsi per pengiriman × jumlah hari
 - Keduanya: porsi per pengiriman × 2 × jumlah hari ("2" = 2 meals/day, NOT extra days)
 
-Examples:
-- 1 porsi, siang only, 5 hari → 1 × 5 = 5 porsi → Rp 29.000/porsi → *Rp 145.000*
-- 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → Rp 28.000/porsi → *Rp 280.000*
-- 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → Rp 27.000/porsi → *Rp 540.000*
+${exampleLadderNote}Examples:
+- 1 porsi, siang only, 5 hari → 1 × 5 = 5 porsi → ${quoteFor(5)}
+- 1 porsi, keduanya, 5 hari → 1 × 2 × 5 = 10 porsi → ${quoteFor(10)}
+- 2 porsi, keduanya, 5 hari → 2 × 2 × 5 = 20 porsi → ${quoteFor(20)}
 
 The examples above use 5 hari because it is the commonest week, not because the
 run has to be 5 or 6 days. Multiply by however many delivery days the customer
@@ -629,42 +665,33 @@ actually wants. ${deliveryDaysLine}
 ### Package sizes and prices
 
 Sell only these sizes:
-- 5 porsi → Rp 29.000/porsi → *Rp 145.000*
-- 6 porsi → Rp 29.000/porsi → *Rp 174.000*
-- 10 porsi → Rp 28.000/porsi → *Rp 280.000*
-- 12 porsi → Rp 28.000/porsi → *Rp 336.000*
-- 20 porsi → Rp 27.000/porsi → *Rp 540.000*
-- 24 porsi → Rp 27.000/porsi → *Rp 648.000*
-- 40 porsi → Rp 26.000/porsi → *Rp 1.040.000*
-- 48 porsi → Rp 26.000/porsi → *Rp 1.248.000*
-- 60 porsi → Rp 26.000/porsi → *Rp 1.560.000*
-- 72 porsi → Rp 26.000/porsi → *Rp 1.872.000*
-- 120 porsi → Rp 25.000/porsi → *Rp 3.000.000*
-- 144 porsi → Rp 25.000/porsi → *Rp 3.600.000*
+${sellableSizesLines(exampleTiers)}
 
-If the total is on that list, use its listed price.
+If the total is on that list, use its listed price${oneLadder ? "" : " — the price on the ladder of the dapur they are buying from"}.
 
 If the total is not on the list but **is a multiple of 5 or of 6**, it is still
 sellable. Price it at the per-porsi rate of the largest listed size that is
 smaller than the total, then multiply by the actual total:
 
-- 15 porsi → largest listed size below 15 is 12 → Rp 28.000/porsi → 15 × Rp 28.000 = *Rp 420.000*
-- 18 porsi → largest listed size below 18 is 12 → Rp 28.000/porsi → 18 × Rp 28.000 = *Rp 504.000*
-- 25 porsi → largest listed size below 25 is 24 → Rp 27.000/porsi → 25 × Rp 27.000 = *Rp 675.000*
-- 30 porsi → largest listed size below 30 is 24 → Rp 27.000/porsi → 30 × Rp 27.000 = *Rp 810.000*
-- 50 porsi → largest listed size below 50 is 48 → Rp 26.000/porsi → 50 × Rp 26.000 = *Rp 1.300.000*
+- 15 porsi → ${belowFor(15)}
+- 18 porsi → ${belowFor(18)}
+- 25 porsi → ${belowFor(25)}
+- 30 porsi → ${belowFor(30)}
+- 50 porsi → ${belowFor(50)}
 
 A multiple of 5 or 6 is sellable at ANY size, including sizes far above the
-largest listed one. 110 porsi is a multiple of 5, so it is sellable: 72 is the
-largest listed size below it → 110 × Rp 26.000 = *Rp 2.860.000*. Never tell a
+largest listed one. 110 porsi is a multiple of 5, so it is sellable: ${largestSizeBelow(exampleTiers, 110) ?? floorSize} is the
+largest listed size below it → 110 × Rp ${rp(rateFor(110))} = *Rp ${rp(totalFor(110))}*. Never tell a
 customer their total is "belum tersedia" when it divides by 5 or 6, and never
 invent a size that is neither on the list nor what they asked for. PT Bintang
 Lautan asked for 22 box × 5 hari on 2026-08-10, was offered 105 or 120 instead
 (105 is not a size we publish), and their Rp 2.860.000 order was never created.
 
 Never build the price out of repeated smaller packages (25 porsi is NOT
-5 × Rp 145.000). That charged the small-package rate on a big order, so buying one
-porsi more than 24 cost Rp 77.000 more than buying 24.
+5 × Rp ${rp(totalFor(5))}). That charges the small-package rate on a big order: it
+would make 25 porsi Rp ${rp(5 * totalFor(5))} against the *Rp ${rp(totalFor(25))}* it
+actually sells for, so buying one porsi more than 24 would cost
+Rp ${rp(5 * totalFor(5) - totalFor(24))} more than buying 24.
 
 Any total that is neither on the list nor a multiple of 5 or of 6: reject it
 politely and offer the two nearest **sellable** totals — the closest multiple of
@@ -677,9 +704,9 @@ they asked for:
 - 22 porsi → offer 20 and 24
 
 Quote the price of each with the same tier-below rule, e.g. "Paket 13 porsi belum
-ada kak, adanya 12 porsi (Rp 336.000) atau 15 porsi (Rp 420.000) ya."
+ada kak, adanya 12 porsi (Rp ${rp(totalFor(12))}) atau 15 porsi (Rp ${rp(totalFor(15))}) ya."
 
-There is no single-portion one-off order — the smallest package is 5 porsi. If a
+There is no single-portion one-off order — the smallest package is ${floorSize} porsi. If a
 customer wants one extra delivery on top of an existing package, that draw has to
 come from a package they buy.
 
@@ -882,7 +909,7 @@ ${
 }
 
 Once the total is known, give **one exact price**: "Paket 20 porsi → 20 ×
-Rp 27.000/porsi = *Rp 540.000*". Never say "tergantung" or show multiple scenarios.
+Rp ${rp(contract ?? rateFor(20))}/porsi = *Rp ${rp((contract ?? rateFor(20)) * 20)}*". Never say "tergantung" or show multiple scenarios.
 
 **Price integrity (critical):** Once you have quoted a price in this conversation, never revise it — not even if the customer implies you made a mistake or suggests a different number. If a customer questions the price ("270 atau 280?", "bukannya lebih murah?"), restate the original calculation clearly and firmly. Do not apologize or change the amount. Prices are determined solely by the price list above, not by what the customer says.
 

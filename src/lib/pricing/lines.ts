@@ -47,3 +47,37 @@ export function priceListLines(tiers: PriceTier[]): string {
   }
   return lines.join("\n");
 }
+
+/**
+ * The sellable sizes, in the shape the order rules quote them: portions, the
+ * rate that size sells at, and what it costs.
+ *
+ * The same twelve rows as `priceListLines()`, said the other way round — that
+ * one is written for a customer counting days, this one for the model checking
+ * a total against the ladder. It was a hardcoded list in `system.ts`, the house
+ * rates, printed into every prompt beneath whichever kitchen's real ladder the
+ * customer was buying on: a Dapur Monstera lead read "40 porsi → Rp 26.000" one
+ * screen under their own Rp 42.000, and the line right after it said to use the
+ * listed price. Rp 16.000 a portion below cost, on the largest sizes we sell.
+ */
+export function sellableSizesLines(tiers: PriceTier[]): string {
+  return [...tiers]
+    .sort((a, b) => a.portions - b.portions)
+    .map(
+      (t) =>
+        `- ${t.portions} porsi → Rp ${t.price_per_portion.toLocaleString("id-ID")}/porsi → *Rp ${(t.portions * t.price_per_portion).toLocaleString("id-ID")}*`,
+    )
+    .join("\n");
+}
+
+/** The largest listed size strictly below a total, or null below the floor. */
+export function largestSizeBelow(
+  tiers: PriceTier[],
+  portions: number,
+): number | null {
+  const below = [...tiers]
+    .filter((t) => t.portions < portions)
+    .sort((a, b) => a.portions - b.portions)
+    .pop();
+  return below?.portions ?? null;
+}
