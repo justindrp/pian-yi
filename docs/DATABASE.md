@@ -294,6 +294,28 @@ That "latest row per customer" is served by the `inbox_threads` view (see below)
 
 ---
 
+## customer_contacts
+
+Migration 118. One row per **delivery recipient**: a number the customer registered as the person who receives the boxes, allowed to ask for that customer's delivery photos and nothing else.
+
+Ireine's 20-portion package is dropped at a security desk in B1 and received by Abby, on her own number. An inbound message is matched to a customer by `customers.phone_number` alone, so before this table Abby's number was a stranger: it would have created a blank customer row, run the welcome sequence, and — when she asked for the photo — been answered "tidak ada jadwal pengiriman untuk kakak", because the proof is keyed on `delivery_proofs.matched_customer_id` and that is Ireine.
+
+**The link is proof-only, and the restriction lives on the webhook path, not in this table.** `handleProofContactMessage()` (`src/app/api/webhook/whatsapp/route.ts`) answers a recipient's thread with its own prompt (`src/lib/claude/prompts/proof-contact.ts`) and exactly two tools — `send_delivery_proof`, pointed at the owner's id, and `ask_admin_for_help`, which stays on the recipient's own row. No price ladder, no quota, no payment state, no ordering: a recipient is not the buyer and must not be able to spend the buyer's money or read their ledger. Everything else they ask goes to an admin.
+
+**The link only applies while that number has bought nothing itself.** The webhook consults it only when the recipient's own customer row has no order, so a recipient who later becomes a customer gets the ordering pipeline back; the API refuses to link a number that already holds orders.
+
+Rows are added and removed from the customer's edit dialog on `/customers` (`POST`/`DELETE /api/customers/[id]/contacts`), and both writes go through `logEdit()`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| customer_id | uuid | FK → customers, on delete cascade. Whose delivery photos this number may see |
+| phone_number | text | Unique. Stored in `+62…` form, the same form `customers.phone_number` holds — the webhook looks a message up by equality, so an admin's `0812…` is normalized with `normalizePhone()` on write |
+| name | text | What the owner called this recipient ("Abby"), used in the greeting |
+| created_at | timestamptz | |
+
+---
+
 ## customer_flags
 
 One row per customer. Holds boolean flags and escalation state. Users cannot edit this table directly.

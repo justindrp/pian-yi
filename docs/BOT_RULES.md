@@ -114,6 +114,21 @@ The `orders` insert discarded its error. A model that omits one required field (
 
 Two inputs are also defaulted rather than trusted. `orders.start_date` is NOT NULL and a renewal usually carries no date — Julian S said "mau lanjut 5 porsi lagi", got the transfer details, paid Rp 145.000, and the order never existed; it now falls back to the next day we deliver (Senin–Sabtu, skipping libur nasional). And `customer_name` comes back as the literal string `"unknown"` when the customer never typed a name, which was written to `customers.name` and greeted the customer as "kak unknown" — that value is now discarded on both the record and the message.
 
+## A delivery recipient gets a thread of their own, with two tools in it
+
+Migration 118, `customer_contacts`. The person who physically takes the boxes is often not the person who bought them: Ireine's package is dropped at a security desk in B1 and received by Abby, on her own number. Abby had no way to ask us anything. An inbound message is matched by `customers.phone_number` alone, so her number would have been welcomed as a new lead, and when she asked for the photo the answer would have been "tidak ada jadwal pengiriman untuk kakak" — the proof is keyed on `delivery_proofs.matched_customer_id`, and that is Ireine.
+
+A row in `customer_contacts` says: this number may see this customer's delivery photos. Nothing else. The webhook routes it to `handleProofContactMessage()`, which is deliberately not `processSavedCustomerMessage()` — that function *is* the ordering pipeline. Its prompt carries the price ladder, the customer's quota and the payment flow, and its guards check every claim against a ledger this number has no row in. A recipient gets the opposite: `buildProofContactPrompt()` (`src/lib/claude/prompts/proof-contact.ts`), two tools, and nothing else.
+
+- `send_delivery_proof`, with the proof lookup pointed at the owner's customer id (`handleToolUse`'s `proofCustomerId`). The photo is saved into the recipient's own thread, and `edit_log` records both ids.
+- `ask_admin_for_help`, on the recipient's own row, which is where every other question goes: a new order, more portions, a reschedule, a price, a quota, a payment, a complaint.
+
+The prompt forbids naming a price, a quota, a payment state, a dapur or the contents of the owner's order. A recipient is not the buyer, and must not be able to spend the buyer's money or read their ledger.
+
+**The link only holds while that number has bought nothing itself.** The webhook consults `customer_contacts` only when the recipient's own row has no order, so someone who starts as a recipient and later orders is a customer from that moment — their own order outranks the link, and the ordering pipeline takes the thread back. The API refuses to link a number that already holds orders, rather than promising a restricted thread it will never get.
+
+Admins add and remove recipients in the customer's edit dialog on `/customers`.
+
 ## A payment proof with no order behind it now creates the order
 
 A customer who transfers before the bot ever called `extract_order` used to leave the money nowhere: `shouldHandlePaymentProof` needs a `pending_payment` order, so with no order at all the slip was saved as an ordinary inbox photo and the bot asked for the summary to be confirmed again. Theresia agreed to 5 porsi on 2026-08-03, sent the slip, and nothing recorded a purchase.

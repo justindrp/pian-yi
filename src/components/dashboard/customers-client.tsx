@@ -37,6 +37,7 @@ import { createClient } from "@/lib/supabase/client";
 import { jakartaDateString } from "@/lib/menu/week";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { formatDate, maskPhone } from "@/lib/utils/format";
+import { displayPhone } from "@/lib/utils/phone";
 import type { Database } from "@/types/database";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -412,6 +413,8 @@ export default function CustomersClient() {
     () => params.get("q") ?? "",
   );
   const [selected, setSelected] = useState<Customer | null>(null);
+  const [contactForm, setContactForm] = useState({ phone: "", name: "" });
+  const [contactError, setContactError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{
     id: string;
     field: "name" | "area" | "sub_area";
@@ -529,6 +532,59 @@ export default function CustomersClient() {
       const json = (await res.json()) as { ok: boolean; data: LedgerData };
       return json.data;
     },
+  });
+
+  // The numbers allowed to ask for this customer's delivery photos. Abby
+  // receives Ireine's boxes at a security desk on her own number; without a row
+  // here that number is a stranger to the bot and gets the new-lead flow.
+  const { data: proofContacts } = useQuery({
+    queryKey: ["customer-contacts", selected?.id],
+    enabled: !!selected,
+    queryFn: async () => {
+      const res = await fetch(`/api/customers/${selected?.id}/contacts`);
+      const json = (await res.json()) as {
+        ok: boolean;
+        data: {
+          id: string;
+          phone_number: string;
+          name: string | null;
+        }[];
+      };
+      return json.data ?? [];
+    },
+  });
+
+  const addContactMutation = useMutation({
+    mutationFn: async (input: { phone: string; name: string }) => {
+      const res = await fetch(`/api/customers/${selected?.id}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Gagal menambah penerima");
+    },
+    onSuccess: () => {
+      setContactForm({ phone: "", name: "" });
+      setContactError(null);
+      void queryClient.invalidateQueries({
+        queryKey: ["customer-contacts", selected?.id],
+      });
+    },
+    onError: (err: Error) => setContactError(err.message),
+  });
+
+  const removeContactMutation = useMutation({
+    mutationFn: async (contactId: string) => {
+      await fetch(
+        `/api/customers/${selected?.id}/contacts?contactId=${contactId}`,
+        { method: "DELETE" },
+      );
+    },
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["customer-contacts", selected?.id],
+      }),
   });
 
   // Debounce search
@@ -689,7 +745,10 @@ export default function CustomersClient() {
       // newest first, so the first live one wins.
       const latestOrderByCustomer = new Map<string, Pick<Order, "status">>();
       for (const order of orders) {
-        if (!order.customer_id || latestOrderByCustomer.has(order.customer_id)) {
+        if (
+          !order.customer_id ||
+          latestOrderByCustomer.has(order.customer_id)
+        ) {
           continue;
         }
         if (!hasCurrentOrder(order.status)) continue;
@@ -698,7 +757,8 @@ export default function CustomersClient() {
 
       return customers.map((customer) => {
         const remaining =
-          (bought.get(customer.id) ?? 0) - (drawnByCustomer.get(customer.id) ?? 0);
+          (bought.get(customer.id) ?? 0) -
+          (drawnByCustomer.get(customer.id) ?? 0);
         const nextOrder = pickDrawOrder(drawCandidates.get(customer.id) ?? []);
         return {
           ...customer,
@@ -707,8 +767,7 @@ export default function CustomersClient() {
             latestOrderByCustomer.get(customer.id)?.status ?? null,
           ),
           derived_remaining: Math.max(0, remaining),
-          derived_next_price:
-            remaining > 0 && nextOrder ? nextOrder.price : 0,
+          derived_next_price: remaining > 0 && nextOrder ? nextOrder.price : 0,
           kitchen: null,
         };
       }) as CustomerListRow[];
@@ -2175,6 +2234,76 @@ export default function CustomersClient() {
                   }
                   placeholder="Alternative phone for delivery"
                 />
+              </div>
+
+              <div>
+                <Label className="text-xs text-gray-500 block mb-1">
+                  Penerima kiriman
+                </Label>
+                <p className="text-[11px] text-gray-400 mb-2">
+                  Nomor yang boleh minta bukti pengiriman customer ini lewat
+                  WhatsApp. Hanya bukti foto — bukan pesanan, harga, kuota atau
+                  pembayaran.
+                </p>
+                {(proofContacts ?? []).length > 0 && (
+                  <ul className="mb-2 space-y-1">
+                    {(proofContacts ?? []).map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <span>
+                          {c.name ? `${c.name} — ` : ""}
+                          {displayPhone(c.phone_number) ?? c.phone_number}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeContactMutation.mutate(c.id)}
+                        >
+                          Hapus
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    value={contactForm.name}
+                    onChange={(e) =>
+                      setContactForm({ ...contactForm, name: e.target.value })
+                    }
+                    placeholder="Nama (mis. Abby)"
+                  />
+                  <Input
+                    value={contactForm.phone}
+                    onChange={(e) =>
+                      setContactForm({ ...contactForm, phone: e.target.value })
+                    }
+                    placeholder="08xxxxxxxxxx"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={
+                      !contactForm.phone.trim() || addContactMutation.isPending
+                    }
+                    onClick={() =>
+                      addContactMutation.mutate({
+                        phone: contactForm.phone.trim(),
+                        name: contactForm.name.trim(),
+                      })
+                    }
+                  >
+                    Tambah
+                  </Button>
+                </div>
+                {contactError && (
+                  <p className="text-[11px] text-red-500 mt-1">
+                    {contactError}
+                  </p>
+                )}
               </div>
 
               <div>

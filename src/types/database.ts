@@ -608,6 +608,38 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_contacts: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          name: string | null
+          phone_number: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          name?: string | null
+          phone_number: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          name?: string | null
+          phone_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_contacts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_flags: {
         Row: {
           created_at: string | null

@@ -39,6 +39,7 @@ import { looksEnglish, translateToIndonesian } from "@/lib/claude/language";
 import { tryLearnCustomerContext } from "@/lib/claude/learn-context";
 import { matchDeliveryPhoto } from "@/lib/claude/photo-matcher";
 import { classifyIntent } from "@/lib/claude/prompts/classifier";
+import { buildProofContactPrompt } from "@/lib/claude/prompts/proof-contact";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import {
   checkRateLimit,
@@ -64,6 +65,10 @@ import {
   normalizeCustomerState,
   shouldHandlePaymentProof,
 } from "@/lib/customers/lifecycle";
+import {
+  lookupProofContact,
+  type ProofContact,
+} from "@/lib/customers/proof-contacts";
 import { RESUMED_FLAGS, shouldAutoResume } from "@/lib/customers/takeover";
 import {
   handleForwardedProof,
@@ -1430,6 +1435,34 @@ export async function processWebhookAsync(
     );
   }
 
+  // A number the customer registered as the person who receives the boxes.
+  // Abby takes Ireine's delivery at a security desk on her own number, and
+  // until this branch existed that number was a stranger: it would have been
+  // welcomed as a new lead and then told "tidak ada jadwal pengiriman untuk
+  // kakak" when she asked for the photo, because the proof is keyed on the
+  // buyer. The link is proof-only — the restricted path below hands the model
+  // two tools and a prompt with no prices, no quota and no payment in it.
+  //
+  // Only while this number has bought nothing itself. A recipient who later
+  // becomes a customer is a customer: their own order outranks the link, and
+  // the ordering pipeline takes the thread back.
+  const proofContact =
+    latestOrderStatus === null
+      ? await lookupProofContact(db, message.from)
+      : null;
+  if (proofContact) {
+    await handleProofContactMessage({
+      message,
+      contactCustomerId: customerId,
+      contact: proofContact,
+    });
+    await db
+      .from("processed_messages")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("message_id", message.messageId);
+    return;
+  }
+
   // What the model read off an uncaptioned photo, standing in for the caption
   // the customer did not write. Null when vision is unavailable, which puts the
   // branch below back on the "please send text" reply.
@@ -1961,6 +1994,44 @@ export async function processWebhookAsync(
     .eq("message_id", message.messageId);
 }
 
+/**
+ * The two tools a delivery recipient's thread is allowed, hoisted out of the
+ * customer tool list so `handleProofContactMessage` hands the model the same
+ * descriptions rather than a second copy that drifts from them.
+ */
+const SEND_DELIVERY_PROOF_TOOL: Anthropic.Messages.Tool = {
+  name: "send_delivery_proof",
+  description:
+    'Sends the customer the delivery photo the kitchen took. Call it whenever they ask whether their food arrived or to see proof of it ("bukti pengiriman", "bukti pengantaran", "foto pengirimannya", "udah dikirim belum", "uda diantar ya"). Leave "date" out for today, which is what they almost always mean; pass it only when they named an earlier day, resolved yourself from Today and never as a weekday name. It answers with the date of the photo it sent — say that date and no other. If it answers that the food has not arrived yet it names the delivery window: tell them that window and that the food is on its way. If it says there is no photo, say so plainly; do not promise one is coming.',
+  input_schema: {
+    type: "object",
+    properties: {
+      date: {
+        type: "string",
+        description:
+          "ISO date (YYYY-MM-DD) of the delivery the customer is asking about. Omit for today.",
+      },
+    },
+  },
+};
+
+const ASK_ADMIN_TOOL: Anthropic.Messages.Tool = {
+  name: "ask_admin_for_help",
+  description:
+    "Called when the bot is uncertain about the answer. Pauses the bot, asks an admin for input, then the bot will send a polished version of that answer to the customer. Use this by default for uncertainty. Do NOT use escalate_to_human unless the customer needs a human to take over entirely. Never name the admin to the customer — the system prompt says which name, if any, may be used.",
+  input_schema: {
+    type: "object",
+    properties: {
+      question: {
+        type: "string",
+        description:
+          "The customer's question or the situation the bot is unsure about",
+      },
+    },
+    required: ["question"],
+  },
+};
+
 export async function processSavedCustomerMessage(params: {
   customerId: string;
   customerName: string | null;
@@ -2405,22 +2476,7 @@ export async function processSavedCustomerMessage(params: {
         required: ["delivery_dates", "address_slot"],
       },
     },
-    {
-      name: "ask_admin_for_help",
-      description:
-        "Called when the bot is uncertain about the answer. Pauses the bot, asks an admin for input, then the bot will send a polished version of that answer to the customer. Use this by default for uncertainty. Do NOT use escalate_to_human unless the customer needs a human to take over entirely. Never name the admin to the customer — the system prompt says which name, if any, may be used.",
-      input_schema: {
-        type: "object",
-        properties: {
-          question: {
-            type: "string",
-            description:
-              "The customer's question or the situation the bot is unsure about",
-          },
-        },
-        required: ["question"],
-      },
-    },
+    ASK_ADMIN_TOOL,
     {
       name: "escalate_to_human",
       description:
@@ -2476,21 +2532,7 @@ export async function processSavedCustomerMessage(params: {
         "Sends the menu image(s) currently on file. Which week those cover is stated in your system prompt — check it before you describe what you are sending, and do not claim a week the prompt does not say you have. Safe to call even if the menu was previously sent.",
       input_schema: { type: "object", properties: {} },
     },
-    {
-      name: "send_delivery_proof",
-      description:
-        'Sends the customer the delivery photo the kitchen took. Call it whenever they ask whether their food arrived or to see proof of it ("bukti pengiriman", "bukti pengantaran", "foto pengirimannya", "udah dikirim belum", "uda diantar ya"). Leave "date" out for today, which is what they almost always mean; pass it only when they named an earlier day, resolved yourself from Today and never as a weekday name. It answers with the date of the photo it sent — say that date and no other. If it answers that the food has not arrived yet it names the delivery window: tell them that window and that the food is on its way. If it says there is no photo, say so plainly; do not promise one is coming.',
-      input_schema: {
-        type: "object",
-        properties: {
-          date: {
-            type: "string",
-            description:
-              "ISO date (YYYY-MM-DD) of the delivery the customer is asking about. Omit for today.",
-          },
-        },
-      },
-    },
+    SEND_DELIVERY_PROOF_TOOL,
     {
       name: "send_invoice",
       description:
@@ -3720,6 +3762,165 @@ type ToolResult =
  * on 2026-09-01 shortly after 16:00, with their dinner rows on the sheet and
  * the 16.00-18.00 window still running.
  */
+/**
+ * A message from a registered delivery recipient — Abby at the security desk,
+ * not Ireine who bought the food.
+ *
+ * Deliberately not `processSavedCustomerMessage`. That function is the
+ * ordering pipeline: its prompt carries the price ladder, the customer's quota
+ * and the payment flow, and its guards check every claim against a ledger this
+ * number has no row in. A recipient gets the opposite of all that — a prompt
+ * with two tools in it, and a proof lookup pointed at the customer who
+ * registered them.
+ *
+ * Everything written here lands on the recipient's own row: their thread, their
+ * rate limit, their escalation. Only the photo is the customer's.
+ */
+async function handleProofContactMessage(params: {
+  message: WhatsAppMessage;
+  contactCustomerId: string;
+  contact: ProofContact;
+}): Promise<void> {
+  const { message, contactCustomerId, contact } = params;
+  const phone = message.from;
+  const who = contact.contactName ?? phone;
+
+  // Text only. A recipient sending a photo is not sending a payment slip —
+  // they have nothing to pay for — and the media branches below all read an
+  // order this number does not have.
+  if (message.type !== "text" || !message.text?.trim()) {
+    await saveMessage({
+      customerId: contactCustomerId,
+      role: "user",
+      content: inboundText(message),
+      messageId: message.messageId,
+      intent: "other",
+      messageType: mediaMessageType(message.type),
+      mediaId: mediaIdOf(message),
+    });
+    const tmpl = await getTemplate("text_only");
+    await sendTextMessage(phone, tmpl);
+    return;
+  }
+
+  const text = message.text;
+  await saveMessage({
+    customerId: contactCustomerId,
+    role: "user",
+    content: text,
+    messageId: message.messageId,
+    intent: "other",
+    messageType: "text",
+  });
+
+  await sendPushToAllAdmins(
+    `New message from ${who}`,
+    `Penerima kiriman ${contact.ownerName ?? "customer"}: ${text.slice(0, 80)}`,
+    "/inbox",
+    "low",
+  );
+
+  const rateCheck = await checkRateLimit(contactCustomerId);
+  if (!rateCheck.allowed) {
+    await sendTextMessage(phone, await getTemplate("rate_limit_exceeded"));
+    return;
+  }
+  if (detectInjection(text) || isCircuitOpen()) {
+    await sendTextMessage(phone, await getTemplate("chatbot_unavailable"));
+    return;
+  }
+
+  const systemPrompt = buildProofContactPrompt({
+    ownerName: contact.ownerName,
+    contactName: contact.contactName,
+    todayLabel: formatHolidayDate(jakartaDateString()),
+  });
+  const tools = [SEND_DELIVERY_PROOF_TOOL, ASK_ADMIN_TOOL];
+  const history = await loadHistory(contactCustomerId);
+  const messages: Anthropic.Messages.MessageParam[] = [
+    ...history,
+    { role: "user", content: text },
+  ];
+
+  const client = getAnthropicClient();
+  let replyText = "";
+  // Two rounds: one to call the tool, one to write the sentence that goes with
+  // the result. A third would be the model calling tools without ever
+  // answering, which is the failure the customer waits through.
+  for (let round = 0; round < 2; round++) {
+    let response: Anthropic.Messages.Message;
+    try {
+      response = await client.messages.create({
+        model: SONNET_MODEL,
+        ...NO_THINKING,
+        max_tokens: 600,
+        system: systemPrompt,
+        messages,
+        tools,
+      });
+      recordSuccess();
+    } catch (err) {
+      console.error("[webhook] contact reply failed:", (err as Error).message);
+      await recordFailure();
+      await sendTextMessage(phone, await getTemplate("chatbot_unavailable"));
+      return;
+    }
+
+    replyText = extractText(response) || replyText;
+    const toolUses = response.content.filter(
+      (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+    );
+    if (toolUses.length === 0) break;
+
+    const results: Anthropic.Messages.ToolResultBlockParam[] = [];
+    for (const toolUse of toolUses) {
+      const result = await handleToolUse(
+        toolUse,
+        contactCustomerId,
+        phone,
+        who,
+        {
+          proofCustomerId: contact.ownerId,
+        },
+      );
+      results.push({
+        type: "tool_result",
+        tool_use_id: toolUse.id,
+        content: result.ok ? result.message : result.error,
+        is_error: !result.ok,
+      });
+      if (!result.ok)
+        console.warn(
+          `[webhook] contact tool ${toolUse.name} did nothing for ${contactCustomerId}: ${result.error}`,
+        );
+    }
+    messages.push(
+      { role: "assistant", content: response.content },
+      { role: "user", content: results },
+    );
+  }
+
+  if (looksEnglish(replyText)) {
+    const translated = await translateToIndonesian(replyText);
+    if (translated) replyText = translated;
+  }
+  replyText = sanitizeReply(replyText);
+  if (!replyText.trim()) return;
+
+  const conversationId = await saveMessage({
+    customerId: contactCustomerId,
+    role: "assistant",
+    content: replyText,
+    modelUsed: SONNET_MODEL,
+  });
+  const whatsappMessageId = await sendTextMessage(phone, replyText);
+  await updateMessageReceipt({
+    conversationId,
+    whatsappMessageId,
+    status: "sent",
+  });
+}
+
 async function noProofReason(
   customerId: string,
   date: string,
@@ -3858,6 +4059,11 @@ async function handleToolUse(
   customerId: string,
   phone: string,
   customerName: string | null,
+  // A delivery recipient's thread: the photos belong to the customer who
+  // registered them, not to the number that is asking. Only send_delivery_proof
+  // reads it — everything else a recipient can reach (ask_admin_for_help) is
+  // about their own thread and must stay on their own row.
+  opts?: { proofCustomerId?: string },
 ): Promise<ToolResult> {
   const db = createAdminClient();
 
@@ -4142,10 +4348,11 @@ async function handleToolUse(
     // hers.
     const wanted =
       (tool.input as { date?: string }).date?.trim() || jakartaDateString();
+    const proofOwnerId = opts?.proofCustomerId ?? customerId;
     const { data: proof } = await db
       .from("delivery_proofs")
       .select("id, image_url, received_at")
-      .eq("matched_customer_id", customerId)
+      .eq("matched_customer_id", proofOwnerId)
       .not("image_url", "is", null)
       .gte("received_at", `${wanted}T00:00:00+07:00`)
       .lt("received_at", `${wanted}T23:59:59.999+07:00`)
@@ -4153,7 +4360,7 @@ async function handleToolUse(
       .limit(1)
       .maybeSingle();
     if (!proof?.image_url) {
-      const reason = await noProofReason(customerId, wanted);
+      const reason = await noProofReason(proofOwnerId, wanted);
       return {
         ok: false,
         error: reason.model,
@@ -4215,7 +4422,12 @@ async function handleToolUse(
       entityType: "delivery_proofs",
       entityId: proof.id,
       action: "resend_on_request",
-      changes: { customer_id: customerId, delivery_date: day },
+      // Both ids when a recipient asked: whose food it is, and who it went to.
+      changes: {
+        customer_id: proofOwnerId,
+        delivery_date: day,
+        ...(proofOwnerId === customerId ? {} : { sent_to_contact: customerId }),
+      },
     });
     // The date goes back to the model as well as onto the photo, so a reply
     // that names a day cannot name a different one from the picture.

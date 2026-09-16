@@ -91,6 +91,12 @@ Every forwarded send writes a `delivery_proofs` row (`match_method: "forwarded_c
 
 Each path fills it as well as it can. An upload from the sheet is exact: the button knows its own row, so `POST /api/deliveries/proofs` now takes `meal_type` and resolves the delivery from `(customer, date, meal)`. The kitchen matcher and the forwarded-caption path get a name and a photo and no meal, so they use `pickDeliveryForPhoto()` (`src/lib/deliveries/windows.ts`): one row that day is not a question, and two are settled by the clock, since nothing shot before 16:00 can be a dinner drop. That last part is a guess, made only for the both-meals customers. Historical rows stay null, and the sheet still falls back to the customer-level test for anyone with a single delivery that day — the one case it cannot get wrong.
 
+## Registering a delivery recipient
+
+The person who receives the boxes is often not the person who bought them — Abby takes Ireine's delivery at a security desk in B1, on her own number. Open the customer on `/customers`, and in **Penerima kiriman** add that number with a name. From then on, a message from it is answered by a restricted thread: the bot can send that customer's delivery photos and nothing else, and every other question is pushed to an admin. See "A delivery recipient gets a thread of their own" in `docs/BOT_RULES.md` for what the thread may and may not say, and `customer_contacts` in `docs/DATABASE.md` for the table.
+
+A number that already belongs to a customer with orders is refused: they are a customer in their own right, and the webhook would hand them the ordering pipeline anyway.
+
 ## Assistant
 
 - **`query_customers` returns `portions_remaining`**, summed across the customer's open orders (`active` / `paused` / `payment_proof_received`) and counted from their delivery rows — never from the dead `customers.portions_remaining` column, and no longer from `orders.portions_remaining`, which migration 075 dropped. "Sisa kuota berapa?" used to need a second tool call the model rarely made, and it could not answer for Nicholas Satria at all on 2026-08-19. `query_orders` also returns the same derived balance, and takes `customer_name` as well as `customer_phone` (matched on the last 9 digits, so the stored format no longer has to be guessed).
