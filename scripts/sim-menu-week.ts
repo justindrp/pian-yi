@@ -79,6 +79,7 @@ async function main() {
         offersM: s.offers_size_m === true,
         sameMenuBothMeals: s.same_menu_both_meals === true,
         noRiceDiscount: null,
+        windows: null,
       })),
     dapurMenuTexts: rawSubs
       .filter((s) => !!s.menu_image_url && !!s.menu_text)

@@ -43,13 +43,14 @@ export type KitchenWindows = {
   dinner_window_end_min: number | null;
 };
 
-/** "11.30", the way a window is written to a customer. */
-function clock(min: number): string {
-  return `${String(Math.floor(min / 60)).padStart(2, "0")}.${String(min % 60).padStart(2, "0")}`;
+/** "11.30", the way a clock time is written to a customer. Wraps past midnight. */
+export function clockLabel(min: number): string {
+  const m = ((min % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}.${String(m % 60).padStart(2, "0")}`;
 }
 
 export function windowLabel(startMin: number, endMin: number): string {
-  return `${clock(startMin)}-${clock(endMin)}`;
+  return `${clockLabel(startMin)}-${clockLabel(endMin)}`;
 }
 
 /**

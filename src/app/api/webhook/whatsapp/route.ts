@@ -2264,6 +2264,7 @@ export async function processSavedCustomerMessage(params: {
       offersM: s.offers_size_m === true,
       sameMenuBothMeals: s.same_menu_both_meals === true,
       noRiceDiscount: s.no_rice_discount ?? null,
+      windows: s,
     }));
   const dapurMenuTexts = areaKitchens
     .filter((s) => !!s.menu_image_url && !!s.menu_text)

@@ -560,6 +560,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
       });
@@ -582,6 +583,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
         activeOrder: {
@@ -610,6 +612,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
         activeOrder: {
@@ -634,6 +637,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
       });
@@ -656,6 +660,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: true,
             noRiceDiscount: null,
+            windows: null,
           },
           {
             id: "2",
@@ -663,6 +668,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
       });
@@ -684,6 +690,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
       });
@@ -728,6 +735,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
       });
@@ -747,6 +755,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
       });
@@ -777,6 +786,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
+            windows: null,
           },
         ],
         dapurMenuTexts: [],
@@ -1133,6 +1143,7 @@ describe("the customer's own dapur", () => {
         offersM: true,
         sameMenuBothMeals: true,
         noRiceDiscount: null,
+        windows: null,
       },
       {
         id: "b",
@@ -1140,6 +1151,7 @@ describe("the customer's own dapur", () => {
         offersM: false,
         sameMenuBothMeals: false,
         noRiceDiscount: null,
+        windows: null,
       },
     ],
     dapurMenuTexts: [],
@@ -1220,6 +1232,7 @@ describe("the cacheable prefix", () => {
         offersM: true,
         sameMenuBothMeals: true,
         noRiceDiscount: null,
+        windows: null,
       },
       {
         id: "b",
@@ -1227,6 +1240,7 @@ describe("the cacheable prefix", () => {
         offersM: false,
         sameMenuBothMeals: false,
         noRiceDiscount: null,
+        windows: null,
       },
     ],
     dapurMenuTexts: [],
@@ -1326,6 +1340,7 @@ describe("the area gate", () => {
         offersM: true,
         sameMenuBothMeals: true,
         noRiceDiscount: null,
+        windows: null,
       },
       {
         id: "b",
@@ -1333,6 +1348,7 @@ describe("the area gate", () => {
         offersM: false,
         sameMenuBothMeals: false,
         noRiceDiscount: null,
+        windows: null,
       },
     ],
     dapurMenuTexts: [],
@@ -1399,6 +1415,7 @@ describe("tanpa nasi is quoted from each dapur's own column", () => {
     offersM: false,
     sameMenuBothMeals: true,
     noRiceDiscount,
+    windows: null,
   });
 
   const base = {
@@ -1480,6 +1497,138 @@ describe("tanpa nasi is quoted from each dapur's own column", () => {
 
     expect(withDapur.slice(0, withDapur.indexOf(marker))).toBe(
       without.slice(0, without.indexOf(marker)),
+    );
+  });
+});
+
+// The prompt carried one global window line — siang 10.00-12.00, malam
+// 16.00-18.00 — which is the `DELIVERY_WINDOWS` fallback and matches neither
+// kitchen that has been measured. Dapur Suplir arrives 11.30-12.30, so Naya was
+// told at 11.09 on 2026-09-02 that her food was late when it was not due yet,
+// and the 12.30 compensation threshold gave Suplir no grace at all while giving
+// an 18.00-end kitchen thirty minutes.
+describe("delivery windows and the late thresholds come from the kitchens", () => {
+  const dapur = (
+    nickname: string,
+    windows: {
+      lunch_window_start_min: number | null;
+      lunch_window_end_min: number | null;
+      dinner_window_start_min: number | null;
+      dinner_window_end_min: number | null;
+    } | null,
+  ) => ({
+    id: nickname,
+    nickname,
+    offersM: false,
+    sameMenuBothMeals: true,
+    noRiceDiscount: null,
+    windows,
+  });
+
+  const SUPLIR = {
+    lunch_window_start_min: 690,
+    lunch_window_end_min: 750,
+    dinner_window_start_min: 1050,
+    dinner_window_end_min: 1110,
+  };
+  const MONSTERA = {
+    lunch_window_start_min: 540,
+    lunch_window_end_min: 720,
+    dinner_window_start_min: 900,
+    dinner_window_end_min: 1080,
+  };
+
+  const base = {
+    casual: false,
+    customerState: "ordering",
+    customerName: "Naya",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null as { id: string; nickname: string } | null,
+    dapurOptions: [] as ReturnType<typeof dapur>[],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["Alam Sutera"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("one kitchen quotes its own window, not the fallback", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", SUPLIR)],
+    });
+
+    expect(prompt).toContain(
+      "- Delivery windows: siang 11.30-12.30 WIB, malam 17.30-18.30 WIB",
+    );
+    expect(prompt).not.toContain("siang 10.00-12.00 WIB");
+  });
+
+  test("a kitchen with nothing measured takes the house window", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Palem", null)],
+    });
+
+    expect(prompt).toContain(
+      "- Delivery windows: siang 10.00-12.00 WIB, malam 16.00-18.00 WIB",
+    );
+  });
+
+  test("kitchens that disagree are listed one by one", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", SUPLIR), dapur("Dapur Monstera", MONSTERA)],
+    });
+
+    expect(prompt).toContain("**Delivery windows are per dapur**");
+    expect(prompt).toContain("Dapur Suplir: siang 11.30-12.30, malam 17.30-18.30");
+    expect(prompt).toContain("Dapur Monstera: siang 09.00-12.00, malam 15.00-18.00");
+  });
+
+  test("the 50% threshold is that kitchen's window end plus the 30 minutes of grace", async () => {
+    const suplir = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", SUPLIR)],
+    });
+
+    expect(suplir).toContain(
+      "- Siang arrives after 13.00 WIB → apologize and offer 50% discount",
+    );
+    expect(suplir).toContain(
+      "- Malam arrives after 19.00 WIB → apologize and offer 50% discount",
+    );
+
+    const house = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Palem", null)],
+    });
+
+    expect(house).toContain(
+      "- Siang arrives after 12.30 WIB → apologize and offer 50% discount",
+    );
+    expect(house).toContain(
+      "- Malam arrives after 18.30 WIB → apologize and offer 50% discount",
+    );
+  });
+
+  test("each kitchen's threshold is named when they differ", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", SUPLIR), dapur("Dapur Monstera", MONSTERA)],
+    });
+
+    expect(prompt).toContain(
+      "- Dapur Suplir: siang arrives after 13.00 WIB → apologize and offer 50% discount",
+    );
+    expect(prompt).toContain(
+      "- Dapur Monstera: malam arrives after 18.30 WIB → apologize and offer 50% discount",
     );
   });
 });

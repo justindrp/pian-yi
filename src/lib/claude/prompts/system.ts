@@ -6,6 +6,11 @@ import {
   menuWeekLastDay,
   weekAfter,
 } from "@/lib/menu/week";
+import {
+  type KitchenWindows,
+  clockLabel,
+  deliveryWindow,
+} from "@/lib/deliveries/windows";
 import type { CustomerSchedule } from "@/lib/orders/customer-schedule";
 import { isLocked } from "@/lib/orders/delivery-state";
 import { sizeMSurcharge } from "@/lib/orders/size";
@@ -107,6 +112,12 @@ export async function buildSystemPrompt(params: {
      * the same either way — never that it refuses the request (migration 116).
      */
     noRiceDiscount: number | null;
+    /**
+     * When this kitchen's courier is at the door (migration 093). Null columns
+     * take the house window, exactly as `deliveryWindow()` does everywhere
+     * else — a kitchen nobody has measured costs accuracy, never an answer.
+     */
+    windows: KitchenWindows | null;
   }[];
   /**
    * The dapur this customer already cooks with, when they have one. The model
@@ -574,6 +585,56 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     oneLadder || !exampleLadder
       ? ""
       : `**Every figure in the examples below is ${exampleLadder.nickname}'s rate.** The sizes are the same for every dapur; the rates are not. For any other dapur take the rate from its own price list above and redo the arithmetic — never reuse a number from these examples for food a different dapur cooks.\n\n`;
+  // What time the food arrives, per dapur. A single global line said siang
+  // 10.00-12.00 and malam 16.00-18.00, which is the fallback in
+  // `DELIVERY_WINDOWS` and matches neither kitchen that has been measured:
+  // Dapur Suplir arrives 11.30-12.30 and Dapur Monstera from 09.00. Naya was
+  // told at 11.09 on 2026-09-02 that her food was late when by her kitchen's
+  // own window it was not due yet. The compensation thresholds are that
+  // kitchen's window end plus the same 30 minutes of grace the house rule
+  // always carried ("dinner guaranteed by 18:30" against an 18.00 end).
+  const GRACE_MIN = 30;
+  const kitchenWindows = params.dapurOptions.map((d) => ({
+    nickname: d.nickname,
+    lunch: deliveryWindow("lunch", d.windows),
+    dinner: deliveryWindow("dinner", d.windows),
+  }));
+  const sameWindows =
+    kitchenWindows.length > 0 &&
+    kitchenWindows.every(
+      (k) =>
+        k.lunch.label === kitchenWindows[0].lunch.label &&
+        k.dinner.label === kitchenWindows[0].dinner.label,
+    );
+  const houseLunch = deliveryWindow("lunch", null);
+  const houseDinner = deliveryWindow("dinner", null);
+  const windowsLine = sameWindows
+    ? `- Delivery windows: siang ${kitchenWindows[0].lunch.label} WIB, malam ${kitchenWindows[0].dinner.label} WIB`
+    : kitchenWindows.length === 0
+      ? `- Delivery windows: siang ${houseLunch.label} WIB, malam ${houseDinner.label} WIB`
+      : `- **Delivery windows are per dapur** — ${kitchenWindows
+          .map(
+            (k) => `${k.nickname}: siang ${k.lunch.label}, malam ${k.dinner.label}`,
+          )
+          .join(
+            "; ",
+          )} (WIB). Never quote a window from memory or from another dapur, and for a customer whose dapur is not settled yet say the window only after it is.`;
+  const compensationLines = (
+    sameWindows || kitchenWindows.length === 0
+      ? [
+          {
+            nickname: null as string | null,
+            lunch: kitchenWindows[0]?.lunch ?? houseLunch,
+            dinner: kitchenWindows[0]?.dinner ?? houseDinner,
+          },
+        ]
+      : kitchenWindows
+  )
+    .flatMap((k) => [
+      `- ${k.nickname ? `${k.nickname}: s` : "S"}iang arrives after ${clockLabel(k.lunch.endMin + GRACE_MIN)} WIB → apologize and offer 50% discount`,
+      `- ${k.nickname ? `${k.nickname}: m` : "M"}alam arrives after ${clockLabel(k.dinner.endMin + GRACE_MIN)} WIB → apologize and offer 50% discount`,
+    ])
+    .join("\n");
   const dayLabels = [...new Set(kitchenLadders.map((k) => k.days))].filter(
     Boolean,
   );
@@ -871,7 +932,7 @@ ${sameMenuNotice}  - When referring to kitchens say "dapur partner kami" — nev
 - Payment via ${bankName} transfer. You do NOT have the account number and must never invent one. It is sent automatically, by the system, only after an order is confirmed. If a customer asks for the rekening before that, say the details will be sent once their order is confirmed, and help them settle the order first: "Nanti nomor rekeningnya kami kirim setelah pesanannya dikonfirmasi ya kak."
 - Order deadline: ${deadlineTime} the day before delivery — same cutoff for changes and skip requests on existing orders
 - **When the customer pays is their choice inside one hard limit, and never something to check with an admin.** An order sits at pending_payment until the transfer arrives and no rule requires payment on the day of ordering, so "Bayar tanggal 1 bisa nggak kak?" is answered yes, in one clause, with the start date said back to them so the two dates are visible together. Cindi asked exactly this on 2026-08-21 for a package starting 2 September and got "saya perlu konfirmasi ke tim admin dulu", which parked her thread until a human unparked it. **The limit is ${deadlineTime} the day before the first delivery — never the delivery day itself.** That is when the kitchen is booked and when the unpaid sweep runs, so an order paid on the morning of its own first delivery has already been cancelled and no kitchen was ever told to cook it. Clairine was told on 2026-08-29 she could transfer on Senin 31 Agustus "sebelum pengantaran pertama" for a package starting that Monday; hers was due Minggu at ${deadlineTime}. Give the deadline as a date and a time, never as "sebelum pengiriman pertama". Only escalate a payment question about *how* to pay something we do not offer (cicilan, a faktur pajak or anything needing NPWP, a payment channel other than transfer). **A plain invoice is not one of those — call send_invoice and it goes out as a PDF.**
-- Delivery windows: siang 10:00–12:00 WIB, malam 16:00–18:00 WIB (dinner guaranteed by 18:30)
+${windowsLine}
 - Closed on Indonesian national public holidays (tanggal merah) **unless the list below says otherwise for that specific date** — a few tanggal merah we stay open and deliver, and the list is the only authority on which. On ALL other days, we are operational — if a customer asks whether we're still open or still operating, always answer yes confidently. Do NOT call ask_admin_for_help for operational status questions.
 ${
   upcomingHolidays
@@ -1068,9 +1129,8 @@ Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for saf
 
 **Skip delivery**: customer can skip any day and the portion stays in their balance — a skipped day is removed from the schedule, not spent. **Call delete_deliveries with the date; that call is the skip.** Request must arrive before ${deadlineTime} the day before the skipped delivery; after that the date is TERKUNCI, the kitchen is already cooking it, and the tool will refuse it — say so plainly instead of promising the skip.
 
-**Late delivery compensation** (handle autonomously — never escalate for this):
-- Siang arrives after 12:30 WIB → apologize and offer 50% discount
-- Malam arrives after 18:30 WIB → apologize and offer 50% discount
+**Late delivery compensation** (handle autonomously — never escalate for this). Late is measured against the window of the dapur that cooked it, never against another dapur's:
+${compensationLines}
 
 **Delivery protocol**: Food is always hung on the door or fence — we never hand it directly to the customer and we do not wait. Never promise otherwise.
 
