@@ -109,7 +109,6 @@ beforeEach(() => {
       bank_account_name: "Pian Yi",
       escalation_keywords: "[]",
       order_deadline_hour: "20",
-      order_deadline_daily_hour: "20",
     };
     return Promise.resolve(values[key] ?? "");
   });
@@ -1179,8 +1178,7 @@ describe("customer chatbot system prompt", () => {
             ? "Justin"
             : key === "escalation_keywords"
               ? "[]"
-              : key === "order_deadline_hour" ||
-                  key === "order_deadline_daily_hour"
+              : key === "order_deadline_hour"
                 ? "20"
                 : "X",
         ),
@@ -1957,5 +1955,74 @@ describe("delivery windows and the late thresholds come from the kitchens", () =
     expect(prompt).toContain(
       "- Dapur Monstera: malam arrives after 18.30 WIB → apologize and offer 50% discount",
     );
+  });
+});
+
+// `order_deadline_daily_hour` (migration 024) was a second cutoff that nothing
+// enforced. It was read in one place — this prompt — and quoted to the customer
+// as the deadline for booking tomorrow off their quota, while record_daily_order,
+// delete_deliveries and change_delivery_address all ask loadDeadlineHour(),
+// which reads `order_deadline_hour`. Both rows held 16, so the two agreed by
+// accident; the Settings UI lists only `order_deadline_hour`, so the day the
+// daily one was edited in SQL the bot would have promised a cutoff the tool
+// refuses, and no dashboard screen could have shown anyone why.
+describe("the cutoff the prompt quotes is the cutoff the tools enforce", () => {
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "Rina",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Lama"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: {
+      id: "o1",
+      packageSize: 20,
+      portionsPerDelivery: 1,
+      pricePerPortion: 27000,
+    },
+    schedule: {
+      unbooked: 8,
+      remainingToday: 8,
+      upcoming: [],
+      addresses: [{ slot: 1, label: "Jl. Contoh 1" }],
+    },
+  };
+
+  test("the daily-quota block quotes order_deadline_hour", async () => {
+    (getSetting as jest.Mock).mockImplementation((key: string) =>
+      Promise.resolve(
+        key === "order_deadline_hour"
+          ? "16"
+          : key === "order_deadline_daily_hour"
+            ? "20"
+            : key === "escalation_keywords"
+              ? "[]"
+              : "",
+      ),
+    );
+
+    const prompt = await buildSystemPrompt(base as never);
+
+    expect(prompt).toContain("must arrive before 16:00 WIB");
+    expect(prompt).not.toContain("20:00 WIB");
+  });
+
+  test("the dead setting is not read at all", async () => {
+    await buildSystemPrompt(base as never);
+
+    const keysRead = (getSetting as jest.Mock).mock.calls.map(
+      (call) => call[0] as string,
+    );
+    expect(keysRead).toContain("order_deadline_hour");
+    expect(keysRead).not.toContain("order_deadline_daily_hour");
   });
 });

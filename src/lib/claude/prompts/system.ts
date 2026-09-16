@@ -246,12 +246,16 @@ export async function buildSystemPrompt(params: {
     : "Use polished Indonesian with proper punctuation. Default to no emojis; use at most one per message, only when warmth wouldn't otherwise come across.";
 
   const now = new Date();
-  const [deadlineHour, dailyDeadlineHour] = await Promise.all([
-    getSetting("order_deadline_hour"),
-    getSetting("order_deadline_daily_hour"),
-  ]);
+  // One deadline setting, because there is only one deadline anything enforces.
+  // `order_deadline_daily_hour` (migration 024) was read here and nowhere else:
+  // every write that can refuse a late request — record_daily_order,
+  // delete_deliveries, change_delivery_address — asks loadDeadlineHour(), which
+  // reads `order_deadline_hour`. Both rows held 16, so the split was invisible;
+  // the day someone edited the daily one the prompt would have quoted a cutoff
+  // no tool honours, and the Settings UI (DELIVERY_KEYS in settings-client.tsx)
+  // does not list it, so nobody could have corrected it from the dashboard.
+  const deadlineHour = await getSetting("order_deadline_hour");
   const deadlineTime = `${deadlineHour}:00 WIB`;
-  const dailyDeadlineTime = `${dailyDeadlineHour}:00 WIB`;
 
   // The clock, and what it means for the next delivery. Both are computed here
   // rather than left to the model: given only a date and a cutoff hour it read
@@ -870,7 +874,7 @@ ${params.currentDapur ? `The Dapur line is pre-filled with **${params.currentDap
 ## Daily quota ordering
 This customer has an active quota-based order (${params.schedule?.unbooked ?? 0} portions still without a date, package ${params.activeOrder.packageSize}, ${params.activeOrder.portionsPerDelivery} porsi per meal).
 
-When they request one or more deliveries (an order for the next day must arrive before ${dailyDeadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the dates.
+When they request one or more deliveries (an order for the next day must arrive before ${deadlineTime}), call record_daily_order. Ask which meal (siang/malam/keduanya) and confirm the dates.
 
 Booking a multi-day run: pass EVERY agreed date in "delivery_dates" in a single call — "Senin–Jumat" is one call with all five ISO dates, never five calls and never only the first day. Nothing else writes these rows, so a date left out of the call is a delivery that will not happen. Resolve each date yourself from Today before calling; never send a weekday name. Skip every date marked TUTUP in "Upcoming closures" above — that list holds every closed date, so it is the only check you need, and you must run it over every date in the run before you call — leave it out of "delivery_dates" AND tell the customer that day is libur, so a 5-day week that contains one becomes 4 days. A cuti bersama is not automatically skipped; call ask_admin_for_help before promising it.
 
