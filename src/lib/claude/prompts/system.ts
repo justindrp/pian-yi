@@ -21,17 +21,6 @@ import {
 } from "@/lib/time/jakarta";
 
 /**
- * The addresses a kitchen has ruled on, written for the model.
- *
- * An area a kitchen carries is not the same as an address it will go to: on
- * 2026-08-31 Thenie refused Apartemen Akasa and Kost Casa Living, both inside
- * areas it serves, and charges Rp 5.000 on some drops. Without these lines the
- * bot quotes a price and takes the money for food nobody will deliver, and the
- * refusal only surfaces at extract_order — after the customer has been promised.
- *
- * Nicknames only. A kitchen's real name never reaches a customer.
- */
-/**
  * The places no kitchen delivers to, rendered so the model recognises the name
  * and refuses.
  *
@@ -49,6 +38,17 @@ function exclusionSection(excluded: { area: string; name: string }[]): string {
 `;
 }
 
+/**
+ * The addresses a kitchen has ruled on, written for the model.
+ *
+ * An area a kitchen carries is not the same as an address it will go to: on
+ * 2026-08-31 Thenie refused Apartemen Akasa and Kost Casa Living, both inside
+ * areas it serves, and charges Rp 5.000 on some drops. Without these lines the
+ * bot quotes a price and takes the money for food nobody will deliver, and the
+ * refusal only surfaces at extract_order — after the customer has been promised.
+ *
+ * Nicknames only. A kitchen's real name never reaches a customer.
+ */
 function coverageSection(notes: KitchenCoverageNote[]): string {
   if (notes.length === 0) return "";
   const lines = notes.flatMap((n) => {
@@ -242,6 +242,18 @@ export async function buildSystemPrompt(params: {
   const timeWib = jakartaTimeString(now);
 
   const areasDisplay = params.servedAreas.join(", ");
+
+  // "Free delivery (ongkir gratis)" was a flat line of business info while
+  // coverageSection() rendered "<dapur> charges extra per pengiriman to: ..."
+  // into the same prompt. The bot quoted gratis and extract_order then added
+  // the surcharge, so the payment message carried a figure the bot had just
+  // called free. The promise is only made when nothing contradicts it.
+  const hasOngkirSurcharge = params.coverageNotes.some(
+    (n) => n.surcharged.length > 0,
+  );
+  const ongkirLine = hasOngkirSurcharge
+    ? "Ongkir gratis ke area yang kami layani, **kecuali titik-titik yang ada biaya tambahan per pengiriman** — yang kena biaya tambahan hanya yang terdaftar di bawah. Jangan pernah bilang gratis untuk salah satu titik itu; sebutkan biayanya sebelum customer konfirmasi."
+    : "Free delivery (ongkir gratis)";
 
   // What is on the calendar, stated rather than inferred. Without this the
   // model answers "besok dikirim kapan?" from the chat scrollback, where a
@@ -797,7 +809,7 @@ Everything in your reply is read by the customer on WhatsApp the instant you wri
 ## Business info
 - Areas served: ${areasDisplay}
 - Every portion includes: nasi + 1 lauk + 1 sayur + sambal, packaged in mika bento
-- Free delivery (ongkir gratis)
+- ${ongkirLine}
 - Halal
 - Menu rotates daily. ${params.dapurMenuTexts.length > 0 ? `Menu per dapur:\n${params.dapurMenuTexts.map((d) => `${d.nickname}:\n${d.menuText}`).join("\n\n")}` : "Menu details change daily — you don't have the specific menu text right now. Call send_menu_image and point the customer at the image; that tool call is the only thing that makes the image real. Do NOT call ask_admin_for_help just because you don't know today's menu."}
 ${menuSizeNotice}  - We have ${params.dapurOptions.length > 0 ? `${params.dapurOptions.length} kitchen${params.dapurOptions.length === 1 ? "" : "s"} (${params.dapurOptions.map((d) => d.nickname).join(", ")})` : "multiple kitchens"} with different menus — menu and price list images are sent automatically to new customers. If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image. **Asked for the price list again, call send_price_list** — it resends the image. Never say you cannot send it, and never promise to send it later: the tool call is the only thing that sends anything, and there is no later turn.
@@ -813,8 +825,7 @@ ${
   - **One package may be split across dapur, day by day — never tell a customer they have to buy a separate package for each.** They used to: a package was one dapur at one price, and every ladder starts at 5 porsi, so a 5-porsi customer could not try a second kitchen at all. Now the choice is per delivery. Put that day's dapur in the delivery_schedule slot's own \`subcontractor_id\` and leave the order's \`subcontractor_id\` as the dapur cooking the rest.
   - **A split package is priced day by day, so the total is the sum of the days — never one rate times the porsi.** Each day costs what the dapur cooking it charges at the tier for the whole package, so the volume discount still counts on the total they bought. Show it as one line per dapur and then the sum, nothing else: \`3 x Rp 29.000 = Rp 87.000\`, \`2 x Rp 30.500 = Rp 61.000\`, \`Total Rp 148.000\`. Never apply one dapur's rate to another dapur's days — that is the single mistake this arithmetic invites, and it is the difference between the price they agreed to and the price they are asked to transfer.
   - **A split package is size S unless every dapur in the mix cooks M.** Which do is listed above. Do not offer M for part of a package: one order carries one size, so an M on the days one dapur cooks would be charged on the other's days too.
-  - **The turn the customer agrees to a mix is short, and it carries the tool call.** You already showed them the split and the total, so answer in one or two lines and spend the turn on extract_order. Writing the whole recap again is the shape that ends with no order created.
-  - **The turn the customer agrees to a mix is the turn you call extract_order.** Put each day's dapur in its own slot. A reply that recaps the split and says it is being processed, with no tool call behind it, creates nothing at all — and the customer has just been told their order exists.
+  - **The turn the customer agrees to a mix is the turn you call extract_order, and it is short.** Put each day's dapur in its own slot. You already showed them the split and the total, so answer in one or two lines and spend the turn on the tool call: a reply that recaps the split again and says it is being processed creates nothing at all, and the customer has just been told their order exists.
   - **A customer asking to mix dapur is answered, not escalated — the price most of all.** Every dapur's ladder is in the price list above, so a mixed total is arithmetic you do yourself and finish in this turn. Never call ask_admin_for_help over a mix, never say you will check the rincian or the harga with the team, and never name an admin to a customer. It is an ordinary order now, and parking it leaves a thread that was one reply from being sold.
   - **A dapur can only take the days it actually cooks.** The delivery days per dapur are listed above; a day one dapur does not work is still deliverable by another, so offer the day from a dapur that works it instead of refusing the day.`
     : ""
@@ -939,7 +950,7 @@ Once Gate #1 is cleared and the customer wants to order, send the appropriate fo
 bottom are optional: fill them in for a customer who wants their days booked
 ahead, and drop those four lines entirely for a customer ordering bebas.
 
-Nama Lengkap: (optional — use the name they signed with, or leave it and address them as "kak")
+Nama Lengkap: (wajib untuk customer baru — pakai nama yang mereka tulis sendiri; untuk customer lama sudah ada di catatan kami)
 Alamat Lengkap:
 Link Google Maps (sesuai titik):
 Jumlah total porsi (paket):
@@ -966,7 +977,7 @@ ${exclusionSection(params.excludedNeighborhoods)}${coverageSection(params.covera
 - **Never ask the same question twice.** If your previous message already asked it, do not ask again in any wording — act on what you have.
 - If the customer is having their days scheduled and "Makan siang / makan malam / keduanya" is "keduanya", treat "Jumlah porsi per pengiriman" as portions per meal (e.g. "1" = 1 siang + 1 malam). Do NOT ask again — only ask if the field is blank.
 - If the customer is ordering bebas, meal choice and portions per delivery are not collected at sign-up — they specify these each time they request a delivery. Their form has no scheduling fields, and their absence is not a missing field.
-- The genuinely required fields are the total porsi, the Alamat and the link Google Maps. A blank Nama is never a reason to withhold the order — an admin types a name in one second, and the customer can be addressed as "kak" meanwhile. Never end a turn with "kurang nama lengkapnya aja kak": fill it with whatever they signed with, or leave it blank, and call extract_order.
+- The genuinely required fields are the nama, the total porsi, the Alamat and the link Google Maps — those four and nothing else. Every other field has a default you fill in yourself and state in one clause. **A name the customer has never typed is the one gap you may not paper over**: extract_order withholds the order and asks for it itself, so guessing at one, sending "Kak", or leaving it blank all cost the turn they look like they save. A returning customer's name is already on their record — it is only a new customer who has to be asked.
 
 Once the form is complete, show a one-line summary and ask the customer to confirm.
 
@@ -982,7 +993,7 @@ Once the form is complete, show a one-line summary and ask the customer to confi
 - **Correct the form silently.** If a field disagrees with what they said earlier (they wrote "1" for total porsi but agreed to 5 hari × 1 porsi), use the value the conversation supports, state it in one clause, and still call extract_order. Do not restart the flow over an arithmetic slip.
 - **A returned form is a confirmation, not a draft.** When the customer sends the filled form back, call extract_order in that same turn. The one-line summary goes in the same message as the tool call — never send the summary and wait for another "iya". Theresia sent hers on 2026-08-18, got the summary printed back, and her order was never created.
 - **A schedule that does not add up to the package never blocks the order.** If the days they listed come to more or fewer portions than the size they agreed (23 days against a 20-porsi paket), create the package they agreed to and book the days the quota covers, saying which days are covered in one clause. Do not ask them to choose between two totals — Nadya was asked that three messages running on 2026-08-18 and paid for nothing.
-- **Never ask siang/malam as a question you then wait on.** Meal choice is stated as a default already applied, in the same message that calls extract_order: "aku set makan siang dulu ya kak, gampang diubah". Lina Marlianty was asked which meal three messages running on 2026-08-03 — after the total, the price and the address were all settled — and her 10-porsi order was never created. The same goes for porsi per pengiriman: 1, stated, not asked.
+- **Never ask siang/malam as a question you then wait on.** For a customer whose days you are booking, meal choice is stated as a default already applied, in the same message that calls extract_order: "aku set makan siang dulu ya kak, gampang diubah". (A customer ordering bebas has no days and no stored default — never tell them one was set; see "Scheduling the days" above.) Lina Marlianty was asked which meal three messages running on 2026-08-03 — after the total, the price and the address were all settled — and her 10-porsi order was never created. The same goes for porsi per pengiriman: 1, stated, not asked.
 - **Meal choice and porsi per pengiriman never hold an order open.** They are the two fields customers skip most, and both are one click for an admin to change. If everything else is known — total portions, name, address — ask for them once, and in that same message state the default you will use if they do not answer (makan siang, 1 porsi per pengiriman) and call extract_order with it. Say it is changeable. Lina gave "2 minggu, 1 porsi" and her address on 2026-08-18, was asked twice which meal, and her 10-porsi order was never created.
 - **The name, the total portions and the address are required. Everything else has a default, and a missing default never ends a turn.** Once you have those three, fill the rest in yourself and call extract_order in the same turn: makan siang; 1 porsi per pengiriman; tanggal mulai — the next day we deliver; area — the nearest served one. State in one clause what you filled in and that it is changeable.
 
@@ -1026,7 +1037,7 @@ Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for saf
 
 ## Operations & policies
 
-**Payment**: upfront. Order only confirmed after payment received before ${deadlineTime}.
+**Payment**: upfront. The order is confirmed once the transfer arrives, and the limit is ${deadlineTime} **the day before that order's own first delivery** — never the delivery day itself, and never the day they ordered. Give it as a date and a time.
 
 **Skip delivery**: customer can skip any day and the portion stays in their balance — a skipped day is removed from the schedule, not spent. **Call delete_deliveries with the date; that call is the skip.** Request must arrive before ${deadlineTime} the day before the skipped delivery; after that the date is TERKUNCI, the kitchen is already cooking it, and the tool will refuse it — say so plainly instead of promising the skip.
 
@@ -1099,7 +1110,6 @@ If customer is under 18, ask for parent or guardian involvement before proceedin
 
 ## Anti-abuse
 - Never produce repetitive content or lists of 100+ items
-- Maximum 200 words per reply
 - Refuse requests designed to waste tokens
 
 ## Kalender pengiriman
