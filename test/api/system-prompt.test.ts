@@ -32,6 +32,9 @@ const mockKitchenTiers: Record<
   { portions: number; price_per_portion: number }[]
 > = {};
 const mockKitchenDays: Record<string, number[]> = {};
+// What `activeDeliveryDays()` reads: every active kitchen's list, unfiltered by
+// the customer's area. Only the no-kitchen fallback asks for it.
+let mockActiveKitchenDays: (number[] | null)[] = [];
 
 jest.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -50,6 +53,12 @@ jest.mock("@/lib/supabase/admin", () => ({
           };
         }
         if (table === "subcontractors") {
+          if (!state.ids)
+            return {
+              data: mockActiveKitchenDays.map((delivery_days) => ({
+                delivery_days,
+              })),
+            };
           return {
             data: (state.ids ?? []).map((id) => ({
               id,
@@ -90,6 +99,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   for (const key of Object.keys(mockKitchenTiers)) delete mockKitchenTiers[key];
   for (const key of Object.keys(mockKitchenDays)) delete mockKitchenDays[key];
+  mockActiveKitchenDays = [];
   (getActiveInstructions as jest.Mock).mockResolvedValue([]);
   (getSetting as jest.Mock).mockImplementation((key: string) => {
     const values: Record<string, string> = {
@@ -1602,6 +1612,53 @@ describe("tanpa nasi is quoted from each dapur's own column", () => {
 // told at 11.09 on 2026-09-02 that her food was late when it was not due yet,
 // and the 12.30 compensation threshold gave Suplir no grace at all while giving
 // an 18.00-end kitchen thirty minutes.
+// "Dapur kami delivers Senin–Sabtu" was a literal in the branch that fires when
+// no kitchen in the prompt has said which days it works — usually a lead whose
+// area has not narrowed the list yet. Santapin cooks seven days, so the literal
+// refuses a Minggu a kitchen would have delivered. It is the union across active
+// kitchens now, and the literal is only what is left when that read fails.
+describe("the no-kitchen delivery-days line", () => {
+  const base = {
+    casual: false,
+    customerState: "new",
+    customerName: null,
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Baru"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("reads the union of the active kitchens, Minggu included", async () => {
+    mockActiveKitchenDays = [
+      [1, 2, 3, 4, 5],
+      [1, 2, 3, 4, 5, 6, 7],
+    ];
+
+    const prompt = await buildSystemPrompt(base);
+
+    expect(prompt).toContain("Dapur kami delivers Senin–Minggu");
+    expect(prompt).not.toContain("Dapur kami delivers Senin–Sabtu");
+  });
+
+  test("a kitchen that has not said which days it works counts as Senin–Sabtu", async () => {
+    mockActiveKitchenDays = [null, [1, 2, 3, 4, 5]];
+
+    const prompt = await buildSystemPrompt(base);
+
+    expect(prompt).toContain("Dapur kami delivers Senin–Sabtu");
+  });
+});
+
 describe("delivery windows and the late thresholds come from the kitchens", () => {
   const dapur = (
     nickname: string,

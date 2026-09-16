@@ -25,7 +25,7 @@ import {
   sameLadder,
 } from "@/lib/pricing/tiers";
 import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
-import { daysLabel } from "@/lib/subcontractors/days";
+import { activeDeliveryDays, daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deliveryCalendar,
@@ -639,11 +639,20 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   const dayLabels = [...new Set(kitchenLadders.map((k) => k.days))].filter(
     Boolean,
   );
+  // Nobody in `dapurOptions` — an area we have not narrowed yet — or no kitchen
+  // in it has said which days it works. The union across active kitchens is the
+  // honest answer to "kapan aja kirimnya"; the literal below it is only what
+  // `BUSINESS_DAYS` says, and Santapin cooks Minggu, so it is the wrong answer
+  // whenever the read can be made at all.
+  const allActiveDays =
+    dayLabels.length === 0
+      ? daysLabel(await activeDeliveryDays(kitchenDb).catch(() => []))
+      : "";
   const deliveryDaysLine =
     dayLabels.length === 1
       ? `Dapur kami delivers ${dayLabels[0]}.`
       : dayLabels.length === 0
-        ? "Dapur kami delivers Senin\u2013Sabtu."
+        ? `Dapur kami delivers ${allActiveDays || "Senin\u2013Sabtu"}.`
         : `**Delivery days are per dapur** — ${kitchenLadders
             .filter((k) => k.days)
             .map((k) => `${k.nickname}: ${k.days}`)
