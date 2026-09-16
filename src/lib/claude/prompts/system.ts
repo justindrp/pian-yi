@@ -476,13 +476,20 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
    */
   const kitchenDb = createAdminClient();
   const kitchenIds = params.dapurOptions.map((d) => d.id);
+  // The day lists are read for one id more than the ladders are: the dapur this
+  // customer already cooks with, which the soonest-date line below is keyed on.
+  // It is normally one of the options, and asking for it anyway costs nothing.
+  const dayQueryIds =
+    params.currentDapur && !kitchenIds.includes(params.currentDapur.id)
+      ? [...kitchenIds, params.currentDapur.id]
+      : kitchenIds;
   const [{ house, byKitchen }, { data: kitchenDayRows }] = await Promise.all([
     laddersForKitchens(kitchenDb, kitchenIds),
-    kitchenIds.length > 0
+    dayQueryIds.length > 0
       ? kitchenDb
           .from("subcontractors")
           .select("id, delivery_days")
-          .in("id", kitchenIds)
+          .in("id", dayQueryIds)
       : Promise.resolve({
           data: [] as { id: string; delivery_days: number[] | null }[],
         }),
@@ -508,8 +515,20 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   const partialDays =
     servedDays?.filter((d) => kitchenDayLists.some((l) => !l.includes(d))) ??
     [];
+  // ...and that intersection is only the right answer while the dapur is
+  // unknown. A customer already on a seven-day kitchen was told the soonest
+  // date was Senin because one *other* kitchen rests on Minggu — a day their
+  // own dapur cooks and the calendar below marks as available. The line renders
+  // in the per-customer tail, after the cache prefix ends, so keying it on the
+  // dapur they are actually on costs nothing in cache and stops the prompt
+  // refusing dates we would have delivered.
+  const currentDapurDays = params.currentDapur
+    ? daysById.get(params.currentDapur.id)
+    : null;
   const promisableDays =
-    servedDays?.filter((d) => !partialDays.includes(d)) ?? null;
+    Array.isArray(currentDapurDays) && currentDapurDays.length > 0
+      ? currentDapurDays
+      : (servedDays?.filter((d) => !partialDays.includes(d)) ?? null);
   const upcomingHolidays = describeUpcomingHolidays(
     undefined,
     undefined,

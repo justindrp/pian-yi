@@ -2026,3 +2026,79 @@ describe("the cutoff the prompt quotes is the cutoff the tools enforce", () => {
     expect(keysRead).not.toContain("order_deadline_daily_hour");
   });
 });
+
+// The soonest deliverable date was computed from the intersection of every
+// kitchen's delivery_days, with every day only some of them work dropped. That
+// is the right answer for a customer who has not picked a dapur yet. For one
+// already cooking with a seven-day kitchen it refused Sabtu and Minggu because
+// some *other* kitchen rests then — while the delivery calendar in the same
+// prompt marked those days available for their dapur. The line renders in the
+// per-customer tail, after the cache prefix ends, so keying it on their own
+// dapur costs nothing in cache.
+describe("the soonest date is the customer's own dapur's soonest", () => {
+  const kitchen = (id: string, nickname: string) => ({
+    id,
+    nickname,
+    offersM: false,
+    sameMenuBothMeals: false,
+    noRiceDiscount: null,
+    windows: null,
+  });
+
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "Rina",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [kitchen("a", "Dapur Suplir"), kitchen("b", "Dapur Palem")],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Lama"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  beforeEach(() => {
+    // Jumat 18 September 2026, 09:00 WIB — the 16:00 cutoff for Sabtu is still
+    // open, so the answer turns entirely on whether Sabtu counts as a day we
+    // may promise. Dapur Suplir works all seven; Dapur Palem, Senin–Jumat.
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-18T02:00:00Z"));
+    mockKitchenDays.a = [1, 2, 3, 4, 5, 6, 7];
+    mockKitchenDays.b = [1, 2, 3, 4, 5];
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test("a customer on the seven-day dapur is offered tomorrow", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      currentDapur: { id: "a", nickname: "Dapur Suplir" },
+    } as never);
+
+    expect(prompt).toContain("Soonest deliverable date: Sabtu 19 September 2026");
+  });
+
+  test("a customer with no dapur yet still gets the intersection", async () => {
+    const prompt = await buildSystemPrompt(base as never);
+
+    expect(prompt).toContain("Soonest deliverable date: Senin 21 September 2026");
+  });
+
+  test("a dapur on file that rests the weekend is not promised one", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      currentDapur: { id: "b", nickname: "Dapur Palem" },
+    } as never);
+
+    expect(prompt).toContain("Soonest deliverable date: Senin 21 September 2026");
+  });
+});
