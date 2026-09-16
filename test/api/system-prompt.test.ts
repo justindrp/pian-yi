@@ -2258,3 +2258,58 @@ describe("a contract customer is told which days their dapur cooks", () => {
     expect(prompt).toContain("Dapur Palem: Senin\u2013Minggu");
   });
 });
+
+// "apologize and offer 50% discount", marked handle-autonomously-never-escalate,
+// with no tool behind it. There is no discount tool: orders.total_price is
+// fixed at creation and nothing in a chat changes it, so every 50% the bot
+// promised for a late delivery was a refund the customer waited for and nobody
+// made. The apology stays the bot's own — a late customer should not wait on an
+// admin to hear sorry — but the money is a write, so the same turn calls
+// ask_admin_for_help with the date, the meal and the dapur.
+describe("the 50% compensation has a tool behind it", () => {
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "Naya",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Lama"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("the discount is named as a write the bot cannot make", async () => {
+    const prompt = await buildSystemPrompt(base as never);
+
+    expect(prompt).toContain(
+      "**But the discount is a write, and you have no tool that makes it.**",
+    );
+    expect(prompt).toContain(
+      "**and call ask_admin_for_help in that same turn**",
+    );
+    expect(prompt).toContain("with the date, the meal and the dapur");
+  });
+
+  test("the apology is still the bot's own, not an escalation", async () => {
+    const prompt = await buildSystemPrompt(base as never);
+
+    // The old wording made the whole thing autonomous, which is what left the
+    // promise unbacked. What has to stay autonomous is the apology.
+    expect(prompt).not.toContain(
+      "**Late delivery compensation** (handle autonomously — never escalate for this)",
+    );
+    expect(prompt).toContain(
+      "never leave a late customer waiting on an admin to be told we are sorry",
+    );
+    expect(prompt).toContain("That call is not handing the complaint over");
+  });
+});
