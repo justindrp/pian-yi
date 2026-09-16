@@ -1481,6 +1481,61 @@ describe("the cacheable prefix", () => {
 // area a refusal rather than a question, and the area it gated on had never
 // reached the prompt in the first place. `dapurOptions` is narrowed by
 // `kitchensForCustomerArea()`, but nothing told the model that.
+// `extract_order`'s Maps-link guard withholds the order and asks the customer
+// itself when no link is in the call and none is on their record
+// (src/lib/claude/extract-order.ts). The prompt named the required fields twice
+// and disagreed with itself: one bullet said "nama, total porsi, Alamat and the
+// link Google Maps — those four and nothing else", the next said "the name, the
+// total portions and the address are required … once you have those three, call
+// extract_order in the same turn". The second authorised exactly the call the
+// tool refuses, so the model summarised an order, fired, and the customer got a
+// request for a link instead of bank details.
+describe("the required fields are the same four in both places", () => {
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "Naya",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null as { id: string; nickname: string } | null,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Baru"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("neither bullet lets the model fire on three", async () => {
+    const prompt = await buildSystemPrompt({ ...base });
+
+    expect(prompt).toContain(
+      "the nama, the total porsi, the Alamat and the link Google Maps — those four and nothing else",
+    );
+    expect(prompt).toContain(
+      "**The name, the total portions, the address and the link Google Maps are required — the same four as above.",
+    );
+    expect(prompt).not.toContain("Once you have those three");
+    expect(prompt).not.toContain(
+      "The name, the total portions and the address are required.",
+    );
+  });
+
+  test("the cost of firing without the link is named", async () => {
+    const prompt = await buildSystemPrompt({ ...base });
+
+    expect(prompt).toContain("**Never fire on the first three alone.**");
+    expect(prompt).toContain(
+      "extract_order withholds the order and asks for the link itself",
+    );
+  });
+});
+
 describe("the area gate", () => {
   const base = {
     casual: false,

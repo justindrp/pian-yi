@@ -577,6 +577,17 @@ and the context block says which of the three states the customer is in (a real
 link, only a pin, nothing). Pinned by `test/order-maps-link-required.test.ts`
 and the `isSharedPinLink` tests in `test/maps-link.test.ts`.
 
+**And the prompt now counts to four in both places it counts** (2026-09-16). The
+order-flow section listed the required fields twice. One bullet said "the nama,
+the total porsi, the Alamat and the link Google Maps — those four and nothing
+else". The next said "the name, the total portions and the address are required
+… once you have those three, fill the rest in yourself and call extract_order in
+the same turn". The second authorised precisely the call the tool refuses: with
+no link given and none on file, `extract_order` withholds the order and asks for
+the link itself, so the model printed a summary, fired, sent nothing, and the
+customer read a confirmation of an order that did not exist. Both bullets now
+name the same four, and the second says what firing on three costs.
+
 ## A renewal is waiting on the days, and nothing else
 
 `Quota exhausted` in the daily-quota block told the model to ask which days and
