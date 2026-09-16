@@ -939,6 +939,66 @@ describe("customer chatbot system prompt", () => {
         "Images go out only through send_menu_image, send_price_list and send_delivery_proof",
       );
     });
+
+    // `customer_state.menu_shown` is set once by the welcome sequence and never
+    // cleared, so this line is on every returning customer's prompt forever. It
+    // used to read "do not mention or re-send the menu" flat, which contradicted
+    // the four rules above it that require send_menu_image / send_price_list on
+    // request — including "never promise to send it later: there is no later
+    // turn". The flag says they have seen the images, never that the tools are
+    // closed.
+    test("a sent menu does not close the image tools", async () => {
+      const prompt = await buildSystemPrompt({
+        customerState: "ordering",
+        customerName: "Naya",
+        customerNotes: null,
+        detectedMapsLink: null,
+        menuShown: true,
+        currentDapur: null,
+        dapurOptions: [],
+        dapurMenuTexts: [],
+        menuWeek: { relation: "unknown" as const, weekStart: null },
+        servedAreas: ["BSD Baru"],
+        customerArea: null,
+        neighborhoods: {},
+        excludedNeighborhoods: [],
+        coverageNotes: [],
+        activeOrder: null,
+        schedule: null,
+        casual: false,
+      });
+
+      expect(prompt).not.toContain("do not mention or re-send the menu");
+      expect(prompt).toContain("**This is not a ban on the tools.**");
+      expect(prompt).toContain(
+        "call send_menu_image or send_price_list in that turn",
+      );
+    });
+
+    test("an unsent menu says so and nothing more", async () => {
+      const prompt = await buildSystemPrompt({
+        customerState: "new",
+        customerName: null,
+        customerNotes: null,
+        detectedMapsLink: null,
+        menuShown: false,
+        currentDapur: null,
+        dapurOptions: [],
+        dapurMenuTexts: [],
+        menuWeek: { relation: "unknown" as const, weekStart: null },
+        servedAreas: ["BSD Baru"],
+        customerArea: null,
+        neighborhoods: {},
+        excludedNeighborhoods: [],
+        coverageNotes: [],
+        activeOrder: null,
+        schedule: null,
+        casual: false,
+      });
+
+      expect(prompt).toContain("- Menu image sent: not yet sent");
+      expect(prompt).not.toContain("**This is not a ban on the tools.**");
+    });
   });
 
   // The bot was handed the change rule and never the reading it needed to apply

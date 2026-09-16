@@ -871,6 +871,19 @@ The model writes "menu minggu ini sudah saya kirim gambarnya ya" and calls no to
 
 **And the guard reads what the sanitizer left, not what the model wrote** (2026-09-01). The three claim guards — menu, proof, invoice — used to test the raw reply, which still contains every stage direction and every bracket the model addresses to itself. Clairine Aurelia asked *"Apa uda diantar kak"*, was correctly sent her delivery photo, and then got this week's menu image on top of it: the text she read claimed nothing about a menu, because the whole match lived inside a bracket `sanitizeReply()` had already deleted. A claim nobody can read is not a lie standing, so there is nothing to recover from — the guards now run on `visibleReply = sanitizeReply(replyText)`. A stage direction that survives alongside a real sentence ("Berikut menu … saya kirimkan ya" plus `[gambar menu terkirim]`) still fires, because the sentence is still there after the strip.
 
+## "Menu image sent" says they have seen it, not that the tools are shut
+
+`customer_state.menu_shown` is set to true once, by the welcome sequence on first contact (`src/app/api/webhook/whatsapp/route.ts`), and nothing ever clears it. The Current context block rendered that flag as **"Menu image sent: YES — do not mention or re-send the menu"**, an unqualified prohibition, on every turn of every returning customer for the rest of their life with us.
+
+Four rules in the same prompt require the opposite, and the flag outranked all of them by being the last word before the customer's own record:
+
+- "If a customer explicitly asks what today's or tomorrow's menu is, use the send_menu_image tool to resend the menu image."
+- "A missing area is a question, never a refusal — asked for the menu or the price list, you send it … **never promise to send it after they answer: there is no later turn.**"
+- The menu-week guidance, which ends every branch with "send it with send_menu_image".
+- The menu-text rules, which have the model reading a day's line back to the customer — i.e. mentioning the menu.
+
+So the two commonest asks we get, from the customers most likely to buy again, sat behind a line telling the model not to answer them. The flag means one thing and now says it: the welcome images already went out, so do not re-send them unprompted and do not recap them — and asked for either, call the tool in that turn.
+
 ## The menu on file outranks the customer's memory of it
 
 The prompt carries the week's menu as text, day by day, from `subcontractors.menu_text` — Batch 52 named Senin 31 Agustus as Chicken Katsu + Tumis Buncis Wortel and Selasa 1 September as Ayam Bumbu Rujak + Soun Goreng Vegetables. On Selasa 2026-09-01 Lidya photographed the box she had just received, which was Selasa's menu, correctly cooked, and asked *"Itu letak chicken katsu dan tumis buncis wortel nya di mana?"* — she was reading the column one day to the left. The bot answered *"pesanan kakak untuk hari Selasa seharusnya Chicken Katsu dengan Tumis Buncis Wortel, tapi yang sampai ternyata beda. Itu memang kesalahan dari sisi kami"*, with the correct Selasa line sitting in its own prompt. She asked for a refund 53 seconds later, and Justin took the thread over by hand.
