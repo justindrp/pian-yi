@@ -2191,3 +2191,70 @@ describe("the worked examples never key on the customer's own dapur", () => {
     expect(prompt).toContain("1 × 2 × 5 = 10 porsi → Rp 26.000/porsi");
   });
 });
+
+// The contract section replaces the whole price list, and everything the
+// non-contract branch says about the calendar went with it. A corporate
+// customer's prompt claimed "Everything else — delivery areas, the deadline,
+// scheduling, the order form — is unchanged" while never once naming the days
+// their dapur cooks: the only thing carrying that fact for them was the
+// per-day marks in the delivery calendar. The days line renders in both
+// branches now.
+describe("a contract customer is told which days their dapur cooks", () => {
+  const kitchen = (id: string, nickname: string) => ({
+    id,
+    nickname,
+    offersM: false,
+    sameMenuBothMeals: false,
+    noRiceDiscount: null,
+    windows: null,
+  });
+
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "PT Contoh",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [kitchen("a", "Dapur Suplir")],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Lama"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  beforeEach(() => {
+    mockKitchenDays.a = [1, 2, 3, 4, 5];
+    mockKitchenDays.b = [1, 2, 3, 4, 5, 6, 7];
+  });
+
+  test("the days line is in the contract section too", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      contractPricePerPortion: 20000,
+    } as never);
+
+    expect(prompt).toContain("Dapur kami delivers Senin\u2013Jumat.");
+    expect(prompt).toContain(
+      "**A contract rate removes the package sizes, not the calendar.**",
+    );
+  });
+
+  test("two dapur name their own days to a contract customer", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      contractPricePerPortion: 20000,
+      dapurOptions: [kitchen("a", "Dapur Suplir"), kitchen("b", "Dapur Palem")],
+    } as never);
+
+    expect(prompt).toContain("**Delivery days are per dapur**");
+    expect(prompt).toContain("Dapur Suplir: Senin\u2013Jumat");
+    expect(prompt).toContain("Dapur Palem: Senin\u2013Minggu");
+  });
+});

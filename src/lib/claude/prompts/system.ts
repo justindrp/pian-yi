@@ -738,7 +738,11 @@ Work the total out the same way as always and multiply:
 - Example: 22 box × 5 hari = 110 porsi → 110 × Rp ${contract.toLocaleString("id-ID")} = *Rp ${(contract * 110).toLocaleString("id-ID")}*
 
 ${offersM ? `\nUkuran M — one more side dish — is sold to this customer as well, and only at ${mNames}. ${mExtra > 0 ? `It is the contract rate plus Rp ${rp(mExtra)}/porsi: **Rp ${rp(contract + mExtra)}/porsi**.` : `It is the same **Rp ${rp(contract)}/porsi** — no tambahan is set right now.`} Every other dapur is S only. Quote S by default and name M once, when they ask about sizes or what is in the box.\n` : ""}
-Give one exact total, the same way you would for anyone else. Everything else — delivery areas, the deadline, scheduling, the order form — is unchanged.`
+Give one exact total, the same way you would for anyone else.
+
+- ${deliveryDaysLine} Days outside that are closed for that dapur, and so are the closure dates listed above. **A contract rate removes the package sizes, not the calendar.** If a run they ask for includes a day their dapur does not cook, or a libur, do not refuse the run — say which specific dates are closed and offer it without them.
+
+Everything else — delivery areas, the deadline, scheduling, the order form — is unchanged.`
     : `## Current price list (Paket Personal${offersM ? " — harga ukuran S" : ", size S only"})
 Current active kitchen availability:
 ${sizeSection}
