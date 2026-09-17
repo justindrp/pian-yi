@@ -1,9 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
-import {
-  getExcludedNeighborhoods,
-  getSetting,
-} from "@/lib/cache/settings";
+import { getExcludedNeighborhoods, getSetting } from "@/lib/cache/settings";
 import { classifyAddress } from "@/lib/claude/classify-address";
 import {
   getAnthropicClient,
@@ -738,6 +735,43 @@ export function nearestSellableSizes(
   let above = size + 1;
   while (!isSellableSize(above, floor)) above++;
   return { below, above };
+}
+
+/**
+ * The portion count at or above which a single-date order is an event, not a
+ * package. `settings.event_order_min_portions`, 15 when unreadable.
+ */
+export async function eventPortionFloor(): Promise<number> {
+  const raw = Number(await getSetting("event_order_min_portions"));
+  return Number.isFinite(raw) && raw > 0 ? raw : 15;
+}
+
+/**
+ * Whether this extraction is an event rather than a subscription package.
+ *
+ * An event is tendered to the kitchens and priced from the bids that come back
+ * (see "A custom/event order is tendered to the kitchens" in
+ * `docs/OPERATIONS.md`), so no price exists when the model calls. The prompt has
+ * forbidden `extract_order` on an event since the QBig BSD lead walked on
+ * 2026-09-11, and until this function the prompt was the only thing forbidding
+ * it: a 20-box drop that happened to divide by 5 was quoted off the personal
+ * ladder and sent the bank details, which is money we cannot cook for.
+ *
+ * The shape, not the words: **every portion on one delivery date**, at or above
+ * the floor. A run of dates is a subscription however large — the 180-portion
+ * order at 20 a day is a real customer — and an empty schedule is the day-by-day
+ * booker, who has named no date at all and must not be caught.
+ */
+export function looksLikeEventOrder(
+  input: ExtractedOrderInput,
+  floor: number,
+): boolean {
+  const slots = input.delivery_schedule ?? [];
+  if (slots.length === 0) return false;
+  const dates = new Set(slots.map((s) => s.date).filter(Boolean));
+  if (dates.size !== 1) return false;
+  const portions = slots.reduce((sum, s) => sum + (Number(s.portions) || 0), 0);
+  return portions >= floor;
 }
 
 /**
@@ -1534,6 +1568,72 @@ export async function createOrderFromExtraction(
   const payerCustomerId =
     beneficiary.kind === "third_party" ? customerId : null;
 
+  // An event is not a package and has no price yet.
+  //
+  // Events are tendered to the kitchens and sold from the bids that come back;
+  // the ladder in `pricing_tiers` says nothing about what a one-date drop of 20
+  // boxes costs us. Creating the order here would send the bank details for a
+  // number nobody has bid, which is exactly the 2026-08-25 failure and the one
+  // the QBig BSD lead turned into a lost sale on 2026-09-11.
+  //
+  // The prompt already forbids `extract_order` on an event in three places, and
+  // that is the reason this is in code: a rule the prompt states three ways and
+  // the model still breaks belongs in the guard, like the 7-porsi size below.
+  //
+  // Withholding writes nothing. The customer gets a holding line — no price, no
+  // bank details, no re-asking for a brief they have already given — the
+  // question parks on `customer_flags` so the inbox shows it, and an admin
+  // prices it by hand. The thread keeps running: `pendingAdminQuestion` does not
+  // stop the model from answering everything else.
+  //
+  // Exempt: the payment-proof path (`sendPaymentInfo: false`), where the money
+  // has already moved, and a contract customer, whose negotiated rate is the
+  // price whatever shape the order arrives in.
+  if (
+    sendPaymentInfo &&
+    looksLikeEventOrder(input, await eventPortionFloor())
+  ) {
+    const contract = await contractPrice(orderCustomerId);
+    if (contract === null) {
+      const eventMsg =
+        "Baik kak, pesanan untuk acara seperti ini kami tanyakan dulu harganya ke dapur ya, jadi pesanannya belum kami buatkan 🙏 Kami kabari secepatnya.";
+      const conversationId = await saveMessage({
+        customerId,
+        role: "assistant",
+        content: eventMsg,
+        modelUsed: "system",
+      });
+      const eventMessageId = await sendTextMessage(phone, eventMsg);
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: eventMessageId,
+        status: "sent",
+      });
+      const slots = input.delivery_schedule ?? [];
+      const portions = slots.reduce(
+        (sum, s) => sum + (Number(s.portions) || 0),
+        0,
+      );
+      const question = `Pesanan acara: ${portions} porsi, ${slots[0]?.date ?? "tanggal belum jelas"}, ${input.address || "alamat belum jelas"}. Perlu ditenderkan ke dapur dan diberi harga — bot tidak membuat ordernya.`;
+      await db.from("customer_flags").upsert({
+        customer_id: customerId,
+        pending_bot_response: true,
+        pending_bot_question: question,
+        pending_bot_question_at: new Date().toISOString(),
+      });
+      await sendPushToAllAdmins(
+        "Pesanan acara — perlu ditenderkan",
+        `${input.customer_name || phone}: ${portions} porsi, ${slots[0]?.date ?? "tanggal ?"}`,
+        "/inbox",
+        "high",
+      );
+      console.log(
+        `[extract-order] event withheld for ${customerId}: ${portions} porsi on ${slots[0]?.date}`,
+      );
+      return NOTHING_TO_SEND;
+    }
+  }
+
   // Never ask a customer for money before we know their name.
   //
   // `shouldRecordName` deliberately refuses to store "Kak", "Customer" or
@@ -1777,7 +1877,8 @@ export async function createOrderFromExtraction(
   // Tanpa nasi is a price, not just a note: each kitchen carries its own
   // `no_rice_discount` (migration 116). The words still go in `catatan` — that
   // is what the kitchen sheet prints — but the money comes off here.
-  const tanpaNasi = input.tanpa_nasi === true || mentionsTanpaNasi(input.catatan);
+  const tanpaNasi =
+    input.tanpa_nasi === true || mentionsTanpaNasi(input.catatan);
   // Money that has moved outranks every number in the conversation.
   const paidSize =
     beneficiary.kind === "self"
@@ -1898,7 +1999,6 @@ export async function createOrderFromExtraction(
     }
   }
 
-
   // A place nobody delivers to, checked before the kitchen's own verdict and
   // regardless of whether a kitchen was resolved at all. The kitchen-level
   // refusal below is answered by finding another kitchen; this one has no such
@@ -1976,7 +2076,6 @@ export async function createOrderFromExtraction(
       : undefined;
   const lunchSlot = secondMeal === "lunch" ? 2 : 1;
   const dinnerSlot = secondMeal === "dinner" ? 2 : 1;
-
 
   // Which size, and what it costs. Both settled here rather than earlier
   // because M is per kitchen — like `delivery_areas` — so the size cannot be
@@ -2091,7 +2190,9 @@ export async function createOrderFromExtraction(
     0,
   );
   const mixed =
-    sortedSchedule && namedKitchens.size > 0 && scheduledPortions === packageSize
+    sortedSchedule &&
+    namedKitchens.size > 0 &&
+    scheduledPortions === packageSize
       ? await priceScheduleSlots({
           slots: sortedSchedule,
           packageSize,
@@ -2277,7 +2378,9 @@ export async function createOrderFromExtraction(
 
   const { data: existingCustomer } = await db
     .from("customers")
-    .select("name, notes, kitchen_notes, portions_remaining, avg_price_per_portion")
+    .select(
+      "name, notes, kitchen_notes, portions_remaining, avg_price_per_portion",
+    )
     .eq("id", orderCustomerId)
     .single();
   const oldRemaining = existingCustomer?.portions_remaining ?? 0;
