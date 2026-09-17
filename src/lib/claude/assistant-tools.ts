@@ -180,6 +180,21 @@ export const assistantTools: Tool[] = [
     },
   },
   {
+    name: "query_event_kitchens",
+    description:
+      "Which kitchens take one-off event orders (subcontractors.takes_events), with the weekdays each one works, its areas and its cost per portion. Use this before answering who an event can be tendered to. The list is not the daily roster — an event kitchen need not run a daily route — and an event is never priced off the ladder: it is tendered and priced from the bids.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        date: {
+          type: "string",
+          description:
+            "Optional YYYY-MM-DD. When given, each kitchen is marked works_that_day from its own delivery_days.",
+        },
+      },
+    },
+  },
+  {
     name: "query_expiring_orders",
     description:
       "Get active orders that are ending soon (within N days) or quota orders with fewer than 5 portions remaining. Use for renewal risk briefings and proactive outreach.",
@@ -772,6 +787,52 @@ export async function runTool(
           menu_text: s.menu_text,
           delivery_areas: s.delivery_areas,
         })),
+      };
+    }
+
+    case "query_event_kitchens": {
+      // Deliberately NOT filtered on is_active: takes_events is an overlay on
+      // it, not a subset (migration 106). Dapur Uma Ceo takes events and runs
+      // no daily route at all, so filtering here would hide the only kitchen
+      // that has ever cooked one.
+      const { data, error } = await db
+        .from("subcontractors")
+        .select(
+          "id, customer_nickname, takes_events, is_active, delivery_days, delivery_areas, cost_per_portion",
+        )
+        .eq("takes_events", true)
+        .order("customer_nickname");
+      if (error) return { error: error.message };
+
+      const ymd = (input.date as string | undefined) ?? null;
+      let iso: number | null = null;
+      if (ymd) {
+        const d = new Date(`${ymd}T00:00:00Z`);
+        if (!Number.isNaN(d.getTime()))
+          iso = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
+      }
+
+      const kitchens = (data ?? []).map((k) => ({
+        id: k.id,
+        dapur: k.customer_nickname,
+        runs_daily_route: k.is_active === true,
+        delivery_areas: k.delivery_areas,
+        cost_per_portion: k.cost_per_portion,
+        // A kitchen with no delivery_days recorded falls back to Senin-Sabtu,
+        // the same fallback every other read uses.
+        works_that_day:
+          iso === null
+            ? null
+            : Array.isArray(k.delivery_days) && k.delivery_days.length > 0
+              ? k.delivery_days.includes(iso)
+              : [1, 2, 3, 4, 5, 6].includes(iso),
+      }));
+
+      return {
+        date: ymd,
+        closed_holiday: ymd ? isClosedHoliday(ymd) : null,
+        tender_to: kitchens.filter((k) => k.works_that_day !== false),
+        all_event_kitchens: kitchens,
       };
     }
 

@@ -71,6 +71,7 @@ interface Subcontractor {
   delivery_areas: string[] | null;
   notes: string | null;
   is_active: boolean;
+  takes_events: boolean;
   cost_per_portion: number;
   menu_image_url: string | null;
   menu_text: string | null;
@@ -381,6 +382,11 @@ export default function SubcontractorsClient() {
                       >
                         {s.is_active ? "Active" : "Inactive"}
                       </span>
+                      {s.takes_events ? (
+                        <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                          Events
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -551,6 +557,27 @@ export default function SubcontractorsClient() {
                 }
               />
             </div>
+            <div className="flex items-start gap-3">
+              <input
+                id="takes-events"
+                type="checkbox"
+                checked={editForm.takes_events ?? false}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, takes_events: e.target.checked }))
+                }
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-orange-500"
+              />
+              <div>
+                <Label htmlFor="takes-events" className="text-sm text-gray-700">
+                  Takes event orders
+                </Label>
+                <p className="mt-1 text-xs text-gray-400">
+                  Who a one-off event gets tendered to. Independent of the daily
+                  route — a kitchen can cook events without being on the daily
+                  ladder, and vice versa.
+                </p>
+              </div>
+            </div>
             <Button
               type="button"
               variant="default"
@@ -568,6 +595,7 @@ export default function SubcontractorsClient() {
                   cost_per_portion: editForm.cost_per_portion,
                   menu_text: editForm.menu_text as string | null,
                   menu_week_start: editForm.menu_week_start as string | null,
+                  takes_events: editForm.takes_events ?? false,
                 })
               }
               className="w-full"

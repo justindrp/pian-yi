@@ -26,6 +26,7 @@ export async function PATCH(
     delivery_areas?: string[];
     notes?: string;
     is_active?: boolean;
+    takes_events?: boolean;
     cost_per_portion?: number;
     menu_text?: string | null;
     menu_week_start?: string | null;
@@ -42,6 +43,10 @@ export async function PATCH(
     allowed.delivery_areas = body.delivery_areas;
   if (body.notes !== undefined) allowed.notes = body.notes;
   if (body.is_active !== undefined) allowed.is_active = body.is_active;
+  // Independent of is_active on purpose (migration 106): a kitchen may run a
+  // daily route, cook events, both or neither. Nothing derives one from the
+  // other.
+  if (body.takes_events !== undefined) allowed.takes_events = body.takes_events;
   if (body.cost_per_portion !== undefined)
     allowed.cost_per_portion = body.cost_per_portion;
   if (body.menu_text !== undefined) allowed.menu_text = body.menu_text;
