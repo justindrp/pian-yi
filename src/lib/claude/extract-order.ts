@@ -13,6 +13,7 @@ import {
   saveMessage,
   updateMessageReceipt,
 } from "@/lib/claude/conversation";
+import { upsertEventLead } from "@/lib/events/leads";
 import { isDeliveryDay } from "@/lib/holidays/id";
 import { stripCompensation } from "@/lib/kitchen/compensation";
 import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
@@ -1621,10 +1622,21 @@ export async function createOrderFromExtraction(
         pending_bot_question: question,
         pending_bot_question_at: new Date().toISOString(),
       });
+      // The lead records itself (migration 121). The flag above expires 48
+      // hours after the customer stops chasing it, and a quoted event needs
+      // chasing hardest once the customer has gone quiet — so what ages is a
+      // row of its own, not the escalation.
+      await upsertEventLead({
+        customerId,
+        eventDate: slots[0]?.date ?? null,
+        portions,
+        venue: input.address || null,
+        brief: question,
+      });
       await sendPushToAllAdmins(
         "Pesanan acara — perlu ditenderkan",
         `${input.customer_name || phone}: ${portions} porsi, ${slots[0]?.date ?? "tanggal ?"}`,
-        "/inbox",
+        "/orders",
         "high",
       );
       console.log(

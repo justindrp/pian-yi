@@ -1087,6 +1087,72 @@ export type Database = {
         }
         Relationships: []
       }
+      event_leads: {
+        Row: {
+          brief: string | null
+          closed_at: string | null
+          created_at: string
+          customer_id: string
+          event_date: string | null
+          id: string
+          last_nudged_at: string | null
+          notes: string | null
+          portions: number | null
+          quoted_price_per_portion: number | null
+          status: string
+          subcontractor_id: string | null
+          updated_at: string
+          venue: string | null
+        }
+        Insert: {
+          brief?: string | null
+          closed_at?: string | null
+          created_at?: string
+          customer_id: string
+          event_date?: string | null
+          id?: string
+          last_nudged_at?: string | null
+          notes?: string | null
+          portions?: number | null
+          quoted_price_per_portion?: number | null
+          status?: string
+          subcontractor_id?: string | null
+          updated_at?: string
+          venue?: string | null
+        }
+        Update: {
+          brief?: string | null
+          closed_at?: string | null
+          created_at?: string
+          customer_id?: string
+          event_date?: string | null
+          id?: string
+          last_nudged_at?: string | null
+          notes?: string | null
+          portions?: number | null
+          quoted_price_per_portion?: number | null
+          status?: string
+          subcontractor_id?: string | null
+          updated_at?: string
+          venue?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_leads_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_leads_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_sequences: {
         Row: {
           last_seq: number

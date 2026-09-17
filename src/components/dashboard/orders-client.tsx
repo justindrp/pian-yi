@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import EventLeadsPanel from "./event-leads-panel";
 import NewOrderModal from "./new-order-modal";
 
 type LedgerRow = {
@@ -296,6 +297,11 @@ export default function OrdersClient() {
           onSuccess={() => qc.invalidateQueries({ queryKey: ["orders"] })}
         />
       )}
+      {/* An event is an order that has not become one yet: tendered, quoted
+          by hand, and invisible to every other screen until somebody writes
+          the order row. It sits above the table because a date passes whether
+          or not anybody scrolled. */}
+      <EventLeadsPanel />
       <div className="flex items-center gap-4 mb-4">
         <h1 className="text-xl font-semibold text-gray-900">Orders</h1>
         <Button

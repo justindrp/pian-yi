@@ -90,6 +90,19 @@ const JOBS: Job[] = [
       (await import("@/app/api/cron/stalled-leads/route")).GET(req),
   },
   {
+    // Once a day, in the morning, because what it watches is a calendar date
+    // and the answer it asks for is a phone call to a kitchen. catchUp so a
+    // deploy over 08:10 does not skip a day the events do not skip.
+    name: "event-lead-sweep",
+    schedule: "10 8 * * *",
+    when: "daily at 08:10 WIB",
+    method: "GET",
+    path: "/api/cron/event-lead-sweep",
+    catchUp: true,
+    run: async (req) =>
+      (await import("@/app/api/cron/event-lead-sweep/route")).GET(req),
+  },
+  {
     // Hourly rather than more often because the window it enforces is measured
     // in days: a question quiet for 48 hours is no less quiet at 48h59m.
     name: "expire-pending-questions",

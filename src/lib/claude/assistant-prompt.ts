@@ -48,6 +48,7 @@ AVAILABLE TOOLS (read):
 - query_revenue_trend: this week vs last week revenue comparison with % change
 - query_lapsed_customers: lapsed customers with days inactive and contact info, ready for re-engagement outreach
 - query_leads: enquiries that never became an order — what they asked for, who spoke last, and whether the 24h WhatsApp window is still open
+- query_event_leads: the one-off event enquiries and where each stands (brief → tendered → quoted → won/lost), with days_until the event. An event has no orders row until it is won and written by hand, so this is the only record of one
 - query_event_kitchens: which kitchens take one-off events (optionally on a given date), with their areas and cost per portion. An event is tendered to these kitchens and priced from their bids — never off the pricing ladder
 - check_delivery_dates: whether given dates are servable (each dapur's own working weekdays, libur nasional) and whether the H-1 order cutoff has passed
 - search_conversations: recent WhatsApp messages for a customer, or 'contains' to search message text across ALL customers

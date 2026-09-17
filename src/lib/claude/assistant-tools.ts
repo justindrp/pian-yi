@@ -1,4 +1,5 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+import { OPEN_EVENT_LEAD_STATUSES } from "@/lib/events/lead-status";
 import { holidayOn, isClosedHoliday } from "@/lib/holidays/id";
 import { remainingTodayByOrder } from "@/lib/orders/customer-schedule";
 import {
@@ -177,6 +178,20 @@ export const assistantTools: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+    },
+  },
+  {
+    name: "query_event_leads",
+    description:
+      "One-off event enquiries and where each one stands: brief, tendered, quoted, won, lost (event_leads, migration 121). An event has no orders row until it is won and an admin writes one by hand, so this table is the only record of it. Use it for anything about an event, a tender, or a quote that is still out.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        include_closed: {
+          type: "boolean",
+          description: "Include won and lost leads. Default false.",
+        },
+      },
     },
   },
   {
@@ -786,6 +801,37 @@ export async function runTool(
           image_url: s.menu_image_url,
           menu_text: s.menu_text,
           delivery_areas: s.delivery_areas,
+        })),
+      };
+    }
+
+    case "query_event_leads": {
+      let q = db
+        .from("event_leads")
+        .select(
+          "id, customer_id, event_date, portions, venue, brief, status, quoted_price_per_portion, notes, created_at, customers(name, phone_number), subcontractors(customer_nickname)",
+        )
+        .order("event_date", { ascending: true, nullsFirst: false });
+      if (input.include_closed !== true)
+        q = q.in("status", OPEN_EVENT_LEAD_STATUSES);
+      const { data, error } = await q;
+      if (error) return { error: error.message };
+
+      const today = new Date(Date.now() + 7 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      return {
+        today,
+        leads: (data ?? []).map((l) => ({
+          ...l,
+          // Days to the event, so the model never has to work a date out.
+          days_until: l.event_date
+            ? Math.round(
+                (new Date(`${l.event_date}T00:00:00Z`).getTime() -
+                  new Date(`${today}T00:00:00Z`).getTime()) /
+                  86_400_000,
+              )
+            : null,
         })),
       };
     }

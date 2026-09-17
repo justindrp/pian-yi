@@ -491,6 +491,30 @@ Coverage as of 2026-08-21: orders (create/update/status/size/mark_paid/reject/de
 
 ---
 
+## event_leads
+
+Migration 121. One row per **one-off event enquiry**, from the brief to won or lost. It is the only record an event has: an event is never priced off `pricing_tiers` and never run through `extract_order`, so it has no `orders` row and no `daily_deliveries` row until it is won and an admin writes both by hand.
+
+**Its own table rather than a status on the escalation, because the escalation expires.** `expire-pending-questions` clears `customer_flags.pending_bot_response` after `settings.pending_question_expiry_hours` (48) of customer silence (migration 104) — which is exactly when a quoted event most needs chasing, since a customer waiting on a price stops asking. A flags row is also one per customer and holds only the latest, while a customer may hold two events over a year.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| customer_id | uuid | FK → customers, cascade |
+| event_date | date | Nullable: a brief often arrives before the date is fixed, and a row we cannot date is a row no sweep may age |
+| portions | integer | Nullable, same reason |
+| venue | text | Where it is delivered — from `extract_order`'s address when the bot opened the lead |
+| brief | text | What was asked for, in words |
+| status | text | `brief` → `tendered` → `quoted` → `won` / `lost`, checked in the database. `brief`: we have the request, nothing sent to a kitchen. `tendered`: the kitchens have it. `quoted`: the customer has a price. `won`: accepted — from here it is a hand-written order. `lost`: declined, gone elsewhere, or the date passed unanswered |
+| quoted_price_per_portion | integer | What we quoted, once a kitchen has bid. Never a tier |
+| subcontractor_id | uuid | FK → subcontractors, `on delete set null`. Which kitchen won the tender |
+| notes | text | Free text for the tender result |
+| last_nudged_at | timestamptz | Stamped by `event-lead-sweep` so an admin is told once a day about one lead, not once an hour. Null = never pushed about, and cleared whenever the event date moves — a new deadline may be spoken about again |
+| created_at / updated_at | timestamptz | |
+| closed_at | timestamptz | Set on won **and** lost: it records when we stopped owing this lead an answer, not which way it went |
+
+**The lead writes itself.** `createOrderFromExtraction`'s event guard (migration 120) calls `upsertEventLead()` (`src/lib/events/leads.ts`) at the same moment it withholds the order, with the portions, date and address the model just extracted. The upsert matches the customer's newest **open** lead and refines it rather than inserting a second row — a brief arrives over several messages, 20 porsi becomes 25 — and only writes fields it has, so a follow-up call that omitted the address cannot erase the venue the first one captured. An open lead with no date at all is treated as the same event, because "belum tahu tanggalnya" is how most briefs start. A won or lost lead is never reopened: the next enquiry is a different event.
+
 ## invoice_sequences
 
 Last used sequence number per calendar month, for `next_invoice_number()`. Mirrors `journal_sequences`.
