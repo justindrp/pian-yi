@@ -392,6 +392,16 @@ Febby asked *"oh iyaa untuk quota masih sisa berapa yaa?"* on 2026-09-02 holding
 
 CONTEXT now names both numbers and says in as many words that `remainingToday` is what the customer means and is a supported fact. See "Sisa kuota" in `docs/OPERATIONS.md` for why there are two.
 
+## On an event, the price and the contents are claims too
+
+The validator waives "general business info — menu, prices, delivery areas, policies", and for daily catering that is right: those come from the prompt, which is rendered from the database. None of it holds for an event. An event is priced by asking the kitchens for a bid and the box holds whatever that bid covers, so on an event the price and the contents are exactly the two things nobody has verified — and for a lead with no order, CONTEXT is empty besides.
+
+On 2026-09-17 at 21.42 the bot told The Breeze lead her Rp 26.000 mika bento boxes included air mineral. The three packaging tiers come from the QBig BSD tender on 2026-09-12 — nasi + lauk + sayur + sambal, no water in any of them. Honouring it costs Rp 1.000–1.500 a bottle landed, Rp 20.000–30.000 on 20 boxes, and takes the margin from 25% to about 20%. The validator passed the draft, because what is in a box was general business info by the rule above.
+
+`mentionsEvent()` (`src/lib/claude/validate-reply.ts`) reads the draft and the transcript for the same words the system prompt treats as an event signal — acara, nasi box, arisan, pengajian, seminar and the rest. When one is there, `EVENT_RULES` is **appended** to the validator's system prompt, so the shared prefix still caches, and three things stop being general business info unless a CUSTOMER or an ADMIN line states them: any price or total for the event, what the boxes contain, and a date or jam stated as agreed. "Bisa kami usahakan" and "kami cek dulu ke dapur" are named in the rule as *not* claims — an event answer is supposed to sound like that, and a validator that blocked it would block the correct reply.
+
+The daily ladder, the daily menu and the delivery areas stay waived even inside an event thread. Without that sentence a customer who says "acara" once turns every quote in the rest of the thread into an unsupported claim, and the reply they get is the `reply_validation_fallback` template — the Febby failure above, arrived at from a new direction.
+
 ## An admin's own words are facts; the bot's own words are not
 
 CONVERSATION SO FAR used to be rendered with two labels, CUSTOMER and BOT, and only CUSTOMER lines counted as supported. Every outbound line was BOT — including the ones a person hand-typed through `scripts/manual-send.ts` or the inbox takeover, which `conversations.sent_by` has recorded all along. So any draft that repeated an offer *we ourselves* had made was unsupported by construction whenever no order row backed it, which is exactly the state an event lead sits in: tendered, quoted, nothing saved.

@@ -68,6 +68,41 @@ An ADMIN line was typed by a human colleague of ours, not produced by the bot, s
 
 Reply JSON only: {"valid": true} or {"valid": false, "unsupported_claims": ["..."]}`;
 
+/**
+ * Words that mean this thread is about a one-off event rather than a daily
+ * package. The same list the system prompt treats as an event signal.
+ */
+const EVENT_WORDS =
+  /\b(acara|event|ulang tahun|arisan|pengajian|seminar|syukuran|buka puasa|tumpeng|prasmanan|nasi box|nasi kotak|snack box|coffee break|gathering|catering kantor)\b/i;
+
+export function mentionsEvent(text: string): boolean {
+  return EVENT_WORDS.test(text ?? "");
+}
+
+/**
+ * The extra rule an event thread gets, appended so the shared prefix above
+ * still caches.
+ *
+ * The validator waives "general business info — menu, prices, policies" because
+ * those come from the prompt, which is written from the database and is
+ * therefore true. None of that holds for an event: an event is priced by asking
+ * the kitchens for a bid, and what goes in the box is whatever that bid covers,
+ * so on an event the price and the contents are exactly the claims nobody has
+ * verified. On 2026-09-17 the bot told The Breeze her Rp 26.000 boxes included
+ * air mineral. No tier includes it; honouring it would have cost Rp 20.000-30.000
+ * on 20 boxes and taken the margin from 25% to about 20%. The validator passed
+ * the reply, because a claim about what a box contains is "general business
+ * info" by the rule above.
+ */
+const EVENT_RULES = `
+
+This thread is about an event (acara sekali jalan) — a one-off booking, usually one date and boxes for a venue. An event is priced by asking the kitchens for a bid, so for an EVENT these are NOT general business info, and each one is unsupported unless a CUSTOMER or an ADMIN line in CONVERSATION SO FAR states it:
+- any price, rate per porsi, or total for the event
+- what the event boxes contain — dishes, drinks, air mineral, buah, kerupuk, packaging
+- a delivery date, jam or slot stated as agreed or promised. "Bisa kami usahakan", "kami cek dulu ke dapur" and similar are not claims: never flag those.
+
+The standard daily subscription price list, the daily menu and the delivery areas are still general business info even in this thread. Do not flag those.`;
+
 export async function validateReply(
   params: ValidateReplyParams,
 ): Promise<ValidateReplyResult> {
@@ -87,6 +122,14 @@ Active order quota: ${
     })
     .join("\n");
 
+  // What makes this an event thread is the customer asking for one, or the bot
+  // answering as though they had. A BOT line counts here and nowhere else: it
+  // decides which rules the reply is checked against, never whether a claim is
+  // true.
+  const eventThread =
+    mentionsEvent(params.reply) ||
+    (params.transcript ?? []).some((m) => mentionsEvent(m.content));
+
   const prompt = `CONTEXT (verified data about this customer):
 ${context}
 ${transcript ? `\nCONVERSATION SO FAR (CUSTOMER = the customer, ADMIN = a human colleague of ours, BOT = the bot itself):\n${transcript}\n` : ""}
@@ -102,7 +145,7 @@ ${params.reply}
       model: HAIKU_MODEL,
       ...NO_THINKING,
       max_tokens: 1000,
-      system: VALIDATOR_SYSTEM,
+      system: eventThread ? VALIDATOR_SYSTEM + EVENT_RULES : VALIDATOR_SYSTEM,
       messages: [{ role: "user", content: prompt }],
     });
     rawText = extractJson(res);
