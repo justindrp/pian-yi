@@ -1822,6 +1822,21 @@ export type Database = {
           },
         ]
       }
+      review_inbound_threads: {
+        Row: {
+          customer_id: string | null
+          last_inbound_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       next_invoice_number: { Args: { p_period: string }; Returns: string }

@@ -138,28 +138,23 @@ async function selectThreads(
       .filter((id): id is string => id !== null);
   }
 
-  // Inbound only: an outbound re-ping is not a thread that needs reading.
-  const ids: string[] = [];
-  const seen = new Set<string>();
-  const PAGE = 1000;
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db
-      .from("conversations")
-      .select("customer_id, created_at")
-      .eq("role", "user")
-      .gte("created_at", args.sinceIso as string)
-      .order("created_at", { ascending: false })
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
-    for (const r of data ?? []) {
-      if (r.customer_id && !seen.has(r.customer_id)) {
-        seen.add(r.customer_id);
-        ids.push(r.customer_id);
-      }
-    }
-    if ((data?.length ?? 0) < PAGE) break;
-  }
-  return ids;
+  // Inbound only: an outbound re-ping is not a thread that needs reading, which
+  // is why this cannot key off inbox_threads (last message whatever its role).
+  //
+  // review_inbound_threads (migration 119) is one row per customer with their
+  // newest inbound, so "had an inbound since X" is a filter on that timestamp
+  // and the distinct happens in Postgres. This used to page every inbound row
+  // in the window 1000 at a time and dedupe here — O(messages) fetched to learn
+  // O(customers), which is the wrong thing to grow with a busy day.
+  const { data, error } = await db
+    .from("review_inbound_threads")
+    .select("customer_id")
+    .gte("last_inbound_at", args.sinceIso as string)
+    .order("last_inbound_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? [])
+    .map((r) => r.customer_id)
+    .filter((id): id is string => id !== null);
 }
 
 /**
