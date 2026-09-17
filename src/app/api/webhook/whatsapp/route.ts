@@ -1066,6 +1066,38 @@ async function markWebhookEvent(
   }
 }
 
+/**
+ * Send the `chatbot_unavailable` template and record it as an outbound message.
+ *
+ * Seven of the eight paths that sent this template wrote nothing to
+ * `conversations`, so a dead bot looked exactly like a quiet hour in the inbox.
+ * On 16 September the DeepSeek balance hit zero at 12:13 WIB and the model-error
+ * catch fired for every message that followed; nothing in the inbox said so, and
+ * on 5-6 September two ad leads sat unanswered overnight for the same reason.
+ * `reason` lands in `conversations.intent`, so an outage reads differently from
+ * a kill switch or a blocked injection attempt.
+ */
+async function sendChatbotUnavailable(
+  customerId: string,
+  phone: string,
+  reason: string,
+): Promise<void> {
+  const tmpl = await getTemplate("chatbot_unavailable");
+  const conversationId = await saveMessage({
+    customerId,
+    role: "assistant",
+    content: tmpl,
+    modelUsed: "system",
+    intent: reason,
+  });
+  const whatsappMessageId = await sendTextMessage(phone, tmpl);
+  await updateMessageReceipt({
+    conversationId,
+    whatsappMessageId,
+    status: "sent",
+  });
+}
+
 export async function processWebhookAsync(
   payload: WhatsAppWebhookPayload,
 ): Promise<void> {
@@ -1275,6 +1307,7 @@ export async function processWebhookAsync(
       role: "assistant",
       content: tmpl,
       modelUsed: "system",
+      intent: "offline:kill_switch",
     });
     const whatsappMessageId = await sendTextMessage(message.from, tmpl);
     await updateMessageReceipt({
@@ -1695,8 +1728,7 @@ export async function processWebhookAsync(
 
   // Prompt injection
   if (detectInjection(text)) {
-    const tmpl = await getTemplate("chatbot_unavailable");
-    await sendTextMessage(message.from, tmpl);
+    await sendChatbotUnavailable(customerId, message.from, "blocked:injection");
     await db
       .from("customer_flags")
       .update({ is_suspicious: true })
@@ -1706,8 +1738,7 @@ export async function processWebhookAsync(
 
   // Circuit breaker check
   if (isCircuitOpen()) {
-    const tmpl = await getTemplate("chatbot_unavailable");
-    await sendTextMessage(message.from, tmpl);
+    await sendChatbotUnavailable(customerId, message.from, "outage:circuit_open");
     return;
   }
 
@@ -2118,8 +2149,7 @@ export async function processSavedCustomerMessage(params: {
   // Prompt injection
   if (detectInjection(text)) {
     if (!draft) {
-      const tmpl = await getTemplate("chatbot_unavailable");
-      await sendTextMessage(phone, tmpl);
+      await sendChatbotUnavailable(customerId, phone, "blocked:injection");
       await db
         .from("customer_flags")
         .update({ is_suspicious: true })
@@ -2131,8 +2161,7 @@ export async function processSavedCustomerMessage(params: {
   // Circuit breaker check
   if (isCircuitOpen()) {
     if (!draft) {
-      const tmpl = await getTemplate("chatbot_unavailable");
-      await sendTextMessage(phone, tmpl);
+      await sendChatbotUnavailable(customerId, phone, "outage:circuit_open");
     }
     return null;
   }
@@ -2599,8 +2628,7 @@ export async function processSavedCustomerMessage(params: {
       "high",
     ).catch(console.error);
     if (!draft) {
-      const tmpl = await getTemplate("chatbot_unavailable");
-      await sendTextMessage(phone, tmpl);
+      await sendChatbotUnavailable(customerId, phone, "outage:model_error");
     }
     return null;
   }
@@ -3826,8 +3854,13 @@ async function handleProofContactMessage(params: {
     await sendTextMessage(phone, await getTemplate("rate_limit_exceeded"));
     return;
   }
-  if (detectInjection(text) || isCircuitOpen()) {
-    await sendTextMessage(phone, await getTemplate("chatbot_unavailable"));
+  const contactBlocked = detectInjection(text)
+    ? "blocked:injection"
+    : isCircuitOpen()
+      ? "outage:circuit_open"
+      : null;
+  if (contactBlocked) {
+    await sendChatbotUnavailable(contactCustomerId, phone, contactBlocked);
     return;
   }
 
@@ -3863,7 +3896,11 @@ async function handleProofContactMessage(params: {
     } catch (err) {
       console.error("[webhook] contact reply failed:", (err as Error).message);
       await recordFailure();
-      await sendTextMessage(phone, await getTemplate("chatbot_unavailable"));
+      await sendChatbotUnavailable(
+        contactCustomerId,
+        phone,
+        "outage:model_error",
+      );
       return;
     }
 

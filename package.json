@@ -1,6 +1,6 @@
 {
   "name": "pian-yi",
-  "version": "1.278.1",
+  "version": "1.278.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -21,6 +21,7 @@
     "test:coverage": "jest --coverage",
     "test:webhook": "tsx scripts/test-webhook.ts",
     "tasks": "tsx --env-file=.env.local scripts/tasks.ts",
+    "check-balance": "tsx --env-file=.env.local scripts/check-balance.ts",
     "review-chats": "tsx --env-file=.env.local scripts/review-chats.ts",
     "review-deliveries": "tsx --env-file=.env.local scripts/review-deliveries.ts",
     "reply-chat": "tsx --env-file=.env.local scripts/reply-chat.ts"
