@@ -113,9 +113,7 @@ async function selectThreads(
     // The flags are a dumping ground — 38 threads carry one, most of them
     // settled months ago and never cleared. What a review can act on is a
     // flagged thread that is still warm, newest first.
-    const cutoff = new Date(
-      Date.now() - args.days * 86_400_000,
-    ).toISOString();
+    const cutoff = new Date(Date.now() - args.days * 86_400_000).toISOString();
     const { data: threads, error: threadErr } = await db
       .from("inbox_threads")
       .select("customer_id, created_at")
@@ -135,7 +133,9 @@ async function selectThreads(
       .order("created_at", { ascending: false })
       .limit(args.last);
     if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => r.customer_id).filter((id): id is string => id !== null);
+    return (data ?? [])
+      .map((r) => r.customer_id)
+      .filter((id): id is string => id !== null);
   }
 
   // Inbound only: an outbound re-ping is not a thread that needs reading.
@@ -162,11 +162,19 @@ async function selectThreads(
   return ids;
 }
 
-async function printThread(
+/**
+ * One thread's block, returned rather than printed: threads are fetched
+ * concurrently, so writing to stdout from in here would interleave them.
+ */
+async function renderThread(
   db: ReturnType<typeof createAdminClient>,
   customerId: string,
   limit: number,
-) {
+  kitchens: Map<string, string>,
+): Promise<string> {
+  const out: string[] = [];
+  const say = (line = "") => out.push(line);
+
   const [{ data: cust }, { data: flags }, { data: state }, { data: orders }] =
     await Promise.all([
       db
@@ -198,52 +206,63 @@ async function printThread(
         .limit(5),
     ]);
 
-  const kitchens = new Map<string, string>();
-  const { data: subs } = await db
-    .from("subcontractors")
-    .select("id, customer_nickname");
-  for (const s of subs ?? []) kitchens.set(s.id, s.customer_nickname ?? s.id);
-
-  console.log("=".repeat(78));
-  console.log(
+  say("=".repeat(78));
+  say(
     `${cust?.name ?? "(no name)"}  ${cust?.phone_number ?? customerId}  ${cust?.area ?? "(no area)"}${
       cust?.subcontractor_id
         ? `  ${kitchens.get(cust.subcontractor_id) ?? cust.subcontractor_id}`
         : ""
     }`,
   );
-  if (!cust?.google_maps_link) console.log("  no Maps link on file");
+  if (!cust?.google_maps_link) say("  no Maps link on file");
   if (cust?.contract_price_per_portion)
-    console.log(`  contract rate Rp ${cust.contract_price_per_portion}`);
-  if (cust?.kitchen_notes) console.log(`  kitchen_notes: ${cust.kitchen_notes}`);
-  console.log(
+    say(`  contract rate Rp ${cust.contract_price_per_portion}`);
+  if (cust?.kitchen_notes) say(`  kitchen_notes: ${cust.kitchen_notes}`);
+  say(
     `  state: ${state?.state ?? "-"}  menu_shown: ${state?.menu_shown ?? "-"}`,
   );
-  console.log(
+  say(
     `  flags: escalated=${flags?.escalated_to_human ?? "-"} pending_bot=${flags?.pending_bot_response ?? "-"} needs_review=${flags?.needs_human_review ?? "-"}${
       flags?.hold_until ? ` hold_until=${wib(flags.hold_until)}` : ""
     }`,
   );
   if (flags?.escalation_reason)
-    console.log(`  escalation_reason: ${flags.escalation_reason}`);
+    say(`  escalation_reason: ${flags.escalation_reason}`);
   if (flags?.pending_bot_question)
-    console.log(`  pending question: ${flags.pending_bot_question}`);
+    say(`  pending question: ${flags.pending_bot_question}`);
 
-  for (const o of orders ?? []) {
-    // Quota is counted from the delivery rows; the columns that claim to hold
-    // it are dead. Booked is what exists, remaining is what is still to eat.
+  // Quota is counted from the delivery rows; the columns that claim to hold it
+  // are dead. Booked is what exists, remaining is what is still to eat. One
+  // query for every order on the thread, grouped here — a query per order was
+  // five serial round-trips for a customer holding five packages.
+  const byOrder = new Map<
+    string,
+    { delivery_date: string; portions: number | null }[]
+  >();
+  const orderIds = (orders ?? []).map((o) => o.id);
+  if (orderIds.length > 0) {
     const { data: rows } = await db
       .from("daily_deliveries")
-      .select("delivery_date, portions")
-      .eq("order_id", o.id);
-    const today = wib(new Date().toISOString()).slice(0, 10);
+      .select("order_id, delivery_date, portions")
+      .in("order_id", orderIds);
+    for (const r of rows ?? []) {
+      if (!r.order_id) continue;
+      const list = byOrder.get(r.order_id);
+      if (list) list.push(r);
+      else byOrder.set(r.order_id, [r]);
+    }
+  }
+
+  const today = wib(new Date().toISOString()).slice(0, 10);
+  for (const o of orders ?? []) {
+    const rows = byOrder.get(o.id) ?? [];
     // package_size is portions, so these must be portions too — a row may carry
     // several. Counting rows reported a 20-portion order as "booked 10".
-    const booked = (rows ?? []).reduce((n, r) => n + (r.portions ?? 0), 0);
-    const delivered = (rows ?? [])
+    const booked = rows.reduce((n, r) => n + (r.portions ?? 0), 0);
+    const delivered = rows
       .filter((r) => r.delivery_date <= today)
       .reduce((n, r) => n + (r.portions ?? 0), 0);
-    console.log(
+    say(
       `  order ${o.id.slice(0, 8)} ${o.status} ${o.package_size}p @${o.price_per_portion} start ${o.start_date ?? "-"}${
         o.paid_at ? ` paid ${wib(o.paid_at).slice(0, 16)}` : " UNPAID"
       }${o.subcontractor_id ? ` ${kitchens.get(o.subcontractor_id) ?? ""}` : ""} — booked ${booked}, delivered ${delivered}, unbooked ${o.package_size - booked}`,
@@ -259,19 +278,25 @@ async function printThread(
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  console.log("-".repeat(78));
+  say("-".repeat(78));
   for (const m of (msgs ?? []).reverse()) {
     const fail =
       m.whatsapp_status === "failed"
         ? ` FAILED ${JSON.stringify(m.whatsapp_error)}`
         : "";
     const media = m.media_url ? " (media)" : "";
-    console.log(
+    say(
       `${m.created_at ? wib(m.created_at) : "?"} ${author(m)}${fail} [${m.message_type}] ${m.content ?? ""}${media}`,
     );
   }
-  console.log();
+  say();
+  return out.join("\n");
 }
+
+/** Threads do not depend on each other, so the only reason to wait for one
+ *  before starting the next is to be polite to Postgres. A fixed pool keeps
+ *  that politeness without serialising every round-trip. */
+const CONCURRENCY = 6;
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -284,7 +309,26 @@ async function main() {
         ? `${ids.length} thread(s) flagged as owing someone an answer, active in the last ${args.days} day(s)`
         : `${ids.length} thread(s)`,
   );
-  for (const id of ids) await printThread(db, id, args.messages);
+
+  // Static reference data, fetched once: it was a round-trip per thread.
+  const kitchens = new Map<string, string>();
+  const { data: subs } = await db
+    .from("subcontractors")
+    .select("id, customer_nickname");
+  for (const s of subs ?? []) kitchens.set(s.id, s.customer_nickname ?? s.id);
+
+  // Rendered out of order, printed in order — a review is read top to bottom
+  // and the newest-first ordering selectThreads chose is the whole point.
+  const blocks = new Array<string>(ids.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
+      for (let i = next++; i < ids.length; i = next++) {
+        blocks[i] = await renderThread(db, ids[i], args.messages, kitchens);
+      }
+    }),
+  );
+  for (const block of blocks) console.log(block);
 }
 
 main().catch((e) => {
