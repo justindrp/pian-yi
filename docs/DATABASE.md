@@ -801,7 +801,7 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | cost_per_portion_m | integer | What we pay per M portion on Route 2. NULL = this kitchen has no M rate on file and M is costed at the S rate |
 | cost_per_portion_route1_m | integer | Override M cost for Route 1. NULL falls back to `cost_per_portion_m` **before** the S route-1 rate — a kitchen that quoted a single M price bills it on both routes. All four rates are picked by `kitchenCostPerPortion(sub, size, route)` (`src/lib/orders/size.ts`); never index the columns by hand |
 | menu_image_url | text | URL of the current weekly menu image (shown to new customers). Inactive kitchens keep their last image forever — nobody refreshes it once they stop cooking, so every read of this column must filter `is_active = true`. The `send_menu_image` tool did not, and sent customers a live menu plus a two-month-old one. |
-| menu_text | text | Plain-text menu description injected into the chatbot system prompt |
+| menu_text | text | Plain-text menu description injected into the chatbot system prompt, and parsed by `scripts/menu-photos.ts` and `scripts/menu-card.ts` to build the week's card. **One week only — the week that is live.** A kitchen that publishes a month at a time keeps the rest in `subcontractor_menu_weeks` and promotes one into this column each week with `scripts/menu-week.ts` |
 | menu_week_start | date | Monday of the week `menu_image_url` covers. Added in migration 066 because nothing recorded the week, so the prompt hardcoded "always the current week" and the bot refused to send an already-uploaded next-week menu. Defaulted on upload by `defaultMenuWeekStart()` (Thursday onward → next week) and editable on the subcontractor form — the upload day is a guess, not the answer. Null means unknown, and the bot then makes no claim about which week it holds. |
 | notes | text | Internal notes about this kitchen |
 | is_active | boolean | Whether this kitchen currently **runs a daily route**. Load-bearing: around twenty files read it, and it is what `activeDeliveryAreas()` filters on, so flipping it changes which areas the chatbot says we serve |
@@ -810,6 +810,22 @@ The kitchens (dapur) that cook and deliver the food. Their real names are confid
 | late_delivery_count | integer | Running total of late deliveries |
 | created_at | timestamp | |
 | updated_at | timestamp | |
+
+---
+
+## subcontractor_menu_weeks
+
+Weeks of a kitchen's menu we hold but have not published (migration 122). `subcontractors.menu_text` carries exactly one week — the live one — which is right for every read and wrong for a kitchen that hands us a month at once. Homey's September poster covered 31 Agustus to 2 Oktober; only the 14–18 September week had been transcribed, so drawing the next card meant finding the poster again in a chat window, which is not somewhere the app can look. Task 75a766db is the ask.
+
+The text is stored in exactly the `menu_text` format — header line, the "what's included" line, then one `Hari D Bulan: ...` line per cooking day — because a stored week that needs translating before it renders is a week that renders differently from one an admin typed by hand. `scripts/menu-week.ts --kitchen X --week YYYY-MM-DD --apply` copies a row into the column; nothing reads this table at request time and no prompt sees it.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| subcontractor_id | uuid | FK → subcontractors, cascade delete |
+| week_start | date | The Monday, the same key `subcontractors.menu_week_start` carries, so a row here and the live column compare without date arithmetic. Unique per kitchen |
+| menu_text | text | The week, verbatim in `menu_text` format |
+| created_at / updated_at | timestamptz | |
 
 ---
 

@@ -1585,6 +1585,41 @@ export type Database = {
         }
         Relationships: []
       }
+      subcontractor_menu_weeks: {
+        Row: {
+          created_at: string
+          id: string
+          menu_text: string
+          subcontractor_id: string
+          updated_at: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          menu_text: string
+          subcontractor_id: string
+          updated_at?: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          menu_text?: string
+          subcontractor_id?: string
+          updated_at?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontractor_menu_weeks_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subcontractor_neighborhoods: {
         Row: {
           can_deliver: boolean

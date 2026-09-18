@@ -77,6 +77,8 @@ Two errors this replaces, both of which reached customers:
 
 **Never write this week's dishes into a prompt by hand.** `scripts/menu-photos.ts` builds every photo prompt out of the same `menu_text` string the card prints, which is the only reason the two cannot drift. Batch 51's hand-prompted card plated Chicken Katsu as tempeh sticks.
 
+That column holds one week. A kitchen that publishes a month at a time — Homey send one poster for all of September — has the rest of its weeks in `subcontractor_menu_weeks`, and `scripts/menu-week.ts` promotes one into `menu_text` before the card is drawn. Transcribing the poster is still a human reading a picture; doing it once a month beats doing it weekly from an image nobody kept. See "Weeks we hold but have not published" in `docs/DEV_REFERENCE.md`.
+
 ### Portion honesty
 
 A generated plate that holds more food than the tray does is the Batch 51 complaint in a worse form. Naya compared five printed bullets against four items in her box; she could be answered in words. A customer comparing a heaped photo against a half-full tray cannot be — there is no wording that walks a photo back, and the card footer says *"Foto menampilkan porsi size M"*, so the photo is a claim we are making.

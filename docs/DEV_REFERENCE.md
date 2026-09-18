@@ -314,12 +314,15 @@ Standard commands (always use these spellings):
 
 ## The weekly menu card
 
-Two scripts, run in order, produce the card that goes to customers and to Instagram:
+Three scripts, run in order, produce the card that goes to customers and to Instagram:
 
 ```
+npx tsx --env-file=.env.local scripts/menu-week.ts  --kitchen X [--week YYYY-MM-DD] [--apply]
 npx tsx --env-file=.env.local scripts/menu-photos.ts [--kitchen X] [--day N] [--quality low|medium|high]
 npx tsx --env-file=.env.local scripts/menu-card.ts [--kitchen X] [--upload] [--week YYYY-MM-DD]
 ```
+
+**The first step only exists for a kitchen that publishes more than one week at a time.** `menu-week.ts` promotes one stored week out of `subcontractor_menu_weeks` into `subcontractors.menu_text`, which is the column the other two read. A kitchen that sends its menu a week at a time skips it and the column is still edited by hand, as it always was — see "Weeks we hold but have not published" below.
 
 `menu-photos.ts` generates one food photo per menu day with OpenAI `gpt-image-2` (`OPENAI_API_KEY`, local only — nothing on Railway calls it). `menu-card.ts` renders 1080×1350 at 2x through headless chromium and writes `.menu-photos/card-<nickname-slug>.png` (gitignored).
 
@@ -340,6 +343,21 @@ npx tsx --env-file=.env.local scripts/menu-card.ts [--kitchen X] [--upload] [--w
 **The card is flat `#C0181C`** — brand primary, no gradient and no panel fills, so every background pixel samples exactly `srgb(192,24,28)`. `magick .menu-photos/card.png -format "%[pixel:p{4,4}]" info:` is the check. Accent is `#F7C948`, type is Poppins over Nunito, both fetched from Google Fonts at render time (no system install).
 
 **The card reaches customers through `subcontractors.menu_image_url`, so a render nobody uploads changes nothing.** `--upload` does it, the way `price-list.ts --upload` does: the same `compressUploadedImage()` pass to a ≤5 MB JPEG, the same `menu-images/subcontractors/<id>/<epoch>.jpg` path, the same `menu_image_url` + `menu_week_start` write and the same `edit_log` row as the dashboard form (Subcontractors → the kitchen → menu image), which still works and is the way to publish a card this script did not draw. `menu_week_start` defaults to `defaultMenuWeekStart()` — Thursday onward means next week — and `--week YYYY-MM-DD` overrides it, because publication day does not reliably identify the batch. Batch 51 was uploaded that way on 2026-08-31 (1920×2400, 415 KB); the previous URL is in `edit_log`. Nothing deletes the old object, so an image already sent to a customer keeps resolving.
+
+### Weeks we hold but have not published
+
+`subcontractors.menu_text` holds exactly one week — the week the card draws, the week the bot answers from — and that is right. What it cannot hold is a week we already have and are not publishing yet. Homey publishes a month on one poster: on 2026-09-18 that poster covered 31 Agustus through 2 Oktober and only the 14–18 September week had ever been transcribed, so drawing the next card meant finding the poster again, and a poster in a chat window is not somewhere the app can look.
+
+`subcontractor_menu_weeks` (migration 122) is the store: one row per kitchen per Monday, holding the text in exactly the `menu_text` format both parsers already read, so a stored week renders identically to one typed by hand. Transcribe the whole poster once; every following week is
+
+```
+pnpm tsx --env-file=.env.local scripts/menu-week.ts --kitchen "Dapur Monstera" --apply
+pnpm tsx --env-file=.env.local scripts/menu-card.ts --kitchen "Dapur Monstera" --upload
+```
+
+with no `--week` on either, since both default to the same `defaultMenuWeekStart()` guess — this week Senin–Rabu, next week from Kamis on. Name the Monday with `--week` whenever that guess is wrong.
+
+**`menu-week.ts` does not touch `menu_week_start`.** That column says which week the *image* covers, and between the promote and the upload the image on file is still last week's; moving it early has the bot introduce an old card as next week's menu. The upload is what moves it, and the two steps are deliberately not one command for that reason. A dry run (no `--apply`) prints the kitchen's stored weeks, marks the one currently live, and shows the text it would write.
 
 `scripts/assets/menu-card-logo.png` is the master white-on-transparent mark, trimmed of its padding. It carries the wordmark, so the card prints no brand name of its own. `public/icon-512.png` is still a green "PY" placeholder, not the brand mark — replace it when the PWA icon next matters.
 
