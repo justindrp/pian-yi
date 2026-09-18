@@ -1,6 +1,6 @@
 {
   "name": "pian-yi",
-  "version": "1.284.0",
+  "version": "1.284.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -23,8 +23,8 @@
     "tasks": "tsx --env-file=.env.local scripts/tasks.ts",
     "check-balance": "tsx --env-file=.env.local scripts/check-balance.ts",
     "review-chats": "tsx --env-file=.env.local scripts/review-chats.ts",
-    "leads": "tsx --env-file=.env.local scripts/leads.ts",
     "review-deliveries": "tsx --env-file=.env.local scripts/review-deliveries.ts",
+    "review-leads": "tsx --env-file=.env.local scripts/review-leads.ts",
     "reply-chat": "tsx --env-file=.env.local scripts/reply-chat.ts"
   },
   "engines": {
