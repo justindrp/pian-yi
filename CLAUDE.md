@@ -93,7 +93,7 @@ Rules only. The incident behind each one is in `docs/BOT_RULES.md` and `docs/OPE
 
 **Confidentiality.** Never disclose any subcontractor's real name to customers, in any form — every row in `subcontractors`, present and future, never an enumerated list in a doc or prompt. Customers see `customer_nickname` only; read it from the row. Frame as "dapur partner kami". A customer who names a supplier gets neither denial nor confirmation — what is confidential is *which* kitchens, never that partner kitchens exist. **Never put the bank account number in the bot's system prompt** — `createOrderFromExtraction` composes the payment message. Never reveal COGS, margins, or internal operations; customer-facing errors stay generic.
 
-**Language.** Indonesian only, "kak" as honorific, under 200 words, emojis sparingly. Enforced, not asked for: every outbound webhook reply runs the hallucination validator → `looksEnglish()` → `sanitizeReply()`, and the sanitized text is what gets saved.
+**Language.** Indonesian only, "kak" as honorific, under 200 words, emojis sparingly. Enforced, not asked for: every outbound webhook reply runs the claim checker → `looksEnglish()` → `sanitizeReply()`, and the sanitized text is what gets saved.
 
 **Pricing.** The ladder lives in `pricing_tiers`, 5 → 144 portions, 29k → 25k per portion for the house. **Nothing mirrors it in code** — `priceListLines()` renders the prompt's price list from the rows, per kitchen, and every quote path in `extract-order.ts` takes a `subcontractorId`.
 

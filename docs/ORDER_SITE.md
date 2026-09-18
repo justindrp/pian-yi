@@ -56,7 +56,7 @@ We remain the principal (KBLI 56290): we buy from the kitchen, we set the price,
 - a kitchen the customer never named,
 - an address overwritten with a sub-area.
 
-A form does not guard those. It cannot express them. Pick the area and only kitchens serving it appear; pick a kitchen and only their delivery days are selectable, only their ladder quotes, size M appears only if `offers_size_m`. The price is computed on the server and displayed, never spoken by a model, so the hallucination validator has nothing left to validate on the order path.
+A form does not guard those. It cannot express them. Pick the area and only kitchens serving it appear; pick a kitchen and only their delivery days are selectable, only their ladder quotes, size M appears only if `offers_size_m`. The price is computed on the server and displayed, never spoken by a model, so the claim checker has nothing left to validate on the order path.
 
 The cost of the current design grows as kitchens × areas × days × options. At three kitchens we are already paying it. At ten it is not tractable.
 

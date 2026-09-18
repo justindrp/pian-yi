@@ -771,7 +771,7 @@ async function flagOrderAtRisk(
     // each time the customer writes.
     //
     // Which is why this keys on the reason this function itself wrote, never on
-    // `needs_human_review`. That boolean is shared — the hallucination-validator
+    // `needs_human_review`. That boolean is shared — the claim-checker
     // fallback, the reasoning-leak guard, the skip guard and the address guards
     // all raise it — so deduping on it meant any one of them silently turned
     // the order-at-risk net off for the rest of the conversation. Ireine Roosdy
@@ -3390,8 +3390,9 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
         // say it is still being checked, and every later inbound message
         // pushes "New message — question still unanswered". Writing a
         // diagnostic string there on 2026-09-05 handed the model
-        // "Auto-flagged: bot reply blocked twice by hallucination validator"
-        // as Tiara's own open question: it spent four turns telling her the
+        // "Auto-flagged: bot reply blocked twice by hallucination
+        // validator" — the wording at the time — as Tiara's own open
+        // question: it spent four turns telling her the
         // team was still checking something she had never asked, would not
         // take the order she had already confirmed, and pushed the same
         // notification on every message she sent. An auto-flag is an internal
@@ -3402,11 +3403,11 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
           .update({
             needs_human_review: true,
             escalation_reason:
-              "Auto-flagged: bot reply blocked twice by hallucination validator, needs review",
+              "Auto-flagged: bot reply blocked twice by the claim checker, needs review",
           })
           .eq("customer_id", customerId);
         await sendPushToAllAdmins(
-          "Reply blocked — possible hallucination",
+          "Reply blocked — claim not verified",
           `${customerName ?? phone}: ${validation.unsupportedClaims.join(", ")}`,
           "/inbox",
           "high",
