@@ -517,7 +517,7 @@ describe("processWebhookAsync", () => {
       "[reply_validation_fallback]",
     );
     expect(sendPushToAllAdmins).toHaveBeenCalledWith(
-      "Reply blocked — possible hallucination",
+      "Reply blocked — claim not verified",
       expect.any(String),
       "/inbox",
       "high",
