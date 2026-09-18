@@ -21,13 +21,16 @@
  */
 
 import { getSetting } from "@/lib/cache/settings";
-import { sendDeliveryPhotoToCustomer } from "@/lib/claude/photo-matcher";
+import {
+  type ProofSend,
+  sendDeliveryPhotoToCustomer,
+} from "@/lib/claude/photo-matcher";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import { pickDeliveryForPhoto } from "@/lib/deliveries/windows";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaDateString } from "@/lib/menu/week";
 import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
-import { hoursSinceInbound } from "@/lib/whatsapp/window";
+import { WINDOW_HOURS } from "@/lib/whatsapp/window";
 import type { WhatsAppMessage } from "@/lib/whatsapp/types";
 
 export interface ProofCandidate {
@@ -246,6 +249,14 @@ export function windowWarning(params: {
   mainNumber: string;
   /** Who forwarded the photo, when it is known. */
   forwarder?: string;
+  /**
+   * A registered recipient of this customer's photos whose own window was
+   * open, so the food was reported to somebody even though the buyer could not
+   * be reached. Downgrades the manual step from necessary to optional — which
+   * is the whole reason `customer_contacts` exists, and without saying so here
+   * the forwarder re-does by hand work that already went out.
+   */
+  alsoReached?: string;
 }): string {
   if (params.hours < 24) return "";
 
@@ -263,7 +274,61 @@ export function windowWarning(params: {
       ? "nomor ini"
       : params.manualNumber;
 
-  return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai. Kirim manual dari ${from} ke ${params.phone}.\n\nDraft, tinggal copy:\n\n${manualDraft({ name: params.name, mainNumber: params.mainNumber })}`;
+  const covered = params.alsoReached
+    ? ` Fotonya sudah dikirim ke ${params.alsoReached} yang windownya masih terbuka, jadi langkah ini opsional.`
+    : "";
+
+  return `\n\n⚠️ Window 24 jam ${params.name} sudah tutup (${since}), jadi foto ini kemungkinan besar tidak sampai.${covered} Kirim manual dari ${from} ke ${params.phone}.\n\nDraft, tinggal copy:\n\n${manualDraft({ name: params.name, mainNumber: params.mainNumber })}`;
+}
+
+/**
+ * What the forwarder gets back: who the photo was handed to, and a warning per
+ * number whose window was shut.
+ *
+ * Every recipient is named. A photo that silently went to two numbers is worse
+ * than one that went to none — the forwarder is the only person who can catch
+ * a stale `customer_contacts` row, and they can only catch it if the ack says
+ * where the food photo went.
+ */
+export function proofAck(params: {
+  matchedName: string;
+  caption: string;
+  fuzzy: boolean;
+  sends: ProofSend[];
+  manualNumber: string;
+  mainNumber: string;
+  forwarder?: string;
+}): string {
+  const contacts = params.sends.filter((s) => !s.owner);
+  const lines = [
+    params.fuzzy
+      ? `Terkirim ke ${params.matchedName} (caption "${params.caption}").`
+      : `Terkirim ke ${params.matchedName}.`,
+    ...contacts.map(
+      (c) => `Diteruskan ke ${c.name ?? "penerima terdaftar"} (${c.phone}).`,
+    ),
+  ];
+
+  // Named on the buyer's warning only: a recipient does not need to be told
+  // that another recipient got it.
+  const openContact = contacts.find((c) => c.hours < WINDOW_HOURS);
+
+  const warnings = params.sends.map((s) =>
+    windowWarning({
+      name: s.name ?? s.phone,
+      phone: s.phone,
+      hours: s.hours,
+      manualNumber: params.manualNumber,
+      mainNumber: params.mainNumber,
+      forwarder: params.forwarder,
+      alsoReached:
+        s.owner && openContact
+          ? (openContact.name ?? openContact.phone)
+          : undefined,
+    }),
+  );
+
+  return lines.join("\n") + warnings.join("");
 }
 
 /** The words that reach `send_delivery_proof`. See `src/lib/claude/prompts/system.ts`. */
@@ -376,7 +441,12 @@ export async function handleForwardedProof(
   if (!proof) return say("Fotonya gagal dicatat. Coba kirim ulang ya.");
 
   const sentBy = `forward:${message.from}`;
-  await sendDeliveryPhotoToCustomer(proof.id, match.customerId, undefined, sentBy);
+  const sends = await sendDeliveryPhotoToCustomer(
+    proof.id,
+    match.customerId,
+    undefined,
+    sentBy,
+  );
   // The caption names a person, not a meal, so the row is resolved separately —
   // the sheet ticks a delivery, and a customer eating both meals has two.
   const matchedDeliveryId = await deliveryRowFor(match.customerId);
@@ -407,32 +477,23 @@ export async function handleForwardedProof(
     },
   });
 
-  const [hours, manualNumber, mainNumber, { data: customer }] =
-    await Promise.all([
-      hoursSinceInbound(match.customerId),
-      getSetting("whatsapp_manual_number"),
-      getSetting("whatsapp_business_number"),
-      db
-        .from("customers")
-        .select("phone_number")
-        .eq("id", match.customerId)
-        .single(),
-    ]);
-
-  const sent =
-    match.fuzzy
-      ? `Terkirim ke ${match.name} (caption "${message.imageCaption}").`
-      : `Terkirim ke ${match.name}.`;
+  const [manualNumber, mainNumber] = await Promise.all([
+    getSetting("whatsapp_manual_number"),
+    getSetting("whatsapp_business_number"),
+  ]);
 
   return say(
-    sent +
-      windowWarning({
-        name: match.name,
-        phone: customer?.phone_number ?? "-",
-        hours,
-        manualNumber: manualNumber || "nomor kedua",
-        mainNumber: mainNumber || "nomor utama kami",
-        forwarder: message.from,
-      }),
+    proofAck({
+      matchedName: match.name,
+      caption: message.imageCaption,
+      fuzzy: match.fuzzy,
+      // The buyer's own row carries the name the caption matched, which is the
+      // one the forwarder typed; `sends` carries whatever `customers.name`
+      // holds and can be null.
+      sends: sends.map((s) => (s.owner ? { ...s, name: match.name } : s)),
+      manualNumber: manualNumber || "nomor kedua",
+      mainNumber: mainNumber || "nomor utama kami",
+      forwarder: message.from,
+    }),
   );
 }

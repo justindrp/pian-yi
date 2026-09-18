@@ -1,5 +1,8 @@
 import { buildProofContactPrompt } from "@/lib/claude/prompts/proof-contact";
-import { lookupProofContact } from "@/lib/customers/proof-contacts";
+import {
+  lookupProofContact,
+  proofRecipientsFor,
+} from "@/lib/customers/proof-contacts";
 
 type Row = { name: string | null; customer_id: string; customers: unknown };
 
@@ -72,5 +75,86 @@ describe("buildProofContactPrompt", () => {
     expect(prompt).toContain(
       "Jangan pernah menyebut harga, sisa kuota, status pembayaran, nama dapur",
     );
+  });
+});
+
+/**
+ * The two queries `proofRecipientsFor` makes: the contacts on a customer, then
+ * the `customers` rows those phone numbers happen to own.
+ */
+function stubRecipientDb(
+  contacts: { id: string; phone_number: string; name: string | null }[],
+  customers: { id: string; phone_number: string }[],
+) {
+  const db = {
+    from: (table: string) => ({
+      select: () => ({
+        eq: async () => ({ data: table === "customer_contacts" ? contacts : [] }),
+        in: async (_col: string, phones: string[]) => ({
+          data: customers.filter((c) => phones.includes(c.phone_number)),
+        }),
+      }),
+    }),
+  };
+  // biome-ignore lint/suspicious/noExplicitAny: a stub standing in for two queries
+  return db as any;
+}
+
+describe("proofRecipientsFor", () => {
+  it("returns nothing for a customer who registered nobody", async () => {
+    expect(await proofRecipientsFor(stubRecipientDb([], []), "owner")).toEqual([]);
+  });
+
+  it("carries the recipient's own customers row when they have written to us", async () => {
+    const got = await proofRecipientsFor(
+      stubRecipientDb(
+        [{ id: "cc1", phone_number: "+6281526021414", name: "Abby" }],
+        [{ id: "abby", phone_number: "+6281526021414" }],
+      ),
+      "ireine",
+    );
+    expect(got).toEqual([
+      {
+        id: "cc1",
+        phone: "+6281526021414",
+        name: "Abby",
+        customerId: "abby",
+      },
+    ]);
+  });
+
+  it("leaves customerId null for a recipient who has never messaged", async () => {
+    // No thread to write the send into and no inbound to measure a window
+    // against — the send still goes, as a template.
+    const got = await proofRecipientsFor(
+      stubRecipientDb(
+        [{ id: "cc2", phone_number: "+628180000000", name: "Satpam" }],
+        [],
+      ),
+      "someone",
+    );
+    expect(got).toEqual([
+      {
+        id: "cc2",
+        phone: "+628180000000",
+        name: "Satpam",
+        customerId: null,
+      },
+    ]);
+  });
+
+  it("keeps every recipient when a customer registered several", async () => {
+    const got = await proofRecipientsFor(
+      stubRecipientDb(
+        [
+          { id: "a", phone_number: "+62811", name: "Abby" },
+          { id: "b", phone_number: "+62822", name: null },
+        ],
+        [{ id: "abby", phone_number: "+62811" }],
+      ),
+      "owner",
+    );
+    expect(got.map((r) => r.phone)).toEqual(["+62811", "+62822"]);
+    expect(got[1]).toMatchObject({ name: null, customerId: null });
   });
 });

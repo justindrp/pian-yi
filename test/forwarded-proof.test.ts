@@ -1,6 +1,7 @@
 import {
   manualDraft,
   matchCaption,
+  proofAck,
   windowWarning,
 } from "@/lib/deliveries/forwarded-proof";
 
@@ -241,5 +242,99 @@ describe("manualDraft", () => {
     for (const word of ["template", "WABA", "131042", "restriction"]) {
       expect(draft.toLowerCase()).not.toContain(word.toLowerCase());
     }
+  });
+});
+
+describe("proofAck", () => {
+  const settings = {
+    manualNumber: "+6285128024390",
+    mainNumber: "+6285111214390",
+    forwarder: "+6285128024390",
+  };
+  const buyer = {
+    owner: true,
+    name: "Ireine Roosdy",
+    phone: "+6285241234812",
+    hours: 90,
+  };
+  const abby = {
+    owner: false,
+    name: "Abby",
+    phone: "+6281526021414",
+    hours: 2,
+  };
+
+  it("names every registered recipient the photo went to", () => {
+    const ack = proofAck({
+      matchedName: "Ireine Roosdy",
+      caption: "Ireine",
+      fuzzy: false,
+      sends: [buyer, abby],
+      ...settings,
+    });
+    expect(ack).toContain("Terkirim ke Ireine Roosdy.");
+    expect(ack).toContain("Diteruskan ke Abby (+6281526021414).");
+  });
+
+  it("marks the manual step optional when a recipient's window was open", () => {
+    const ack = proofAck({
+      matchedName: "Ireine Roosdy",
+      caption: "Ireine",
+      fuzzy: false,
+      sends: [buyer, abby],
+      ...settings,
+    });
+    // The buyer is unreachable, but somebody was told the food arrived — so
+    // the forwarder should not re-send by hand without knowing that.
+    expect(ack).toContain("sudah dikirim ke Abby");
+    expect(ack).toContain("opsional");
+  });
+
+  it("keeps the warning unqualified when every window is shut", () => {
+    const ack = proofAck({
+      matchedName: "Ireine Roosdy",
+      caption: "Ireine",
+      fuzzy: false,
+      sends: [buyer, { ...abby, hours: 41 }],
+      ...settings,
+    });
+    expect(ack).not.toContain("opsional");
+    // One warning per unreachable number, each with its own draft.
+    expect(ack.match(/⚠️/g)).toHaveLength(2);
+    expect(ack).toContain("kak Ireine");
+    expect(ack).toContain("kak Abby");
+  });
+
+  it("warns about nobody when the buyer's window is open and has no contacts", () => {
+    const ack = proofAck({
+      matchedName: "Fahmi",
+      caption: "Fahmi",
+      fuzzy: false,
+      sends: [{ owner: true, name: "Fahmi", phone: "+628100", hours: 3 }],
+      ...settings,
+    });
+    expect(ack).toBe("Terkirim ke Fahmi.");
+  });
+
+  it("still reports the caption it fuzzy-matched on", () => {
+    const ack = proofAck({
+      matchedName: "Ireine Roosdy",
+      caption: "ireine",
+      fuzzy: true,
+      sends: [{ ...buyer, hours: 1 }, abby],
+      ...settings,
+    });
+    expect(ack).toContain('Terkirim ke Ireine Roosdy (caption "ireine").');
+  });
+
+  it("falls back to the number when a recipient has no name", () => {
+    const ack = proofAck({
+      matchedName: "Ireine Roosdy",
+      caption: "Ireine",
+      fuzzy: false,
+      sends: [{ ...buyer, hours: 1 }, { ...abby, name: null }],
+      ...settings,
+    });
+    expect(ack).toContain("Diteruskan ke penerima terdaftar (+6281526021414).");
   });
 });
