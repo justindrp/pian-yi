@@ -2,8 +2,8 @@
  * Prints the lead pipeline — everyone who talked to us recently and has not
  * bought, plus every open `event_leads` row.
  *
- *   pnpm leads            # last 3 days
- *   pnpm leads --days 7
+ *   pnpm review-leads            # last 3 days
+ *   pnpm review-leads --days 7
  *
  * A "lead" here is a customer with inbound chat in the window and no order
  * that has ever been paid. Someone with a `pending_payment` order is still a
