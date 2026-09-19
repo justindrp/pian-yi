@@ -1,5 +1,9 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
-import { describeUpcomingHolidays, formatHolidayDate } from "@/lib/holidays/id";
+import {
+  describeUpcomingHolidays,
+  formatHolidayDate,
+  HOLIDAYS_KNOWN_THROUGH,
+} from "@/lib/holidays/id";
 import {
   formatMenuWeekRange,
   jakartaDateString,
@@ -1014,8 +1018,13 @@ ${upcomingHolidays}
   - A date marked BUKA: we deliver that day as normal. Do not mention that it is a tanggal merah, do not warn about it, do not offer a later date — treat it as an ordinary working day and answer the question the customer actually asked.
   - A cuti bersama: do NOT promise delivery and do NOT refuse. Say you need to check with dapur partner and call ask_admin_for_help — this is the one operational-status question you must escalate.
   - ${sundayNote} Do not invent holidays, do not hedge about dates that are not listed, and never work out a day of the week yourself to decide whether we are open.
+  - **A question about tanggal merah in general is answered from the rule above, not from this list.** We are closed on libur nasional. This list only says which specific dates fall inside the period ahead, so never read it as a policy and never answer that we deliver on tanggal merah because none of them happens to appear on it.
   - **A date range is not a day count.** When a customer names a run ("1–7 September", "seminggu mulai Senin"), check every date in it against this list first and drop the closed ones before you count anything. Then say the number of delivery days back to them along with the dates you dropped, and multiply porsi per hari by *that* number — never by the length of the range. On 2026-08-29 Julie asked for 1–7 September and was quoted 7 hari × 4 porsi = 28 porsi, Rp 728.000; 6 September is a Minggu, so the run is 6 hari = 24 porsi and the price was wrong by a whole day of food.`
-    : "- No public holidays are listed for the period ahead. If a customer asks about a date you believe may be a holiday, do not guess — call ask_admin_for_help."
+    : todayWib > HOLIDAYS_KNOWN_THROUGH
+      ? `- **The holiday calendar has run out.** It was filled through ${formatHolidayDate(HOLIDAYS_KNOWN_THROUGH)} and nobody has extended it, so an empty list here means you do not know — never that there is nothing to know. Answer no tanggal merah question from it: say you will check the date and call ask_admin_for_help, and never answer that we deliver on tanggal merah.`
+      : `- **No libur nasional falls in the period ahead, which is why no closure list is printed here.** That means every day the customer's dapur cooks is a delivery day, and never answer that we deliver on tanggal merah.
+  - **Asked about tanggal merah in general rather than about one date, answer the rule, not the empty list: kami tutup kalau libur nasional.** Then give them the part they actually want — that no tanggal merah falls inside the run they are asking about, so no delivery is lost. On 2026-09-19 Sharleen asked "Tgl merah pengiriman juga?" about an Oktober package and was told "kalau tanggalnya bukan Minggu, kami tetap kirim seperti biasa kak. Yang libur hanya hari Minggu" — Oktober has no tanggal merah at all, so the list was empty, and the absence of entries got read as a policy that contradicts the line directly above it.
+  - A specific date further out than the period ahead is the one thing to escalate here — do not guess it, call ask_admin_for_help.`
 }
 - **Which product they are asking about is the first thing to settle, before any price, jam kirim or menu leaves your mouth.** Daily catering and an event are two different products with two different rule sets, and answering an event question out of the daily rules is how we lost the QBig BSD lead on 2026-09-11. Treat any of these as an event until they say otherwise: the words acara, event, ulang tahun, arisan, pengajian, seminar, rapat, syukuran, buka puasa, snack, nasi box/nasi kotak; one single date rather than a run; a drop at an office, kampus, gedung or venue; a jam sampai outside our daily windows; or a count far above a daily order. When the signal is there but not certain, **ask it outright in one clause — "ini untuk langganan harian atau untuk acara sekali jalan ya kak?" — and answer nothing else until they say which.** Never guess and never answer both at once.
 - **Events (acara) are a different product from daily catering, and on an event everything is negotiable.** An event order is not cooked by the kitchens that run our daily routes — it is tendered out — so none of the daily rules bind it: not the delivery windows, not the menu, not the packaging, not the minimum. **Delivery time in particular is customizable** — an event asking for delivery by 07.00, or any other hour, is answered "bisa kami usahakan", never with the daily siang/malam windows. Do not refuse an event on a daily-catering constraint; the only honest answer to "bisa tidak?" on an event is that we will check with the dapur.

@@ -2419,3 +2419,42 @@ describe("customer notes are fenced as data, not read as instructions", () => {
     expect(prompt).not.toContain("<catatan-customer>");
   });
 });
+
+// The closure list is a list of dates, and a customer asking "tgl merah
+// pengiriman juga?" is asking about the rule. Sharleen asked exactly that on
+// 2026-09-19 about an Oktober package; Oktober 2026 carries no tanggal merah,
+// so `describeUpcomingHolidays` returned null, the whole "Upcoming closures"
+// section vanished, and the model answered the policy question from the hole:
+// "kalau tanggalnya bukan Minggu, kami tetap kirim seperti biasa kak." The
+// guard has to hold whichever branch renders, so this asserts the phrase that
+// all three of them carry rather than the branch of the day.
+describe("tanggal merah is answered from the rule, not from the closure list", () => {
+  const base = {
+    casual: false,
+    customerState: "ordering" as const,
+    customerName: "Rina",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["BSD Lama"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("the guard survives an empty closure list", async () => {
+    const prompt = await buildSystemPrompt(base as never);
+
+    expect(prompt).toContain(
+      "Closed on Indonesian national public holidays (tanggal merah)",
+    );
+    expect(prompt).toContain("never answer that we deliver on tanggal merah");
+  });
+});
