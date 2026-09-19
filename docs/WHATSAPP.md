@@ -70,7 +70,9 @@ Rules for it:
 
 ## The chat-review cron replies to customers by itself
 
-The every-2-hours chat review (`pnpm review-chats`, then `pnpm review-chats --waiting`) reads the waiting threads and, since 2026-09-16, **answers them itself** with `pnpm reply-chat` (`scripts/reply-chat.ts`). Justin asked for this after four threads sat unanswered for five hours across three review passes on 15 September — every one of them a thread the bot had parked with "Bentar ya kak, aku cek dulu sama admin" and no tool call behind it (task b2d78590). A review that only files tasks is a review nobody acts on overnight.
+The hourly chat review (`pnpm review-chats`, then `pnpm review-chats --waiting`) reads the waiting threads and, since 2026-09-16, **answers them itself** with `pnpm reply-chat` (`scripts/reply-chat.ts`). It started at every two hours and went hourly on 2026-09-16. Justin asked for this after four threads sat unanswered for five hours across three review passes on 15 September — every one of them a thread the bot had parked with "Bentar ya kak, aku cek dulu sama admin" and no tool call behind it (task b2d78590). A review that only files tasks is a review nobody acts on overnight.
+
+It is **not** one of the in-app scheduler's jobs (`src/lib/cron/scheduler.ts`) — it is a Claude Code session cron, so it dies whenever the session is restarted and auto-expires after 7 days regardless. The definitions of all three session crons are kept at `~/.claude/pian-yi-crons.json` for replay; nothing recreates them automatically. Treat a gap in the replies as the likeliest cause before suspecting the script.
 
 Nothing human reads these replies before the customer does, so the script runs the bot's own pipeline on every one:
 
