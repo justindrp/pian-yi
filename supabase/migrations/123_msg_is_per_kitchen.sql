@@ -29,7 +29,8 @@ comment on column subcontractors.uses_msg is
 -- Homey: no MSG.
 update subcontractors set uses_msg = false where name = 'Homey Catering';
 
--- Thenie: Totole chicken bouillon, which contains MSG.
+-- Thenie: kaldu jamur merek Totole. Not pure micin, but a flavour enhancer
+-- — which is exactly how an admin answered a customer on 2026-09-09.
 update subcontractors set uses_msg = true where name = 'Thenie';
 
 -- Santapin stays NULL deliberately. Nobody has asked them, and guessing on

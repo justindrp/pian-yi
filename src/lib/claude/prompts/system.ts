@@ -481,7 +481,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
    *
    * It is a column (`subcontractors.uses_msg`, migration 123) and not a
    * sentence for the same reason `same_menu_both_meals` and `no_rice_discount`
-   * are: Homey cook without it and Thenie season with a bouillon that has it,
+   * are: Homey cook without it and Thenie season with kaldu jamur (Totole),
    * so any single sentence here is false for one of them.
    *
    * Null is "nobody has asked that kitchen", and it renders as an escalation,
