@@ -709,14 +709,18 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     : "- Only size S is available. Never ask whether the customer wants S or M.";
 
   // Per-customer, so it lives in the tail with the rest of them — see the note
-  // above `currentDapurBlock`.
+  // above `currentDapurBlock`. The escalation in it is scoped to the package
+  // they are eating now: an unscoped "they want M → ask an admin" turned a
+  // question about next month's paket into a pending admin question, and
+  // Sharleen spent a day being told we were still asking the team.
   const sizeMOfferBlock =
     offersM && params.activeOrder?.onSizeSWithMAvailable
       ? `
 
 ## Ukuran M untuk customer ini
 - **This customer is eating a paket size S they bought before anyone told them M existed.** If nothing in the conversation above has mentioned size M, say it once — one line at the end of whatever you are already answering, whatever they asked about: M adds one more side dish ${mMore}, and their sisa porsi can be switched to M. Once it is anywhere in the history, never raise it again — it is an offer, not a campaign.
-- If they want to switch, call escalate_to_human and say an admin will confirm the difference. Never say it is done, and never call extract_order — changing a running package is an admin edit, and extract_order would sell them a second paket.`
+- **A paket they have not bought yet is an ordinary sale, not a question for an admin.** If they ask for M on a package that starts later — bulan depan, a renewal, a top-up, any run whose porsi are not already paid for — quote it like any other order and take it through extract_order the normal way. Never call escalate_to_human for that and never park it as a pending question: M, the dapur that cooks it and the tambahan are all in this prompt already. Sharleen asked on 2026-09-18 whether she could have "1 menu lagi di tiap kotak" bulan depan and was told "saya tanyakan dulu ke tim" — twice, a day apart, with the answer sitting in this section both times.
+- Switching the paket they are eating **now** is the one that escalates: call escalate_to_human and say an admin will confirm the difference. Never say it is done, and never call extract_order — changing a running package is an admin edit, and extract_order would sell them a second paket.`
       : "";
 
   // The weekly menu card is drawn with the M line-up and marks nothing, so an S

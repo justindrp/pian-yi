@@ -607,6 +607,42 @@ describe("customer chatbot system prompt", () => {
       expect(prompt).toContain("call escalate_to_human");
     });
 
+    // The escalation was written unscoped — "they want M" sent the question to
+    // an admin whether it was about the package they are eating or the one
+    // they had not bought yet. Sharleen asked for an extra dish "bulan depan"
+    // on 2026-09-18 and was told "saya tanyakan dulu ke tim" twice, a day
+    // apart, while the answer sat in this same section.
+    test("M on a paket they have not bought yet is a sale, not an escalation", async () => {
+      (getSetting as jest.Mock).mockImplementation((key: string) =>
+        Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
+      );
+      const prompt = await buildSystemPrompt({
+        ...base,
+        currentDapur: null,
+        dapurOptions: [
+          {
+            id: "1",
+            nickname: "Dapur 1",
+            offersM: true,
+            sameMenuBothMeals: false,
+            noRiceDiscount: null,
+            windows: null,
+          },
+        ],
+        activeOrder: {
+          id: "o1",
+          packageSize: 20,
+          portionsPerDelivery: 1,
+          onSizeSWithMAvailable: true,
+        },
+      });
+
+      expect(prompt).toContain("not a question for an admin");
+      expect(prompt).toContain("take it through extract_order the normal way");
+      // ...and the escalation that remains names the running package only.
+      expect(prompt).toContain("Switching the paket they are eating **now**");
+    });
+
     test("a customer whose dapur is S only never hears the offer", async () => {
       (getSetting as jest.Mock).mockImplementation((key: string) =>
         Promise.resolve(key === "size_m_surcharge" ? "4000" : ""),
