@@ -117,6 +117,13 @@ export async function buildSystemPrompt(params: {
      */
     noRiceDiscount: number | null;
     /**
+     * Does this kitchen season with MSG, from `subcontractors.uses_msg`
+     * (migration 123)? Null is "we have never asked", never "no" — the answer
+     * is about what someone is eating, so an unasked kitchen is escalated
+     * rather than guessed at.
+     */
+    usesMsg: boolean | null;
+    /**
      * When this kitchen's courier is at the door (migration 093). Null columns
      * take the house window, exactly as `deliveryWindow()` does everywhere
      * else — a kitchen nobody has measured costs accuracy, never an answer.
@@ -462,6 +469,49 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
             .join(
               "; ",
             )}. Quote the figure for the dapur this customer is on, with that dapur's name attached — never one price for all of them. If they have not picked a dapur yet, say tanpa nasi bisa and give the figures per dapur, or ask which one they want first.`;
+
+  /**
+   * Whether the food has MSG in it, per kitchen.
+   *
+   * This prompt said nothing at all about MSG until 2026-09-19, so the four
+   * customers who asked between 1 and 17 September were answered by whatever
+   * the model reached for — the custom-request decline, or silence. One lead
+   * asked three times in one minute on 2026-09-04 and left; another asked on
+   * 2026-09-17 and their 24h window shut on the question.
+   *
+   * It is a column (`subcontractors.uses_msg`, migration 123) and not a
+   * sentence for the same reason `same_menu_both_meals` and `no_rice_discount`
+   * are: Homey cook without it and Thenie season with a bouillon that has it,
+   * so any single sentence here is false for one of them.
+   *
+   * Null is "nobody has asked that kitchen", and it renders as an escalation,
+   * never as a no. A wrong answer here is a lie about what someone is eating.
+   */
+  const msgFreeKitchens = params.dapurOptions.filter(
+    (d) => d.usesMsg === false,
+  );
+  const msgUsingKitchens = params.dapurOptions.filter(
+    (d) => d.usesMsg === true,
+  );
+  const unaskedKitchens = params.dapurOptions.filter((d) => d.usesMsg == null);
+  const nicks = (ds: { nickname: string }[]) =>
+    ds.map((d) => `**${d.nickname}**`).join(", ");
+  const msgPolicyLine =
+    msgFreeKitchens.length === 0 && msgUsingKitchens.length === 0
+      ? `You have not been told how any of these dapur season their food. Never answer yes or no — say you will check with the team and call ask_admin_for_help.`
+      : `${[
+          msgFreeKitchens.length > 0
+            ? `${nicks(msgFreeKitchens)} masak tanpa MSG`
+            : "",
+          msgUsingKitchens.length > 0
+            ? `${nicks(msgUsingKitchens)} pakai penyedap rasa`
+            : "",
+          unaskedKitchens.length > 0
+            ? `for ${nicks(unaskedKitchens)} you have not been told — do not guess, call ask_admin_for_help`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("; ")}.`;
 
   /**
    * The ladders, and the days, of the kitchens this customer can buy from.
@@ -1201,6 +1251,8 @@ A note is never a reason to re-confirm an order. "Porsi 1/2", "tanpa lemak", a n
 For any other custom request (e.g. no gluten, extra spicy, ingredient substitutions, allergy accommodations beyond the above), politely decline: "Mohon maaf kak, untuk saat ini kami belum bisa akomodasi permintaan khusus selain tidak pedas, tidak ada daging sapi, tidak ada seafood, tidak ada nasi, atau nasi merah ya."
 
 Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for safety) are declined, because everything is cooked in one shared kitchen and we cannot guarantee it. Say that reason — "masakannya dibuat dalam satu dapur bersama, jadi kami belum bisa menjamin bebas dari bahan tertentu" — rather than a bare no.
+
+**"Tanpa MSG bisa?" is not a custom request — it is a question about how each dapur already cooks.** ${msgPolicyLine} Answer it with the dapur named: a customer on one that cooks without MSG gets a straight yes, and a customer on one that uses penyedap is told so plainly. **Never offer to have it left out** — we do not cook a separate portion on request, so this never goes in \`catatan\` and is never passed to extract_order. Never fold it in with the allergy decline above either: micin, MSG, penyedap and kaldu bubuk are all the same question, and it is one we can answer. It was answerable nowhere in this prompt until 2026-09-19, so on 2026-09-04 a lead asked three times in a row — "Mau catering rantangan bisa? Tanpa msg bisa?", "Boleh tolong tanyain dlu ya bisa tanpa msg ga", "Bisa non msg ga" — and left with no reply, and on 2026-09-17 another asked "Ga pake MSG kan ya ?" and their window shut on it.
 
 **Never tell a customer that something printed on our own price list is not ours.** The price list image is a copy of these options that you cannot see, so when a customer quotes it back you have no way to check it. On 2026-08-22 a lead read "TANPA SUSU" off the image and asked about it; the bot answered twice that "request susu itu bukan dari kami ya kak — bisa jadi dari layanan lain", denying our own artwork to someone who was looking straight at it, and the lead pushed back with "Ini kan ada requestnya." If a customer names a request you do not recognise, treat the image as the one they are holding: say whether we serve it today, and never attribute it to another company.
 

@@ -367,6 +367,16 @@ The ordinary package path is different on purpose: a subscription is sellable th
 
 See "A custom/event order is tendered to the kitchens" in `OPERATIONS.md` for the full operational sequence.
 
+## "Tanpa MSG bisa?" is answered per dapur, and for two weeks it was not answered at all
+
+This prompt contained no mention of MSG, micin, penyedap or kaldu until 2026-09-19. Four customers asked between 1 and 17 September and none of them got an answer. On 4 September a lead asked three times inside a minute — "Mau catering rantangan bisa? Tanpa msg bisa?", then "Boleh tolong tanyain dlu ya bisa tanpa msg ga", then "Bisa non msg ga" — and left. On 17 September another asked "Ga pake MSG kan ya ?" and their 24h window shut on the question. With nothing in the prompt the model had two places to fall: the custom-request decline ("kami belum bisa akomodasi permintaan khusus selain..."), which reads as a refusal of food we already sell, or silence.
+
+**The answer is a fact about each kitchen, so it is a column and not a sentence.** `subcontractors.uses_msg` (migration 123): Homey cook without MSG, Thenie season with Totole. Written as a sentence it would have repeated the bug `same_menu_both_meals` and `no_rice_discount` were each added to undo — one kitchen's arrangement quoted on behalf of all of them. The prompt renders `dapurOptions[].usesMsg` by `customer_nickname`, never by supplier name, and never names the bouillon: a customer asking about MSG is asking what is in the food, not which supplier we buy from.
+
+**NULL renders as an escalation, never as a no.** Santapin have not been asked, so for a customer on Dapur Palem the line says so and tells the model to call `ask_admin_for_help`. A wrong answer here is a lie about what someone is eating, and the cost of guessing is not symmetrical with the cost of asking.
+
+It is also not a custom request: we do not cook a separate MSG-free portion, so it never goes in `catatan` and is never passed to `extract_order`. The rule sits beside the allergy decline in `system.ts` precisely because that is what the model was reaching for instead. `test/api/system-prompt.test.ts` holds all four states.
+
 ## Tanpa nasi is quoted per dapur, and saying otherwise loses the customer
 
 `system.ts` lists four accepted custom requests but the header said "exactly three exceptions", and item 3 (*tidak ada nasi*) named the +25% protein compensation without ever saying what it costs — directly above item 4, which carries an explicit +Rp 5.000 nasi merah surcharge. The model read the pair the only way it could and hedged on price. On 2026-08-20 two unrelated customers asked for tanpa nasi within two hours; to the first (`+6287812476058`) the bot said "perlu saya cek dulu ke tim terkait macam lauk dan harganya" and asked for a portion count instead, and the customer left with "Batal..ribet". There is no tanpa-nasi rate anywhere in the code — `getExtractedOrderPricing` takes only `nasiMerah`, and `NASI_MERAH_SURCHARGE` is the single add-on — so the price was simply the normal ladder. Item 3 was rewritten to say `harga sama, tidak ada biaya tambahan` in the instruction and in the sentence the model is given to say, the header counts four, and the decline line lists all four rather than omitting nasi merah.

@@ -1731,6 +1731,7 @@ export type Database = {
           takes_events: boolean
           total_delivery_count: number | null
           updated_at: string | null
+          uses_msg: boolean | null
         }
         Insert: {
           admin_phone?: string | null
@@ -1762,6 +1763,7 @@ export type Database = {
           takes_events?: boolean
           total_delivery_count?: number | null
           updated_at?: string | null
+          uses_msg?: boolean | null
         }
         Update: {
           admin_phone?: string | null
@@ -1793,6 +1795,7 @@ export type Database = {
           takes_events?: boolean
           total_delivery_count?: number | null
           updated_at?: string | null
+          uses_msg?: boolean | null
         }
         Relationships: []
       }

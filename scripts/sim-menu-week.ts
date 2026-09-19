@@ -79,6 +79,7 @@ async function main() {
         offersM: s.offers_size_m === true,
         sameMenuBothMeals: s.same_menu_both_meals === true,
         noRiceDiscount: null,
+        usesMsg: null,
         windows: null,
       })),
     dapurMenuTexts: rawSubs
@@ -94,7 +95,7 @@ async function main() {
     ].sort(),
     neighborhoods: {},
     excludedNeighborhoods: [],
-  coverageNotes: [],
+    coverageNotes: [],
     activeOrder: null,
     schedule: null,
   });
