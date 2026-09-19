@@ -399,6 +399,20 @@ So there are two entry points and one journal. **Accounting → Jurnal → Bayar
 
 A re-import does not break the link: `scripts/import-bank-statements.ts` carries `journal_id`, `matched_at`, `matched_by` and a hand-set `contra_account_code` across by `row_index`.
 
+## A customer deposit is posted from the bank line too — but only once nothing else could be it
+
+The mirror of the kitchen-payment section, and the harder half. 2100 Unearned Revenue carried a **debit** balance of Rp 11,6 juta — a liability on the wrong side — because `mark_paid` journals exist for 57 orders while the delivery journals happily recognised revenue out of 2100 for hundreds more. The money had arrived; 759 credits, Rp 338 juta, sat in `bank_transactions` with `journal_id` null.
+
+`scripts/post-bank-receipts.ts` posts `Dr <bank> / Cr <contra>` from the statement line, keyed `bank_receipt` on the transaction id. It runs **after** `scripts/link-bank-journals.ts`, never instead of it. The three guards are in `docs/DATABASE.md` under `bank_transactions`; the one worth repeating here is that a deposit with *any* journal within three days for the same amount on the same account is held for a human, whatever that journal's source type — Carolin's hand-typed JV-2026-640 is the case that proves an `order_payment`-only guard is not enough.
+
+First run, 2026-09-20: 14 linked by phase 1, **327 posted, Rp 112.927.084**, 41 held for review, 94 internal transfers excluded. The remaining 297 were refused by a bug that had nothing to do with the backfill — see below — and posted after it was fixed.
+
+### The journal reference capped the ledger at 999 entries a year
+
+`next_journal_reference()` rendered the sequence as `LPAD(v_seq::text, 3, '0')`, and **Postgres `LPAD` truncates** when the input is longer than the target: `LPAD('1000', 3, '0')` is `'100'`. So the 1000th journal of a year was handed the 100th's reference and died on `journals_reference_key`. The 2026 book stood at 998 when this backfill crossed the line, which is the only reason it was found here rather than in the middle of an ordinary week.
+
+Nothing was half-written — the header insert is what failed, so no journal exists without its lines — but the counter had already advanced past each refusal, which is why 2026 references skip from 999 to 1297. **That gap stays.** Renumbering a posted ledger to close a hole in a reference sequence is far worse than the hole. Migration 126 keeps three digits below 1000 so every reference already issued keeps its exact spelling, and simply lets the number grow above it.
+
 ## Which kitchen cooked a past delivery is reconstructed from the bank, not from the sheet
 
 The operations spreadsheet has a `subcontractor` column and it is a broken VLOOKUP: it answers "Thenie" for 2220 of its rows and `#N/A` for 1062 more. The June import read it, so 2484 of the 2574 delivery rows between January and July 2026 carried Thenie and 105 carried anyone else, while the bank shows seven kitchens being paid over the same months. Every per-kitchen COGS figure, every kitchen bill and every margin computed off those rows was wrong. **Never read that column, and never trust a historical `subcontractor_id` that came from it.**

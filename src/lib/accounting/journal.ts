@@ -21,6 +21,11 @@ interface CreateJournalOptions {
     // that is its evidence. Keyed on the bank_transactions row, so one line
     // can only be posted once however many times the button is pressed.
     | "bank_settlement"
+    // Money that arrived, journalised from the statement line that is its
+    // evidence. Keyed on the bank_transactions row. Posted only for a deposit
+    // no journal could already be — see scripts/post-bank-receipts.ts, which
+    // holds back any line an existing journal might already carry.
+    | "bank_receipt"
     // A kitchen paid today, entered by hand because the statement that proves
     // it does not exist until next month. Keyed on a generated id — there is
     // no document to key it on yet, which is the whole reason it exists — so
