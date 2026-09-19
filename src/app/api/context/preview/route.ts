@@ -7,6 +7,7 @@ import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { describeMenuWeeks } from "@/lib/menu/week";
 import { unionAreas } from "@/lib/subcontractors/areas";
 import { coverageNotes } from "@/lib/subcontractors/coverage";
+import { asMsgPolicy } from "@/lib/subcontractors/msg";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -28,7 +29,7 @@ export async function GET(): Promise<Response> {
   const { data: activeSubs } = await db
     .from("subcontractors")
     .select(
-      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals, no_rice_discount, uses_msg, lunch_window_start_min, lunch_window_end_min, dinner_window_start_min, dinner_window_end_min",
+      "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals, no_rice_discount, msg_policy, lunch_window_start_min, lunch_window_end_min, dinner_window_start_min, dinner_window_end_min",
     )
     .eq("is_active", true)
     .not("customer_nickname", "is", null);
@@ -46,7 +47,7 @@ export async function GET(): Promise<Response> {
       offers_size_m: boolean;
       same_menu_both_meals: boolean;
       no_rice_discount: number | null;
-      uses_msg: boolean | null;
+      msg_policy: string | null;
       lunch_window_start_min: number | null;
       lunch_window_end_min: number | null;
       dinner_window_start_min: number | null;
@@ -62,7 +63,7 @@ export async function GET(): Promise<Response> {
       offersM: s.offers_size_m === true,
       sameMenuBothMeals: s.same_menu_both_meals === true,
       noRiceDiscount: s.no_rice_discount ?? null,
-      usesMsg: s.uses_msg,
+      msgPolicy: asMsgPolicy(s.msg_policy),
       windows: s,
     }));
 

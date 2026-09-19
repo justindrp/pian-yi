@@ -1,6 +1,7 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
 import { buildSystemPrompt } from "@/lib/claude/prompts/system";
 import { jakartaDateString } from "@/lib/menu/week";
+import type { MsgPolicy } from "@/lib/subcontractors/msg";
 import { addDays } from "@/lib/time/jakarta";
 
 jest.mock("@/lib/cache/settings", () => ({
@@ -569,7 +570,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -593,7 +594,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -628,7 +629,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -660,7 +661,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -692,7 +693,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -727,7 +728,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -756,7 +757,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -778,7 +779,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -802,7 +803,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: true,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
           {
@@ -811,7 +812,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -834,7 +835,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -880,7 +881,7 @@ describe("customer chatbot system prompt", () => {
             offersM: true,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -901,7 +902,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -933,7 +934,7 @@ describe("customer chatbot system prompt", () => {
             offersM: false,
             sameMenuBothMeals: false,
             noRiceDiscount: null,
-            usesMsg: null,
+            msgPolicy: null,
             windows: null,
           },
         ],
@@ -1350,7 +1351,7 @@ describe("the customer's own dapur", () => {
         offersM: true,
         sameMenuBothMeals: true,
         noRiceDiscount: null,
-        usesMsg: null,
+        msgPolicy: null,
         windows: null,
       },
       {
@@ -1359,7 +1360,7 @@ describe("the customer's own dapur", () => {
         offersM: false,
         sameMenuBothMeals: false,
         noRiceDiscount: null,
-        usesMsg: null,
+        msgPolicy: null,
         windows: null,
       },
     ],
@@ -1439,7 +1440,7 @@ describe("the cacheable prefix", () => {
         offersM: true,
         sameMenuBothMeals: true,
         noRiceDiscount: null,
-        usesMsg: null,
+        msgPolicy: null,
         windows: null,
       },
       {
@@ -1448,7 +1449,7 @@ describe("the cacheable prefix", () => {
         offersM: false,
         sameMenuBothMeals: false,
         noRiceDiscount: null,
-        usesMsg: null,
+        msgPolicy: null,
         windows: null,
       },
     ],
@@ -1656,7 +1657,7 @@ describe("the area gate", () => {
         offersM: true,
         sameMenuBothMeals: true,
         noRiceDiscount: null,
-        usesMsg: null,
+        msgPolicy: null,
         windows: null,
       },
       {
@@ -1665,7 +1666,7 @@ describe("the area gate", () => {
         offersM: false,
         sameMenuBothMeals: false,
         noRiceDiscount: null,
-        usesMsg: null,
+        msgPolicy: null,
         windows: null,
       },
     ],
@@ -1739,7 +1740,7 @@ describe("tanpa nasi is quoted from each dapur's own column", () => {
     offersM: false,
     sameMenuBothMeals: true,
     noRiceDiscount,
-    usesMsg: null,
+    msgPolicy: null,
     windows: null,
   });
 
@@ -1833,13 +1834,13 @@ describe("tanpa nasi is quoted from each dapur's own column", () => {
 // for. Homey cook without it and Thenie season with a bouillon that has it, so
 // the answer is per kitchen and NULL is never a no.
 describe("the MSG answer is per dapur", () => {
-  const dapur = (nickname: string, usesMsg: boolean | null) => ({
+  const dapur = (nickname: string, msgPolicy: MsgPolicy | null) => ({
     id: nickname,
     nickname,
     offersM: false,
     sameMenuBothMeals: true,
     noRiceDiscount: null,
-    usesMsg,
+    msgPolicy,
     windows: null,
   });
 
@@ -1863,26 +1864,42 @@ describe("the MSG answer is per dapur", () => {
     schedule: null,
   };
 
-  test("names the MSG-free kitchens and the ones that season", async () => {
+  test("names each dapur with the state it is actually in", async () => {
     const prompt = await buildSystemPrompt({
       ...base,
       dapurOptions: [
-        dapur("Dapur Monstera", false),
-        dapur("Dapur Suplir", true),
+        dapur("Dapur Monstera", "none"),
+        dapur("Dapur Suplir", "penyedap"),
       ],
     });
 
+    expect(prompt).toContain("**Dapur Monstera** masak tanpa MSG");
     expect(prompt).toContain(
-      "**Dapur Monstera** masak tanpa MSG; **Dapur Suplir** pakai penyedap rasa.",
+      "**Dapur Suplir** tidak pakai micin murni, tapi penyedapnya kaldu bubuk",
     );
     expect(prompt).toContain("Never offer to have it left out");
+  });
+
+  test("the middle state is never rounded off to either end", async () => {
+    // A boolean had Thenie at `true` for one day, which reads as "we cook with
+    // micin". They do not, and their food is not free of flavour enhancer
+    // either. Both ends are a lie to someone avoiding MSG.
+    const prompt = await buildSystemPrompt({
+      ...base,
+      dapurOptions: [dapur("Dapur Suplir", "penyedap")],
+    });
+
+    expect(prompt).toContain("both halves");
+    expect(prompt).toContain('Never shorten it to "tanpa MSG"');
+    expect(prompt).not.toContain("**Dapur Suplir** masak tanpa MSG");
+    expect(prompt).not.toContain("**Dapur Suplir** pakai micin");
   });
 
   test("a kitchen nobody has asked is escalated, never called MSG-free", async () => {
     const prompt = await buildSystemPrompt({
       ...base,
       dapurOptions: [
-        dapur("Dapur Monstera", false),
+        dapur("Dapur Monstera", "none"),
         dapur("Dapur Palem", null),
       ],
     });
@@ -1908,7 +1925,7 @@ describe("the MSG answer is per dapur", () => {
     // supplier we buy from. The brand lives in the migration and DATABASE.md.
     const prompt = await buildSystemPrompt({
       ...base,
-      dapurOptions: [dapur("Dapur Suplir", true)],
+      dapurOptions: [dapur("Dapur Suplir", "penyedap")],
     });
 
     expect(prompt).not.toContain("Totole");
@@ -1985,7 +2002,7 @@ describe("delivery windows and the late thresholds come from the kitchens", () =
     offersM: false,
     sameMenuBothMeals: true,
     noRiceDiscount: null,
-    usesMsg: null,
+    msgPolicy: null,
     windows,
   });
 
@@ -2191,7 +2208,7 @@ describe("the soonest date is the customer's own dapur's soonest", () => {
     offersM: false,
     sameMenuBothMeals: false,
     noRiceDiscount: null,
-    usesMsg: null,
+    msgPolicy: null,
     windows: null,
   });
 
@@ -2275,7 +2292,7 @@ describe("the worked examples never key on the customer's own dapur", () => {
     offersM: false,
     sameMenuBothMeals: false,
     noRiceDiscount: null,
-    usesMsg: null,
+    msgPolicy: null,
     windows: null,
   });
 
@@ -2366,7 +2383,7 @@ describe("a contract customer is told which days their dapur cooks", () => {
     offersM: false,
     sameMenuBothMeals: false,
     noRiceDiscount: null,
-    usesMsg: null,
+    msgPolicy: null,
     windows: null,
   });
 

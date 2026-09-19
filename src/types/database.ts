@@ -1722,6 +1722,7 @@ export type Database = {
           menu_image_url: string | null
           menu_text: string | null
           menu_week_start: string | null
+          msg_policy: string | null
           name: string
           no_rice_discount: number | null
           notes: string | null
@@ -1754,6 +1755,7 @@ export type Database = {
           menu_image_url?: string | null
           menu_text?: string | null
           menu_week_start?: string | null
+          msg_policy?: string | null
           name: string
           no_rice_discount?: number | null
           notes?: string | null
@@ -1786,6 +1788,7 @@ export type Database = {
           menu_image_url?: string | null
           menu_text?: string | null
           menu_week_start?: string | null
+          msg_policy?: string | null
           name?: string
           no_rice_discount?: number | null
           notes?: string | null

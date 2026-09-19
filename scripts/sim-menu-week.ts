@@ -79,7 +79,7 @@ async function main() {
         offersM: s.offers_size_m === true,
         sameMenuBothMeals: s.same_menu_both_meals === true,
         noRiceDiscount: null,
-        usesMsg: null,
+        msgPolicy: null,
         windows: null,
       })),
     dapurMenuTexts: rawSubs

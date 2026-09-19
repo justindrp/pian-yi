@@ -1,5 +1,10 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
 import {
+  clockLabel,
+  deliveryWindow,
+  type KitchenWindows,
+} from "@/lib/deliveries/windows";
+import {
   describeUpcomingHolidays,
   formatHolidayDate,
   HOLIDAYS_KNOWN_THROUGH,
@@ -10,11 +15,6 @@ import {
   menuWeekLastDay,
   weekAfter,
 } from "@/lib/menu/week";
-import {
-  type KitchenWindows,
-  clockLabel,
-  deliveryWindow,
-} from "@/lib/deliveries/windows";
 import type { CustomerSchedule } from "@/lib/orders/customer-schedule";
 import { isLocked } from "@/lib/orders/delivery-state";
 import { sizeMSurcharge } from "@/lib/orders/size";
@@ -30,6 +30,7 @@ import {
 } from "@/lib/pricing/tiers";
 import type { KitchenCoverageNote } from "@/lib/subcontractors/coverage";
 import { activeDeliveryDays, daysLabel } from "@/lib/subcontractors/days";
+import type { MsgPolicy } from "@/lib/subcontractors/msg";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deliveryCalendar,
@@ -117,12 +118,12 @@ export async function buildSystemPrompt(params: {
      */
     noRiceDiscount: number | null;
     /**
-     * Does this kitchen season with MSG, from `subcontractors.uses_msg`
-     * (migration 123)? Null is "we have never asked", never "no" — the answer
-     * is about what someone is eating, so an unasked kitchen is escalated
-     * rather than guessed at.
+     * How this kitchen seasons, from `subcontractors.msg_policy` (migration
+     * 124). Null is "we have never asked", never "none" — the answer is about
+     * what someone is eating, so an unasked kitchen is escalated rather than
+     * guessed at.
      */
-    usesMsg: boolean | null;
+    msgPolicy: MsgPolicy | null;
     /**
      * When this kitchen's courier is at the door (migration 093). Null columns
      * take the house window, exactly as `deliveryWindow()` does everywhere
@@ -471,7 +472,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
             )}. Quote the figure for the dapur this customer is on, with that dapur's name attached — never one price for all of them. If they have not picked a dapur yet, say tanpa nasi bisa and give the figures per dapur, or ask which one they want first.`;
 
   /**
-   * Whether the food has MSG in it, per kitchen.
+   * How each kitchen seasons, in three states.
    *
    * This prompt said nothing at all about MSG until 2026-09-19, so the four
    * customers who asked between 1 and 17 September were answered by whatever
@@ -479,32 +480,48 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
    * asked three times in one minute on 2026-09-04 and left; another asked on
    * 2026-09-17 and their 24h window shut on the question.
    *
-   * It is a column (`subcontractors.uses_msg`, migration 123) and not a
+   * It is a column (`subcontractors.msg_policy`, migration 124) and not a
    * sentence for the same reason `same_menu_both_meals` and `no_rice_discount`
-   * are: Homey cook without it and Thenie season with kaldu jamur (Totole),
-   * so any single sentence here is false for one of them.
+   * are: the kitchens differ, so any single sentence here is false for one of
+   * them.
+   *
+   * It is three states and not a boolean because the middle one is where our
+   * kitchens actually sit. Thenie do not cook with micin and their food is not
+   * free of flavour enhancer either — it is kaldu jamur — and a boolean forces
+   * that to one end or the other, both of which are a lie to someone who is
+   * avoiding MSG. An admin got this right by hand on 2026-09-09: "tidak
+   * memakai micin/MSG murni ... tapi bukan micin biasa — saya sampaikan apa
+   * adanya biar kakak bisa menilai sendiri". That is the sentence `penyedap`
+   * renders, minus the brand, which is a supplier detail and not an answer.
    *
    * Null is "nobody has asked that kitchen", and it renders as an escalation,
    * never as a no. A wrong answer here is a lie about what someone is eating.
    */
-  const msgFreeKitchens = params.dapurOptions.filter(
-    (d) => d.usesMsg === false,
+  const byPolicy = (p: MsgPolicy) =>
+    params.dapurOptions.filter((d) => d.msgPolicy === p);
+  const msgFreeKitchens = byPolicy("none");
+  const penyedapKitchens = byPolicy("penyedap");
+  const msgUsingKitchens = byPolicy("msg");
+  const unaskedKitchens = params.dapurOptions.filter(
+    (d) => d.msgPolicy == null,
   );
-  const msgUsingKitchens = params.dapurOptions.filter(
-    (d) => d.usesMsg === true,
-  );
-  const unaskedKitchens = params.dapurOptions.filter((d) => d.usesMsg == null);
   const nicks = (ds: { nickname: string }[]) =>
     ds.map((d) => `**${d.nickname}**`).join(", ");
   const msgPolicyLine =
-    msgFreeKitchens.length === 0 && msgUsingKitchens.length === 0
+    msgFreeKitchens.length +
+      penyedapKitchens.length +
+      msgUsingKitchens.length ===
+    0
       ? `You have not been told how any of these dapur season their food. Never answer yes or no — say you will check with the team and call ask_admin_for_help.`
       : `${[
           msgFreeKitchens.length > 0
             ? `${nicks(msgFreeKitchens)} masak tanpa MSG`
             : "",
+          penyedapKitchens.length > 0
+            ? `${nicks(penyedapKitchens)} tidak pakai micin murni, tapi penyedapnya kaldu bubuk — say it exactly that way, both halves: not pure micin, and not free of flavour enhancer either. Never shorten it to "tanpa MSG" and never shorten it to "pakai MSG"`
+            : "",
           msgUsingKitchens.length > 0
-            ? `${nicks(msgUsingKitchens)} pakai penyedap rasa`
+            ? `${nicks(msgUsingKitchens)} pakai micin`
             : "",
           unaskedKitchens.length > 0
             ? `for ${nicks(unaskedKitchens)} you have not been told — do not guess, call ask_admin_for_help`
@@ -1252,7 +1269,7 @@ For any other custom request (e.g. no gluten, extra spicy, ingredient substituti
 
 Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for safety) are declined, because everything is cooked in one shared kitchen and we cannot guarantee it. Say that reason — "masakannya dibuat dalam satu dapur bersama, jadi kami belum bisa menjamin bebas dari bahan tertentu" — rather than a bare no.
 
-**"Tanpa MSG bisa?" is not a custom request — it is a question about how each dapur already cooks.** ${msgPolicyLine} Answer it with the dapur named: a customer on one that cooks without MSG gets a straight yes, and a customer on one that uses penyedap is told so plainly. **Never offer to have it left out** — we do not cook a separate portion on request, so this never goes in \`catatan\` and is never passed to extract_order. Never fold it in with the allergy decline above either: micin, MSG, penyedap and kaldu bubuk are all the same question, and it is one we can answer. It was answerable nowhere in this prompt until 2026-09-19, so on 2026-09-04 a lead asked three times in a row — "Mau catering rantangan bisa? Tanpa msg bisa?", "Boleh tolong tanyain dlu ya bisa tanpa msg ga", "Bisa non msg ga" — and left with no reply, and on 2026-09-17 another asked "Ga pake MSG kan ya ?" and their window shut on it.
+**"Tanpa MSG bisa?" is not a custom request — it is a question about how each dapur already cooks.** ${msgPolicyLine} Answer it with the dapur named, and never round the answer off in either direction — "tidak pakai micin murni tapi penyedapnya kaldu bubuk" is not a yes and not a no, and a customer avoiding MSG is asking precisely because the middle exists. **Never offer to have it left out** — we do not cook a separate portion on request, so this never goes in \`catatan\` and is never passed to extract_order. Never fold it in with the allergy decline above either: micin, MSG, penyedap and kaldu bubuk are all the same question, and it is one this list answers per dapur. It was answerable nowhere in this prompt until 2026-09-19, so on 2026-09-04 a lead asked three times in a row — "Mau catering rantangan bisa? Tanpa msg bisa?", "Boleh tolong tanyain dlu ya bisa tanpa msg ga", "Bisa non msg ga" — and left with no reply, and on 2026-09-17 another asked "Ga pake MSG kan ya ?" and their window shut on it.
 
 **Never tell a customer that something printed on our own price list is not ours.** The price list image is a copy of these options that you cannot see, so when a customer quotes it back you have no way to check it. On 2026-08-22 a lead read "TANPA SUSU" off the image and asked about it; the bot answered twice that "request susu itu bukan dari kami ya kak — bisa jadi dari layanan lain", denying our own artwork to someone who was looking straight at it, and the lead pushed back with "Ini kan ada requestnya." If a customer names a request you do not recognise, treat the image as the one they are holding: say whether we serve it today, and never attribute it to another company.
 

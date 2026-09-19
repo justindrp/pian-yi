@@ -106,6 +106,7 @@ import {
   kitchensForCustomer,
   kitchensForCustomerArea,
 } from "@/lib/subcontractors/for-customer";
+import { asMsgPolicy } from "@/lib/subcontractors/msg";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaMinuteOfDay, jakartaTimeString } from "@/lib/time/jakarta";
 import { calcTypingDelay, sleep } from "@/lib/utils/delay";
@@ -2248,7 +2249,7 @@ export async function processSavedCustomerMessage(params: {
     db
       .from("subcontractors")
       .select(
-        "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals, no_rice_discount, uses_msg",
+        "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals, no_rice_discount, msg_policy",
       )
       .eq("is_active", true)
       .not("customer_nickname", "is", null),
@@ -2274,7 +2275,7 @@ export async function processSavedCustomerMessage(params: {
       offers_size_m: boolean;
       same_menu_both_meals: boolean;
       no_rice_discount: number | null;
-      uses_msg: boolean | null;
+      msg_policy: string | null;
     } => s.customer_nickname !== null,
   );
   // Which dapur this customer may choose between is their area's list, not
@@ -2298,7 +2299,7 @@ export async function processSavedCustomerMessage(params: {
       offersM: s.offers_size_m === true,
       sameMenuBothMeals: s.same_menu_both_meals === true,
       noRiceDiscount: s.no_rice_discount ?? null,
-      usesMsg: s.uses_msg,
+      msgPolicy: asMsgPolicy(s.msg_policy),
       windows: s,
     }));
   const dapurMenuTexts = areaKitchens
