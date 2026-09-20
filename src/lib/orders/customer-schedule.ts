@@ -40,6 +40,13 @@ export type CustomerSchedule = {
   remainingToday: number;
   unbooked: number;
   /**
+   * Portions bought across every paid order. Summed here rather than read off
+   * one order, because the other two numbers are customer-wide and a CONTEXT
+   * block whose halves count different sets is what the claim checker rejects
+   * by construction — see `activeOrder` in validate-reply.ts.
+   */
+  packageSize: number;
+  /**
    * The addresses this customer has on file, by slot — one entry, or two.
    *
    * Without them the model cannot say where a delivery is going, and it will
@@ -110,6 +117,7 @@ export async function loadCustomerSchedule(
   return {
     remainingToday: bought - drawnToDate,
     unbooked: bought - drawnAll,
+    packageSize: bought,
     upcoming: upcoming.map((r) => ({
       date: (r.delivery_date ?? "").slice(0, 10),
       mealType: r.meal_type ?? "lunch",

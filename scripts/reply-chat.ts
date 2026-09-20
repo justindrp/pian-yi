@@ -36,7 +36,6 @@ import {
 
 const ACTOR = "script:review-reply";
 const MAX_HOLD_HOURS = 2;
-const PAID_STATUSES = ["active", "paused", "completed"];
 
 async function main() {
   const [phone, raw] = process.argv.slice(2);
@@ -77,15 +76,6 @@ async function main() {
   if (looksEnglish(text)) throw new Error("reply looks English — rewrite in Indonesian");
 
   const schedule = await loadCustomerSchedule(db, cust.id);
-  const { data: orders } = await db
-    .from("orders")
-    .select("package_size")
-    .eq("customer_id", cust.id)
-    .in("status", PAID_STATUSES);
-  const packageSize = (orders ?? []).reduce(
-    (sum, o) => sum + (o.package_size ?? 0),
-    0,
-  );
 
   const verdict = await validateReply({
     reply: text,
@@ -95,10 +85,11 @@ async function main() {
     activeOrder: schedule
       ? {
           unbooked: schedule.unbooked,
-          packageSize,
+          packageSize: schedule.packageSize,
           remainingToday: schedule.remainingToday,
         }
       : null,
+    upcoming: schedule?.upcoming,
     transcript: await loadValidationTranscript(cust.id),
   });
   if (!verdict.valid) {

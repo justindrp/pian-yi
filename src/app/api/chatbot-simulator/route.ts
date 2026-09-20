@@ -107,6 +107,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     ? {
         remainingToday: 32,
         unbooked: 30,
+        packageSize: 50,
         upcoming: [
           {
             date: addDays(jakartaDateString(), 1),

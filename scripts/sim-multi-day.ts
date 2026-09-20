@@ -130,6 +130,7 @@ async function main() {
       upcoming: [],
       remainingToday: remaining,
       unbooked: remaining,
+      packageSize: 40,
       addresses: [{ slot: 1, label: "Alamat simulasi" }],
     },
   });

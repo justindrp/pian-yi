@@ -3242,6 +3242,21 @@ export async function processSavedCustomerMessage(params: {
   let replyModelUsed = modelTag("sonnet");
 
   if (replyText) {
+    // Re-read the ledger rather than reusing the copy loaded at the top of this
+    // function: the tool loop above has already run, and a reply that reports
+    // what a tool just did is checked against numbers taken before it did.
+    // `record_daily_order` wrote Vania's 22, 23 and 25 September rows at
+    // 2026-09-20 09:35:18Z; the draft telling her so said 3 porsi still without
+    // a date, correctly, and was rejected 5 seconds later against a context
+    // that still read 6. Two drafts blocked, fallback template sent, admins
+    // pushed about a hallucination that was the truth.
+    //
+    // `packageSize` comes off the same read for the same reason. It used to be
+    // one order's `package_size` beside a customer-wide balance, so a customer
+    // holding two packages — 85 of them do — was described by two numbers
+    // counting different sets, which is the shape the checker rejects by
+    // construction. See `activeOrder` in validate-reply.ts.
+    const freshSchedule = await loadCustomerSchedule(db, customerId);
     const validationParams = {
       customerName,
       customerNotes,
@@ -3252,13 +3267,14 @@ export async function processSavedCustomerMessage(params: {
       // callers save it first), so the tail ends on it and nothing is appended.
       transcript: await loadValidationTranscript(customerId),
       customerState: stateRow?.state ?? "new",
-      activeOrder: activeOrder
+      activeOrder: freshSchedule
         ? {
-            unbooked: schedule?.unbooked ?? 0,
-            packageSize: activeOrder.packageSize,
-            remainingToday: schedule?.remainingToday ?? 0,
+            unbooked: freshSchedule.unbooked,
+            packageSize: freshSchedule.packageSize,
+            remainingToday: freshSchedule.remainingToday,
           }
         : null,
+      upcoming: freshSchedule?.upcoming,
     };
     const validation = await validateReply({
       reply: replyText,
@@ -3377,8 +3393,23 @@ Kalau data pelanggan itu memang belum diketahui, tanyakan langsung ke pelanggann
         );
       }
 
+      // The retry is given `tools` and its follow-up runs them, so the ledger
+      // can have moved again between the two checks. Re-read it for the same
+      // reason the first check does, and keep the transcript and the rest.
+      const retrySchedule = await loadCustomerSchedule(db, customerId);
       const revalidation = retryText
-        ? await validateReply({ reply: retryText, ...validationParams })
+        ? await validateReply({
+            reply: retryText,
+            ...validationParams,
+            activeOrder: retrySchedule
+              ? {
+                  unbooked: retrySchedule.unbooked,
+                  packageSize: retrySchedule.packageSize,
+                  remainingToday: retrySchedule.remainingToday,
+                }
+              : null,
+            upcoming: retrySchedule?.upcoming,
+          })
         : { valid: false, unsupportedClaims: ["empty or failed regeneration"] };
 
       if (revalidation.valid && retryText) {
