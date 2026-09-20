@@ -4,6 +4,7 @@
  *
  *   pnpm review-leads            # last 3 days
  *   pnpm review-leads --days 7
+ *   pnpm review-leads --days 7 --transcripts   # whole thread per lead
  *
  * A "lead" here is a customer with inbound chat in the window and no order
  * that has ever been paid. Someone with a `pending_payment` order is still a
@@ -19,6 +20,10 @@ const DAYS = (() => {
   const i = process.argv.indexOf("--days");
   return i >= 0 ? Number(process.argv[i + 1]) : 3;
 })();
+
+// Why a lead went quiet is only readable in the whole thread — the first and
+// last line alone cannot tell a price objection from an unanswered question.
+const TRANSCRIPTS = process.argv.includes("--transcripts");
 
 const wib = (iso: string) =>
   new Date(iso).toLocaleString("id-ID", {
@@ -210,8 +215,16 @@ async function main() {
     } else {
       console.log("  orders: none");
     }
-    console.log(`  first in window (${wib(first.created_at)}): ${excerpt(first)}`);
-    console.log(`  last  (${wib(r.lastMsg.created_at)}, ${who(r.lastMsg)}): ${excerpt(r.lastMsg)}`);
+    if (TRANSCRIPTS) {
+      for (const m of r.thread) {
+        console.log(
+          `  ${wib(m.created_at)} ${who(m).toUpperCase().padEnd(9)}${excerpt(m, 400)}`,
+        );
+      }
+    } else {
+      console.log(`  first in window (${wib(first.created_at)}): ${excerpt(first)}`);
+      console.log(`  last  (${wib(r.lastMsg.created_at)}, ${who(r.lastMsg)}): ${excerpt(r.lastMsg)}`);
+    }
   }
 
   // Event leads — their own table, brief through won/lost.
@@ -281,10 +294,10 @@ function who(m: Dated): string {
   return "bot";
 }
 
-function excerpt(m: Dated): string {
+function excerpt(m: Dated, max = 180): string {
   const t = (m.content ?? "").replace(/\s+/g, " ").trim();
   const tag = m.message_type && m.message_type !== "text" ? `[${m.message_type}] ` : "";
-  return tag + (t.length > 180 ? `${t.slice(0, 180)}…` : t || "(empty)");
+  return tag + (t.length > max ? `${t.slice(0, max)}…` : t || "(empty)");
 }
 
 main().catch((e) => {
