@@ -162,6 +162,43 @@ push with `--no-verify`. Ask Claude to fix what failed.
 commit and push the revert — `git revert <sha>` — rather than trying to fix
 forward while it is down.
 
+**The dashboard loads forever and every page is blank.** This is the database,
+and there is one test that tells you which half is broken. Run it before you
+touch anything:
+
+```bash
+pnpm db-doctor
+```
+
+It probes the three Supabase services separately, because they fail
+independently and only one of them is the app's data path:
+
+| Result | Meaning | What to do |
+| --- | --- | --- |
+| rest down, **auth and storage up** | PostgREST is wedged. Postgres is fine. | **Restart the project** — Dashboard → Project Settings → General → Restart. Back in ~2 min. |
+| all three down | The project itself is down or restarting | Wait. A restart already in flight looks exactly like this. |
+| all three up | Not the database | Look at Railway logs instead |
+
+On 21 September 2026 the middle column is what happened: `/rest/v1/` returned
+zero bytes on every attempt for ninety minutes while auth read `auth.users` in
+0.32s and storage read its buckets in 0.22s. The database was healthy the
+entire time; only the container the whole app talks through was dead. A restart
+cleared it, which is the signature of a wedged container rather than a resource
+limit — a limit comes straight back.
+
+Three wrong diagnoses were reached that day before that test was run, and each
+one costs you the outage: that Supabase was down (their status page did show an
+unrelated API Gateway warning), that the project was paused (a 404 on the
+project root is normal — `/auth/v1/health` is the liveness probe), and that the
+free-tier egress quota had cut us off (storage egress was working). **Do not
+read the status page first. Run the probe first.** The status page describes
+their fleet; the probe describes your project.
+
+Customer messages are safe while this lasts. The webhook returns 503 rather
+than 200 when it cannot write to `webhook_events`, so Meta holds them and
+redelivers — confirmed after this outage, where zero events were stranded. The
+crons all fail and all catch up on their own.
+
 ## Restoring from a backup
 
 Honest caveat: **this path has not been tested.** The dump has been verified to

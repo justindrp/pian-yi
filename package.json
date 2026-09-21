@@ -23,6 +23,7 @@
     "test:webhook": "tsx scripts/test-webhook.ts",
     "tasks": "tsx --env-file=.env.local scripts/tasks.ts",
     "check-balance": "tsx --env-file=.env.local scripts/check-balance.ts",
+    "db-doctor": "tsx --env-file=.env.local scripts/db-doctor.ts",
     "review-chats": "tsx --env-file=.env.local scripts/review-chats.ts",
     "review-deliveries": "tsx --env-file=.env.local scripts/review-deliveries.ts",
     "review-leads": "tsx --env-file=.env.local scripts/review-leads.ts",

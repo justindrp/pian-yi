@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { requiredEnv } from "@/lib/env";
+import { createTimeoutFetch } from "./timeout-fetch";
 import type { Database } from "@/types/database";
 
 export async function createClient() {
@@ -16,6 +17,9 @@ export async function createClient() {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     ),
     {
+      // A server component with no timeout holds the request open until
+      // Supabase's gateway gives up. See timeout-fetch.ts.
+      global: { fetch: createTimeoutFetch() },
       cookies: {
         getAll() {
           return cookieStore.getAll();

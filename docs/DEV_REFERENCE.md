@@ -313,6 +313,33 @@ Standard commands (always use these spellings):
 - Run tests in watch mode: `pnpm test:watch`
 - Run tests with coverage: `pnpm test:coverage`
 - Backup the database: `pnpm backup` (see below)
+- Diagnose a database outage: `pnpm db-doctor` (see below)
+
+## When the database stops answering
+
+`pnpm db-doctor` probes PostgREST, auth and storage separately and tells you
+which half is broken, because they fail independently and only PostgREST is the
+app's data path. Exit codes: 0 healthy, 1 PostgREST wedged (restart the
+project), 2 whole project down, 3 no environment.
+
+Two traps it exists to stop you falling into, both of which cost time on
+2026-09-21:
+
+- **`/auth/v1/health` is not a liveness probe.** It returns the GoTrue version
+  without touching Postgres, so it answers 200 on a project whose database is
+  unreachable. `db-doctor` deliberately attempts a token grant with bad
+  credentials instead: a fast `400 invalid_credentials` proves a real read of
+  `auth.users` happened.
+- **A 404 on the project root is normal.** `https://<ref>.supabase.co/` returns
+  `{"error":"requested path is invalid"}` on a perfectly healthy project. It is
+  not evidence the project is paused.
+
+**Every Supabase client in this app sets a request timeout**
+(`src/lib/supabase/timeout-fetch.ts`, 15s, `SUPABASE_REQUEST_TIMEOUT_MS` to
+override). Without one, a wedged PostgREST does not fail — it hangs until
+Supabase's own gateway gives up at ~125s, which is where `HTTP 500 in 125028ms`
+in the scheduler logs came from. That number was never ours. Do not remove the
+timeout to "fix" a slow query; a query slow enough to hit 15s is the bug.
 
 ## Backups
 

@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { requiredEnv } from "@/lib/env";
+import { createTimeoutFetch } from "./timeout-fetch";
 import type { Database } from "@/types/database";
 
 export function createClient() {
@@ -12,5 +13,8 @@ export function createClient() {
       "NEXT_PUBLIC_SUPABASE_ANON_KEY",
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     ),
+    // A dashboard tab that waits forever shows a spinner forever. See
+    // timeout-fetch.ts.
+    { global: { fetch: createTimeoutFetch() } },
   );
 }
