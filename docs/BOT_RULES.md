@@ -630,6 +630,22 @@ and the context block says which of the three states the customer is in (a real
 link, only a pin, nothing). Pinned by `test/order-maps-link-required.test.ts`
 and the `isSharedPinLink` tests in `test/maps-link.test.ts`.
 
+**A link the pattern cannot see is a link that is not on file** (2026-09-21).
+`extract_order` reads the stored column back through `findMapsLink()` rather
+than testing it for emptiness, so `MAPS_LINK_RE` is not only what detects an
+arriving link — it is what decides whether a customer already has one.
+`share.google/<id>`, the short link the Google app's own Bagikan sheet now hands
+out, was not in the alternation, and three customers had one stored: Sherine
+Fayola, Fidela and Winy. Sherine asked to renew 40 porsi on 2026-09-21, was
+asked for a pin she had given on 8 September, answered at 13:23 with the same
+share.google link, and was asked again in the same minute — the gate returned
+`NOTHING_TO_SEND` both times and her order was never created. It is a weaker
+link than the rest (it resolves to a search result, not to Maps), which is an
+argument for going on asking for a dragged one, not for reading it as nothing.
+Added to the alternation and pinned in `test/maps-link.test.ts`. The two rows
+still unmatched — Naya's and Cila's — hold a typed address in the link column,
+which is the "no pin on file" problem above, not this one.
+
 **And the prompt now counts to four in both places it counts** (2026-09-16). The
 order-flow section listed the required fields twice. One bullet said "the nama,
 the total porsi, the Alamat and the link Google Maps — those four and nothing

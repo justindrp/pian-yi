@@ -7,9 +7,18 @@
  * The old pattern matched only the three links a customer pastes by hand, so
  * a customer who dropped a pin — the easiest thing to ask for and the most
  * accurate thing to receive — was read as having sent no link at all.
+ *
+ * `share.google/<id>` is the short link the Google app now hands out from its
+ * own Bagikan sheet. It resolves to a search result rather than to Maps, so it
+ * is a weaker link than the rest — but four customers already had one stored
+ * in `google_maps_link`, and because `extract_order` re-parses that column
+ * through this pattern rather than testing it for emptiness, a stored
+ * share.google link read as *no link on file*: Sherine Fayola was asked for
+ * her pin twice on 2026-09-21 and her 40-porsi renewal was withheld both
+ * times. Matching it is what makes the on-file check see a link that is there.
  */
 export const MAPS_LINK_RE =
-  /https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\.[a-z.]+\/\S*|(?:www\.)?google\.[a-z.]+\/maps\S*)\S*/i;
+  /https?:\/\/(?:maps\.app\.goo\.gl|share\.google|goo\.gl\/maps|maps\.google\.[a-z.]+\/\S*|(?:www\.)?google\.[a-z.]+\/maps\S*)\S*/i;
 
 /** The first Maps link in `text`, or null. */
 export function findMapsLink(text: string): string | null {

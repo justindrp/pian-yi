@@ -15,6 +15,17 @@ describe("findMapsLink", () => {
     );
   });
 
+  it("finds the short link the Google app's Bagikan sheet hands out", () => {
+    // Sherine Fayola's stored link. Unmatched, `extract_order` re-parsed the
+    // column, read it as no link on file and withheld her renewal twice.
+    expect(findMapsLink("https://share.google/6UrkiTCu9B5Em1FNU")).toBe(
+      "https://share.google/6UrkiTCu9B5Em1FNU",
+    );
+    expect(findMapsLink("ini kak https://share.google/aBcD1234 makasih")).toBe(
+      "https://share.google/aBcD1234",
+    );
+  });
+
   it("ignores a link that is not Maps", () => {
     expect(findMapsLink("https://www.google.com/search?q=pian+yi")).toBeNull();
     expect(findMapsLink("alamatnya Jl. Horizon Broadway Blok M.5")).toBeNull();
@@ -34,6 +45,9 @@ describe("isSharedPinLink", () => {
       isSharedPinLink("https://www.google.com/maps/place/Cendana+Cove"),
     ).toBe(false);
     expect(isSharedPinLink("https://maps.google.com/maps?q=cendana+cove")).toBe(
+      false,
+    );
+    expect(isSharedPinLink("https://share.google/6UrkiTCu9B5Em1FNU")).toBe(
       false,
     );
   });
