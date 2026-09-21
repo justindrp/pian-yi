@@ -35,7 +35,7 @@ A WhatsApp-based ordering system for Pian Yi Catering, a daily catering business
 Two end users:
 
 - **Customers** — interact only via WhatsApp with an AI chatbot (DeepSeek V4 Flash; see the AI line below — the code says "Sonnet" but nothing here runs on Claude)
-- **Admins** (Justin, Annie, Friska) — interact via a PWA dashboard for operations; all three are `owner` role and nobody holds `admin` right now (see `docs/ADMIN.md`). Justin signs in as two different emails and holds a row for each
+- **Admins** (Justin, Annie, Friska) — interact via a PWA dashboard for operations; all three are `owner` role, and Jennifer holds the only `admin` row (see `docs/ADMIN.md`). Justin signs in as two different emails and holds a row for each
 
 ## Tech stack
 
@@ -156,7 +156,7 @@ Rules only. The incident behind each one is in `docs/BOT_RULES.md` and `docs/OPE
 
 **The chat-review cron sends to customers on its own** (`pnpm reply-chat`, hourly). Nobody reads those replies first, so `scripts/reply-chat.ts` runs `sanitizeReply()` → `looksEnglish()` → `validateReply()` and refuses the send when a claim about the customer's own quota, package or payment is unsupported by the ledger. Never add a bypass, and never route a decision — a price off the ladder, a refund, a goodwill portion — through it; those are filed as tasks. See "The chat-review cron replies to customers by itself" in `docs/WHATSAPP.md`.
 
-**Roles.** `owner` (Justin ×2, Annie, Friska) has everything. `admin` — everything except Accounting and inbox takeover, and no hand-typing to a customer at all, enforced server-side rather than hidden — is currently held by nobody. **Revoking someone is two deletes, not one**: the `admin_users` row, *and* their Supabase Auth identity, because `getSessionWithRole()` falls back to `role: "admin"` for any signed-in email with no row, so the identity alone is a working admin login. Push sends filter on `admin_users.email`, so a person signed in as an address with no row silently gets no notifications. Who did what is in `edit_log` and, for hand-typed messages, `conversations.sent_by` — see "Who did what" in `docs/ADMIN.md`.
+**Roles.** `owner` (Justin ×2, Annie, Friska) has everything. `admin` — everything except Accounting and inbox takeover, and no hand-typing to a customer at all, enforced server-side rather than hidden — is held by Jennifer since 2026-09-21. **Revoking someone is two deletes, not one**: the `admin_users` row, *and* their Supabase Auth identity, because `getSessionWithRole()` falls back to `role: "admin"` for any signed-in email with no row, so the identity alone is a working admin login. Push sends filter on `admin_users.email`, so a person signed in as an address with no row silently gets no notifications. Who did what is in `edit_log` and, for hand-typed messages, `conversations.sent_by` — see "Who did what" in `docs/ADMIN.md`.
 
 ## Coding conventions
 
