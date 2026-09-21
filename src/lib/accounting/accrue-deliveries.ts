@@ -83,9 +83,15 @@ export async function accrueDeliveryDate(
       size: string | null;
       delivery_surcharge_per_delivery: number | null;
     } | null;
-    // A row with no order behind it is not revenue: nobody bought it. The
+    // A row with no order behind it at all cannot be costed or priced. The
     // daily sheet refuses to save one, but rows predating that check exist.
-    if (!ord?.price_per_portion) continue;
+    // A row whose order is priced at zero is a different animal and must NOT
+    // be skipped: goodwill portions, influencer barter and the hand-entered
+    // grant packages are all real food a kitchen really billed us for. Only
+    // the revenue leg is waived — the revenue grouping below drops a zero
+    // rate — while COGS posts as it would for any other portion. Skipping the
+    // whole row instead dropped the cost off the P&L entirely.
+    if (!ord) continue;
     const cust = row.customers as { delivery_route: string | null } | null;
 
     const entries = byMeal.get(row.meal_type) ?? [];
@@ -96,7 +102,7 @@ export async function accrueDeliveryDate(
       // by a kitchen the order was not bought from, and then the order's rate
       // is the wrong one: revenue recognition draws 2100 down by portions ×
       // rate, and the deposit was taken at the mix.
-      pricePerPortion: row.price_per_portion ?? ord.price_per_portion,
+      pricePerPortion: row.price_per_portion ?? ord.price_per_portion ?? 0,
       addonCostPerPortion: ord.addon_cost_per_portion ?? 0,
       surchargePerDelivery: ord.delivery_surcharge_per_delivery ?? 0,
       subcontractorId: row.subcontractor_id,
@@ -112,8 +118,12 @@ export async function accrueDeliveryDate(
   for (const [mealType, entries] of byMeal.entries()) {
     // Revenue: grouped by price_per_portion, because one day holds several
     // tiers and a contract rate, and the note has to show the arithmetic.
+    // A zero rate is a portion given away, not a portion sold: it carries no
+    // deposit in 2100, so recognising it would draw the liability down against
+    // money nobody paid. It is dropped here and picked up by COGS below.
     const revenueByRate = new Map<number, number>();
     for (const e of entries) {
+      if (e.pricePerPortion <= 0) continue;
       revenueByRate.set(
         e.pricePerPortion,
         (revenueByRate.get(e.pricePerPortion) ?? 0) + e.portions,
@@ -124,7 +134,10 @@ export async function accrueDeliveryDate(
       0,
     );
     if (totalRevenue > 0) {
-      const totalPortions = entries.reduce((s, e) => s + e.portions, 0);
+      const totalPortions = [...revenueByRate.values()].reduce(
+        (s, p) => s + p,
+        0,
+      );
       const revParts = [...revenueByRate.entries()]
         .sort(([a], [b]) => a - b)
         .map(([price, p]) => `${p}p × Rp${price.toLocaleString("id-ID")}`);

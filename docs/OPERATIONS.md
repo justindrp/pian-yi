@@ -376,6 +376,25 @@ It stays idempotent on the same `rev_{date}_{meal}` / `cogs_{date}_{meal}` / `on
 
 The 22 Agustus – 11 September gap was backfilled on 2026-09-13: 19 dates, Rp 10.683.000 revenue, Rp 8.112.000 COGS, Rp 111.000 ongkir — the first ongkir journals the system has ever posted.
 
+### A portion given away still cost us money
+
+`accrueDeliveryDate()` skipped any row whose order had no `price_per_portion`, on the reasoning that nobody bought it so it is not revenue. That half is right. Dropping the row entirely was not: a goodwill portion, an influencer's barter box and a hand-entered grant package are all real food a kitchen really billed us for, and the cost was vanishing off the P&L along with the revenue.
+
+Since 2026-09-21 only the **revenue leg** is waived. A zero rate is dropped from the revenue grouping — recognising it would draw 2100 down against a deposit nobody ever paid — while COGS posts exactly as it would for a sold portion, off the kitchen that cooked it. Only a row with no order row at all is still skipped outright, because nothing can size or cost it.
+
+Nine rows are in this state: Gaylen (influencer, has never bought anything), Velisca, Vania ×2, Cindy Angelia, Jordy, Fahmi's documented goodwill portion and Sherine Fayola ×2. Rp 1.388.000 of kitchen cost across the 75 rows that were being skipped before the catch-alls were repointed; the nine that remain are the genuine giveaways. **Eleven of their dates already carry a COGS journal** and idempotency means the fix cannot reach them — they need a manual adjusting entry, and they are listed on the accrual-replay task.
+
+### The June import catch-all orders
+
+The June 2026 import gave Hanna and Ahmad Akbar a `package_size = 0, total_price = 0` order each and hung every historic delivery off it, leaving their real paid orders holding no rows at all. Nothing accrues off a row whose order has no price, so Rp 1.826.000 of revenue on food that was bought and paid for was stranded in 2100. `scripts/repoint-catchall-rows.ts` moved the 66 rows onto the orders that actually funded them on 2026-09-21, allocating oldest-order-first the way `pickDrawOrder()` does and logging every move to `edit_log`.
+
+Two things that script had to get right, both of which caught me out first time:
+
+- **Kitchen matching is a preference here, not a requirement.** Ahmad bought three packages on Perut Bahagia and ate from four other kitchens; refusing a cross-kitchen placement would have stranded all 22 of his rows forever. Revenue still comes from the order he paid and COGS from the kitchen that cooked, so both journals are right either way.
+- **A zero-price order is not quota.** Hanna holds three (pkg 1, 2 and 5) created 2026-07-07 and 07-09 by `fix-no-orders.ts`, with no counterpart in the `package_orders` sheet — the source of truth for anything before 2026-07-11. Drawing against them hid a real over-draw behind quota that was never sold. Check the sheet before treating any package as bought. Hanna is over-drawn by 4 and Ahmad by 2; those rows land on the newest active priced order, because the customer ate the food and flooring the balance per order would discard the over-draw instead of recording it.
+
+The three phantom orders still sit `active` with a package size, so sheet generation will happily write rows against them. They need cancelling.
+
 ## A kitchen payment is posted from the bank line that proves it
 
 Account 2001 Accounts Payable had 297 credits and no kitchen debits at all: every portion cooked accrued what we owe a kitchen and nothing ever paid it down, so the books said we had never settled with anyone. (Its only debits were six `manual` courier-salary entries, Rp 3.015.000.) The money had in fact left — 197 transfers, Rp 37.211.000 — and was sitting in `bank_transactions` with `journal_id` null, which is the state that column exists to name: the money moved and the books do not know it.
