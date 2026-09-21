@@ -67,7 +67,8 @@ CLI only, no MCPs — MCPs burn too many tokens. Avoid web dashboard where CLI c
   - **On a worktree branch:** commit and push the branch, then open a PR to merge into main.
 - **REQUIRED before every commit, no exceptions:** Update any affected root `.md` file — edit the specific section the change affects. Never append a dated changelog entry at the bottom; always edit the relevant section in-place. These updates go in the same commit as the code change. If you skipped this, make a follow-up commit immediately.
 - **Write the detail in the topical doc, not here.** A new rule and the incident behind it belong in `docs/BOT_RULES.md`, `docs/OPERATIONS.md`, `docs/WHATSAPP.md`, `docs/ADMIN.md` or `docs/DATABASE.md`. `CLAUDE.md` gets a line only when a session that never opens the topical doc could still destroy something by not knowing — and then one sentence, not the story. This file was split at 506 lines because every fix had been appended to it; it is capped at 200 and that cap is the point.
-- Version bumping is handled by a local `post-commit` hook (`.githooks/commit-msg`) — it amends the commit to include the bumped `package.json`. No GitHub Actions workflow involved.
+- Version bumping is handled by a local `post-commit` hook (`.githooks/post-commit`) — it amends the commit to include the bumped `package.json`. No GitHub Actions workflow involved.
+- **The hooks only run once `core.hooksPath` points at `.githooks`, and that setting is not cloned.** It lives in `.git/config`, which is per-machine, so a fresh clone has the hook files and silently runs none of them. `pnpm install` sets it via `postinstall`; anyone who has not run an install on that clone has no pre-push gate.
 
 When performing infrastructure work, prefer CLI calls over manual UI clicks so the actions are reproducible and auditable.
 

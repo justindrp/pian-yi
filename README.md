@@ -88,7 +88,7 @@ Docs: `CLAUDE.md` (conventions + the rule map, read every session), `docs/BOT_RU
 
 ## Testing
 
-Jest suite under `test/` (Node env, all external deps mocked — no network). A pre-push hook runs `pnpm typecheck && pnpm test` and blocks on failure.
+Jest suite under `test/` (Node env, all external deps mocked — no network). A pre-push hook runs `pnpm lint`, `pnpm typecheck` and `pnpm test`, and blocks on failure. The hook only fires once `core.hooksPath` points at `.githooks` — `pnpm install` sets that for you, because the setting lives in `.git/config` and is never cloned.
 
 ```bash
 pnpm test
