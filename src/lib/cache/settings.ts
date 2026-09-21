@@ -84,6 +84,11 @@ async function getCache(): Promise<CacheData> {
           console.error("[settings-cache] refresh failed:", err);
         }
       }, 60_000);
+      // Unref'd so a CLI script can exit. The server is kept alive by its own
+      // HTTP listener, so this changes nothing in production — but a one-shot
+      // script (`pnpm review-leads`) that reads a single setting otherwise
+      // hangs forever on a timer it has no use for.
+      refreshTimer.unref?.();
     }
   }
   return cache;

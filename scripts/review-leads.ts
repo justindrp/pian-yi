@@ -12,9 +12,15 @@
  *
  * Every read walks with fetchAllRows: `query_leads` once returned only the
  * oldest conversations and made its newest leads look unreachable.
+ *
+ * Our own handsets are not leads. A number in `settings.proof_forwarder_phones`
+ * gets no bot reply and no `customers` row from the webhook, but one that
+ * chatted the bot before it was listed still has its old row — and it read as a
+ * warm prospect here until the filter below was added.
  */
 import { createAdminClient } from "../src/lib/supabase/admin";
 import { fetchAllRows } from "../src/lib/supabase/fetch-all";
+import { proofForwarders } from "../src/lib/whatsapp/proof-forwarders";
 
 const DAYS = (() => {
   const i = process.argv.indexOf("--days");
@@ -172,7 +178,8 @@ async function main() {
     });
   }
 
-  const leads = rows.filter((r) => !r.everPaid);
+  const staff = new Set(await proofForwarders());
+  const leads = rows.filter((r) => !r.everPaid && !staff.has(r.c.phone_number));
   leads.sort(
     (a, b) => +new Date(b.lastInbound.created_at) - +new Date(a.lastInbound.created_at),
   );

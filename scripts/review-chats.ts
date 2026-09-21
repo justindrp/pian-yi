@@ -17,10 +17,16 @@
  * review needs is fixed: who the customer is, their flags and state, their
  * orders, and the transcript in WIB with the author of every outbound line.
  *
+ * Our own handsets are dropped from every batch selection — a number in
+ * `settings.proof_forwarder_phones` is never a customer, and one that chatted
+ * the bot before it was listed still has the `customers` row to prove it.
+ * `--phone` is exempt: naming a number is an explicit request for that thread.
+ *
  * Related: scripts/watch-thread.ts is a short one-shot dump of a single thread,
  * scripts/watch-inbound.ts tails one live. This is the batch read.
  */
 import { createAdminClient } from "../src/lib/supabase/admin";
+import { proofForwarders } from "../src/lib/whatsapp/proof-forwarders";
 
 type Args = {
   sinceIso: string | null;
@@ -155,6 +161,27 @@ async function selectThreads(
   return (data ?? [])
     .map((r) => r.customer_id)
     .filter((id): id is string => id !== null);
+}
+
+/**
+ * Strip our own handsets. Kept out of `selectThreads` because `--phone` names a
+ * thread deliberately and must still print it; every other branch is a sweep,
+ * and a sweep that offers Justin's assistant as a warm lead wastes the review.
+ */
+async function dropOwnHandsets(
+  db: ReturnType<typeof createAdminClient>,
+  args: Args,
+  ids: string[],
+): Promise<string[]> {
+  if (args.phone || ids.length === 0) return ids;
+  const staff = await proofForwarders();
+  if (staff.length === 0) return ids;
+  const { data } = await db
+    .from("customers")
+    .select("id")
+    .in("phone_number", staff);
+  const skip = new Set((data ?? []).map((c) => c.id));
+  return skip.size === 0 ? ids : ids.filter((id) => !skip.has(id));
 }
 
 /**
@@ -296,7 +323,7 @@ const CONCURRENCY = 6;
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const db = createAdminClient();
-  const ids = await selectThreads(db, args);
+  const ids = await dropOwnHandsets(db, args, await selectThreads(db, args));
   console.log(
     args.sinceIso
       ? `${ids.length} thread(s) with inbound since ${wib(args.sinceIso)} WIB`

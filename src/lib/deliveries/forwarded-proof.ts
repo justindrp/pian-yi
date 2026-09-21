@@ -30,6 +30,10 @@ import { pickDeliveryForPhoto } from "@/lib/deliveries/windows";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jakartaDateString } from "@/lib/menu/week";
 import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
+import {
+  isProofForwarder,
+  proofForwarders,
+} from "@/lib/whatsapp/proof-forwarders";
 import { WINDOW_HOURS } from "@/lib/whatsapp/window";
 import type { WhatsAppMessage } from "@/lib/whatsapp/types";
 
@@ -183,18 +187,13 @@ export function matchCaption(
   };
 }
 
-/** The phones allowed to forward, from `settings.proof_forwarder_phones`. */
-export async function proofForwarders(): Promise<string[]> {
-  const raw = await getSetting("proof_forwarder_phones");
-  return raw
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-}
-
-export async function isProofForwarder(phone: string): Promise<boolean> {
-  return (await proofForwarders()).includes(phone);
-}
+/**
+ * The phones allowed to forward, from `settings.proof_forwarder_phones`.
+ * Defined in `@/lib/whatsapp/proof-forwarders` and re-exported here, because
+ * the reporting scripts need the same list without pulling in the photo
+ * matcher this module imports.
+ */
+export { isProofForwarder, proofForwarders };
 
 /** The delivery row today's forwarded photo belongs to, if we can tell. */
 async function deliveryRowFor(customerId: string): Promise<string | null> {
