@@ -312,6 +312,34 @@ Standard commands (always use these spellings):
 - Run tests: `pnpm test`
 - Run tests in watch mode: `pnpm test:watch`
 - Run tests with coverage: `pnpm test:coverage`
+- Backup the database: `pnpm backup` (see below)
+
+## Backups
+
+`pnpm backup` (`scripts/backup-db.ts`) dumps every table to one gzipped JSON
+file in `.backup/`, which is gitignored — the dump holds every customer name,
+phone and address plus the whole ledger, and this repo is public.
+
+There was no backup of this database until 2026-09-21. Supabase Free has no
+point-in-time recovery, so a wrong `WHERE` on a delete was unrecoverable; the
+only copy of anything was one CSV of `daily_deliveries` from 11 September. It
+stopped being optional when a second person started running fixes against
+production while nobody was watching.
+
+Two properties worth keeping:
+
+- **The table list is discovered, not written down.** It comes from PostgREST's
+  OpenAPI document at `/rest/v1/`, so a table added next month is in the next
+  backup with nobody remembering this file exists. A hardcoded list goes stale
+  in silence, and a backup missing a table looks exactly like a backup.
+- **Every table is walked with `fetchAllRows()`.** An unpaginated select stops
+  at 1000 rows without saying so — the bug this project has hit five times. In
+  a backup it is worse than elsewhere: a truncated dump restores clean and
+  looks right.
+
+The dump is data only. The schema lives in `supabase/migrations`, so a restore
+is: apply the migrations, then load the rows back. Exit code is 1 if any table
+failed, so a scheduled run can alert on it.
 
 ## The weekly menu card
 

@@ -48,3 +48,7 @@ scripts/rollback/
 
 # generated menu-card food photos (scripts/menu-photos.ts)
 .menu-photos/
+
+# Database backups (scripts/backup-db.ts). Every customer name, phone, address
+# and the whole ledger in one file — and this repo is public.
+.backup/

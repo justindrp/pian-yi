@@ -52,6 +52,7 @@ pnpm typecheck    # tsc --noEmit
 pnpm test         # Jest suite
 pnpm db:types     # regenerate src/types/database.ts from linked project
 pnpm db:push      # push migrations to remote
+pnpm backup       # dump every table to a gzipped JSON file in .backup/
 ```
 
 ## Architecture principles
