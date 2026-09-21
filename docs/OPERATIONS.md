@@ -386,14 +386,14 @@ Nine rows are in this state: Gaylen (influencer, has never bought anything), Vel
 
 ### The June import catch-all orders
 
-The June 2026 import gave Hanna and Ahmad Akbar a `package_size = 0, total_price = 0` order each and hung every historic delivery off it, leaving their real paid orders holding no rows at all. Nothing accrues off a row whose order has no price, so Rp 1.826.000 of revenue on food that was bought and paid for was stranded in 2100. `scripts/repoint-catchall-rows.ts` moved the 66 rows onto the orders that actually funded them on 2026-09-21, allocating oldest-order-first the way `pickDrawOrder()` does and logging every move to `edit_log`.
+The June 2026 import gave Hanna and Ahmad Akbar a `package_size = 0, total_price = 0` order each and hung every historic delivery off it, leaving their real paid orders holding no rows at all. Nothing accrues off a row whose order has no price, so Rp 1.714.000 of revenue on food that was bought and paid for was stranded in 2100. `scripts/repoint-catchall-rows.ts` moved the 66 rows onto the orders that actually funded them on 2026-09-21, allocating oldest-order-first the way `pickDrawOrder()` does and logging every move to `edit_log`.
 
 Two things that script had to get right, both of which caught me out first time:
 
 - **Kitchen matching is a preference here, not a requirement.** Ahmad bought three packages on Perut Bahagia and ate from four other kitchens; refusing a cross-kitchen placement would have stranded all 22 of his rows forever. Revenue still comes from the order he paid and COGS from the kitchen that cooked, so both journals are right either way.
-- **A zero-price order is not quota.** Hanna holds three (pkg 1, 2 and 5) created 2026-07-07 and 07-09 by `fix-no-orders.ts`, with no counterpart in the `package_orders` sheet — the source of truth for anything before 2026-07-11. Drawing against them hid a real over-draw behind quota that was never sold. Check the sheet before treating any package as bought. Hanna is over-drawn by 4 and Ahmad by 2; those rows land on the newest active priced order, because the customer ate the food and flooring the balance per order would discard the over-draw instead of recording it.
+- **A zero-price order is usually real quota, so check `edit_log` before writing one off.** Hanna holds three (pkg 1, 2 and 5). They are absent from the `package_orders` sheet, which is the source of truth for anything before 2026-07-11, and that absence looks damning until you read the audit trail: each was written by a `grant_free_quota` action — "compensation for late delivery", "reactivation promo" and "Tidak konfirmasi ulang", the last one granted the same afternoon she was sent food she had not ordered. A grant is missing from `package_orders` because it was never a purchase. Treating them as junk invented an over-draw of 4 porsi she does not have; they are drawn oldest-first like any other package.
 
-The three phantom orders still sit `active` with a package size, so sheet generation will happily write rows against them. They need cancelling.
+Ahmad has no grants, so his 2 land on the newest active priced order: the customer ate the food, and flooring the balance per order would discard the over-draw instead of recording it.
 
 ## A kitchen payment is posted from the bank line that proves it
 

@@ -98,27 +98,26 @@ async function main() {
       continue;
     }
 
-    // Targets: the customer's priced, non-cancelled orders, oldest first.
-    //
-    // Zero-price orders are deliberately excluded even though they carry a
-    // package_size, because they are not quota. Hanna holds three of them
-    // (pkg 1, 2, 5, created 2026-07-07 and 07-09) with no counterpart in the
-    // `package_orders` sheet, which is the source of truth for anything before
-    // 2026-07-11: they are artifacts of `fix-no-orders.ts`, not packages she
-    // bought. Drawing against them would hide a real over-draw behind quota
-    // that was never sold. A genuine goodwill portion is its own one-porsi
-    // order holding its own row and never reaches this script.
+    // Targets: every other non-cancelled order with a package size, oldest
+    // first. Deliberately NOT filtered to priced orders — `pickDrawOrder()`
+    // does not filter on price either, and a zero-price order is usually real
+    // quota. Hanna holds three, and `edit_log` names each one: a `grant_free_
+    // quota` action for "compensation for late delivery", "reactivation promo"
+    // and "Tidak konfirmasi ulang". They are absent from the `package_orders`
+    // sheet because a grant was never a purchase, not because they are junk —
+    // check `edit_log` before writing one off. Skipping them would invent an
+    // over-draw of 4 porsi she does not have.
     const targets = orders
       .filter(
         (o) =>
           o.customer_id === catchAll.customer_id &&
           o.id !== catchAll.id &&
-          o.price_per_portion &&
+          (o.package_size ?? 0) > 0 &&
           !DEAD.has(o.status),
       )
       .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
     if (!targets.length) {
-      console.log(`\n=== ${who}: no priced order to move onto — skipped`);
+      console.log(`\n=== ${who}: no other order to move onto — skipped`);
       continue;
     }
 
