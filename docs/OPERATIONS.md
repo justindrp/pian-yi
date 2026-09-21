@@ -395,6 +395,14 @@ Two things that script had to get right, both of which caught me out first time:
 
 Ahmad has no grants, so his 2 land on the newest active priced order: the customer ate the food, and flooring the balance per order would discard the over-draw instead of recording it.
 
+### A customer who underpaid is written off, not chased
+
+A package recognises revenue at `portions × price_per_portion` whatever arrived in the bank, so a customer who transfers less than the order is worth leaves 2100 Unearned Revenue short by the difference for good — the deposit credited Rp 270.000 and recognition will debit Rp 280.000. Nothing in the app notices: the order was marked paid by a human who eyeballed the slip, and a Rp 10.000 gap does not show up anywhere on a screen.
+
+Hanna's `fa5c7c3b` is the worked example, found on 2026-09-21 while repointing her rows. She paid Rp 270.000 on 30 Juni against a 10-porsi package at Rp 28.000 — likely reading her own first order's Rp 27.000 rate, which is what `f6e17d5b` was priced at. Justin's call: nearly three months old, not worth chasing, take the loss. Posted as **JV-2026-1313**, `Dr 6004 Other Expenses / Cr 2100`, which is what closes the liability rather than leaving it permanently negative.
+
+There is no discount or bad-debt account in the chart, so 6004 is where a written-off shortfall goes; name the customer and the order in the description, because that entry is the only record the gap ever existed. **A manual journal carries `source_id` null and therefore no idempotency guard** — `createJournalEntry` cannot protect it — so anything posting one has to check for its own description first, the way the one-off script for this did.
+
 ## A kitchen payment is posted from the bank line that proves it
 
 Account 2001 Accounts Payable had 297 credits and no kitchen debits at all: every portion cooked accrued what we owe a kitchen and nothing ever paid it down, so the books said we had never settled with anyone. (Its only debits were six `manual` courier-salary entries, Rp 3.015.000.) The money had in fact left — 197 transfers, Rp 37.211.000 — and was sitting in `bank_transactions` with `journal_id` null, which is the state that column exists to name: the money moved and the books do not know it.
