@@ -202,10 +202,37 @@ free-tier egress quota had cut us off (storage egress was working). **Do not
 read the status page first. Run the probe first.** The status page describes
 their fleet; the probe describes your project.
 
-Customer messages are safe while this lasts. The webhook returns 503 rather
-than 200 when it cannot write to `webhook_events`, so Meta holds them and
-redelivers — confirmed after this outage, where zero events were stranded. The
-crons all fail and all catch up on their own.
+The crons all fail and all catch up on their own. Customer messages are mostly
+safe, and the exception is the part worth reading.
+
+The webhook returns 503 rather than 200 when it cannot write to
+`webhook_events`, so Meta holds the message and redelivers it — for up to 36
+hours, at a decreasing frequency, and it never disables the subscription for
+failures. Everything that reached us on 21 September came through: all 41
+inbound events of that day processed, none stranded.
+
+**But "none stranded" only counts messages we managed to store.** A message
+refused with a 503 is written nowhere at all, so in our own data an outage is
+indistinguishable from a quiet two hours. It is not the same claim as "nothing
+was lost", and that second one cannot be checked from this side. On 21 September
+one customer wrote at 17:28 to say she had sent her payment slip before 16:00;
+her thread holds nothing between 15:31 and 17:28, and the only copy we have is
+the one she sent again after complaining. She was recovered because she
+complained, which is not a system.
+
+Meta's side cannot fill that gap. There is **no webhook delivery report anywhere
+in Meta's tooling** for a WhatsApp app — not in the Graph API, not on the App
+Dashboard's Webhooks page (configuration only), not in the Alert Inbox, and not
+in WhatsApp Manager, whose Insights are template performance. The `analytics`
+endpoint counts messages we *sent*. So if we do not record a refused inbound
+ourselves, it is gone for good.
+
+What that means for you after any outage: **do not assume the silence was real.**
+Run `pnpm review-chats --waiting`, read the threads that went quiet across the
+window, and expect that someone who was mid-payment may need to be asked for
+their slip again. A late redelivery is also still possible for a day and a half
+afterwards, and it arrives looking fresh — if a payment proof turns up bearing a
+timestamp from the outage, treat it as that old, not as new.
 
 The dashboard no longer hangs, either: every Supabase call gives up after 15
 seconds and shows an error instead of a spinner, so "loading forever" is itself
