@@ -17,7 +17,7 @@ Read at the start of every session. Permanent context, conventions, and the rule
 | `docs/BOT_RULES.md` | changing the customer-facing chatbot, its prompt, order extraction, or the recovery guards |
 | `docs/OPERATIONS.md` | pricing, order lifecycle, delivery generation, quota draws, subcontractor billing |
 | `docs/WHATSAPP.md` | outbound sends, the webhook, the 24h window, WABA account state |
-| `docs/ADMIN.md` | roles, inbox takeover, the Assistant's tools |
+| `docs/ADMIN.md` | roles, inbox takeover, the Assistant's tools, task deadline reminders and the Outlook calendar feed |
 | `docs/DATABASE.md` | schema, columns, migrations |
 | `docs/API_ROUTES.md` | endpoint-level API reference |
 | `docs/DEV_REFERENCE.md` | AI cost controls, folder tree, tooling, tests, push internals |
@@ -192,4 +192,4 @@ Rules only. The incident behind each one is in `docs/BOT_RULES.md` and `docs/OPE
 
 ## Known issues / tech debt
 
-**The live queue is the `tasks` table, not a file.** Run `pnpm tasks` to print it (`pnpm tasks all` includes done, `pnpm tasks <area>` filters); admins edit it at `/tasks`. It holds the bugs with file:line pointers, what is blocked on Justin, and the deferred designs (Instagram generator, accounting phases 4–5, the `drawdown` naming refactor). Read it before picking up work. It replaced `TASKS.md` on 2026-08-25 — a doc only I could update, so it went stale between sessions and nobody but me could ever see it. `status` is constrained to `open | in_progress | blocked | done` (migration 107, after 32 rows drifted onto `todo` from scratchpad inserts), and `in_progress` is capped at `settings.task_wip_limit` — three, because that is what one person tracks.
+**The live queue is the `tasks` table, not a file.** Run `pnpm tasks` to print it (`pnpm tasks all` includes done, `pnpm tasks <area>` filters); admins edit it at `/tasks`. It holds the bugs with file:line pointers, what is blocked on Justin, and the deferred designs (Instagram generator, accounting phases 4–5, the `drawdown` naming refactor). Read it before picking up work. It replaced `TASKS.md` on 2026-08-25 — a doc only I could update, so it went stale between sessions and nobody but me could ever see it. `status` is constrained to `open | in_progress | blocked | done` (migration 107, after 32 rows drifted onto `todo` from scratchpad inserts), and `in_progress` is capped at `settings.task_wip_limit` — three, because that is what one person tracks. Dated tasks are read by the 07:00 reminder cron and by `GET /api/tasks/calendar.ics`, whose `?token=` is checked against **`TASKS_ICS_TOKEN` in the env and must never be moved into `settings`** despite principle 4 — that URL is a credential for every task title and assignee, and `/settings` displays what it holds.

@@ -164,6 +164,20 @@ const JOBS: Job[] = [
       (await import("@/app/api/cron/refresh-wa-window/route")).GET(req),
   },
   {
+    // Before the working day rather than during it: a deadline you hear about
+    // at 09:00 is one you can still act on. Catch-up is on because a daily job
+    // that misses its firing waits 24 hours, and the task it would have named
+    // is overdue by then.
+    name: "task-reminders",
+    catchUp: true,
+    schedule: "0 7 * * *",
+    when: "07:00 WIB",
+    method: "POST",
+    path: "/api/cron/task-reminders",
+    run: async (req) =>
+      (await import("@/app/api/cron/task-reminders/route")).POST(req),
+  },
+  {
     name: "daily-summary",
     catchUp: true,
     schedule: "0 9 * * *",

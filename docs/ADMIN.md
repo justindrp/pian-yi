@@ -119,6 +119,24 @@ A number that already belongs to a customer with orders is refused: they are a c
 - **`query_leads` walks every page — an unpaginated Supabase select silently caps at 1000 rows.** Its conversations fetch hit that cap on the first run: the rows returned were the oldest, so the newest leads came back with zero messages, read as a closed 24h window, and sorted to the bottom — the exact leads worth chasing. `fetchAllRows()` (`src/lib/claude/assistant-tools.ts`) pages with `.range()` and the customer ids are chunked 200 at a time so a long lookback cannot build a URL too big for PostgREST. Same rule as architectural principle 9: never fetch a fixed window and aggregate in the browser.
 - **`create_customer` refuses a name that already exists.** Phone number is the only unique key, so a customer who changes WhatsApp number arrives as a stranger and gets a second row holding none of their orders — galvent wrote "No wa lama gk pakai lg y" on 2026-08-19 and was duplicated. The 409 hands back the matching rows so the number can be moved onto the real one with `update_customer_field`.
 
+## Task deadlines — the reminder and the Outlook feed
+
+`tasks.due_date` sat unread by anything for a month. A dated task was a date on a screen nobody had open, so two things now read it.
+
+**The reminder** is `POST /api/cron/task-reminders`, 07:00 WIB daily with `catchUp` — before the working day, because a deadline you hear about at 09:00 is one you can still act on. It names what is due today and what is already past its date and still open.
+
+- **It sends with `sendTextMessage()`, never `sendHumanMessage()`.** The latter requires a `customers` row and writes a `conversations` thread, and an admin is not a customer. Giving one a customer record is how Justin got welcomed as a new customer named Clara on 2026-09-14 (see "Proof Relay" above). Nothing from this job reaches `conversations`.
+- **The numbers are `settings.task_reminder_phones`** (migration 128), comma-separated, shipped empty. **They should be the same handsets as `proof_forwarder_phones`** — a number that is not a proof forwarder is treated as a customer by the webhook, so replying "ok" to the reminder would open a customer thread and the bot would start selling catering to its own admin.
+- **Expect the WhatsApp leg to fail most mornings, and that is not a bug in this job.** A reminder is business-initiated by definition, and every business-initiated send fails on `131042` while the WABA payment restriction stands. The window is only open if that handset happened to message the business number in the last 24 hours. The `sendPushToAllAdmins()` fallback is therefore the path that actually delivers — it is not a nicety, and removing it turns this job into one that silently does nothing.
+- The reply guards (`sanitizeReply`, `looksEnglish`, `validateReply`) are deliberately skipped. They police what the *model* says to a *customer*; no model is involved here and the text is assembled from table rows.
+
+**The Outlook feed** is `GET /api/tasks/calendar.ics`, a read-only iCalendar subscription of every dated, not-done task.
+
+- **The URL is the credential.** Outlook fetches a subscribed calendar from Microsoft's servers with no cookie and no chance to prompt anyone, so the token rides in `?token=` and is checked against `TASKS_ICS_TOKEN` in the env. Anyone holding that URL reads every task title, body and assignee. It is **not** in `settings`, which is editable and visible at `/settings` — it belongs with `CRON_SECRET`. Rotating it means changing the env var and re-subscribing in Outlook.
+- **It is not a reminder.** Outlook re-polls a subscribed calendar on its own schedule — often hours late, sometimes a day, and never on demand. `X-PUBLISHED-TTL` and `REFRESH-INTERVAL` are hints it is free to ignore, and it does. The feed is for seeing deadlines beside meetings; being told in time is the cron's job.
+- Events carry a stable `UID` (`task-<id>@<host>`) so a refresh updates in place rather than accumulating a duplicate on every poll, and blocked tasks come through as `STATUS:TENTATIVE`.
+- Both the feed and the reminder walk their reads with `fetchAllRows()`. A calendar that quietly drops its last deadlines, or a reminder truncated at 1000 rows, fails in exactly the way principle 9 describes — silently, and on the rows nobody was thinking about.
+
 ## The inbox refresh, and why it is not a plain interval
 
 `inbox-client.tsx` keeps the thread list live three ways: a Supabase realtime channel (INSERT on `conversations`, UPDATE on `customers` and `customer_flags`), a 10-second fallback poll, and a refresh when the tab regains focus. The fallback exists because Railway's reverse proxy occasionally drops the realtime websocket, and without it a dead socket means an inbox that silently stops updating.
