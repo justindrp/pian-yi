@@ -277,9 +277,33 @@ export function jakartaDay(date: Date): string {
 // leave the right day untouched. Inside the same Jakarta day those phrases
 // still mean what the schedule intended, so that is as late as a catch-up may
 // run; a longer outage is logged and skipped rather than acted on wrongly.
+// How often the sweep re-checks, and how many times one job may be retried for
+// the same Jakarta day. The cap is what stops a job that is failing for its own
+// reasons — a bug, a bad row — from re-running every few minutes until
+// midnight; every catchUp job tolerates a redundant run, but not forty of them.
+const SWEEP_MS = 10 * 60 * 1000;
+const MAX_ATTEMPTS_PER_DAY = 5;
+
+let sweeping = false;
+let attemptDay = "";
+const attempts = new Map<string, number>();
+
 async function catchUpMissedJobs(): Promise<void> {
   const jobs = JOBS.filter((j) => j.catchUp);
   if (jobs.length === 0) return;
+
+  // The boot sweep and the interval sweep must never overlap: both call
+  // runJob directly, which is the one path Croner's `protect` does not cover.
+  if (sweeping) return;
+  sweeping = true;
+  try {
+    await sweep(jobs);
+  } finally {
+    sweeping = false;
+  }
+}
+
+async function sweep(jobs: Job[]): Promise<void> {
 
   let lastRuns: Record<string, string> = {};
   try {
@@ -303,6 +327,12 @@ async function catchUpMissedJobs(): Promise<void> {
   }
 
   const now = new Date();
+  const today = jakartaDay(now);
+  if (today !== attemptDay) {
+    attemptDay = today;
+    attempts.clear();
+  }
+
   for (const job of jobs) {
     const due = lastDueAt(job.schedule, now);
     if (!due) continue;
@@ -327,8 +357,12 @@ async function catchUpMissedJobs(): Promise<void> {
       continue;
     }
 
+    const tried = attempts.get(job.name) ?? 0;
+    if (tried >= MAX_ATTEMPTS_PER_DAY) continue;
+    attempts.set(job.name, tried + 1);
+
     console.log(
-      `[scheduler] ${job.name} missed its ${job.when} run, catching up now`,
+      `[scheduler] ${job.name} missed its ${job.when} run, catching up now (attempt ${tried + 1})`,
     );
     await runJob(job, "catch-up");
   }
@@ -368,4 +402,14 @@ export function startScheduler(): void {
   // Deliberately not awaited: boot must not wait on Claude calls or WhatsApp
   // sends. Failures inside are already logged per job.
   void catchUpMissedJobs();
+
+  // And again on an interval. Until 2026-09-21 this sweep ran at boot and
+  // nowhere else, so a job that failed while the app stayed up was not retried
+  // until the next deploy — and a database outage does not restart the app. On
+  // that day every cron failed against a wedged PostgREST while Railway sat
+  // there healthy, which would have left `cancel-unpaid` unrun through its
+  // 16:00 deadline. Sweeping on a timer makes a job recover on its own once
+  // the database answers again, under the same same-day rule that governs the
+  // boot sweep.
+  setInterval(() => void catchUpMissedJobs(), SWEEP_MS).unref();
 }
