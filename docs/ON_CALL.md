@@ -162,6 +162,14 @@ push with `--no-verify`. Ask Claude to fix what failed.
 commit and push the revert — `git revert <sha>` — rather than trying to fix
 forward while it is down.
 
+**"Database unreachable" arrived as a push notification.** That is the
+`db-health` cron, which probes PostgREST every minute and pushes once when two
+checks in a row fail. Skip to `pnpm db-doctor` below — the alert has already
+told you what the spinner would have. A second push, "Database is back", arrives
+on recovery with how long it lasted; check afterwards that the day's crons
+caught up (they sweep for missed jobs every 10 minutes on their own, and
+`cron_runs` shows what has run).
+
 **The dashboard loads forever and every page is blank.** This is the database,
 and there is one test that tells you which half is broken. Run it before you
 touch anything:
@@ -198,6 +206,10 @@ Customer messages are safe while this lasts. The webhook returns 503 rather
 than 200 when it cannot write to `webhook_events`, so Meta holds them and
 redelivers — confirmed after this outage, where zero events were stranded. The
 crons all fail and all catch up on their own.
+
+The dashboard no longer hangs, either: every Supabase call gives up after 15
+seconds and shows an error instead of a spinner, so "loading forever" is itself
+now a sign that something *else* is wrong.
 
 ## Restoring from a backup
 

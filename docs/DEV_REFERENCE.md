@@ -341,6 +341,33 @@ Supabase's own gateway gives up at ~125s, which is where `HTTP 500 in 125028ms`
 in the scheduler logs came from. That number was never ours. Do not remove the
 timeout to "fix" a slow query; a query slow enough to hit 15s is the bug.
 
+**And the app watches itself now.** The `db-health` cron
+(`src/app/api/cron/db-health/route.ts`) fires every minute, fetches one row from
+`settings` with a bare `fetch` and an 8-second deadline, and pushes to the
+admins when two consecutive probes fail. Three details are load-bearing:
+
+- **It alerts on the transition, not the state.** Down once, recovered once. A
+  push a minute for ninety minutes teaches everyone to swipe the alert away, and
+  the next outage goes unread on purpose.
+- **It reads the body, not just the status.** The 2026-09-21 failure was a
+  socket that connected, returned headers and then delivered zero bytes. A
+  status-code check would have called it healthy for the whole ninety minutes.
+- **It does not use the Supabase client.** This is a liveness probe; the only
+  answers that matter are "bytes came back quickly" and "they did not". A client
+  with retries and auth refresh answers a different question.
+
+The alert itself goes through `sendOutageAlert()` (`src/lib/push/send.ts`), not
+`sendPushToAllAdmins()`, because that one needs two database reads — the
+`admin_users` allowlist and `push_subscriptions` — and would die with the thing
+it is meant to report. `sendOutageAlert()` falls back to a recipient list cached
+in memory from the last successful lookup, refreshed by the healthy ticks of the
+probe itself (`warmRecipientCache()`, at most every 30 minutes) and discarded
+after 24 hours. That is a weaker guarantee than the fail-closed rule the normal
+send path keeps, and it is confined to this one caller on purpose: an outage
+alert carries **no customer data**, so a stale allowlist costs at most one
+revoked device learning that the database is down. Never widen the cache to a
+payload with a customer in it.
+
 ## Backups
 
 `pnpm backup` (`scripts/backup-db.ts`) dumps every table to one gzipped JSON

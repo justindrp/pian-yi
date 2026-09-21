@@ -602,18 +602,47 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     // the unconditional version refetched ~200 KB every 10s, 68 MB an hour per
     // open tab, and that alone put the Supabase project over its 5 GB egress
     // quota with 7 users and a 50 MB database.
+    // Two things suppress a tick. A hidden tab has nobody to show a new
+    // message to, and `visibilitychange` below refetches the moment it comes
+    // back, so polling one is pure egress — a dashboard left open in a
+    // background tab used to cost the same as one being read. And after a
+    // failure the poll backs off: on 2026-09-21 PostgREST wedged for ninety
+    // minutes, and a tab that keeps firing every 10s through that is both
+    // useless and the first thing to hit the database again when it returns.
+    let failures = 0;
+    let skipTicks = 0;
+
     const pollInterval = setInterval(() => {
-      void readWatermark().then((mark) => {
-        const previous = watermarkRef.current;
-        watermarkRef.current = mark;
-        if (previous !== null && previous !== mark) refresh();
-      });
+      if (document.visibilityState !== "visible") return;
+      if (skipTicks > 0) {
+        skipTicks -= 1;
+        return;
+      }
+      void readWatermark()
+        .then((mark) => {
+          failures = 0;
+          const previous = watermarkRef.current;
+          watermarkRef.current = mark;
+          if (previous !== null && previous !== mark) refresh();
+        })
+        .catch(() => {
+          // Doubling ticks, capped at 5 minutes. Without the catch this is an
+          // unhandled rejection every 10s for the length of the outage, since
+          // a timed-out client now throws rather than resolving empty.
+          failures += 1;
+          skipTicks = Math.min(2 ** failures, 30);
+        });
     }, 10_000);
 
     // customer_flags carries no timestamp, so a takeover by another admin moves
     // no watermark. Realtime delivers it; this slower sweep is what covers a
-    // dead socket, at 1/6th the ticks rather than none.
-    const flagPollInterval = setInterval(refresh, 60_000);
+    // dead socket, at 1/6th the ticks rather than none. Unlike the watermark
+    // poll this one refetches unconditionally, so a hidden tab running it is
+    // the most expensive idle thing in the app.
+    const flagPollInterval = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      refresh();
+    }, 60_000);
 
     // Refresh immediately when the tab regains focus
     const onVisible = () => {

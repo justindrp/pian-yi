@@ -51,6 +51,19 @@ function authedRequest(path: string, method: "GET" | "POST"): NextRequest {
 
 const JOBS: Job[] = [
   {
+    // Every minute, because the gap this closes is "nobody knew". It does not
+    // touch the database through the Supabase client and it alerts only on the
+    // healthy/down transition, so a long outage is two notifications, not one
+    // per minute. Never catchUp: a liveness probe about the past is noise.
+    name: "db-health",
+    schedule: "* * * * *",
+    when: "every minute",
+    method: "GET",
+    path: "/api/cron/db-health",
+    run: async (req) =>
+      (await import("@/app/api/cron/db-health/route")).GET(req),
+  },
+  {
     name: "auto-resume-bot",
     schedule: "*/15 * * * *",
     when: "every 15 min",

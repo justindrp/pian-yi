@@ -134,6 +134,11 @@ Four things changed, and a refresh went from 200 KB to 5.4 KB:
 
 Paging moved two things into the database that used to happen in the browser, and this is the part that is easy to get wrong: **the tab filter and the search box now filter in SQL.** A filter applied to whichever rows happen to be loaded answers a different question once the list is paged — it is the same mistake as the 500-row window that hid every lapsed customer before migration 059 (architectural principle 9 in `CLAUDE.md`). "Unanswered" is `.eq("unanswered", true)` against the derived column 096 added; the search box is a debounced `or=(...)` of three `ilike`s, with `sanitizeSearchTerm()` stripping the commas, parentheses, quotes and wildcards that would otherwise be read as filter syntax.
 
+Two more things hang off those intervals, both added after the 2026-09-21 outage:
+
+- **A hidden tab polls nothing.** Both intervals return early unless `document.visibilityState === "visible"`. An admin with the inbox open in a background tab was paying the full 10-second rate for a list nobody was looking at; TanStack Query's own `refetchIntervalInBackground` already defaults to `false`, and these hand-rolled intervals were the one place that rule was not applied.
+- **A failing watermark read backs off instead of hammering.** The poll had no `.catch()` at all, which was survivable only while the Supabase clients had no timeout and simply hung. Now that they throw (`src/lib/supabase/timeout-fetch.ts`), an outage would have produced an unhandled rejection every 10 seconds per tab, and every tab in the org retrying a wedged PostgREST once a second between them. Failures double the number of ticks skipped, capped at 30 (five minutes), and the first success resets it.
+
 Two consequences worth knowing before touching this file:
 
 - `customer_flags` has no timestamp column, so another admin's takeover moves no watermark. Realtime carries it; a separate 60-second interval is the dead-socket fallback for that one case. Do not "simplify" the two intervals back into one unconditional refresh — that is the shape that cost the quota.
