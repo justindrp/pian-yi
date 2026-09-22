@@ -252,3 +252,67 @@ async function sumRowsByOrder(
   }
   return left;
 }
+
+/**
+ * Portions each customer has bought and not yet had delivered, keyed by
+ * customer id — the batched, customer-level form of `loadCustomerSchedule`'s
+ * `remainingToday`, and the same arithmetic the ledger drawer prints as
+ * "Sisa hari ini".
+ *
+ * This is the only balance fit to write into a message to a customer.
+ * `remainingTodayByOrder` above is a per-*order* figure and goes negative as an
+ * ordinary artifact: which order a delivery is charged to is `pickDrawOrder`'s
+ * business, and the June import's `package_size = 0` catch-all orders hold
+ * other packages' rows outright. The renewal cron pasted that per-order number
+ * into "paket kakak tinggal {remaining} porsi lagi" — on 2026-09-22 all 306
+ * queued orders would have read "tinggal 0 porsi" or, at worst, "tinggal -100
+ * porsi lagi". It inherited the shape from the dropped `orders.portions_remaining`
+ * column, which was per order because it was a column on the order.
+ *
+ * Counted across every paid order, exactly as `loadCustomerSchedule` does, so
+ * the reminder and the bot's own "sisa kuota" cannot disagree.
+ */
+export async function remainingTodayByCustomer(
+  db: Db,
+  customerIds: string[],
+  today: string = jakartaDateString(),
+): Promise<Map<string, number>> {
+  const left = new Map<string, number>();
+  if (customerIds.length === 0) return left;
+
+  const [orders, draws] = await Promise.all([
+    fetchAllRows<{ customer_id: string | null; package_size: number | null }>(
+      (from, to) =>
+        db
+          .from("orders")
+          .select("customer_id, package_size")
+          .in("customer_id", customerIds)
+          .in("status", PAID_STATUSES)
+          .range(from, to),
+    ),
+    fetchAllRows<{ customer_id: string | null; portions: number | null }>(
+      (from, to) =>
+        db
+          .from("daily_deliveries")
+          .select("customer_id, portions")
+          .in("customer_id", customerIds)
+          .lte("delivery_date", today)
+          .range(from, to),
+    ),
+  ]);
+
+  for (const row of orders.rows) {
+    if (!row.customer_id) continue;
+    left.set(
+      row.customer_id,
+      (left.get(row.customer_id) ?? 0) + (row.package_size ?? 0),
+    );
+  }
+  for (const row of draws.rows) {
+    if (!row.customer_id) continue;
+    const rest = left.get(row.customer_id);
+    if (rest === undefined) continue;
+    left.set(row.customer_id, rest - (row.portions ?? 0));
+  }
+  return left;
+}

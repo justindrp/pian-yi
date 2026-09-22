@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/cron/renewal-reminders/route";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
-import { remainingTodayByOrder } from "@/lib/orders/customer-schedule";
+import { remainingTodayByCustomer } from "@/lib/orders/customer-schedule";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin", () => ({ createAdminClient: jest.fn() }));
 jest.mock("@/lib/whatsapp/client", () => ({ sendTextMessage: jest.fn() }));
 jest.mock("@/lib/orders/customer-schedule", () => ({
-  remainingTodayByOrder: jest.fn(),
+  remainingTodayByCustomer: jest.fn(),
 }));
 jest.mock("@/lib/cache/settings", () => ({
   getSetting: jest.fn(),
@@ -19,12 +19,12 @@ const SECRET = "test-cron-secret";
 type Row = Record<string, unknown>;
 
 /**
- * Both chains the route uses end on `.eq()` — the order query is
- * `select → eq("status")` and the write is `update → eq("id")` — so the same
- * `updating` flag trick as `cancel-unpaid.test.ts` decides which one resolves.
+ * The order query is `select → eq("status")` and the stamp is
+ * `update → in("id", [...])`, so the two chains end on different methods and
+ * neither needs the `pending` flag `cancel-unpaid.test.ts` uses.
  */
 function makeDb(rows: Row[]) {
-  const updates: { id: unknown; row: Row }[] = [];
+  const stamped: { ids: unknown; row: Row }[] = [];
   const from = jest.fn(() => {
     let pending: Row | null = null;
     const chain: Record<string, unknown> = {};
@@ -33,17 +33,15 @@ function makeDb(rows: Row[]) {
       pending = row;
       return chain;
     });
-    chain.eq = jest.fn((_column: string, value: unknown) => {
-      if (pending) {
-        updates.push({ id: value, row: pending });
-        pending = null;
-        return Promise.resolve({ error: null });
-      }
-      return Promise.resolve({ data: rows, error: null });
+    chain.eq = jest.fn(() => Promise.resolve({ data: rows, error: null }));
+    chain.in = jest.fn((_column: string, ids: unknown) => {
+      stamped.push({ ids, row: pending ?? {} });
+      pending = null;
+      return Promise.resolve({ error: null });
     });
     return chain;
   });
-  return { db: { from }, updates };
+  return { db: { from }, stamped };
 }
 
 function req(): NextRequest {
@@ -54,14 +52,18 @@ function req(): NextRequest {
 }
 
 /** An order queued for the *first* reminder: never reminded, quota low. */
-const order = (id: string, phone: string, name = id): Row => ({
+const order = (id: string, phone: string, customerId = `cust-${id}`): Row => ({
   id,
-  customer_id: `cust-${id}`,
-  package_size: 20,
+  customer_id: customerId,
   reminder_sent_at: null,
   followup_sent_at: null,
-  customers: { phone_number: phone, name },
+  customers: { phone_number: phone, name: id },
 });
+
+/** Every customer in `rows` at a low but real balance, unless overridden. */
+function balances(entries: [string, number][]) {
+  (remainingTodayByCustomer as jest.Mock).mockResolvedValue(new Map(entries));
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -70,10 +72,9 @@ beforeEach(() => {
     Promise.resolve(key === "low_quota_first_warning" ? "3" : "1"),
   );
   (getTemplate as jest.Mock).mockResolvedValue("sisa kuota {name}: {remaining}");
-  // A low but real balance: at or below the threshold, and above zero, which
-  // is what actually earns a reminder.
-  (remainingTodayByOrder as jest.Mock).mockImplementation((_db, orders: Row[]) =>
-    Promise.resolve(new Map(orders.map((o) => [o.id as string, 2]))),
+  // At or below the threshold and above zero, which is what earns a reminder.
+  (remainingTodayByCustomer as jest.Mock).mockImplementation(
+    (_db, ids: string[]) => Promise.resolve(new Map(ids.map((id) => [id, 2]))),
   );
   (sendTextMessage as jest.Mock).mockResolvedValue("wamid.OK");
   // Two tests drive sends into the catch on purpose; that logging is the
@@ -86,9 +87,9 @@ afterEach(() => {
 });
 
 function install(rows: Row[]) {
-  const { db, updates } = makeDb(rows);
+  const { db, stamped } = makeDb(rows);
   (createAdminClient as jest.Mock).mockReturnValue(db);
-  return updates;
+  return stamped;
 }
 
 describe("renewal-reminders", () => {
@@ -113,7 +114,7 @@ describe("renewal-reminders", () => {
   });
 
   it("keeps sending after a send throws mid-queue", async () => {
-    const updates = install([
+    const stamped = install([
       order("a", "+6281320480123"),
       order("b", "+6285174104007"),
       order("c", "+6287780081705"),
@@ -129,7 +130,7 @@ describe("renewal-reminders", () => {
     expect(sendTextMessage).toHaveBeenCalledTimes(3);
     expect(body).toMatchObject({ firstReminders: 2, failed: 1 });
     // The failed customer must not be marked reminded, or they never hear again.
-    expect(updates.map((u) => u.id)).toEqual(["a", "c"]);
+    expect(stamped.map((s) => s.ids)).toEqual([["a"], ["c"]]);
   });
 
   it("treats a DEMO_ number as reachable", async () => {
@@ -154,23 +155,35 @@ describe("renewal-reminders", () => {
     expect(body).toMatchObject({ firstReminders: 0, failed: 1, unreachable: 1 });
   });
 
+  it("quotes the customer's ledger balance, not a per-order one", async () => {
+    // The whole reason this route stopped using `remainingTodayByOrder`: that
+    // number is `package_size` minus one order's rows, and it goes negative as
+    // an ordinary artifact of cross-order draws. It told 306 of 306 queued
+    // customers they had 0 or -100 portions left.
+    install([order("a", "+6281320480123")]);
+    balances([["cust-a", 3]]);
+
+    await GET(req());
+
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      "+6281320480123",
+      expect.stringContaining("sisa kuota a: 3"),
+    );
+  });
+
   it("never writes a zero or negative balance into the message", async () => {
-    // remainingTodayByOrder is per order, and a per-order balance goes negative
-    // as a normal artifact of cross-order draws. Pasting it into "tinggal
-    // {remaining} porsi lagi" told 306 of 306 queued customers they had 0 or
-    // -100 portions left.
+    // A negative customer-level balance is a real over-draw rather than an
+    // artifact, and still not a sentence to send anyone.
     install([
       order("neg", "+6281320480123"),
       order("zero", "+6285174104007"),
       order("low", "+6287780081705"),
     ]);
-    (remainingTodayByOrder as jest.Mock).mockResolvedValue(
-      new Map([
-        ["neg", -100],
-        ["zero", 0],
-        ["low", 2],
-      ]),
-    );
+    balances([
+      ["cust-neg", -100],
+      ["cust-zero", 0],
+      ["cust-low", 2],
+    ]);
 
     const body = await (await GET(req())).json();
 
@@ -180,6 +193,26 @@ describe("renewal-reminders", () => {
       expect.stringContaining("sisa kuota low: 2"),
     );
     expect(body).toMatchObject({ firstReminders: 1 });
+  });
+
+  it("sends one message to a customer holding two active orders", async () => {
+    // 85 customers do. The balance is customer-level now, so a per-order loop
+    // would send the same sentence carrying the same number twice — and stamp
+    // only the order it looped on, leaving the other to fire again next hour.
+    const stamped = install([
+      order("o1", "+6281320480123", "cust-shared"),
+      order("o2", "+6281320480123", "cust-shared"),
+    ]);
+    balances([["cust-shared", 2]]);
+
+    const body = await (await GET(req())).json();
+
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({ firstReminders: 1 });
+    // Both orders stamped, or the untouched one re-queues the customer.
+    expect(stamped).toEqual([
+      { ids: ["o1", "o2"], row: { reminder_sent_at: expect.any(String) } },
+    ]);
   });
 
   it("rejects an unauthenticated call", async () => {
