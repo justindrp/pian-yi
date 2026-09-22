@@ -8,14 +8,44 @@ interface CacheData {
   activeInstructions: string[];
   neighborhoods: Record<string, string[]>;
   excludedNeighborhoods: ExcludedNeighborhood[];
+  /** The mark these contents were loaded against. Null when it could not be read. */
+  watermark: string | null;
   loadedAt: number;
 }
 
 let cache: CacheData | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * One string that changes whenever anything this cache holds changes
+ * (migration 129). 166 bytes against the 20,621 the five selects below cost,
+ * and one request rather than five.
+ *
+ * Returns null when it cannot be read, which is deliberately *not* the same as
+ * "unchanged": an unreachable database or a deploy that lands ahead of the
+ * migration falls back to reloading every minute, which is what this file did
+ * before. A watermark that fails closed would serve a frozen price list.
+ */
+async function readWatermark(
+  db: ReturnType<typeof createAdminClient>,
+): Promise<string | null> {
+  try {
+    const { data, error } = await db.rpc("settings_cache_watermark");
+    if (error || typeof data !== "string") return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 async function load(): Promise<CacheData> {
   const db = createAdminClient();
+
+  // Read the mark *before* the data. A write that lands mid-load then shows up
+  // as a moved mark on the next tick and gets picked up. Reading it afterwards
+  // would stamp the cache with a mark newer than its own contents, and that
+  // write would never be loaded at all.
+  const watermark = await readWatermark(db);
 
   const [
     settingsRes,
@@ -69,20 +99,34 @@ async function load(): Promise<CacheData> {
     activeInstructions,
     neighborhoods,
     excludedNeighborhoods,
+    watermark,
     loadedAt: Date.now(),
   };
+}
+
+/**
+ * The 60-second tick. It used to reload five tables unconditionally — 28 MB a
+ * day, 849 MB a month, spent almost entirely on re-reading bytes identical to
+ * the ones already in memory, because settings change a few times a week and
+ * this runs 1,440 times a day. Now it asks whether anything moved first and
+ * only pays the 20 KB when the answer is yes.
+ */
+async function refreshIfStale(): Promise<void> {
+  try {
+    const mark = await readWatermark(createAdminClient());
+    if (mark !== null && cache && mark === cache.watermark) return;
+    cache = await load();
+  } catch (err) {
+    console.error("[settings-cache] refresh failed:", err);
+  }
 }
 
 async function getCache(): Promise<CacheData> {
   if (!cache) {
     cache = await load();
     if (!refreshTimer) {
-      refreshTimer = setInterval(async () => {
-        try {
-          cache = await load();
-        } catch (err) {
-          console.error("[settings-cache] refresh failed:", err);
-        }
+      refreshTimer = setInterval(() => {
+        void refreshIfStale();
       }, 60_000);
       // Unref'd so a CLI script can exit. The server is kept alive by its own
       // HTTP listener, so this changes nothing in production — but a one-shot

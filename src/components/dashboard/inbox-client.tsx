@@ -206,6 +206,14 @@ function getReceiptClass(status: string | null) {
 // normal day's traffic and the rest loads as the admin scrolls.
 const THREAD_PAGE_SIZE = 40;
 
+// The most rows a refresh re-reads, however far the admin has paged down.
+// A refresh used to re-read everything on screen, so an admin who had scrolled
+// to 400 threads made every tick a 400-row, ~180 KB query. The rows past the
+// cap are the oldest threads, which is exactly where nothing changes: a thread
+// that receives a message sorts back to the top and lands inside the cap. The
+// uncovered tail is kept rather than dropped — see `setThreads` below.
+const THREAD_REFRESH_CAP = 80;
+
 // A search term is interpolated into a PostgREST or=(...) filter, where a
 // comma separates conditions, parentheses close the group, and % and * are
 // ilike wildcards. Strip them: an admin typing a comma should get no results,
@@ -336,6 +344,27 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
     }`;
   }, [supabase]);
 
+  // customer_flags moves no message watermark, so the sweep below is what
+  // catches another admin taking over a thread. It needs its own mark, and it
+  // has to be table-wide rather than the selected customer's row: the badges
+  // and the Unanswered tab read `inbox_threads.unanswered`, which is computed
+  // from customer_flags for *every* customer in the list.
+  //
+  // `updated_at` arrived with migration 129 — the table had no timestamp at
+  // all, which is why this sweep refetched unconditionally until now. The count
+  // rides along in the Content-Range header at no extra bytes and is what
+  // catches a deleted row, which need not move max(updated_at).
+  const flagWatermarkRef = useRef<string | null>(null);
+
+  const readFlagWatermark = useCallback(async () => {
+    const { data, count } = await supabase
+      .from("customer_flags")
+      .select("updated_at", { count: "exact" })
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    return `${count ?? 0}:${data?.[0]?.updated_at ?? ""}`;
+  }, [supabase]);
+
   // One page of threads, one query. inbox_threads (migration 059, extended in
   // 095/096) is one row per customer holding their newest message plus the
   // name, phone and badges the list draws, so the four queries this used to
@@ -347,11 +376,13 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
 
       const loaded = threadsRef.current.length;
       const from = mode === "append" ? loaded : 0;
-      // A refresh re-reads everything already on screen, so paging down and
-      // then receiving a message does not collapse the list back to one page.
+      // A refresh re-reads what is already on screen, so paging down and then
+      // receiving a message does not collapse the list back to one page — but
+      // only down to THREAD_REFRESH_CAP rows, because the cost of that promise
+      // grew with every page the admin scrolled.
       const size =
         mode === "refresh"
-          ? Math.max(loaded, THREAD_PAGE_SIZE)
+          ? Math.min(Math.max(loaded, THREAD_PAGE_SIZE), THREAD_REFRESH_CAP)
           : THREAD_PAGE_SIZE;
 
       let request = supabase
@@ -405,7 +436,27 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
 
       hasMoreRef.current = data.length === size;
       setHasMore(hasMoreRef.current);
-      setThreads((prev) => (mode === "append" ? [...prev, ...page] : page));
+      setThreads((prev) => {
+        if (mode === "append") return [...prev, ...page];
+        // A capped refresh read fewer rows than the list holds. Keep the tail
+        // it did not cover instead of dropping the admin back to the cap —
+        // minus any thread the fresh page already carries, since a thread that
+        // received a message has moved to the top and would otherwise be drawn
+        // twice. A short page means those rows are genuinely gone, so it
+        // replaces the list outright.
+        if (
+          mode === "refresh" &&
+          page.length < prev.length &&
+          data.length === size
+        ) {
+          const fresh = new Set(page.map((t) => t.customer.id));
+          return [
+            ...page,
+            ...prev.slice(page.length).filter((t) => !fresh.has(t.customer.id)),
+          ];
+        }
+        return page;
+      });
     },
     [supabase],
   );
@@ -567,10 +618,13 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
         // on a chat someone else is already handling.
         void loadFlags(current);
       }
-      // Re-read the mark after refetching, so a refresh triggered by realtime
+      // Re-read the marks after refetching, so a refresh triggered by realtime
       // does not leave a stale mark for the poll to trip over and refetch again.
       void readWatermark().then((mark) => {
         watermarkRef.current = mark;
+      });
+      void readFlagWatermark().then((mark) => {
+        flagWatermarkRef.current = mark;
       });
     };
 
@@ -634,14 +688,29 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
         });
     }, 10_000);
 
-    // customer_flags carries no timestamp, so a takeover by another admin moves
-    // no watermark. Realtime delivers it; this slower sweep is what covers a
-    // dead socket, at 1/6th the ticks rather than none. Unlike the watermark
-    // poll this one refetches unconditionally, so a hidden tab running it is
-    // the most expensive idle thing in the app.
+    // A takeover by another admin changes customer_flags and nothing else, so
+    // it moves no message watermark. Realtime delivers it; this slower sweep is
+    // what covers a dead socket, at 1/6th the ticks rather than none.
+    //
+    // It used to refetch unconditionally, which made it the most expensive idle
+    // thing in the app — a 17.9 KB thread page every minute per visible tab, up
+    // to ~1 GB a month across four admins, spent almost entirely on re-reading
+    // rows nobody had touched. Since migration 129 it has a mark of its own to
+    // check first, for about 60 bytes.
     const flagPollInterval = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      refresh();
+      void readFlagWatermark()
+        .then((mark) => {
+          const previous = flagWatermarkRef.current;
+          flagWatermarkRef.current = mark;
+          if (previous !== null && previous !== mark) refresh();
+        })
+        .catch(() => {
+          // Swallowed on purpose. The watermark poll above owns the backoff for
+          // an unreachable database; this one firing every 60s through an
+          // outage is not what makes it worse, and an unhandled rejection a
+          // minute buries whatever the real error was.
+        });
     }, 60_000);
 
     // Refresh immediately when the tab regains focus
@@ -656,7 +725,14 @@ export default function InboxClient({ canTakeOver }: { canTakeOver: boolean }) {
       clearInterval(flagPollInterval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [loadThreads, loadMessages, loadFlags, readWatermark, supabase]);
+  }, [
+    loadThreads,
+    loadMessages,
+    loadFlags,
+    readWatermark,
+    readFlagWatermark,
+    supabase,
+  ]);
 
   // Scroll to bottom when switching threads; on message updates only if already near bottom
   // biome-ignore lint/correctness/useExhaustiveDependencies: must fire on thread switch only — adding messages would yank the view to the bottom mid-scroll on every poll

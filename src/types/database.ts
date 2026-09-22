@@ -100,6 +100,7 @@ export type Database = {
           excluded: boolean
           id: string
           name: string
+          updated_at: string
         }
         Insert: {
           area: string
@@ -107,6 +108,7 @@ export type Database = {
           excluded?: boolean
           id?: string
           name: string
+          updated_at?: string
         }
         Update: {
           area?: string
@@ -114,6 +116,7 @@ export type Database = {
           excluded?: boolean
           id?: string
           name?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -654,6 +657,7 @@ export type Database = {
           pending_bot_question: string | null
           pending_bot_question_at: string | null
           pending_bot_response: boolean
+          updated_at: string
           vip_status: boolean | null
         }
         Insert: {
@@ -669,6 +673,7 @@ export type Database = {
           pending_bot_question?: string | null
           pending_bot_question_at?: string | null
           pending_bot_response?: boolean
+          updated_at?: string
           vip_status?: boolean | null
         }
         Update: {
@@ -684,6 +689,7 @@ export type Database = {
           pending_bot_question?: string | null
           pending_bot_question_at?: string | null
           pending_bot_response?: boolean
+          updated_at?: string
           vip_status?: boolean | null
         }
         Relationships: [
@@ -1945,6 +1951,7 @@ export type Database = {
     Functions: {
       next_invoice_number: { Args: { p_period: string }; Returns: string }
       next_journal_reference: { Args: { p_year: number }; Returns: string }
+      settings_cache_watermark: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never
