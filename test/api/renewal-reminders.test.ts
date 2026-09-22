@@ -70,8 +70,10 @@ beforeEach(() => {
     Promise.resolve(key === "low_quota_first_warning" ? "3" : "1"),
   );
   (getTemplate as jest.Mock).mockResolvedValue("sisa kuota {name}: {remaining}");
+  // A low but real balance: at or below the threshold, and above zero, which
+  // is what actually earns a reminder.
   (remainingTodayByOrder as jest.Mock).mockImplementation((_db, orders: Row[]) =>
-    Promise.resolve(new Map(orders.map((o) => [o.id as string, 0]))),
+    Promise.resolve(new Map(orders.map((o) => [o.id as string, 2]))),
   );
   (sendTextMessage as jest.Mock).mockResolvedValue("wamid.OK");
   // Two tests drive sends into the catch on purpose; that logging is the
@@ -150,6 +152,34 @@ describe("renewal-reminders", () => {
     const body = await (await GET(req())).json();
 
     expect(body).toMatchObject({ firstReminders: 0, failed: 1, unreachable: 1 });
+  });
+
+  it("never writes a zero or negative balance into the message", async () => {
+    // remainingTodayByOrder is per order, and a per-order balance goes negative
+    // as a normal artifact of cross-order draws. Pasting it into "tinggal
+    // {remaining} porsi lagi" told 306 of 306 queued customers they had 0 or
+    // -100 portions left.
+    install([
+      order("neg", "+6281320480123"),
+      order("zero", "+6285174104007"),
+      order("low", "+6287780081705"),
+    ]);
+    (remainingTodayByOrder as jest.Mock).mockResolvedValue(
+      new Map([
+        ["neg", -100],
+        ["zero", 0],
+        ["low", 2],
+      ]),
+    );
+
+    const body = await (await GET(req())).json();
+
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      "+6287780081705",
+      expect.stringContaining("sisa kuota low: 2"),
+    );
+    expect(body).toMatchObject({ firstReminders: 1 });
   });
 
   it("rejects an unauthenticated call", async () => {

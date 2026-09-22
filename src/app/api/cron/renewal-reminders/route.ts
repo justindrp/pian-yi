@@ -43,8 +43,19 @@ export async function GET(req: NextRequest): Promise<Response> {
     .eq("status", "active");
 
   const remaining = await remainingTodayByOrder(db, activeOrders ?? []);
-  const under = (id: string, threshold: number) =>
-    (remaining.get(id) ?? 0) <= threshold;
+  // Low, but still a real balance. `remainingTodayByOrder` is per *order* —
+  // `package_size` minus that order's rows — and a per-order balance goes
+  // negative as an ordinary artifact, because the June import's
+  // `package_size = 0` catch-all orders hold other packages' delivery rows.
+  // The template pastes this number into the message ("tinggal {remaining}
+  // porsi lagi"), so without the lower bound 306 of 306 queued customers would
+  // have been told they had 0 or -100 portions left. The real balance is a
+  // customer-level net, which this cron does not compute; until it does, an
+  // order at or below zero is not something to write to anyone.
+  const under = (id: string, threshold: number) => {
+    const left = remaining.get(id) ?? 0;
+    return left > 0 && left <= threshold;
+  };
 
   // Twelve customers carry a placeholder phone from the legacy import
   // ("IMPORT_rima"), which Meta rejects and `sendTextMessage` throws on. That
