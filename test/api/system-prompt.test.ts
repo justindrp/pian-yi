@@ -1700,17 +1700,29 @@ describe("the area gate", () => {
     ).not.toContain("BSD Baru — already on their record");
   });
 
-  test("a missing area is a question, never a refusal", async () => {
+  test("a missing area is one closed question naming the served areas", async () => {
     const prompt = await buildSystemPrompt({ ...base, customerArea: null });
 
-    expect(prompt).toContain("Area customer ini: belum tercatat");
-    expect(prompt).toContain("A missing area is a question, never a refusal");
-    expect(prompt).toContain(
-      "Never say the menu or the price list cannot be sent yet",
-    );
+    expect(prompt).toContain("A missing area is one closed question");
+    // The 2026-09-10 half: a stall with no question in it is still banned.
+    expect(prompt).toContain("never say the images cannot be sent yet");
     // The half that invented "BSD Baru" for a customer who had named no place.
     expect(prompt).toContain(
       "Only ever pass record_customer_area an area the customer actually named",
+    );
+  });
+
+  test("an unrecorded area names the served areas to pick from", async () => {
+    const prompt = await buildSystemPrompt({ ...base, customerArea: null });
+
+    // The 2026-09-22 half: "belum tercatat" alone let the model read the full
+    // dapur list as this customer's own and quote two kitchens that cannot
+    // reach them. The line has to say the list is unnarrowed and hand the
+    // model a question the customer can answer in one word.
+    expect(prompt).toContain("not the ones that reach this customer");
+    expect(prompt).toContain("Quote no price and send no menu");
+    expect(prompt).toContain(
+      `Ask which of these served areas the address falls under: ${base.servedAreas.join(", ")}`,
     );
   });
 
@@ -1720,7 +1732,10 @@ describe("the area gate", () => {
       dapurOptions: [base.dapurOptions[0]],
     });
 
-    expect(prompt).not.toContain("A missing area is a question");
+    expect(prompt).not.toContain("A missing area is one closed question");
+    // With one kitchen there is nothing to mis-narrow, so the unrecorded-area
+    // line stays the bare marker it always was.
+    expect(prompt).toContain("Area customer ini: belum tercatat");
   });
 });
 

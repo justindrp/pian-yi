@@ -102,10 +102,33 @@ export async function kitchensForCustomerArea(
   return covering.length > 0 ? covering : active;
 }
 
-export async function kitchensForCustomer(
+export type CustomerKitchenScope = {
+  kitchens: CustomerKitchen[];
+  /**
+   * Whether the list was narrowed by something we actually know about this
+   * customer, rather than being every active kitchen by default.
+   *
+   * False means we know neither their dapur nor an area any active kitchen
+   * covers. `kitchens` is still every active kitchen — the prompt needs one —
+   * but nothing the customer *sees* may be built from it unchecked. On
+   * 2026-09-22 a Daan Mogot Baru lead whose `area` had never been recorded was
+   * sent all three menus and quoted Dapur Palem's and Dapur Suplir's ladders at
+   * Rp 29.000-30.500 a portion. Only Dapur Monstera reaches Jakarta Barat, and
+   * its bottom tier is Rp 45.000 — every price that lead was given was low by
+   * up to Rp 16.000 a portion.
+   */
+  narrowed: boolean;
+};
+
+/**
+ * `kitchensForCustomer` plus whether the answer is actually about this
+ * customer. Callers that send a menu or a price sheet use this and refuse when
+ * `narrowed` is false; callers that only build context use the list.
+ */
+export async function kitchenScopeForCustomer(
   db: Db,
   customerId: string,
-): Promise<CustomerKitchen[]> {
+): Promise<CustomerKitchenScope> {
   const [{ data: customer }, { data: activeRaw }] = await Promise.all([
     db
       .from("customers")
@@ -119,7 +142,7 @@ export async function kitchensForCustomer(
 
   if (customer?.subcontractor_id) {
     const assigned = active.find((k) => k.id === customer.subcontractor_id);
-    if (assigned) return [assigned];
+    if (assigned) return { kitchens: [assigned], narrowed: true };
   }
 
   const areas = [customer?.area, customer?.area_2].filter(
@@ -130,5 +153,14 @@ export async function kitchensForCustomer(
   // An area no active kitchen covers is a data problem, not a reason to show
   // the customer nothing: fall back to every active kitchen and let the
   // conversation sort it out.
-  return covering.length > 0 ? covering : active;
+  return covering.length > 0
+    ? { kitchens: covering, narrowed: areas.length > 0 }
+    : { kitchens: active, narrowed: false };
+}
+
+export async function kitchensForCustomer(
+  db: Db,
+  customerId: string,
+): Promise<CustomerKitchen[]> {
+  return (await kitchenScopeForCustomer(db, customerId)).kitchens;
 }

@@ -103,6 +103,7 @@ import { activeDeliveryAreas, unionAreas } from "@/lib/subcontractors/areas";
 import { coverageNotes } from "@/lib/subcontractors/coverage";
 import { daysLabel } from "@/lib/subcontractors/days";
 import {
+  kitchenScopeForCustomer,
   kitchensForCustomer,
   kitchensForCustomerArea,
 } from "@/lib/subcontractors/for-customer";
@@ -4350,9 +4351,23 @@ async function handleToolUse(
     // once they stop cooking, so `kitchensForCustomer` filtering on is_active
     // is also what stops a months-old menu from a kitchen we no longer use
     // going out beside the live one.
-    const menuSubs = (await kitchensForCustomer(db, customerId)).filter(
-      (s) => !!s.menu_image_url,
-    );
+    const menuScope = await kitchenScopeForCustomer(db, customerId);
+    // We know neither their dapur nor an area any kitchen covers, so the list
+    // is every active kitchen by default. Sending it is how a Jakarta Barat
+    // lead got Dapur Palem's and Dapur Suplir's menus on 2026-09-22 — neither
+    // kitchen delivers there — and was quoted their ladders to match. Ask which
+    // served area the address falls under instead; the answer is what
+    // `record_customer_area` needs the customer to have said in their own
+    // words, and a closed question gets it in one turn where "area mana kak"
+    // gets the same neighbourhood name back again.
+    if (!menuScope.narrowed && menuScope.kitchens.length > 1) {
+      const served = await activeDeliveryAreas(db);
+      return {
+        ok: false,
+        error: `Menu tidak dikirim — kami belum tahu customer ini di area mana, dan tiap dapur punya menu, harga dan jam kirim sendiri. Tanya dulu alamatnya masuk area yang mana: ${served.join(", ")}. Begitu dijawab, panggil record_customer_area lalu send_menu_image lagi. Jangan bilang menunya sudah atau akan dikirim, dan jangan sebut harga dapur mana pun dulu.`,
+      };
+    }
+    const menuSubs = menuScope.kitchens.filter((s) => !!s.menu_image_url);
     for (const sub of menuSubs) {
       const menuUrl = sub.menu_image_url as string;
       // The week goes on the picture itself, so the customer reads it off the
@@ -4535,7 +4550,18 @@ async function handleToolUse(
     // own sheet has not been rendered yet still falls back to it, and the
     // dedupe keeps two such kitchens from sending the same picture twice.
     const houseUrl = await getSetting("price_list_image_url");
-    const kitchens = await kitchensForCustomer(db, customerId);
+    const priceScope = await kitchenScopeForCustomer(db, customerId);
+    // Same refusal as send_menu_image, and for the same Rp 16.000 a portion:
+    // an unnarrowed list is every active kitchen, and each sheet is a different
+    // ladder.
+    if (!priceScope.narrowed && priceScope.kitchens.length > 1) {
+      const served = await activeDeliveryAreas(db);
+      return {
+        ok: false,
+        error: `Price list tidak dikirim — kami belum tahu customer ini di area mana, dan tiap dapur punya harganya sendiri. Tanya dulu alamatnya masuk area yang mana: ${served.join(", ")}. Begitu dijawab, panggil record_customer_area lalu send_price_list lagi. Jangan bilang harganya sudah atau akan dikirim, dan jangan sebut angka dapur mana pun dulu.`,
+      };
+    }
+    const kitchens = priceScope.kitchens;
     const sheets: { url: string; nickname: string | null }[] = [];
     for (const k of kitchens) {
       const url = k.price_list_image_url ?? houseUrl;
