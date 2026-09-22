@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import { getSetting, getTemplate } from "@/lib/cache/settings";
 import { remainingTodayByOrder } from "@/lib/orders/customer-schedule";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizePhone } from "@/lib/utils/phone";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { isDemoPhone } from "@/lib/whatsapp/demo";
 import { WINDOW_NOTICE_SHORT } from "@/lib/whatsapp/window-notice";
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -44,11 +46,28 @@ export async function GET(req: NextRequest): Promise<Response> {
   const under = (id: string, threshold: number) =>
     (remaining.get(id) ?? 0) <= threshold;
 
+  // Twelve customers carry a placeholder phone from the legacy import
+  // ("IMPORT_rima"), which Meta rejects and `sendTextMessage` throws on. That
+  // throw escaped the loop and the whole route, and the first such customer sat
+  // at position 0 of the first-reminder queue — so all 243 reminders died on her
+  // every hour, and because `reminder_sent_at` is written *after* the send she
+  // was never marked done and never skipped. Dropped before the loop rather than
+  // attempted and failed hourly; a DEMO_ number is reachable, the client stubs
+  // the send for it.
+  const customerOf = (o: { customers: unknown }) =>
+    o.customers as { phone_number: string; name: string | null } | null;
+  const reachable = (o: { customers: unknown }) => {
+    const phone = customerOf(o)?.phone_number;
+    return isDemoPhone(phone) || normalizePhone(phone) !== null;
+  };
+
   // First reminder
   const firstOrders = (activeOrders ?? []).filter(
-    (o) => o.reminder_sent_at === null && under(o.id, firstThreshold),
+    (o) =>
+      o.reminder_sent_at === null && under(o.id, firstThreshold) && reachable(o),
   );
 
+  let firstSent = 0;
   for (const order of firstOrders) {
     const customer = order.customers as {
       phone_number: string;
@@ -61,11 +80,23 @@ export async function GET(req: NextRequest): Promise<Response> {
         "{remaining}",
         String(remaining.get(order.id) ?? 0),
       )}\n\n${WINDOW_NOTICE_SHORT}`;
-    await sendTextMessage(customer.phone_number, msg);
-    await db
-      .from("orders")
-      .update({ reminder_sent_at: new Date().toISOString() })
-      .eq("id", order.id);
+    // Per send, not around the loop: an uncaught throw here abandoned every
+    // remaining customer, and a try/catch around the whole loop would too. The
+    // update stays after the send so a failed send never marks someone reminded.
+    try {
+      await sendTextMessage(customer.phone_number, msg);
+      await db
+        .from("orders")
+        .update({ reminder_sent_at: new Date().toISOString() })
+        .eq("id", order.id);
+      firstSent++;
+    } catch (err) {
+      console.error(
+        "[renewal-reminders] first reminder failed:",
+        order.id,
+        err,
+      );
+    }
   }
 
   // Final reminder — down to the final threshold, first reminder already sent,
@@ -74,9 +105,11 @@ export async function GET(req: NextRequest): Promise<Response> {
     (o) =>
       o.reminder_sent_at !== null &&
       o.followup_sent_at === null &&
-      under(o.id, finalThreshold),
+      under(o.id, finalThreshold) &&
+      reachable(o),
   );
 
+  let finalSent = 0;
   for (const order of finalOrders) {
     const customer = order.customers as {
       phone_number: string;
@@ -89,17 +122,28 @@ export async function GET(req: NextRequest): Promise<Response> {
         "{remaining}",
         String(remaining.get(order.id) ?? 0),
       )}\n\n${WINDOW_NOTICE_SHORT}`;
-    await sendTextMessage(customer.phone_number, msg);
-    await db
-      .from("orders")
-      .update({ followup_sent_at: new Date().toISOString() })
-      .eq("id", order.id);
+    try {
+      await sendTextMessage(customer.phone_number, msg);
+      await db
+        .from("orders")
+        .update({ followup_sent_at: new Date().toISOString() })
+        .eq("id", order.id);
+      finalSent++;
+    } catch (err) {
+      console.error(
+        "[renewal-reminders] final reminder failed:",
+        order.id,
+        err,
+      );
+    }
   }
 
   return NextResponse.json({
     ok: true,
-    firstReminders: firstOrders.length,
-    finalReminders: finalOrders.length,
+    firstReminders: firstSent,
+    finalReminders: finalSent,
+    failed: firstOrders.length - firstSent + (finalOrders.length - finalSent),
+    unreachable: (activeOrders ?? []).filter((o) => !reachable(o)).length,
   });
 }
 
