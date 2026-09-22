@@ -27,7 +27,8 @@
  * own delivery days, its own size M. With no active kitchen there is still the
  * house sheet, which is what `settings.price_list_image_url` holds.
  *
- * Usage: pnpm tsx --env-file=.env.local scripts/price-list.ts [--all] [--upload]
+ * Usage: pnpm tsx --env-file=.env.local scripts/price-list.ts [--all]
+ *                                          [--kitchen <nickname|id>] [--upload]
  * Writes .menu-photos/price-list-<dapur>.png. Without --upload nothing leaves
  * the machine; with it each sheet lands in the `menu` bucket and its URL in
  * that kitchen's `price_list_image_url` (or the setting, for the house sheet).
@@ -38,6 +39,7 @@ import { chromium } from "@playwright/test";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import { tiersForKitchen } from "@/lib/pricing/tiers";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -176,6 +178,7 @@ function page(
   areas: string[],
   nickname: string | null,
   daysText: string,
+  ongkir: { sub: string; note: string },
 ) {
   const rows = GROUPS.map((g) => {
     const days = g.days
@@ -218,7 +221,7 @@ function page(
       <div class="htext">
         <div class="kicker">Daftar Harga${nickname ? ` · ${nickname}` : ""}</div>
         <div class="title">PAKET PERSONAL</div>
-        <div class="sub">Halal · Gratis ongkir · ${daysText}</div>
+        <div class="sub">${["Halal", ongkir.sub, daysText].filter(Boolean).join(" · ")}</div>
       </div>
       <div class="sizes">
         <div><b>SIZE S</b> — nasi + lauk + sayur + sambal</div>
@@ -236,7 +239,7 @@ function page(
       <div class="areas">${areas.join(" &nbsp;·&nbsp; ")}</div>
       <div class="order"><div class="lbl">Pesan via WhatsApp</div><div class="wa">${WA}</div></div>
     </div>
-    <div class="note">Harga sudah termasuk ongkir · pesanan &amp; perubahan ditutup 16.00 WIB H-1</div>
+    <div class="note">${ongkir.note} · pesanan &amp; perubahan ditutup 16.00 WIB H-1</div>
   </div></body></html>`;
 }
 
@@ -247,6 +250,16 @@ async function main() {
   // combined with --upload it publishes them, which is how a kitchen arrives
   // with its sheet already on file.
   const includeInactive = process.argv.includes("--all");
+  // `--kitchen` narrows that to one, the same spelling menu-card.ts takes. The
+  // pair `--all --upload` publishes every prospect's sheet as well, and a
+  // prospect has no `pricing_tiers` rows — so it would file a sheet drawn off
+  // the house ladder under a kitchen whose own ladder is written later, ready
+  // to be served the day it is activated. Naming the kitchen writes one row.
+  const argv = process.argv.slice(2);
+  const wantedName = argv[argv.indexOf("--kitchen") + 1];
+  const asked = argv.includes("--kitchen") ? (wantedName ?? "").trim() : "";
+  if (argv.includes("--kitchen") && !asked)
+    throw new Error("--kitchen needs a nickname or an id");
   const db = createAdminClient();
 
   const { data: kitchens, error: kErr } = await db
@@ -256,7 +269,15 @@ async function main() {
     )
     .order("customer_nickname");
   if (kErr) throw new Error(kErr.message);
-  const wanted = (kitchens ?? []).filter((k) => includeInactive || k.is_active);
+  const needle = asked.toLowerCase();
+  const wanted = (kitchens ?? []).filter((k) =>
+    asked
+      ? k.id === asked ||
+        (k.customer_nickname ?? "").toLowerCase().includes(needle)
+      : includeInactive || k.is_active,
+  );
+  if (asked && wanted.length === 0)
+    throw new Error(`no kitchen matches "${asked}"`);
 
   // One sheet per active kitchen, because the customer picks their kitchen and
   // is shown that kitchen's prices. Everything on a sheet is that kitchen's
@@ -300,6 +321,66 @@ async function main() {
   mkdirSync(DIR, { recursive: true });
   const browser = await chromium.launch();
 
+  // "Gratis ongkir" was typed on the sheet while every kitchen was in Tangsel
+  // and delivered for nothing. Molls charge Rp 10.000-15.000 on *every* one of
+  // their 66 kecamatan, so that line would have promised free delivery across
+  // the whole of their coverage — a price claim on the one artefact
+  // `send_price_list` hands a customer who asked what things cost.
+  //
+  // So it is read, like every number here. A kitchen whose neighbourhoods all
+  // carry a surcharge states the range; one with a handful of exceptions
+  // (Thenie's two Apartemen Akasa rows, migration 086) keeps the old line,
+  // which is still true of everywhere else they drive.
+  const ongkirFor = async (id: string | null, areas: string[]) => {
+    const free = {
+      sub: "Gratis ongkir",
+      note: "Harga sudah termasuk ongkir",
+    };
+    if (!id || areas.length === 0) return free;
+
+    // `subcontractor_neighborhoods` is an exclusion list: no row means the
+    // kitchen delivers there for nothing. So "carries a fee" cannot be read off
+    // the rows alone — Thenie's only two rows are the Apartemen Akasa
+    // surcharges of migration 086, and counting those would have announced a
+    // standing ongkir on a kitchen that drives Tangsel free. The question is
+    // whether the fees cover *every* kecamatan of the areas this kitchen
+    // serves, which is what Molls' 66 rows do and Thenie's two do not.
+    const [all, priced] = await Promise.all([
+      fetchAllRows<{ id: string }>((from, to) =>
+        db
+          .from("area_neighborhoods")
+          .select("id")
+          .in("area", areas)
+          .range(from, to),
+      ),
+      fetchAllRows<{ surcharge_per_delivery: number | null }>((from, to) =>
+        db
+          .from("subcontractor_neighborhoods")
+          .select("surcharge_per_delivery")
+          .eq("subcontractor_id", id)
+          .eq("can_deliver", true)
+          .gt("surcharge_per_delivery", 0)
+          .range(from, to),
+      ),
+    ]);
+    if (all.error || priced.error)
+      throw new Error(all.error ?? priced.error ?? "ongkir lookup failed");
+
+    const fees = priced.rows.map((r) => r.surcharge_per_delivery ?? 0);
+    if (all.rows.length === 0 || fees.length < all.rows.length) return free;
+
+    const lo = Math.min(...fees);
+    const hi = Math.max(...fees);
+    const rp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+    const range = lo === hi ? rp(lo) : `${rp(lo)}-${rp(hi)}`;
+    // No short positive claim fits here, so the segment drops out rather than
+    // being padded — the note below carries the real figure.
+    return {
+      sub: "",
+      note: `Harga belum termasuk ongkir ${range} per pengantaran, sesuai area`,
+    };
+  };
+
   for (const sheet of sheets) {
     const tierRows = await tiersForKitchen(db, sheet.id);
     if (tierRows.length === 0)
@@ -320,6 +401,7 @@ async function main() {
       sheet.areas,
       sheet.nickname,
       daysLabel(sheet.days),
+      await ongkirFor(sheet.id, sheet.areas),
     );
     writeFileSync(`${base}.html`, html);
 
