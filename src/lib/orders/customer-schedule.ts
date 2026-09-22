@@ -4,6 +4,7 @@ import {
   loadKitchenWindows,
 } from "@/lib/deliveries/windows";
 import { jakartaDateString } from "@/lib/menu/week";
+import { PAID_STATUSES } from "@/lib/orders/paid-statuses";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { Database } from "@/types/database";
 
@@ -65,9 +66,6 @@ function addressLabel(address: string | null, area: string | null): string {
   return text.length > 60 ? `${text.slice(0, 57)}...` : text;
 }
 
-// Statuses whose package_size the customer has actually paid for. A
-// pending_payment order is not quota yet, and the cancelled ones never were.
-const PAID_STATUSES = ["active", "paused", "completed"];
 
 /** Null when the customer has never bought a package. */
 export async function loadCustomerSchedule(

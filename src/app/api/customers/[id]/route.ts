@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { logEdit } from "@/lib/audit/log-edit";
 import { packageCreditDate } from "@/lib/orders/credit-date";
 import { deliveryStatus } from "@/lib/orders/delivery-state";
+import { PAID_STATUSES } from "@/lib/orders/paid-statuses";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { withDeliveryRoute } from "@/lib/utils/format";
@@ -11,6 +12,9 @@ export const dynamic = "force-dynamic";
 
 // GET — per-customer draw ledger: every package purchase (+N credit) and every
 // daily delivery (−portions debit), chronological, with a running balance.
+// Credits are PAID_STATUSES only, so an order awaiting payment verification
+// does not appear here at all — it is quota nobody has confirmed. It is on the
+// Payments screen, which is where an unverified proof belongs.
 // Returns two totals: balanceToday (draws up to today) and balance (all draws,
 // including deliveries already scheduled ahead).
 export async function GET(
@@ -38,12 +42,7 @@ export async function GET(
         "id, package_size, total_price, price_per_portion, start_date, created_at, status, source, grant_reason",
       )
       .eq("customer_id", id)
-      .in("status", [
-        "active",
-        "paused",
-        "completed",
-        "payment_proof_received",
-      ]),
+      .in("status", PAID_STATUSES),
     db
       .from("daily_deliveries")
       .select("id, delivery_date, meal_type, portions, notes")

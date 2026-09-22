@@ -33,6 +33,7 @@ import {
   pickDrawOrder,
 } from "@/lib/orders/pick-draw-order";
 import { matchCustomerByName, parseGrantPaste } from "@/lib/grants/parse-paste";
+import { PAID_STATUSES } from "@/lib/orders/paid-statuses";
 import { createClient } from "@/lib/supabase/client";
 import { jakartaDateString } from "@/lib/menu/week";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
@@ -704,16 +705,9 @@ export default function CustomersClient() {
       // still read full. galvent showed 13 with 8 left; Hanna showed 18 with 4.
       //
       // Attribution is what is broken, and a customer-level balance does not
-      // depend on it. `completed` is in the credit list for the same reason the
-      // ledger has it there: those packages' draws are on the catch-all too, so
-      // dropping their credit would charge food they paid for to the orders
-      // still open.
-      const LEDGER_STATUSES = [
-        "active",
-        "paused",
-        "completed",
-        "payment_proof_received",
-      ];
+      // depend on it. Which statuses count is `PAID_STATUSES` — shared with the
+      // drawer, the bot and the renewal cron, because it is the half of a
+      // balance that drifts.
       const bought = new Map<string, number>();
       // Candidates for the next draw, mirroring what record-daily-order feeds
       // pickDrawOrder: active orders only, keyed by undated portions.
@@ -723,7 +717,7 @@ export default function CustomersClient() {
       >();
       for (const order of orders) {
         if (!order.customer_id) continue;
-        if (!LEDGER_STATUSES.includes(order.status)) continue;
+        if (!PAID_STATUSES.includes(order.status)) continue;
         bought.set(
           order.customer_id,
           (bought.get(order.customer_id) ?? 0) + (order.package_size ?? 0),
