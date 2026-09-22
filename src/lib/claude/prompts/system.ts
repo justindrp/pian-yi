@@ -118,6 +118,13 @@ export async function buildSystemPrompt(params: {
      */
     noRiceDiscount: number | null;
     /**
+     * What this kitchen adds for a size M portion, from
+     * `subcontractors.size_m_surcharge` (migration 131). Null means it has
+     * never been priced separately and `settings.size_m_surcharge` stands —
+     * that figure is Thenie's Rp 4.000, not a fact about every kitchen.
+     */
+    mSurcharge: number | null;
+    /**
      * How this kitchen seasons, from `subcontractors.msg_policy` (migration
      * 124). Null is "we have never asked", never "none" — the answer is about
      * what someone is eating, so an unasked kitchen is escalated rather than
@@ -760,17 +767,37 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
             )}. Never name a date a dapur does not cook on, and never move a customer to a dapur that does not work the days they asked for.`;
 
   const mKitchens = params.dapurOptions.filter((d) => d.offersM);
-  const mExtra = mKitchens.length > 0 ? await sizeMSurcharge() : 0;
   // `sizeMSurcharge()` reads 0 when the settings row is missing or unparseable,
   // and `extract_order` still writes an M order as M at the S price when it
   // does. A prompt keyed on `mExtra > 0` told the customer M did not exist at a
   // kitchen that cooks it, so the two halves disagreed about the same order.
   // M is offered whenever a kitchen cooks it; the surcharge only changes what
   // it costs.
+  //
+  // The tambahan is per kitchen (migration 131): Thenie add Rp 4.000 and Molls
+  // Rp 6.500, so a single figure for the whole prompt misquotes one of them on
+  // every tier. Same shape as `deliveryDaysLine` above — one number while the
+  // kitchens agree, named per dapur the moment they do not.
+  const mRates = await Promise.all(
+    mKitchens.map(async (d) => ({
+      nickname: d.nickname,
+      extra: await sizeMSurcharge({ size_m_surcharge: d.mSurcharge }),
+    })),
+  );
+  const mDistinct = [...new Set(mRates.map((r) => r.extra))];
+  const mUniform = mDistinct.length <= 1;
+  const mExtra = mDistinct.length === 1 ? mDistinct[0] : 0;
+  const mAnyExtra = mRates.some((r) => r.extra > 0);
+  const mRateList = mRates
+    .map((r) => `Rp ${rp(r.extra)}/porsi di ${r.nickname}`)
+    .join(", ");
   const offersM = mKitchens.length > 0;
   const mNames = mKitchens.map((d) => d.nickname).join(", ");
-  const mMore =
-    mExtra > 0 ? `for Rp ${rp(mExtra)}/porsi more` : "at the same price";
+  const mMore = !mAnyExtra
+    ? "at the same price"
+    : mUniform
+      ? `for Rp ${rp(mExtra)}/porsi more`
+      : `for more — ${mRateList}`;
   const sizeSection = offersM
     ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). ${mExtra > 0 ? `M costs **Rp ${rp(mExtra)}/porsi more than the price list below**, on every tier.` : `M costs **the same as the price list below** — no tambahan is set right now, so one figure covers either size.`}
 - Only ${mNames} cook${mKitchens.length === 1 ? "s" : ""} M. Every other dapur is S only — never offer M for them, and never promise a size a dapur does not cook.

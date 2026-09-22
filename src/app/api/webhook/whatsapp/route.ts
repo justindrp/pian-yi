@@ -2250,7 +2250,7 @@ export async function processSavedCustomerMessage(params: {
     db
       .from("subcontractors")
       .select(
-        "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals, no_rice_discount, msg_policy",
+        "id, customer_nickname, menu_image_url, menu_text, menu_week_start, delivery_areas, offers_size_m, same_menu_both_meals, no_rice_discount, size_m_surcharge, msg_policy",
       )
       .eq("is_active", true)
       .not("customer_nickname", "is", null),
@@ -2276,6 +2276,7 @@ export async function processSavedCustomerMessage(params: {
       offers_size_m: boolean;
       same_menu_both_meals: boolean;
       no_rice_discount: number | null;
+      size_m_surcharge: number | null;
       msg_policy: string | null;
     } => s.customer_nickname !== null,
   );
@@ -2300,6 +2301,7 @@ export async function processSavedCustomerMessage(params: {
       offersM: s.offers_size_m === true,
       sameMenuBothMeals: s.same_menu_both_meals === true,
       noRiceDiscount: s.no_rice_discount ?? null,
+      mSurcharge: s.size_m_surcharge ?? null,
       msgPolicy: asMsgPolicy(s.msg_policy),
       windows: s,
     }));

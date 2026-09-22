@@ -17,12 +17,9 @@ import { upsertEventLead } from "@/lib/events/leads";
 import { isDeliveryDay } from "@/lib/holidays/id";
 import { stripCompensation } from "@/lib/kitchen/compensation";
 import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
+import { normalizeSize, type OrderSize } from "@/lib/orders/size";
 import {
-  normalizeSize,
-  type OrderSize,
-  sizeMSurcharge,
-} from "@/lib/orders/size";
-import {
+  kitchenMSurcharge,
   noRiceDiscount,
   priceForPortions,
   tiersForKitchen,
@@ -815,7 +812,13 @@ export async function getExtractedOrderPricing(
   // rate an order locks at creation is the rate the customer agreed to and
   // every downstream reader — total_price, the ledger, accounting — keeps
   // working without learning about sizes.
-  const sizeExtra = portionSize === "m" ? await sizeMSurcharge() : 0;
+  //
+  // Per kitchen since migration 131, so this needs the client the ladder lookup
+  // below also uses: the contract branch returns before that lookup and must
+  // still add *this* kitchen's tambahan, not the house one.
+  const db = createAdminClient();
+  const sizeExtra =
+    portionSize === "m" ? await kitchenMSurcharge(db, subcontractorId) : 0;
 
   // A negotiated rate replaces the ladder outright. PT Bintang Lautan buys 110
   // porsi at Rp 35.000 — above every tier — so tier lookup can only ever get
@@ -839,7 +842,6 @@ export async function getExtractedOrderPricing(
   // Homey costs us Rp 33.000 a portion and the house ladder sells at Rp 29.000,
   // a loss on every portion that nothing downstream would flag. A caller that
   // can name the kitchen must pass it.
-  const db = createAdminClient();
   const tiers = await tiersForKitchen(db, subcontractorId);
   const basePrice = priceForPortions(tiers, packageSize) ?? 0;
   // Flat IDR off every tier, per kitchen, and only for a kitchen we can name:

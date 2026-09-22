@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sizeMSurcharge } from "@/lib/orders/size";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -146,4 +147,25 @@ export async function noRiceDiscount(
     .maybeSingle();
   const off = data?.no_rice_discount ?? 0;
   return typeof off === "number" && off > 0 ? off : 0;
+}
+
+/**
+ * What one kitchen adds for a size M portion.
+ *
+ * The same shape as `noRiceDiscount()` above and for the same reason: a single
+ * global figure is one kitchen's number wearing everyone's name. A kitchen we
+ * cannot name falls back to `settings.size_m_surcharge`, which is the house
+ * answer because the house ladder is Thenie's and Rp 4.000 is Thenie's M.
+ */
+export async function kitchenMSurcharge(
+  db: Db,
+  subcontractorId: string | null,
+): Promise<number> {
+  if (!subcontractorId) return sizeMSurcharge();
+  const { data } = await db
+    .from("subcontractors")
+    .select("size_m_surcharge")
+    .eq("id", subcontractorId)
+    .maybeSingle();
+  return sizeMSurcharge(data);
 }

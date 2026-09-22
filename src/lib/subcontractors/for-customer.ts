@@ -6,7 +6,7 @@ type Db = SupabaseClient<Database>;
 
 /** The columns every customer-facing kitchen decision needs. */
 const KITCHEN_COLUMNS =
-  "id, customer_nickname, menu_image_url, menu_text, menu_week_start, price_list_image_url, delivery_areas, delivery_days, offers_size_m, same_menu_both_meals, no_rice_discount, msg_policy, lunch_window_start_min, lunch_window_end_min, dinner_window_start_min, dinner_window_end_min";
+  "id, customer_nickname, menu_image_url, menu_text, menu_week_start, price_list_image_url, delivery_areas, delivery_days, offers_size_m, same_menu_both_meals, no_rice_discount, size_m_surcharge, msg_policy, lunch_window_start_min, lunch_window_end_min, dinner_window_start_min, dinner_window_end_min";
 
 export type CustomerKitchen = {
   id: string;
@@ -20,6 +20,7 @@ export type CustomerKitchen = {
   offers_size_m: boolean;
   same_menu_both_meals: boolean;
   no_rice_discount: number | null;
+  size_m_surcharge: number | null;
   msg_policy: string | null;
   lunch_window_start_min: number | null;
   lunch_window_end_min: number | null;

@@ -53,6 +53,9 @@ export function kitchenCostPerPortion(
   return route === 1 ? route1M : baseM;
 }
 
+/** The one column a kitchen states its own M tambahan in. */
+export type KitchenMSurcharge = { size_m_surcharge?: number | null };
+
 /**
  * What size M costs the customer per portion on top of the S price.
  *
@@ -62,8 +65,23 @@ export function kitchenCostPerPortion(
  * way. Reads 0 if the row is missing or unparseable, which prices an M order as
  * S: too cheap by 4.000/porsi is a margin problem an admin can fix, where a NaN
  * would write `total_price: null` on a real order.
+ *
+ * **Per kitchen, the same way the ladder is** (migration 131). The global
+ * setting is Rp 4.000 because that is *Thenie's* figure — their M costs us
+ * Rp 3.000 more, marked up at Justin's 20% — and it stopped being the whole
+ * answer the moment a second kitchen cooked M: Molls bill Rp 5.000 more, which
+ * is Rp 6.500 marked up. One figure across every kitchen would have quoted
+ * Molls' M Rp 2.500 a portion light, the same shape of loss `tiersForKitchen()`
+ * exists to stop. `subcontractors.size_m_surcharge` NULL means this kitchen has
+ * never been priced separately and the house figure stands, exactly like
+ * `cost_per_portion_route1`; a stored 0 is a kitchen that really does throw the
+ * extra dish in, so it is honoured rather than treated as unset.
  */
-export async function sizeMSurcharge(): Promise<number> {
+export async function sizeMSurcharge(
+  sub?: KitchenMSurcharge | null,
+): Promise<number> {
+  const own = sub?.size_m_surcharge;
+  if (typeof own === "number" && Number.isFinite(own) && own >= 0) return own;
   const raw = await getSetting("size_m_surcharge");
   const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? value : 0;

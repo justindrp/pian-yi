@@ -68,7 +68,7 @@ The card fetches both families from Google Fonts at render time, so nothing depe
 
 ### Contents follow `subcontractors.menu_text`, never this document
 
-Size S is **nasi + lauk utama + sayur + sambal** — four things, which is why the tray has four compartments. Size M is size S **plus one extra lauk** for `settings.size_m_surcharge` (Rp 4.000/porsi today), in the same four-compartment tray.
+Size S is **nasi + lauk utama + sayur + sambal** — four things, which is why the tray has four compartments. Size M is size S **plus one extra lauk** for that kitchen's `subcontractors.size_m_surcharge` (the house fallback is `settings.size_m_surcharge`, Rp 4.000/porsi; Molls charge 6.500), in the same four-compartment tray.
 
 Two errors this replaces, both of which reached customers:
 

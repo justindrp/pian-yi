@@ -3,7 +3,8 @@
  * from `subcontractors.menu_text` plus the photos scripts/menu-photos.ts wrote.
  *
  * Every string on the card is read, never typed: the batch and dates, the dishes,
- * the size M item, the surcharge (`settings.size_m_surcharge`) and the delivery
+ * the size M item, that kitchen's own surcharge
+ * (`subcontractors.size_m_surcharge`, falling back to the house setting) and the delivery
  * areas (`activeDeliveryAreas`, which is per kitchen and moves whenever a kitchen
  * is activated or edited). Batch 51's card was drawn by hand in a chat window and
  * listed all five items with no size marking; a size S customer read it as food
@@ -270,16 +271,14 @@ async function main() {
   const weekStart = statedWeek || defaultMenuWeekStart(jakartaDateString());
 
   const db = createAdminClient();
-  const [{ data: kitchens, error }, fallbackAreas, surcharge] =
-    await Promise.all([
-      db
-        .from("subcontractors")
-        .select(
-          "id, name, customer_nickname, menu_text, delivery_areas, delivery_days, offers_size_m, is_active",
-        ),
-      activeDeliveryAreas(db),
-      sizeMSurcharge(),
-    ]);
+  const [{ data: kitchens, error }, fallbackAreas] = await Promise.all([
+    db
+      .from("subcontractors")
+      .select(
+        "id, name, customer_nickname, menu_text, delivery_areas, delivery_days, offers_size_m, size_m_surcharge, is_active",
+      ),
+    activeDeliveryAreas(db),
+  ]);
   if (error) throw new Error(error.message);
   const all = kitchens ?? [];
 
@@ -333,6 +332,8 @@ async function main() {
   );
   const areas = own.length > 0 ? own : fallbackAreas;
   const daysLine = daysLabel(kitchen.delivery_days) || "Senin–Sabtu";
+  // This kitchen's own M tambahan, for the same reason as the areas above.
+  const surcharge = await sizeMSurcharge(kitchen);
 
   const html = page(menu, areas, surcharge, "0851-1121-4390", {
     offersM: kitchen.offers_size_m === true,

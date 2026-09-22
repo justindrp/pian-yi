@@ -3,7 +3,8 @@
  * that `send_price_list` hands a customer who asks for prices.
  *
  * Every number is read, never typed: the per-portion rates come from
- * `pricing_tiers`, the size M surcharge from `settings.size_m_surcharge`, and
+ * `pricing_tiers`, that kitchen's own size M surcharge
+ * (`subcontractors.size_m_surcharge`, falling back to the house setting), and
  * the delivery areas from `activeDeliveryAreas()`. The sheet it replaces was
  * drawn by hand and pictured the S box only, so a customer who asked for prices
  * had no way to learn size M existed at all — which is half of what Naya's
@@ -248,15 +249,12 @@ async function main() {
   const includeInactive = process.argv.includes("--all");
   const db = createAdminClient();
 
-  const [{ data: kitchens, error: kErr }, surcharge] = await Promise.all([
-    db
-      .from("subcontractors")
-      .select(
-        "id, customer_nickname, is_active, offers_size_m, delivery_areas, delivery_days",
-      )
-      .order("customer_nickname"),
-    sizeMSurcharge(),
-  ]);
+  const { data: kitchens, error: kErr } = await db
+    .from("subcontractors")
+    .select(
+      "id, customer_nickname, is_active, offers_size_m, size_m_surcharge, delivery_areas, delivery_days",
+    )
+    .order("customer_nickname");
   if (kErr) throw new Error(kErr.message);
   const wanted = (kitchens ?? []).filter((k) => includeInactive || k.is_active);
 
@@ -271,22 +269,30 @@ async function main() {
     nickname: string | null;
     areas: string[];
     offersM: boolean;
+    surcharge: number;
     days: number[];
   }[] =
     wanted.length > 0
-      ? wanted.map((k) => ({
-          id: k.id,
-          nickname: k.customer_nickname,
-          areas: (k.delivery_areas as string[] | null) ?? [],
-          offersM: !!k.offers_size_m,
-          days: k.delivery_days ?? [1, 2, 3, 4, 5, 6],
-        }))
+      ? await Promise.all(
+          wanted.map(async (k) => ({
+            id: k.id,
+            nickname: k.customer_nickname,
+            areas: (k.delivery_areas as string[] | null) ?? [],
+            offersM: !!k.offers_size_m,
+            // The sheet prints this kitchen's own M tambahan, the same way it
+            // prints this kitchen's own ladder — they differ per kitchen since
+            // migration 131.
+            surcharge: await sizeMSurcharge(k),
+            days: k.delivery_days ?? [1, 2, 3, 4, 5, 6],
+          })),
+        )
       : [
           {
             id: null,
             nickname: null,
             areas: await activeDeliveryAreas(db),
             offersM: false,
+            surcharge: await sizeMSurcharge(),
             days: [1, 2, 3, 4, 5, 6],
           },
         ];
@@ -301,7 +307,7 @@ async function main() {
     const tiers: Record<number, number> = {};
     for (const t of tierRows) tiers[t.portions] = t.price_per_portion;
 
-    const m = sheet.offersM ? surcharge : 0;
+    const m = sheet.offersM ? sheet.surcharge : 0;
     const slug = (sheet.nickname ?? "house")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
