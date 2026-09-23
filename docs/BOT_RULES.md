@@ -306,6 +306,16 @@ The one surviving "Annie" in the prompt is inside Fahmi's own quoted words in an
 
 Still hardcoded and out of scope of this change: the admin-facing surfaces — `assistant-prompt.ts` (which also lists Agnes, who is not on the team), the training chat, the handbook and the reports label.
 
+## The bot confirms our own team, from a setting
+
+A kitchen owner (`+6281999915959`) was approached on 2026-09-23 by Jennifer, Justin's assistant, about becoming a dapur partner, and wrote to us to check she was real — "owner-nya bernama jennifer??". The bot had nothing telling it who works here. It said who owns the business was not its place to confirm or deny, told the kitchen not to follow up with "pihak tersebut", and — after an admin had confirmed Jennifer by hand and asked for the number — answered the screenshot of her number with "masih dalam pengecekan tim, mohon ditahan dulu untuk tindak lanjut apa pun". The last thing the kitchen heard from us was a warning about our own colleague.
+
+`settings.team_roster` (migration 137) is the list: one person per line, "Nama — peran", with the number they reach people from. It ships empty, like `task_reminder_phones`, so no personal number lands in the repository; edit it under Chatbot Behavior at `/settings`. `teamSection()` in `src/lib/claude/prompts/system.ts` renders it with the rule: someone on the list — and the number, when one is quoted — is confirmed plainly, never hedged; someone not on it is neither confirmed nor denied and goes to `ask_admin_for_help`, with advice not to send money or data until we answer. The bot confirms a number the customer quotes and never volunteers one.
+
+The validator needed the same list. It filed "Jennifer memang bagian dari tim kami" under `name` — the field for a reply addressing *the customer* by a name — and blocked the admin's own confirming reply until a retry happened to file it nowhere. `keepClaim()` now drops a `name` flag that mentions anyone on the roster (`mentionsTeamMember()`, `src/lib/claude/team-roster.ts`), so the answer the prompt asks for is not the one the checker refuses.
+
+This is a different list from `admin_display_name` above: that is the one person the bot may **promise** will handle something; the roster is who it may **confirm** exists.
+
 ## A locked delivery cannot be re-addressed, and the bot is told which ones are locked
 
 The schedule block listed every booked delivery from today forward as one flat list, and closed with "konfirmasi hanya kalau deadline untuk tanggal itu belum lewat" — a rule with no reading to apply it to. Working out which of those dates were past their own H-1 16:00 was left to the model, which is the same arithmetic it had already been caught doing badly for the cutoff line (see "The bot is told the time, not just the deadline").

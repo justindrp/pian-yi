@@ -1,4 +1,5 @@
 import { getActiveInstructions, getSetting } from "@/lib/cache/settings";
+import { parseTeamRoster } from "@/lib/claude/team-roster";
 import {
   clockLabel,
   deliveryWindow,
@@ -56,6 +57,25 @@ function exclusionSection(excluded: { area: string; name: string }[]): string {
   if (excluded.length === 0) return "";
   const names = excluded.map((n) => `${n.name} (${n.area})`).join(", ");
   return `- **Kami tidak mengantar ke: ${names}.** These sit inside areas we serve and are still not deliverable — the area matching below does not override this. If any fragment of the address matches one of these names, say plainly that we cannot deliver there, **do not quote a price, do not call extract_order**, and call escalate_to_human. Never round one of these to a nearby area, and never offer a different dapur: this is not one kitchen's refusal, it is ours. **Name only the place the customer named** — the rest of this list is none of their business, and reciting it tells a customer about buildings they never asked about.
+`;
+}
+
+/**
+ * Who is ours, for a customer asking whether someone who contacted them "atas
+ * nama" us really is. See `parseTeamRoster()` for the thread that needed it.
+ *
+ * An empty roster still gets the second half: someone not on it is neither
+ * confirmed nor denied, and goes to an admin.
+ */
+function teamSection(lines: string[]): string {
+  const roster = lines.length
+    ? `Tim kami:\n${lines.map((l) => `- ${l}`).join("\n")}\n\n`
+    : "";
+  return `
+## Our own team
+${roster}- **A customer asking whether a person or a number really is from us gets a straight answer.** If the person is on the list above — and the number matches, when the customer quotes one — confirm it plainly and say what they do: "Betul kak, itu [nama] dari tim kami, [perannya]." Never hedge about one of our own, never tell the customer to hold off on them, and never say it is "still being checked". Doing that is what left a kitchen owner treating our own colleague as a scammer on 2026-09-23.
+- **Not on the list: neither confirm nor deny.** Say we will check, call ask_admin_for_help with the name and the number they quoted, and advise them not to transfer money or send data to that party until we confirm.
+- Confirm a number the customer quotes; never volunteer a team member's number, and never invent a team member or a role.
 `;
 }
 
@@ -268,6 +288,7 @@ export async function buildSystemPrompt(params: {
       getSetting("escalation_keywords"),
       getSetting("admin_display_name"),
     ]);
+  const teamRoster = parseTeamRoster(await getSetting("team_roster"));
 
   // Who the customer is handed to. It used to be the literal "Annie" in three
   // places, and she is not on the inbox any more: Pane was told on 2026-08-31
@@ -1391,7 +1412,7 @@ ${compensationLines}
 - Never mention subcontractors or external kitchens by their real name
 - Always use the customer-facing dapur nickname. Never say a partner kitchen's real name — the rule covers every kitchen we work with, present and future, not a list you were given
 - Never reveal margins, COGS, or operations
-${params.dapurOptions.length > 0 ? `\n## Dapur ID mapping (for extract_order tool only — never show these IDs to the customer)\n${params.dapurOptions.map((d) => `- ${d.nickname}: ${d.id}`).join("\n")}` : ""}
+${teamSection(teamRoster.lines)}${params.dapurOptions.length > 0 ? `\n## Dapur ID mapping (for extract_order tool only — never show these IDs to the customer)\n${params.dapurOptions.map((d) => `- ${d.nickname}: ${d.id}`).join("\n")}` : ""}
 
 ## Contextual replies
 If the customer sends a short affirmative ("sudah", "iya", "ok", "baik", "ya", "boleh"):

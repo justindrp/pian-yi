@@ -4,6 +4,8 @@ import {
   HAIKU_MODEL,
   NO_THINKING,
 } from "@/lib/claude/client";
+import { getSetting } from "@/lib/cache/settings";
+import { mentionsTeamMember, parseTeamRoster } from "@/lib/claude/team-roster";
 
 export interface ValidateReplyParams {
   reply: string;
@@ -201,6 +203,7 @@ function keepClaim(
   claim: string,
   activeOrder: ValidateReplyParams["activeOrder"],
   eventThread: boolean,
+  teamNames: string[],
 ): boolean {
   // Only EVENT_RULES offers this field, and only an event thread gets those
   // rules. Listing it in the base prompt gave the model a sixth hook to hang a
@@ -216,9 +219,11 @@ function keepClaim(
     if (/^(kak|kakak|bapak|ibu|mas|mbak|pak|bu)$/i.test(claim.trim())) {
       return false;
     }
-    return (
-      claim.length <= 40 && !/\d/.test(claim) && !/\bdapur\b/i.test(claim)
-    );
+    // `name` is the customer's name. One of our own staff is not a claim about
+    // them, and "Jennifer memang bagian dari tim kami" was blocked under it on
+    // 2026-09-23 — the very answer the prompt tells the bot to give.
+    if (mentionsTeamMember(claim, teamNames)) return false;
+    return claim.length <= 40 && !/\d/.test(claim) && !/\bdapur\b/i.test(claim);
   }
   if (field === "quota" || field === "package_size") {
     // "N porsi", which is how the bot states a quota, rather than any digit in
@@ -320,13 +325,16 @@ ${params.reply}
     // fields; a bare string names none, which is what the model returns when it
     // has flagged something it could not file. Both are dropped, and a draft
     // left with nothing against it is valid.
+    const { names: teamNames } = parseTeamRoster(
+      await getSetting("team_roster"),
+    );
     const dropped: string[] = [];
     const kept: string[] = [];
     for (const raw of parsed.unsupported_claims ?? []) {
       const field = typeof raw === "string" ? "" : (raw.field ?? "").trim();
       const claim =
         typeof raw === "string" ? raw : (raw.claim ?? raw.field ?? "").trim();
-      if (keepClaim(field, claim, params.activeOrder, eventThread)) {
+      if (keepClaim(field, claim, params.activeOrder, eventThread, teamNames)) {
         kept.push(`${field}: ${claim}`);
       } else {
         dropped.push(`${field || "(no field)"}: ${claim}`);

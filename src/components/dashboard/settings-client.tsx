@@ -59,6 +59,7 @@ const CHATBOT_KEYS = [
   "typing_delay_per_char_seconds",
   "typing_delay_max_seconds",
   "photo_match_confidence_threshold",
+  "team_roster",
 ];
 const AUTOMATION_KEYS = [
   "unpaid_reminder_hours",
@@ -585,6 +586,24 @@ function ChatbotSection({
             />
           </div>
         ))}
+        <div>
+          <label
+            htmlFor="chatbot-team_roster"
+            className="block text-xs text-gray-500 mb-1"
+          >
+            Our team — one per line, "Nama — peran, nomor WA". The bot confirms
+            these people to customers who ask whether someone is from us.
+          </label>
+          <textarea
+            id="chatbot-team_roster"
+            rows={4}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"
+            value={form.team_roster ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, team_roster: e.target.value }))
+            }
+          />
+        </div>
         <ConfirmSaveButton
           onConfirm={() => save.mutate(form)}
           confirm={confirm}

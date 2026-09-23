@@ -7,6 +7,12 @@ jest.mock("@/lib/claude/client", () => ({
   HAIKU_MODEL: "claude-haiku-4-5",
 }));
 
+jest.mock("@/lib/cache/settings", () => ({
+  getSetting: jest.fn(async (key: string) =>
+    key === "team_roster" ? "Justin — owner\nJennifer — asisten Justin" : "",
+  ),
+}));
+
 function mockCreate(response: unknown) {
   (getAnthropicClient as jest.Mock).mockReturnValue({
     messages: { create: jest.fn().mockResolvedValue(response) },
@@ -172,6 +178,11 @@ describe("validateReply", () => {
 
     test("the honorific everyone gets is not a name", async () => {
       blocks([{ field: "name", claim: "kak" }]);
+      expect((await validateReply(baseParams)).valid).toBe(true);
+    });
+
+    test("one of our own staff is not the customer's name", async () => {
+      blocks([{ field: "name", claim: "Jennifer memang bagian dari tim kami" }]);
       expect((await validateReply(baseParams)).valid).toBe(true);
     });
 
