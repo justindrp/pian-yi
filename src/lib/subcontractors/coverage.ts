@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -169,7 +170,14 @@ export type KitchenCoverageNote = {
   /** Customer-facing nickname — never the kitchen's real name. */
   nickname: string;
   blocked: CoverageRule[];
+  /** Surcharged neighborhoods not already covered by `surchargedAreas`. */
   surcharged: CoverageRule[];
+  /**
+   * Areas where every neighborhood carries the same fee, stated once. Molls
+   * charge on all 66 of their kecamatan, and naming each one put a 66-item
+   * list into every customer's prompt, Tangsel customers included.
+   */
+  surchargedAreas: { area: string; surchargePerDelivery: number }[];
 };
 
 /**
@@ -186,18 +194,60 @@ export async function coverageNotes(
     db,
     kitchens.map((k) => k.id),
   );
+  // How many neighborhoods each surcharged area has, so an area whose every
+  // neighborhood carries one fee can be said once instead of name by name.
+  const surchargedAreaNames = [
+    ...new Set(
+      Object.values(map)
+        .flat()
+        .filter((r) => r.canDeliver && r.surchargePerDelivery > 0)
+        .map((r) => r.area),
+    ),
+  ];
+  const areaSize: Record<string, number> = {};
+  if (surchargedAreaNames.length > 0) {
+    const { rows, error } = await fetchAllRows<{ area: string }>((from, to) =>
+      db
+        .from("area_neighborhoods")
+        .select("area")
+        .in("area", surchargedAreaNames)
+        .range(from, to),
+    );
+    if (error) throw new Error(`coverageNotes: ${error}`);
+    for (const r of rows) areaSize[r.area] = (areaSize[r.area] ?? 0) + 1;
+  }
+
   return kitchens.flatMap((k) => {
     const rules = map[k.id] ?? [];
     const blocked = rules.filter((r) => !r.canDeliver);
-    const surcharged = rules.filter(
+    const priced = rules.filter(
       (r) => r.canDeliver && r.surchargePerDelivery > 0,
     );
-    if (blocked.length === 0 && surcharged.length === 0) return [];
+    const byArea = new Map<string, CoverageRule[]>();
+    for (const r of priced)
+      byArea.set(r.area, [...(byArea.get(r.area) ?? []), r]);
+
+    const surchargedAreas: KitchenCoverageNote["surchargedAreas"] = [];
+    const surcharged: CoverageRule[] = [];
+    for (const [area, inArea] of byArea) {
+      const fees = new Set(inArea.map((r) => r.surchargePerDelivery));
+      if (fees.size === 1 && inArea.length === areaSize[area]) {
+        surchargedAreas.push({
+          area,
+          surchargePerDelivery: inArea[0].surchargePerDelivery,
+        });
+      } else {
+        surcharged.push(...inArea);
+      }
+    }
+
+    if (blocked.length === 0 && priced.length === 0) return [];
     return [
       {
         nickname: k.customer_nickname ?? "dapur partner kami",
         blocked,
         surcharged,
+        surchargedAreas,
       },
     ];
   });

@@ -854,6 +854,101 @@ describe("customer chatbot system prompt", () => {
 
       expect(prompt).not.toContain("same menu for lunch and dinner");
     });
+
+    // Thenie add Rp 4.000 for M and Molls Rp 6.500. With two different
+    // figures the single-figure slot is 0, and three lines read that 0 as
+    // "M costs the same as S" — at every kitchen.
+    describe("two kitchens with different M tambahan", () => {
+      const kitchen = (id: string, nickname: string, mSurcharge: number) => ({
+        id,
+        nickname,
+        offersM: true,
+        sameMenuBothMeals: false,
+        noRiceDiscount: null,
+        mSurcharge,
+        msgPolicy: null,
+        windows: null,
+      });
+      const twoRates = [
+        kitchen("1", "Dapur Suplir", 4000),
+        kitchen("2", "Dapur Monstera", 6500),
+      ];
+
+      test("each dapur's own tambahan is quoted, never M at the S price", async () => {
+        const prompt = await buildSystemPrompt({
+          ...base,
+          currentDapur: null,
+          dapurOptions: twoRates,
+        });
+
+        expect(prompt).toContain("the tambahan is per dapur");
+        expect(prompt).toContain("Rp 4.000/porsi di Dapur Suplir");
+        expect(prompt).toContain("Rp 6.500/porsi di Dapur Monstera");
+        expect(prompt).not.toContain("M costs **the same as the price list");
+        expect(prompt).not.toContain(
+          "Quote M at the tier's per-meal price, the same total as S",
+        );
+      });
+
+      test("a contract customer gets the contract rate plus each dapur's own", async () => {
+        const prompt = await buildSystemPrompt({
+          ...base,
+          currentDapur: null,
+          dapurOptions: twoRates,
+          contractPricePerPortion: 30000,
+        });
+
+        expect(prompt).toContain("**Rp 34.000/porsi** di Dapur Suplir");
+        expect(prompt).toContain("**Rp 36.500/porsi** di Dapur Monstera");
+        expect(prompt).not.toContain("It is the same **Rp 30.000/porsi**");
+      });
+    });
+  });
+
+  // Molls charge one fee on every kecamatan of each Jakarta region. Named one
+  // by one, that was 66 entries in every customer's prompt.
+  test("a fee on a whole area is stated once, not kecamatan by kecamatan", async () => {
+    const prompt = await buildSystemPrompt({
+      casual: false,
+      customerState: "ordering",
+      customerName: null,
+      customerNotes: null,
+      detectedMapsLink: null,
+      menuShown: true,
+      dapurMenuTexts: [],
+      menuWeek: { relation: "unknown" as const, weekStart: null },
+      servedAreas: ["Jakarta Selatan", "BSD Lama"],
+      customerArea: null,
+      neighborhoods: {},
+      excludedNeighborhoods: [],
+      coverageNotes: [
+        {
+          nickname: "Dapur Monstera",
+          blocked: [],
+          surchargedAreas: [
+            { area: "Jakarta Selatan", surchargePerDelivery: 10000 },
+          ],
+          surcharged: [
+            {
+              neighborhoodId: "n1",
+              area: "BSD Lama",
+              name: "Apartemen Akasa",
+              canDeliver: true,
+              surchargePerDelivery: 5000,
+            },
+          ],
+        },
+      ],
+      activeOrder: null,
+      schedule: null,
+      currentDapur: null,
+      dapurOptions: [],
+    });
+
+    expect(prompt).toContain(
+      "Dapur Monstera charges extra per pengiriman to: semua alamat di Jakarta Selatan Rp 10.000, Apartemen Akasa (BSD Lama) Rp 5.000.",
+    );
+    expect(prompt).not.toContain("Free delivery (ongkir gratis)");
   });
 
   // The menu text keeps the S box and the M tambahan apart; Batch 51's card

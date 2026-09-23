@@ -76,9 +76,20 @@ function coverageSection(notes: KitchenCoverageNote[]): string {
         `- **${n.nickname} tidak bisa mengantar ke: ${n.blocked.map((r) => `${r.name} (${r.area})`).join(", ")}.** An address at one of these is not deliverable, however well the area matches. Do not quote a price, do not call extract_order — say plainly we cannot reach it and call escalate_to_human.`,
       );
     }
-    if (n.surcharged.length > 0) {
+    // A whole area at one fee is named once, not kecamatan by kecamatan.
+    const places = [
+      ...n.surchargedAreas.map(
+        (a) =>
+          `semua alamat di ${a.area} Rp ${a.surchargePerDelivery.toLocaleString("id-ID")}`,
+      ),
+      ...n.surcharged.map(
+        (r) =>
+          `${r.name} (${r.area}) Rp ${r.surchargePerDelivery.toLocaleString("id-ID")}`,
+      ),
+    ];
+    if (places.length > 0) {
       out.push(
-        `- **${n.nickname} charges extra per pengiriman to: ${n.surcharged.map((r) => `${r.name} (${r.area}) Rp ${r.surchargePerDelivery.toLocaleString("id-ID")}`).join(", ")}.** Tell the customer the ongkir before they confirm, as a per-delivery amount. Never do the arithmetic yourself — extract_order adds it to the total and the payment message spells it out.`,
+        `- **${n.nickname} charges extra per pengiriman to: ${places.join(", ")}.** Tell the customer the ongkir before they confirm, as a per-delivery amount. Never do the arithmetic yourself — extract_order adds it to the total and the payment message spells it out.`,
       );
     }
     return out;
@@ -291,7 +302,7 @@ export async function buildSystemPrompt(params: {
   // the surcharge, so the payment message carried a figure the bot had just
   // called free. The promise is only made when nothing contradicts it.
   const hasOngkirSurcharge = params.coverageNotes.some(
-    (n) => n.surcharged.length > 0,
+    (n) => n.surcharged.length > 0 || n.surchargedAreas.length > 0,
   );
   const ongkirLine = hasOngkirSurcharge
     ? "Ongkir gratis ke area yang kami layani, **kecuali titik-titik yang ada biaya tambahan per pengiriman** — yang kena biaya tambahan hanya yang terdaftar di bawah. Jangan pernah bilang gratis untuk salah satu titik itu; sebutkan biayanya sebelum customer konfirmasi."
@@ -798,10 +809,23 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     : mUniform
       ? `for Rp ${rp(mExtra)}/porsi more`
       : `for more — ${mRateList}`;
+  // `mExtra` is 0 once the kitchens disagree, so every line below must branch
+  // on `mUniform` before reading it — a bare `mExtra > 0` reads "they differ"
+  // as "M is free" and quotes M at the S price at every kitchen.
+  const mCostLine = !mAnyExtra
+    ? `M costs **the same as the price list below** — no tambahan is set right now, so one figure covers either size.`
+    : mUniform
+      ? `M costs **Rp ${rp(mExtra)}/porsi more than the price list below**, on every tier.`
+      : `M costs more than the price list below, on every tier, and **the tambahan is per dapur**: ${mRateList}. Use the figure for the dapur the customer is ordering from — never another dapur's.`;
+  const mQuoteLine = !mAnyExtra
+    ? `Quote M at the tier's per-meal price, the same total as S: 20 hari siang + malam = 40 porsi = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, either size.`
+    : mUniform
+      ? `Quote M as the tier's per-meal price plus Rp ${rp(mExtra)}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, M = 40 × Rp ${rp(rateFor(40) + mExtra)} = *Rp ${rp((rateFor(40) + mExtra) * 40)}*.`
+      : `Quote M as that dapur's own tier price plus that dapur's own tambahan above, times the same total porsi. Never add one dapur's tambahan to another dapur's price.`;
   const sizeSection = offersM
-    ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). ${mExtra > 0 ? `M costs **Rp ${rp(mExtra)}/porsi more than the price list below**, on every tier.` : `M costs **the same as the price list below** — no tambahan is set right now, so one figure covers either size.`}
+    ? `- Two portion sizes: **S** and **M**. Same nasi and lauk utama; M adds one more side dish (the 4th item on that week's menu). ${mCostLine}
 - Only ${mNames} cook${mKitchens.length === 1 ? "s" : ""} M. Every other dapur is S only — never offer M for them, and never promise a size a dapur does not cook.
-- ${mExtra > 0 ? `Quote M as the tier's per-meal price plus Rp ${rp(mExtra)}, times the same total porsi. 20 hari siang + malam = 40 porsi: S = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, M = 40 × Rp ${rp(rateFor(40) + mExtra)} = *Rp ${rp((rateFor(40) + mExtra) * 40)}*.` : `Quote M at the tier's per-meal price, the same total as S: 20 hari siang + malam = 40 porsi = 40 × Rp ${rp(rateFor(40))} = *Rp ${rp(totalFor(40))}*, either size.`}
+- ${mQuoteLine}
 - **Name both sizes the first time you quote a price, and whenever they ask what is in a box or how big a porsi is.** One line, in the same message as the total — S is what the price list shows, M adds one more side dish ${mMore}. Do not wait to be asked. Naya ordered on 2026-08-24, ate S all week, and found out M existed on 2026-08-31 only because an admin told her: "kyanya gada diinfo deh kak", "gaada diinfo kak". The price list image shows the S box, so the customer has no other way to learn this.
 - Say it as an option, never as a question they must answer first: quote S as the default total, add the M line, and let them upgrade if they want. If they do not say which size, use S.`
     : "- Only size S is available. Never ask whether the customer wants S or M.";
@@ -839,7 +863,7 @@ Work the total out the same way as always and multiply:
 - porsi (or box) per pengiriman × jumlah hari, doubled if they take siang and malam
 - Example: 22 box × 5 hari = 110 porsi → 110 × Rp ${contract.toLocaleString("id-ID")} = *Rp ${(contract * 110).toLocaleString("id-ID")}*
 
-${offersM ? `\nUkuran M — one more side dish — is sold to this customer as well, and only at ${mNames}. ${mExtra > 0 ? `It is the contract rate plus Rp ${rp(mExtra)}/porsi: **Rp ${rp(contract + mExtra)}/porsi**.` : `It is the same **Rp ${rp(contract)}/porsi** — no tambahan is set right now.`} Every other dapur is S only. Quote S by default and name M once, when they ask about sizes or what is in the box.\n` : ""}
+${offersM ? `\nUkuran M — one more side dish — is sold to this customer as well, and only at ${mNames}. ${!mAnyExtra ? `It is the same **Rp ${rp(contract)}/porsi** — no tambahan is set right now.` : mUniform ? `It is the contract rate plus Rp ${rp(mExtra)}/porsi: **Rp ${rp(contract + mExtra)}/porsi**.` : `It is the contract rate plus that dapur's own tambahan: ${mRates.map((r) => `**Rp ${rp(contract + r.extra)}/porsi** di ${r.nickname}`).join(", ")}.`} Every other dapur is S only. Quote S by default and name M once, when they ask about sizes or what is in the box.\n` : ""}
 Give one exact total, the same way you would for anyone else.
 
 - ${deliveryDaysLine} Days outside that are closed for that dapur, and so are the closure dates listed above. **A contract rate removes the package sizes, not the calendar.** If a run they ask for includes a day their dapur does not cook, or a libur, do not refuse the run — say which specific dates are closed and offer it without them.
