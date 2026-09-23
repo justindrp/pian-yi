@@ -34,9 +34,10 @@ export function findMapsLink(text: string): string | null {
  * one on 2026-09-02 and had to say so themselves: "Alamatku kl di sharelok
  * adanya di kampung sebelah ka, krn posisi rumahnya bersebelahan sama kampung
  * sebelah — jadi gak bisa sesuai titik ka." The link still counts as an
- * address given and is still worth storing, but the bot must go on asking for
- * a Google Maps link, which the customer drags onto the right point before
- * copying. `formatLocationMessage()` writes exactly one shape —
+ * address given — for the order gate and for the prompt, which since
+ * 2026-09-23 checks the place the pin names against the typed address once
+ * instead of asking for a dragged link on every turn.
+ * `formatLocationMessage()` writes exactly one shape —
  * `google.com/maps?q=<lat>,<lng>` — so the two are told apart by that.
  */
 export function isSharedPinLink(url: string): boolean {

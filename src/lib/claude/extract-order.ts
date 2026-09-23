@@ -1723,10 +1723,10 @@ export async function createOrderFromExtraction(
   // apa apa kak — alamat tulisannya yang penting" on 2026-09-02.
   //
   // A WhatsApp share-location counts here — a pin in the right kampung still
-  // beats prose — but it does not stop the prompt asking for a proper Google
-  // Maps link, which the customer drags onto the house before copying. The
-  // link may arrive in this call or already be on the customer; either is
-  // enough, and only a customer with neither is asked.
+  // beats prose — and in the prompt too, which questions a pin once, and only
+  // when the place it names is not the typed address. The link may arrive in
+  // this call or already be on the customer; either is enough, and only a
+  // customer with neither is asked.
   //
   // Withheld like the name and the schedule, and for the same reason: creating
   // the order is what sends the bank details, so a half-known delivery must not
