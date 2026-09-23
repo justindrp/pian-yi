@@ -144,6 +144,64 @@ export async function loadCustomerSchedule(
 }
 
 /**
+ * The customer's unpaid order and the days it asks for — the schedule that
+ * `mark_paid` will turn into rows, and the only place those days exist until
+ * then.
+ *
+ * `loadCustomerSchedule` reads rows, and an unpaid order has none, so without
+ * this the prompt said "Belum ada pengiriman terjadwal" to a customer holding
+ * five requested dinners. On 2026-09-23 Julian S dropped Saturday from his
+ * unpaid order; the model had no tool it knew applied, confirmed in chat, and
+ * the order still held the Saturday that payment would have put on the
+ * kitchen sheet.
+ *
+ * Same lookup as extract_order's amend (newest `pending_payment`), so the order
+ * shown here is the one a second extract_order call rewrites.
+ */
+export type PendingOrder = {
+  id: string;
+  packageSize: number;
+  totalPrice: number;
+  days: { date: string; mealType: string; portions: number }[];
+};
+
+export async function loadPendingOrder(
+  db: Db,
+  customerId: string,
+): Promise<PendingOrder | null> {
+  const { data } = await db
+    .from("orders")
+    .select("id, package_size, total_price, requested_schedule")
+    .eq("customer_id", customerId)
+    .eq("status", "pending_payment")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+
+  const raw = Array.isArray(data.requested_schedule)
+    ? (data.requested_schedule as {
+        date?: string;
+        meal_type?: string;
+        portions?: number;
+      }[])
+    : [];
+  return {
+    id: data.id,
+    packageSize: data.package_size ?? 0,
+    totalPrice: data.total_price ?? 0,
+    days: raw
+      .filter((d) => typeof d?.date === "string")
+      .map((d) => ({
+        date: (d.date ?? "").slice(0, 10),
+        mealType: d.meal_type ?? "lunch",
+        portions: d.portions ?? 1,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}
+
+/**
  * Portions of one order bought but not yet delivered, as of `today`.
  *
  * This is the number an order is finished on, and it is not the same as

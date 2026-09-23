@@ -1457,6 +1457,66 @@ describe("excluded neighborhoods", () => {
   });
 });
 
+// Julian S, 2026-09-23: he dropped Sabtu from an unpaid order, the bot listed
+// the new dates back and called nothing, and the order kept the Sabtu that
+// payment would have put on the kitchen sheet. The prompt never showed the
+// unpaid order's days, and said nothing about how to change them.
+describe("the unpaid order", () => {
+  const base = {
+    casual: false,
+    customerState: "ordering",
+    customerName: "Julian",
+    customerNotes: null,
+    detectedMapsLink: null,
+    menuShown: true,
+    currentDapur: null,
+    dapurOptions: [],
+    dapurMenuTexts: [],
+    menuWeek: { relation: "unknown" as const, weekStart: null },
+    servedAreas: ["Alam Sutera"],
+    customerArea: null,
+    neighborhoods: {},
+    excludedNeighborhoods: [],
+    coverageNotes: [],
+    activeOrder: null,
+    schedule: null,
+  };
+
+  test("shows its days and says a change is extract_order again", async () => {
+    const prompt = await buildSystemPrompt({
+      ...base,
+      pendingOrder: {
+        id: "o1",
+        packageSize: 5,
+        totalPrice: 145000,
+        days: [
+          { date: "2026-09-24", mealType: "dinner", portions: 1 },
+          { date: "2026-09-26", mealType: "dinner", portions: 1 },
+        ],
+      },
+    });
+
+    expect(prompt).toContain("## Order yang menunggu pembayaran");
+    expect(prompt).toContain("Paket 5 porsi, Rp 145.000, belum dibayar.");
+    expect(prompt).toContain("Sabtu 26 September 2026 — malam, 1 porsi");
+    expect(prompt).toContain(
+      "**Mengubah hari order ini adalah extract_order lagi — bukan delete_deliveries, bukan record_daily_order.**",
+    );
+  });
+
+  test("no unpaid order renders no block", async () => {
+    const prompt = await buildSystemPrompt({ ...base, pendingOrder: null });
+    expect(prompt).not.toContain("## Order yang menunggu pembayaran");
+  });
+
+  test("a declined day is the customer's choice, never a kitchen rule", async () => {
+    const prompt = await buildSystemPrompt(base);
+    expect(prompt).toContain(
+      "**A day the customer does not want is their choice, never the dapur's rule**",
+    );
+  });
+});
+
 // Veronica Catherine had cooked with Thenie since June. On 2026-09-06 the bot
 // sent her Thenie's menu and asked, in the same turn, which of the three
 // kitchens she subscribed to — then told her the kitchen follows her area.

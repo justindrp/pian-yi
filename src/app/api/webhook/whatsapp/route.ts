@@ -89,7 +89,10 @@ import {
   type ChangeDeliveryAddressInput,
   changeDeliveryAddress,
 } from "@/lib/orders/change-delivery-address";
-import { loadCustomerSchedule } from "@/lib/orders/customer-schedule";
+import {
+  loadCustomerSchedule,
+  loadPendingOrder,
+} from "@/lib/orders/customer-schedule";
 import {
   type DeleteDeliveriesInput,
   deleteDeliveries,
@@ -2370,6 +2373,7 @@ export async function processSavedCustomerMessage(params: {
   // on it are counted from the delivery rows — the only place either has ever
   // been.
   const schedule = await loadCustomerSchedule(db, customerId);
+  const pendingOrder = await loadPendingOrder(db, customerId);
 
   // Build system prompt
   const systemPrompt = await buildSystemPrompt({
@@ -2404,6 +2408,7 @@ export async function processSavedCustomerMessage(params: {
     coverageNotes: kitchenCoverageNotes,
     activeOrder,
     schedule,
+    pendingOrder,
     pendingAdminQuestion,
     // A corporate customer's negotiated rate replaces the whole price list.
     contractPricePerPortion: await contractPrice(customerId),
@@ -3166,7 +3171,10 @@ export async function processSavedCustomerMessage(params: {
     replyText &&
     !toolUses.some(
       (t) =>
-        t.name === "delete_deliveries" || t.name === "change_delivery_address",
+        t.name === "delete_deliveries" ||
+        t.name === "change_delivery_address" ||
+        // An unpaid order has no rows; its days change by amending it.
+        (pendingOrder !== null && t.name === "extract_order"),
     ) &&
     claimsSkipDone(replyText)
   ) {
@@ -3187,7 +3195,14 @@ export async function processSavedCustomerMessage(params: {
                   `${d.date} ${d.mealType === "dinner" ? "malam" : "siang"}`,
               )
               .join(", ")
-          : "tidak ada pengiriman terjadwal";
+          : pendingOrder && pendingOrder.days.length > 0
+            ? `order belum dibayar: ${pendingOrder.days
+                .map(
+                  (d) =>
+                    `${d.date} ${d.mealType === "dinner" ? "malam" : "siang"}`,
+                )
+                .join(", ")}`
+            : "tidak ada pengiriman terjadwal";
       const note = `Bot menyanggupi skip/pindah/ganti alamat tanpa memanggil tool apa pun. Jadwal yang masih tercatat: ${scheduled}`;
       console.warn(
         `[webhook] schedule change confirmed but never written for ${customerId} — ${scheduled}`,

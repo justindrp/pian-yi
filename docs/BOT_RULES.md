@@ -369,6 +369,16 @@ Two ways it stayed silent through 7 September, both fixed:
 
 Tests in `test/skip-claim.test.ts`.
 
+### An unpaid order's days change by amending it
+
+None of that applies to an order not yet paid: it has no rows, so there is nothing to delete or book, and its days live only in `requested_schedule`. On 2026-09-23 Julian S, on a `pending_payment` order holding Kamis to Rabu including Sabtu, said he wanted only Kamis, Jumat and Senin–Rabu. The bot listed the new dates back, called nothing, and the order kept Sabtu — which `mark_paid` would have put on the kitchen sheet the moment he transferred. It also explained the dropped day as *"Sabtu tidak ada pengiriman dari dapur kami"* for a kitchen that cooks Sabtu. The guard fired, and its push read *"Jadwal yang masih tercatat: tidak ada pengiriman terjadwal"*, because it read only the rows and so hid the very days at issue.
+
+Three fixes:
+
+- **The prompt shows the unpaid order** — `loadPendingOrder()` (`src/lib/orders/customer-schedule.ts`) feeds a "Order yang menunggu pembayaran" block with its days, apart from the schedule block (`loadCustomerSchedule()` returns null for a customer with no paid order). The block says a change of days is `extract_order` again, in the same turn, with the whole new `delivery_schedule` and the same size: it amends the open order (see "One order per purchase") and does not resend the bank details when the nominal is unchanged.
+- **The guard counts that `extract_order` as the write**, when the customer had a pending order at the start of the turn, and its push names the pending order's days when the calendar is empty.
+- **A day the customer declines is their choice, never a kitchen rule.** The "Skip delivery" policy now forbids explaining a skip with a closure the dapur does not have; which days each dapur works is already in the kitchen list.
+
 ## An event order is gathered, not priced — and never billed early
 
 A one-off event (a single date, a box count, no subscription) is priced by tendering it to the kitchens, never off `pricing_tiers`. The bot's job ends at collecting the brief: budget ceiling, what goes in the box, date, portions, meal time, area and address, drop-off window. It confirms that brief back to the customer and hands off to an admin. It does not name a per-portion price, and it **does not call `extract_order`** — creating the order is what sends the bank details, so an early order is an early bill.

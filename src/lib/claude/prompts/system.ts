@@ -15,7 +15,10 @@ import {
   menuWeekLastDay,
   weekAfter,
 } from "@/lib/menu/week";
-import type { CustomerSchedule } from "@/lib/orders/customer-schedule";
+import type {
+  CustomerSchedule,
+  PendingOrder,
+} from "@/lib/orders/customer-schedule";
 import { isLocked } from "@/lib/orders/delivery-state";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import {
@@ -234,6 +237,11 @@ export async function buildSystemPrompt(params: {
    */
   schedule: CustomerSchedule | null;
   /**
+   * The unpaid order and the days it asks for. It has no delivery rows until
+   * mark_paid, so `schedule` cannot show it — see `loadPendingOrder`.
+   */
+  pendingOrder?: PendingOrder | null;
+  /**
    * A question already sent to an admin and still unanswered, or null. The bot
    * used to fall silent on these threads entirely; it now keeps serving the
    * customer and only holds back on this one question.
@@ -357,6 +365,24 @@ Untuk tanggal yang **belum** terkunci: sebutkan tanggal serta meal-nya persis se
               )}\n\nPakai nomor itu sebagai \`address_slot\`. Kalau customer minta tempat lain yang tidak ada di daftar ini, change_delivery_address tidak bisa dipakai — panggil ask_admin_for_help dengan tanggal, meal dan alamatnya.`
           : "\n\nCustomer ini baru punya satu alamat tercatat, jadi change_delivery_address tidak bisa dipakai. Kalau dia minta kiriman ke tempat lain, panggil ask_admin_for_help dengan tanggal, meal dan alamatnya."
       }`
+    : "";
+
+  // The unpaid order's days, which have no rows yet and so never reach the
+  // block above. See `loadPendingOrder` for the incident.
+  const pendingOrderBlock = params.pendingOrder
+    ? `\n\n## Order yang menunggu pembayaran
+Paket ${params.pendingOrder.packageSize} porsi, Rp ${params.pendingOrder.totalPrice.toLocaleString("id-ID")}, belum dibayar. ${
+        params.pendingOrder.days.length > 0
+          ? `Hari yang diminta — masuk daftar dapur begitu pembayarannya dikonfirmasi:\n${params.pendingOrder.days
+              .map(
+                (d) =>
+                  `- ${formatHolidayDate(d.date)} — ${d.mealType === "dinner" ? "malam" : "siang"}, ${d.portions} porsi`,
+              )
+              .join("\n")}`
+          : "Belum ada hari yang diminta: customer memesan tanggal satu per satu."
+      }
+
+**Mengubah hari order ini adalah extract_order lagi — bukan delete_deliveries, bukan record_daily_order.** Order ini belum punya baris di daftar dapur, jadi dua tool itu tidak menemukan apa pun untuk diubah. Panggil extract_order di turn yang sama dengan delivery_schedule **lengkap** yang baru (semua hari, bukan hanya yang berubah) dan ukuran paket yang sama: order yang ini yang diubah, tidak ada order kedua, dan detail transfer tidak dikirim ulang kalau nominalnya tetap. Kalau customer sudah menyebut sendiri hari-harinya dengan jelas, itu sudah jawabannya — jangan tanya "betul begitu?" dulu tanpa memanggil tool. Julian S pada 2026-09-23 bilang "hanya Kamis, Jumat, Senin–Rabu" untuk order yang belum dibayar; bot menjawab dengan daftar tanggal yang baru dan tidak memanggil apa pun, jadi order-nya tetap memegang hari Sabtu yang akan masuk daftar dapur begitu dia transfer.`
     : "";
 
   // The menu image on file is not always the current week's. It is published
@@ -1344,7 +1370,7 @@ Allergy requests (tanpa susu, tanpa kacang, and any other "bebas dari X" for saf
 
 **Payment**: upfront. The order is confirmed once the transfer arrives, and the limit is ${deadlineTime} **the day before that order's own first delivery** — never the delivery day itself, and never the day they ordered. Give it as a date and a time.
 
-**Skip delivery**: customer can skip any day and the portion stays in their balance — a skipped day is removed from the schedule, not spent. **Call delete_deliveries with the date; that call is the skip.** Request must arrive before ${deadlineTime} the day before the skipped delivery; after that the date is TERKUNCI, the kitchen is already cooking it, and the tool will refuse it — say so plainly instead of promising the skip.
+**Skip delivery**: customer can skip any day and the portion stays in their balance — a skipped day is removed from the schedule, not spent. **Call delete_deliveries with the date; that call is the skip.** Request must arrive before ${deadlineTime} the day before the skipped delivery; after that the date is TERKUNCI, the kitchen is already cooking it, and the tool will refuse it — say so plainly instead of promising the skip. **A day the customer does not want is their choice, never the dapur's rule** — say it as theirs ("Sabtu tidak dikirim sesuai permintaan kakak"), never "dapur kami tidak mengirim hari Sabtu": which days each dapur delivers is in the kitchen list above, and inventing a closure to explain a customer's own skip tells them a falsehood about the kitchen they chose. Julian S, 2026-09-23: he dropped Sabtu from an unpaid order and the bot explained it as "Sabtu tidak ada pengiriman dari dapur kami" for a kitchen that cooks Sabtu.
 
 **Late delivery compensation** — the apology is yours and goes out in the same turn; never leave a late customer waiting on an admin to be told we are sorry. Late is measured against the window of the dapur that cooked it, never against another dapur's:
 ${compensationLines}
@@ -1450,5 +1476,5 @@ ${cutoffLine}
     activeInstructions.length > 0
       ? `\n\n## Custom instructions from the owner\n${activeInstructions.map((inst, i) => `${i + 1}. ${inst}`).join("\n")}`
       : ""
-  }${scheduleBlock}${justWelcomedBlock}`;
+  }${scheduleBlock}${pendingOrderBlock}${justWelcomedBlock}`;
 }
