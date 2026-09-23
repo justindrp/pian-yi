@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 interface CacheData {
   settings: Record<string, string>;
-  pricingTiers: Record<number, number>;
   templates: Record<string, string>;
   activeInstructions: string[];
   neighborhoods: Record<string, string[]>;
@@ -18,8 +17,10 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
  * One string that changes whenever anything this cache holds changes
- * (migration 129). 166 bytes against the 20,621 the five selects below cost,
- * and one request rather than five.
+ * (migration 129). 166 bytes against the ~20 KB the selects below cost, and
+ * one request rather than four. `pricing_tiers` was a fifth until migration
+ * 135 removed the house ladder it cached; the prompt reads every kitchen's
+ * ladder itself (`laddersForKitchens()`).
  *
  * Returns null when it cannot be read, which is deliberately *not* the same as
  * "unchanged": an unreachable database or a deploy that lands ahead of the
@@ -49,16 +50,11 @@ async function load(): Promise<CacheData> {
 
   const [
     settingsRes,
-    pricingRes,
     templatesRes,
     instructionsRes,
     neighborhoodsRes,
   ] = await Promise.all([
     db.from("settings").select("key, value"),
-    db
-      .from("pricing_tiers")
-      .select("portions, price_per_portion")
-      .is("subcontractor_id", null),
     db.from("message_templates").select("key, template"),
     db.from("chatbot_instructions").select("instruction").eq("is_active", true),
     db.from("area_neighborhoods").select("area, name, excluded").order("name"),
@@ -66,10 +62,6 @@ async function load(): Promise<CacheData> {
 
   const settings: Record<string, string> = {};
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;
-
-  const pricingTiers: Record<number, number> = {};
-  for (const row of pricingRes.data ?? [])
-    pricingTiers[row.portions] = row.price_per_portion;
 
   const templates: Record<string, string> = {};
   for (const row of templatesRes.data ?? []) templates[row.key] = row.template;
@@ -94,7 +86,6 @@ async function load(): Promise<CacheData> {
 
   return {
     settings,
-    pricingTiers,
     templates,
     activeInstructions,
     neighborhoods,
@@ -143,11 +134,6 @@ export async function getSetting(key: string): Promise<string> {
   return c.settings[key] ?? "";
 }
 
-export async function getPricingTier(portions: number): Promise<number> {
-  const c = await getCache();
-  return c.pricingTiers[portions] ?? 0;
-}
-
 export async function getTemplate(key: string): Promise<string> {
   const c = await getCache();
   return c.templates[key] ?? "";
@@ -156,11 +142,6 @@ export async function getTemplate(key: string): Promise<string> {
 export async function getAllSettings(): Promise<Record<string, string>> {
   const c = await getCache();
   return c.settings;
-}
-
-export async function getAllPricingTiers(): Promise<Record<number, number>> {
-  const c = await getCache();
-  return c.pricingTiers;
 }
 
 export async function getAllTemplates(): Promise<Record<string, string>> {

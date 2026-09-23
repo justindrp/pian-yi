@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 
 type Tier = { portions: number; price_per_portion: number };
+type Ladder = { nickname: string; tiers: Tier[] };
 
 type Facts = {
   areas: string[];
   deadlineHour: number;
-  tiers: Tier[];
+  ladders: Ladder[];
   nicknames: string[];
   /** One "Nickname: Senin–Sabtu" per active kitchen. */
   schedules: string[];
@@ -118,7 +119,7 @@ function contentId(f: Facts): Section[] {
       title: "Harga",
       blocks: [
         p(
-          "Harga per porsi turun mengikuti jumlah porsi yang dibeli. Ini daftar yang dipakai sistem hari ini:",
+          "Harga per porsi turun mengikuti jumlah porsi yang dibeli. Tiap dapur punya daftar harganya sendiri — ini yang dipakai sistem hari ini:",
         ),
         { kind: "ladder" },
         p(
@@ -304,7 +305,7 @@ function contentEn(f: Facts): Section[] {
       title: "Pricing",
       blocks: [
         p(
-          "Price per portion falls as the package gets bigger. This is the ladder the system is using right now:",
+          "Price per portion falls as the package gets bigger. Each kitchen has its own ladder — these are the ones the system is using right now:",
         ),
         { kind: "ladder" },
         p(
@@ -471,7 +472,7 @@ export default function HandbookClient(props: Facts) {
                   // biome-ignore lint/suspicious/noArrayIndexKey: static prose, order never changes
                   key={j}
                   block={block}
-                  tiers={props.tiers}
+                  ladders={props.ladders}
                   lang={lang}
                 />
               ))}
@@ -485,11 +486,11 @@ export default function HandbookClient(props: Facts) {
 
 function Block({
   block,
-  tiers,
+  ladders,
   lang,
 }: {
   block: Block;
-  tiers: Tier[];
+  ladders: Ladder[];
   lang: Lang;
 }) {
   if (block.kind === "p") {
@@ -520,31 +521,38 @@ function Block({
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="text-sm min-w-[16rem]">
-        <thead>
-          <tr className="text-xs text-gray-400 text-left">
-            <th className="pr-6 pb-1 font-medium">
-              {lang === "id" ? "Porsi" : "Portions"}
-            </th>
-            <th className="pb-1 font-medium">
-              {lang === "id" ? "Harga per porsi" : "Price per portion"}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {tiers.map((tier) => (
-            <tr key={tier.portions}>
-              <td className="pr-6 py-0.5 text-gray-600 tabular-nums">
-                {tier.portions}
-              </td>
-              <td className="py-0.5 text-gray-900 tabular-nums">
-                {rupiah(tier.price_per_portion)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="flex flex-wrap gap-6">
+      {ladders.map((ladder) => (
+        <div key={ladder.nickname} className="overflow-x-auto">
+          <p className="text-xs font-medium text-gray-900 mb-1">
+            {ladder.nickname}
+          </p>
+          <table className="text-sm">
+            <thead>
+              <tr className="text-xs text-gray-400 text-left">
+                <th className="pr-6 pb-1 font-medium">
+                  {lang === "id" ? "Porsi" : "Portions"}
+                </th>
+                <th className="pb-1 font-medium">
+                  {lang === "id" ? "Harga per porsi" : "Price per portion"}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {ladder.tiers.map((tier) => (
+                <tr key={tier.portions}>
+                  <td className="pr-6 py-0.5 text-gray-600 tabular-nums">
+                    {tier.portions}
+                  </td>
+                  <td className="py-0.5 text-gray-900 tabular-nums">
+                    {rupiah(tier.price_per_portion)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }

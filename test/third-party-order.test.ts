@@ -142,6 +142,8 @@ const BASE = {
   address: "Kost Cila, Jl. Melati 3",
   maps_link: "",
   area: "Gading Serpong",
+  // Every order names its dapur: there is no house ladder (migration 135).
+  subcontractor_id: "00000000-0000-4000-8000-00000000d0d0",
   // Required now: an order without the days is refused before anything is
   // written, so every fixture here has to carry them.
   delivery_schedule: [

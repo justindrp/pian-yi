@@ -555,8 +555,9 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
    * when one kitchen cooked everything. `pricing_tiers` is keyed by kitchen
    * (migration 098) and the kitchens do not cost the same: Homey costs us
    * Rp 33.000 a portion against Thenie's Rp 21.000, so quoting Homey's food off
-   * the house ladder sells it at a loss on every tier, and nothing in the order
-   * would look wrong. When every active kitchen sells at the same prices the
+   * Thenie's ladder sells it at a loss on every tier, and nothing in the order
+   * would look wrong. There is no house ladder to fall back on (migration
+   * 135). When every active kitchen sells at the same prices the
    * block reads exactly as it always did; only when they diverge does the
    * customer see one list per dapur.
    *
@@ -572,7 +573,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     params.currentDapur && !kitchenIds.includes(params.currentDapur.id)
       ? [...kitchenIds, params.currentDapur.id]
       : kitchenIds;
-  const [{ house, byKitchen }, { data: kitchenDayRows }] = await Promise.all([
+  const [byKitchen, { data: kitchenDayRows }] = await Promise.all([
     laddersForKitchens(kitchenDb, kitchenIds),
     dayQueryIds.length > 0
       ? kitchenDb
@@ -656,13 +657,13 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
   const kitchenLadders = params.dapurOptions.map((d) => ({
     nickname: d.nickname,
     days: daysLabel(daysById.get(d.id)),
-    tiers: byKitchen.get(d.id) ?? house,
+    tiers: byKitchen.get(d.id) ?? [],
   }));
   const oneLadder =
     kitchenLadders.length === 0 ||
     kitchenLadders.every((k) => sameLadder(k.tiers, kitchenLadders[0].tiers));
   const priceListBlock = oneLadder
-    ? `Price list:\n${priceListLines(kitchenLadders[0]?.tiers ?? house)}`
+    ? `Price list:\n${priceListLines(kitchenLadders[0]?.tiers ?? [])}`
     : `Price list — **each dapur has its own**. Quote the ladder of the dapur the customer is buying from and never mix two of them in one total. If they have not chosen a dapur yet, ask which one before you give a price, or name the dapur beside every figure so they know what they are comparing. Never quote the cheapest dapur for food another one cooks.\n\n${kitchenLadders
         .map(
           (k) =>
@@ -688,7 +689,7 @@ Judge every menu question by the dates it covers, never by the word it uses. A q
     : ([...kitchenLadders].sort((a, b) =>
         a.nickname.localeCompare(b.nickname),
       )[0] ?? null);
-  const exampleTiers = exampleLadder?.tiers ?? house;
+  const exampleTiers = exampleLadder?.tiers ?? [];
   const sizesAsc = [...exampleTiers].sort((a, b) => a.portions - b.portions);
   const floorSize = sizesAsc[0]?.portions ?? 5;
   const rp = (n: number) => n.toLocaleString("id-ID");

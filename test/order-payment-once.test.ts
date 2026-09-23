@@ -133,7 +133,13 @@ function mockDb(opts: {
     chain.single = async () => ({ data: result(), error: null });
     // biome-ignore lint/suspicious/noThenProperty: mimics the PostgREST query builder
     chain.then = (resolve: (v: unknown) => unknown) =>
-      resolve({ data: [], error: null });
+      resolve({
+        data:
+          table === "pricing_tiers"
+            ? [{ portions: 5, price_per_portion: 29000 }]
+            : [],
+        error: null,
+      });
     return chain;
   });
   (createAdminClient as jest.Mock).mockReturnValue({ from });
@@ -152,6 +158,9 @@ const INPUT: ExtractedOrderInput = {
   portions_per_delivery: 1,
   maps_link: "",
   delivery_schedule: [],
+  // Every order names its dapur: there is no house ladder to price a
+  // kitchen-less one on (migration 135).
+  subcontractor_id: "00000000-0000-4000-8000-00000000d0d0",
 };
 
 function paymentMessages(): string[] {

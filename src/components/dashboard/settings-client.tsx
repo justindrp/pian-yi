@@ -12,8 +12,13 @@ interface SettingRow {
   description?: string | null;
 }
 interface PricingRow {
+  subcontractor_id: string;
   portions: number;
   price_per_portion: number;
+}
+interface KitchenRow {
+  id: string;
+  nickname: string;
 }
 interface TemplateRow {
   key: string;
@@ -29,6 +34,7 @@ interface AdminRow {
 interface SettingsData {
   settings: SettingRow[];
   pricing: PricingRow[];
+  kitchens: KitchenRow[];
   templates: TemplateRow[];
   admins: AdminRow[];
 }
@@ -120,7 +126,7 @@ export default function SettingsClient() {
           return (
             <div className="space-y-8 max-w-3xl">
               <BusinessSection settingsMap={settingsMap} />
-              <PricingSection rows={data.pricing} />
+              <PricingSection rows={data.pricing} kitchens={data.kitchens} />
               <DeliverySection settingsMap={settingsMap} />
               <MessagesSection
                 settingsMap={settingsMap}
@@ -188,8 +194,19 @@ function BusinessSection({
 }
 
 // --- Pricing ---
-function PricingSection({ rows }: { rows: PricingRow[] }) {
+// One ladder per kitchen (migration 098), and no house ladder since 135: pick
+// the kitchen first, and every edit is scoped to it.
+function PricingSection({
+  rows: allRows,
+  kitchens,
+}: {
+  rows: PricingRow[];
+  kitchens: KitchenRow[];
+}) {
   const qc = useQueryClient();
+  const [kitchenId, setKitchenId] = useState(kitchens[0]?.id ?? "");
+  const kitchen = kitchens.find((k) => k.id === kitchenId);
+  const rows = allRows.filter((r) => r.subcontractor_id === kitchenId);
   const [editPortions, setEditPortions] = useState<number | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -207,7 +224,11 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
       await fetch("/api/settings/pricing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ portions, price_per_portion }),
+        body: JSON.stringify({
+          subcontractor_id: kitchenId,
+          portions,
+          price_per_portion,
+        }),
       });
     },
     onSuccess: () => {
@@ -222,7 +243,7 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
       await fetch("/api/settings/pricing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adjust }),
+        body: JSON.stringify({ subcontractor_id: kitchenId, adjust }),
       });
     },
     onSuccess: () => {
@@ -235,6 +256,21 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
 
   return (
     <Section title="Pricing Tiers">
+      <div className="flex flex-wrap gap-2 mb-3">
+        {kitchens.map((k) => (
+          <button
+            key={k.id}
+            type="button"
+            onClick={() => {
+              setKitchenId(k.id);
+              setEditPortions(null);
+            }}
+            className={`px-3 py-1 text-xs rounded-full border ${k.id === kitchenId ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+          >
+            {k.nickname}
+          </button>
+        ))}
+      </div>
       <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
@@ -380,7 +416,8 @@ function PricingSection({ rows }: { rows: PricingRow[] }) {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-96 space-y-3">
             <p className="font-medium text-gray-900">
-              {adjustNum > 0 ? "Increase" : "Decrease"} all tiers by Rp{" "}
+              {adjustNum > 0 ? "Increase" : "Decrease"} all of{" "}
+              {kitchen?.nickname ?? "this kitchen"}'s tiers by Rp{" "}
               {Math.abs(adjustNum).toLocaleString("id-ID")}?
             </p>
             <p className="text-sm text-gray-500">

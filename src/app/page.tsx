@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Nunito, Poppins } from "next/font/google";
 import Image from "next/image";
+import { laddersForKitchens } from "@/lib/pricing/tiers";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { activeDeliveryDays } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -80,11 +81,8 @@ function toRungs(tiers: Tier[]): Rung[] {
 
 async function loadContent() {
   const db = createAdminClient();
-  const [tiersRes, settingsRes, areas, openDays] = await Promise.all([
-    db
-      .from("pricing_tiers")
-      .select("portions, price_per_portion")
-      .is("subcontractor_id", null),
+  const [kitchensRes, settingsRes, areas, openDays] = await Promise.all([
+    db.from("subcontractors").select("id").eq("is_active", true),
     db
       .from("settings")
       .select("key, value")
@@ -96,8 +94,22 @@ async function loadContent() {
   const settings: Record<string, string> = {};
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;
 
+  // There is no house ladder any more (migration 135) — it was Thenie's. Until
+  // this page lists every dapur, it shows the ladder of whichever active
+  // kitchen starts cheapest, so "mulai Rp X" is a price someone really sells at.
+  const ladders = [
+    ...(
+      await laddersForKitchens(
+        db,
+        (kitchensRes.data ?? []).map((k) => k.id),
+      )
+    ).values(),
+  ].filter((l) => l.length > 0);
+  const floorOf = (l: Tier[]) => Math.min(...l.map((t) => t.price_per_portion));
+  const cheapestLadder = ladders.sort((a, b) => floorOf(a) - floorOf(b))[0];
+
   return {
-    rungs: toRungs((tiersRes.data ?? []) as Tier[]),
+    rungs: toRungs(cheapestLadder ?? []),
     priceListImage: settings.price_list_image_url ?? null,
     instagram: settings.instagram_handle ?? null,
     areas,

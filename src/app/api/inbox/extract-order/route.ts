@@ -4,6 +4,7 @@ import {
   getExtractedOrderPricing,
 } from "@/lib/claude/extract-order";
 import { normalizeSize } from "@/lib/orders/size";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -38,17 +39,28 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  // On the kitchen the extraction named, not the house ladder: the review modal
-  // shows this figure to an admin as the price of the order, and the kitchens do
-  // not sell at the same rates.
-  const pricing = await getExtractedOrderPricing(
-    extracted.package_size,
-    false,
-    customer_id,
-    normalizeSize(extracted.size),
-    extracted.subcontractor_id ?? null,
-  );
-  return NextResponse.json({ ok: true, data: { ...extracted, ...pricing } });
+  // On the kitchen the extraction named, else the one the customer already
+  // cooks with — the same order `createOrderFromExtraction` resolves it in. The
+  // kitchens do not sell at the same rates and there is no house ladder
+  // (migration 135), so with neither the modal shows Rp 0 and confirming asks
+  // the customer which dapur.
+  const { data: cust } = await createAdminClient()
+    .from("customers")
+    .select("subcontractor_id")
+    .eq("id", customer_id)
+    .maybeSingle();
+  const kitchen = extracted.subcontractor_id ?? cust?.subcontractor_id ?? null;
+  const pricing = kitchen
+    ? await getExtractedOrderPricing(
+        extracted.package_size,
+        false,
+        customer_id,
+        normalizeSize(extracted.size),
+        kitchen,
+      )
+    : { price_per_portion: 0, total_price: 0 };
+  return NextResponse.json({ ok: true, data: { ...extracted, subcontractor_id: kitchen ?? undefined, ...pricing },
+  });
 }
 
 export const dynamic = "force-dynamic";

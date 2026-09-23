@@ -13,12 +13,16 @@ export type PriceTier = { portions: number; price_per_portion: number };
  * one kitchen cooked everything. Thenie costs us Rp 21.000 a portion, Santapin
  * Rp 22.000 and Homey Rp 33.000 — quoting Homey's food at Thenie's Rp 28.000
  * tier is a Rp 5.000 loss per portion, every portion, and nothing in the order
- * would look wrong. Migration 098 keys the table by `subcontractor_id` and
- * keeps the existing rows as the house ladder: `subcontractor_id IS NULL` is
- * what a kitchen with no rows of its own is sold at, and it is exactly Thenie's
- * ladder, so Thenie needs no rows.
+ * would look wrong. Migration 098 keyed the table by `subcontractor_id`.
  *
- * Every read of the table goes through here. A bare select now returns every
+ * There is no house ladder (migration 135). The rows 098 kept as one were
+ * Thenie's prices under a null kitchen, and they now carry her id. A kitchen
+ * with no rows, or no kitchen at all, gets an empty ladder — never someone
+ * else's prices. `getExtractedOrderPricing()` refuses an empty one rather
+ * than price at Rp 0, and an active kitchen cannot have one (the trigger in
+ * migration 135).
+ *
+ * Every read of the table goes through here. A bare select returns every
  * kitchen's rows interleaved, and the largest-tier-below lookup on top of that
  * quotes whichever kitchen happens to sort first — a wrong price that looks
  * like it worked.
@@ -27,19 +31,11 @@ export async function tiersForKitchen(
   db: Db,
   subcontractorId: string | null,
 ): Promise<PriceTier[]> {
-  if (subcontractorId) {
-    const { data } = await db
-      .from("pricing_tiers")
-      .select("portions, price_per_portion")
-      .eq("subcontractor_id", subcontractorId)
-      .order("portions", { ascending: true });
-    if (data && data.length > 0) return data;
-  }
-
+  if (!subcontractorId) return [];
   const { data } = await db
     .from("pricing_tiers")
     .select("portions, price_per_portion")
-    .is("subcontractor_id", null)
+    .eq("subcontractor_id", subcontractorId)
     .order("portions", { ascending: true });
   return data ?? [];
 }
@@ -74,26 +70,16 @@ export function priceForPortions(
  *
  * `tiersForKitchen()` is one query per kitchen, which is right when an order is
  * being priced and wrong when the prompt has to publish all of them: the price
- * list the bot quotes from is now one block per active kitchen, and building it
- * a query at a time runs on every inbound message.
- *
- * A kitchen with no rows of its own maps to the house ladder, exactly as the
- * single-kitchen read does. The house ladder comes back beside them because a
- * prompt built for a customer with no kitchen resolved still has to publish a
- * price list, and it is the one we would sell them at.
+ * list the bot quotes from is one block per active kitchen, and building it a
+ * query at a time runs on every inbound message. A kitchen with no rows maps to
+ * an empty ladder, exactly as the single-kitchen read does.
  */
 export async function laddersForKitchens(
   db: Db,
   subcontractorIds: readonly string[],
-): Promise<{ house: PriceTier[]; byKitchen: Map<string, PriceTier[]> }> {
-  const { data: house } = await db
-    .from("pricing_tiers")
-    .select("portions, price_per_portion")
-    .is("subcontractor_id", null)
-    .order("portions", { ascending: true });
-
+): Promise<Map<string, PriceTier[]>> {
   const byKitchen = new Map<string, PriceTier[]>();
-  if (subcontractorIds.length === 0) return { house: house ?? [], byKitchen };
+  if (subcontractorIds.length === 0) return byKitchen;
 
   const { data: own } = await db
     .from("pricing_tiers")
@@ -102,15 +88,17 @@ export async function laddersForKitchens(
     .order("portions", { ascending: true });
 
   for (const id of subcontractorIds) {
-    const mine = (own ?? [])
-      .filter((t) => t.subcontractor_id === id)
-      .map((t) => ({
-        portions: t.portions,
-        price_per_portion: t.price_per_portion,
-      }));
-    byKitchen.set(id, mine.length > 0 ? mine : (house ?? []));
+    byKitchen.set(
+      id,
+      (own ?? [])
+        .filter((t) => t.subcontractor_id === id)
+        .map((t) => ({
+          portions: t.portions,
+          price_per_portion: t.price_per_portion,
+        })),
+    );
   }
-  return { house: house ?? [], byKitchen };
+  return byKitchen;
 }
 
 /** Two ladders quote the same price for every size the other lists. */
@@ -132,8 +120,8 @@ export function sameLadder(a: PriceTier[], b: PriceTier[]): boolean {
  * Migration 116 settles what NULL means: nothing to take off, never a reason
  * to refuse the request.
  *
- * Returns 0 for a kitchen we cannot name, which is the house ladder's answer:
- * the house rate is Thenie's, and Thenie charge the same either way.
+ * Returns 0 for a kitchen we cannot name. Nothing is priced without a kitchen
+ * any more (migration 135), so the answer is never used.
  */
 export async function noRiceDiscount(
   db: Db,
@@ -154,8 +142,8 @@ export async function noRiceDiscount(
  *
  * The same shape as `noRiceDiscount()` above and for the same reason: a single
  * global figure is one kitchen's number wearing everyone's name. A kitchen we
- * cannot name falls back to `settings.size_m_surcharge`, which is the house
- * answer because the house ladder is Thenie's and Rp 4.000 is Thenie's M.
+ * cannot name falls back to `settings.size_m_surcharge`; nothing is priced
+ * without a kitchen any more (migration 135), so that is a last resort only.
  */
 export async function kitchenMSurcharge(
   db: Db,

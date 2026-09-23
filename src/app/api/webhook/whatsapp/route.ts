@@ -1536,6 +1536,15 @@ export async function processWebhookAsync(
           "[webhook] payment-proof order recovery failed:",
           (err as Error).message,
         );
+        // Money may have moved with no order to hold it — most often because
+        // the customer never chose a dapur, and without one there is no price
+        // (migration 135). Nothing else will record it.
+        await sendPushToAllAdmins(
+          `Bukti bayar tanpa order — ${customer.name ?? message.from}`,
+          "Order tidak bisa dibuat dari chat (dapur belum dipilih?). Cek inbox.",
+          "/inbox",
+          "high",
+        );
       }
     }
 
@@ -1811,22 +1820,19 @@ export async function processWebhookAsync(
           ? (uniqueAreas[0] ?? "")
           : `${uniqueAreas.slice(0, -1).join(", ")}, dan ${uniqueAreas[uniqueAreas.length - 1]}`;
 
-      // "mulai dari" is the cheapest kitchen's 20-portion rate, not the house
-      // ladder's. Since migration 098 the house ladder is only what a kitchen
-      // with no rows of its own is sold at, so quoting it flat is quoting a
-      // price no kitchen near the customer may charge.
-      const houseTier20 =
-        (tier20 ?? []).find((t) => t.subcontractor_id === null)
-          ?.price_per_portion ?? null;
+      // "mulai dari" is the cheapest active kitchen's 20-portion rate. Each
+      // kitchen sells on its own ladder and there is no house one (migration
+      // 135), so a flat figure would be a price no kitchen near the customer
+      // may charge.
       const kitchenTier20s = activeDapurs
         .map(
           (k) =>
             (tier20 ?? []).find((t) => t.subcontractor_id === k.id)
-              ?.price_per_portion ?? houseTier20,
+              ?.price_per_portion,
         )
         .filter((p): p is number => p != null);
       const cheapest20 =
-        kitchenTier20s.length > 0 ? Math.min(...kitchenTier20s) : houseTier20;
+        kitchenTier20s.length > 0 ? Math.min(...kitchenTier20s) : null;
       const price20Text = cheapest20
         ? `${Math.round(cheapest20 / 1000)}RB`
         : "";

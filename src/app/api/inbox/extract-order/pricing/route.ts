@@ -33,13 +33,19 @@ export async function POST(req: NextRequest): Promise<Response> {
   // size, and a corporate customer must reprice at their contract rate. `size`
   // here is the S/M one, so flipping it in the modal reprices too. So does the
   // dapur: each kitchen sells on its own ladder, so repricing without one shows
-  // the admin a total the order will not be written at.
+  // the admin a total the order will not be written at. There is no house
+  // ladder to fall back on (migration 135).
+  if (!body.subcontractor_id)
+    return NextResponse.json(
+      { ok: false, error: "Dapur belum dipilih" },
+      { status: 400 },
+    );
   const pricing = await getExtractedOrderPricing(
     packageSize,
     false,
     body.customer_id ?? null,
     normalizeSize(body.size),
-    body.subcontractor_id ?? null,
+    body.subcontractor_id,
   );
   return NextResponse.json({ ok: true, data: pricing });
 }

@@ -837,16 +837,20 @@ export async function getExtractedOrderPricing(
     };
   }
 
-  // The kitchen's own ladder, and the house one only when no kitchen is known.
-  // Every kitchen quoted off the house ladder is priced at Thenie's cost base:
-  // Homey costs us Rp 33.000 a portion and the house ladder sells at Rp 29.000,
-  // a loss on every portion that nothing downstream would flag. A caller that
-  // can name the kitchen must pass it.
+  // The kitchen's own ladder, and nothing else. There used to be a house
+  // ladder for an order with no kitchen, and it was Thenie's prices: Homey's
+  // food priced off it sold at Rp 29.000 against a Rp 33.000 cost, and nothing
+  // downstream flagged it. Since migration 135 no kitchen means no price, and
+  // an empty ladder throws rather than write an order at Rp 0 —
+  // `createOrderFromExtraction` asks the customer for the dapur before this.
   const tiers = await tiersForKitchen(db, subcontractorId);
-  const basePrice = priceForPortions(tiers, packageSize) ?? 0;
-  // Flat IDR off every tier, per kitchen, and only for a kitchen we can name:
-  // the house ladder is Thenie's and Thenie charge the same either way. Never
-  // below zero — a discount larger than the tier would sell food for nothing.
+  const basePrice = priceForPortions(tiers, packageSize);
+  if (basePrice === null)
+    throw new Error(
+      `no price ladder for dapur ${subcontractorId ?? "(none chosen)"} — cannot price ${packageSize} porsi`,
+    );
+  // Flat IDR off every tier, per kitchen. Never below zero — a discount larger
+  // than the tier would sell food for nothing.
   const noRice = tanpaNasi ? await noRiceDiscount(db, subcontractorId) : 0;
   const pricePerPortion = Math.max(
     0,
@@ -1211,6 +1215,9 @@ export async function resizePendingOrderFromMessage(
   const nasiMerah = wantsNasiMerah || (order.addon_cost_per_portion ?? 0) > 0;
   const addingAddon = nasiMerah && (order.addon_cost_per_portion ?? 0) === 0;
   if (size === order.package_size && !addingAddon) return false;
+  // An order with no kitchen has no ladder to re-price on (migration 135).
+  // New orders always carry one; this is the pre-2026-08-21 legacy shape.
+  if (!order.subcontractor_id) return false;
 
   // The S/M size is the order's, never re-read from this message. It is folded
   // into price_per_portion, so re-pricing without it would quietly demote an M
@@ -1807,14 +1814,15 @@ export async function createOrderFromExtraction(
   // it, so the food is never cooked and nothing anywhere says why. Fall back
   // the way an admin would: the kitchen this customer already buys from, then
   // the only active kitchen covering their area. Two candidates is a real
-  // choice between kitchens and stays null for an admin to make.
+  // choice, and the customer makes it — we never assign a kitchen.
   let subcontractorId =
     input.subcontractor_id ?? addressRow?.subcontractor_id ?? null;
   if (!subcontractorId) {
     const { data: activeSubs } = await db
       .from("subcontractors")
-      .select("id, delivery_areas")
-      .eq("is_active", true);
+      .select("id, customer_nickname, delivery_areas")
+      .eq("is_active", true)
+      .order("customer_nickname");
     const area = (input.area ?? addressRow?.area ?? "").trim().toLowerCase();
     const covering = area
       ? (activeSubs ?? []).filter((sub) =>
@@ -1828,6 +1836,42 @@ export async function createOrderFromExtraction(
       console.log(
         `[extract-order] no dapur from the model — assigned ${subcontractorId}, the only active kitchen covering ${area}`,
       );
+    }
+
+    // Still no kitchen, so no price. This used to fall through to the house
+    // ladder — Thenie's prices under a null kitchen — and write an order no
+    // kitchen sheet showed. There is no house ladder since migration 135.
+    // Withheld like the schedule and the Maps link, since creating the order
+    // is what sends the bank details. On the payment-proof path the customer
+    // has already paid, so throw: the webhook's recovery catch tells an admin.
+    if (!subcontractorId) {
+      if (!sendPaymentInfo)
+        throw new Error(
+          "no dapur chosen — the order cannot be priced until the customer picks one",
+        );
+      const options = (covering.length > 0 ? covering : (activeSubs ?? []))
+        .map((s) => s.customer_nickname)
+        .filter((n): n is string => Boolean(n));
+      const askMsg =
+        options.length > 0
+          ? `Sebelum saya hitung totalnya, kakak mau pesan dari dapur yang mana ya? 🙏\n${options.map((n) => `• ${n}`).join("\n")}\nTiap dapur punya menu dan harganya sendiri.`
+          : "Sebelum saya hitung totalnya, kakak mau pesan dari dapur yang mana ya? 🙏 Tiap dapur punya menu dan harganya sendiri.";
+      const conversationId = await saveMessage({
+        customerId,
+        role: "assistant",
+        content: askMsg,
+        modelUsed: "system",
+      });
+      const askMessageId = await sendTextMessage(phone, askMsg);
+      await updateMessageReceipt({
+        conversationId,
+        whatsappMessageId: askMessageId,
+        status: "sent",
+      });
+      console.log(
+        `[extract-order] order withheld for ${customerId}: no dapur chosen`,
+      );
+      return NOTHING_TO_SEND;
     }
   }
 
@@ -1844,7 +1888,7 @@ export async function createOrderFromExtraction(
     typeof rawPackageSize === "number" && rawPackageSize > 0
       ? rawPackageSize
       : 0,
-    await minPackageSize(),
+    await minPackageSize(subcontractorId),
   );
 
   const sortedSchedule = schedule

@@ -111,6 +111,8 @@ const BASE = {
   address: "Sky House BSD, Kensington Tower, Unit KS-GN",
   maps_link: "https://www.google.com/maps?q=-6.3033963,106.6495506",
   area: "BSD Baru",
+  // Every order names its dapur: there is no house ladder (migration 135).
+  subcontractor_id: "00000000-0000-4000-8000-00000000d0d0",
   delivery_schedule: [
     { date: "2026-09-01", meal_type: "lunch", portions: 5 },
   ],

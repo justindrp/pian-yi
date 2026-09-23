@@ -23,6 +23,7 @@ import {
   contractPrice,
   NASI_MERAH_SURCHARGE,
 } from "../src/lib/claude/extract-order";
+import { tiersForKitchen } from "../src/lib/pricing/tiers";
 import { createAdminClient } from "../src/lib/supabase/admin";
 import { DEMO_PHONE_PREFIX, demoDisplayName } from "../src/lib/whatsapp/demo";
 import type { WhatsAppWebhookPayload } from "../src/lib/whatsapp/types";
@@ -261,7 +262,9 @@ async function replayCase(c: CorpusCase): Promise<Result> {
 
   const { data: orders } = await db
     .from("orders")
-    .select("id, package_size, price_per_portion, total_price")
+    .select(
+      "id, package_size, price_per_portion, total_price, subcontractor_id",
+    )
     .eq("customer_id", demo.id)
     .order("created_at", { ascending: false });
   const order = orders?.[0] ?? null;
@@ -315,6 +318,7 @@ async function replayCase(c: CorpusCase): Promise<Result> {
       c.expected.packageSize,
       c.expected.pricePerPortion,
       c.customerId,
+      order?.subcontractor_id ?? null,
     );
     if (rulePrice === null) {
       // The package itself is not sellable any more, so no price the bot can
@@ -348,8 +352,8 @@ async function replayCase(c: CorpusCase): Promise<Result> {
   };
 }
 
-// Today's price for a package size: the largest listed tier at or below the
-// total, times the total, plus the nasi merah surcharge when the historical
+// Today's price for a package size, on the kitchen the bot's order names: the
+// largest listed tier at or below the total, times the total, plus the nasi merah surcharge when the historical
 // order carried one (the add-on is a customer request, not a pricing rule).
 // Returns null when the size is not sellable at all — not on the tier list and
 // divisible by neither 5 nor 6.
@@ -357,6 +361,7 @@ async function currentRulePrice(
   packageSize: number,
   historicalPrice: number,
   customerId: string,
+  subcontractorId: string | null,
 ): Promise<number | null> {
   const db = createAdminClient();
   // A corporate customer is priced off their contract, not the ladder. Without
@@ -367,12 +372,9 @@ async function currentRulePrice(
     const addon = historicalPrice - contract;
     return addon === NASI_MERAH_SURCHARGE ? contract + addon : contract;
   }
-  const { data: tiers } = await db
-    .from("pricing_tiers")
-    .select("portions, price_per_portion")
-    .is("subcontractor_id", null)
-    .order("portions", { ascending: false });
-  const rows = tiers ?? [];
+  // The order's own kitchen's ladder; there is no house ladder (migration
+  // 135), so an order with no kitchen is not scored on price.
+  const rows = [...(await tiersForKitchen(db, subcontractorId))].reverse();
   const exact = rows.find((t) => t.portions === packageSize);
   const below = rows.find((t) => t.portions <= packageSize);
   if (!exact && packageSize % 5 !== 0 && packageSize % 6 !== 0) return null;

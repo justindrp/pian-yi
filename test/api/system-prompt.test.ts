@@ -10,11 +10,10 @@ jest.mock("@/lib/cache/settings", () => ({
 }));
 
 // The price list is drawn from `pricing_tiers`, per kitchen (migration 098), so
-// the prompt builder reads the database. These are the rows production holds:
-// the house ladder, which is Thenie's, and whatever a kitchen publishes of its
-// own. A test that gives a kitchen no rows gets the house ladder for it, exactly
-// as the live read does.
-const mockHouseTiers = [
+// the prompt builder reads the database. There is no house ladder any more
+// (migration 135): a kitchen prices only on its own rows, and a test that gives
+// a kitchen none gets no price list for it. These are Dapur Suplir's rows.
+const mockSuplirTiers = [
   { portions: 5, price_per_portion: 29000 },
   { portions: 6, price_per_portion: 29000 },
   { portions: 10, price_per_portion: 28000 },
@@ -40,10 +39,9 @@ let mockActiveKitchenDays: (number[] | null)[] = [];
 jest.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
     from: (table: string) => {
-      const state: { houseOnly?: boolean; ids?: string[] } = {};
+      const state: { ids?: string[] } = {};
       const rows = () => {
         if (table === "pricing_tiers") {
-          if (state.houseOnly) return { data: mockHouseTiers };
           return {
             data: (state.ids ?? []).flatMap((id) =>
               (mockKitchenTiers[id] ?? []).map((t) => ({
@@ -75,10 +73,6 @@ jest.mock("@/lib/supabase/admin", () => ({
         order: () => query,
         eq: () => query,
         maybeSingle: () => Promise.resolve({ data: null }),
-        is: () => {
-          state.houseOnly = true;
-          return query;
-        },
         in: (_column: string, ids: string[]) => {
           state.ids = ids;
           return query;
@@ -117,6 +111,7 @@ beforeEach(() => {
 
 describe("customer chatbot system prompt", () => {
   test("uses new S-only personal package price list", async () => {
+    mockKitchenTiers.suplir = mockSuplirTiers;
     const prompt = await buildSystemPrompt({
       casual: false,
       customerState: "new",
@@ -125,7 +120,18 @@ describe("customer chatbot system prompt", () => {
       detectedMapsLink: null,
       menuShown: true,
       currentDapur: null,
-      dapurOptions: [],
+      dapurOptions: [
+        {
+          id: "suplir",
+          nickname: "Dapur Suplir",
+          offersM: false,
+          sameMenuBothMeals: false,
+          noRiceDiscount: null,
+          mSurcharge: null,
+          msgPolicy: null,
+          windows: null,
+        },
+      ],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
@@ -155,6 +161,7 @@ describe("customer chatbot system prompt", () => {
   });
 
   test("prices off-list totals at the tier below, not as repeated packages", async () => {
+    mockKitchenTiers.suplir = mockSuplirTiers;
     const prompt = await buildSystemPrompt({
       casual: false,
       customerState: "new",
@@ -163,7 +170,18 @@ describe("customer chatbot system prompt", () => {
       detectedMapsLink: null,
       menuShown: true,
       currentDapur: null,
-      dapurOptions: [],
+      dapurOptions: [
+        {
+          id: "suplir",
+          nickname: "Dapur Suplir",
+          offersM: false,
+          sameMenuBothMeals: false,
+          noRiceDiscount: null,
+          mSurcharge: null,
+          msgPolicy: null,
+          windows: null,
+        },
+      ],
       dapurMenuTexts: [],
       menuWeek: { relation: "unknown" as const, weekStart: null },
       servedAreas: ["BSD Baru"],
@@ -722,6 +740,7 @@ describe("customer chatbot system prompt", () => {
     // prompt used to answer that M did not exist at all, so the bot denied a
     // size its own kitchen cooks.
     test("a missing surcharge setting prices M as S, it does not retire M", async () => {
+      mockKitchenTiers["1"] = mockSuplirTiers;
       (getSetting as jest.Mock).mockImplementation(() => Promise.resolve(""));
       const prompt = await buildSystemPrompt({
         ...base,

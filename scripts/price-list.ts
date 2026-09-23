@@ -4,9 +4,9 @@
  *
  * Every number is read, never typed: the per-portion rates come from
  * `pricing_tiers`, that kitchen's own size M surcharge
- * (`subcontractors.size_m_surcharge`, falling back to the house setting), and
- * the delivery areas from `activeDeliveryAreas()`. The sheet it replaces was
- * drawn by hand and pictured the S box only, so a customer who asked for prices
+ * (`subcontractors.size_m_surcharge`, falling back to the global setting), and
+ * the delivery areas from that kitchen's `delivery_areas`. The sheet it
+ * replaces was drawn by hand and pictured the S box only, so a customer who asked for prices
  * had no way to learn size M existed at all — which is half of what Naya's
  * dispute on 2026-08-31 was about. Next time a rate changes this is a re-run,
  * not a redraw.
@@ -24,21 +24,21 @@
  *
  * One sheet per active kitchen, because the customer picks their kitchen and
  * is shown that kitchen's prices: its own ladder, its own delivery areas, its
- * own delivery days, its own size M. With no active kitchen there is still the
- * house sheet, which is what `settings.price_list_image_url` holds.
+ * own delivery days, its own size M. There is no house sheet: the house ladder
+ * it was drawn from was Thenie's, and migration 135 moved it onto her.
+ * A kitchen with no ladder throws rather than render an empty sheet.
  *
  * Usage: pnpm tsx --env-file=.env.local scripts/price-list.ts [--all]
  *                                          [--kitchen <nickname|id>] [--upload]
  * Writes .menu-photos/price-list-<dapur>.png. Without --upload nothing leaves
  * the machine; with it each sheet lands in the `menu` bucket and its URL in
- * that kitchen's `price_list_image_url` (or the setting, for the house sheet).
+ * that kitchen's `price_list_image_url`.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import { tiersForKitchen } from "@/lib/pricing/tiers";
-import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -252,9 +252,8 @@ async function main() {
   const includeInactive = process.argv.includes("--all");
   // `--kitchen` narrows that to one, the same spelling menu-card.ts takes. The
   // pair `--all --upload` publishes every prospect's sheet as well, and a
-  // prospect has no `pricing_tiers` rows — so it would file a sheet drawn off
-  // the house ladder under a kitchen whose own ladder is written later, ready
-  // to be served the day it is activated. Naming the kitchen writes one row.
+  // prospect with no `pricing_tiers` rows stops the run — write its ladder
+  // first. Naming the kitchen renders one sheet.
   const argv = process.argv.slice(2);
   const wantedName = argv[argv.indexOf("--kitchen") + 1];
   const asked = argv.includes("--kitchen") ? (wantedName ?? "").trim() : "";
@@ -281,42 +280,29 @@ async function main() {
 
   // One sheet per active kitchen, because the customer picks their kitchen and
   // is shown that kitchen's prices. Everything on a sheet is that kitchen's
-  // own: its ladder (`tiersForKitchen`, falling back to the house one), its
-  // `delivery_areas` rather than the union, its `offers_size_m`, its
-  // `delivery_days`. With no active kitchen at all there is still the house
-  // sheet, which is what `settings.price_list_image_url` holds.
+  // own: its ladder (`tiersForKitchen`), its `delivery_areas` rather than the
+  // union, its `offers_size_m`, its `delivery_days`.
+  if (wanted.length === 0) throw new Error("no active kitchen to render");
   const sheets: {
-    id: string | null;
+    id: string;
     nickname: string | null;
     areas: string[];
     offersM: boolean;
     surcharge: number;
     days: number[];
-  }[] =
-    wanted.length > 0
-      ? await Promise.all(
-          wanted.map(async (k) => ({
-            id: k.id,
-            nickname: k.customer_nickname,
-            areas: (k.delivery_areas as string[] | null) ?? [],
-            offersM: !!k.offers_size_m,
-            // The sheet prints this kitchen's own M tambahan, the same way it
-            // prints this kitchen's own ladder — they differ per kitchen since
-            // migration 131.
-            surcharge: await sizeMSurcharge(k),
-            days: k.delivery_days ?? [1, 2, 3, 4, 5, 6],
-          })),
-        )
-      : [
-          {
-            id: null,
-            nickname: null,
-            areas: await activeDeliveryAreas(db),
-            offersM: false,
-            surcharge: await sizeMSurcharge(),
-            days: [1, 2, 3, 4, 5, 6],
-          },
-        ];
+  }[] = await Promise.all(
+    wanted.map(async (k) => ({
+      id: k.id,
+      nickname: k.customer_nickname,
+      areas: (k.delivery_areas as string[] | null) ?? [],
+      offersM: !!k.offers_size_m,
+      // The sheet prints this kitchen's own M tambahan, the same way it
+      // prints this kitchen's own ladder — they differ per kitchen since
+      // migration 131.
+      surcharge: await sizeMSurcharge(k),
+      days: k.delivery_days ?? [1, 2, 3, 4, 5, 6],
+    })),
+  );
 
   mkdirSync(DIR, { recursive: true });
   const browser = await chromium.launch();
@@ -384,12 +370,12 @@ async function main() {
   for (const sheet of sheets) {
     const tierRows = await tiersForKitchen(db, sheet.id);
     if (tierRows.length === 0)
-      throw new Error(`no pricing tier for ${sheet.nickname ?? "house"}`);
+      throw new Error(`no pricing tier for ${sheet.nickname ?? sheet.id}`);
     const tiers: Record<number, number> = {};
     for (const t of tierRows) tiers[t.portions] = t.price_per_portion;
 
     const m = sheet.offersM ? sheet.surcharge : 0;
-    const slug = (sheet.nickname ?? "house")
+    const slug = (sheet.nickname ?? sheet.id)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
@@ -415,7 +401,7 @@ async function main() {
     await ctx.close();
 
     console.log(
-      `${base}.png — ${sheet.nickname ?? "house ladder"}, ${daysLabel(sheet.days)}, size M ${m ? `on (+${m})` : "off"}`,
+      `${base}.png — ${sheet.nickname ?? sheet.id}, ${daysLabel(sheet.days)}, size M ${m ? `on (+${m})` : "off"}`,
     );
 
     if (upload) {
@@ -430,23 +416,12 @@ async function main() {
       const url = db.storage.from("menu").getPublicUrl(storagePath)
         .data.publicUrl;
 
-      if (sheet.id) {
-        const { error } = await db
-          .from("subcontractors")
-          .update({ price_list_image_url: url })
-          .eq("id", sheet.id);
-        if (error) throw new Error(error.message);
-        console.log(`  → subcontractors.price_list_image_url = ${url}`);
-      } else {
-        const { error } = await db
-          .from("settings")
-          .upsert(
-            { key: "price_list_image_url", value: url },
-            { onConflict: "key" },
-          );
-        if (error) throw new Error(error.message);
-        console.log(`  → settings.price_list_image_url = ${url}`);
-      }
+      const { error } = await db
+        .from("subcontractors")
+        .update({ price_list_image_url: url })
+        .eq("id", sheet.id);
+      if (error) throw new Error(error.message);
+      console.log(`  → subcontractors.price_list_image_url = ${url}`);
     }
   }
 

@@ -34,7 +34,15 @@ async function main() {
   const size = schedule.length
     ? schedule.reduce((n, s) => n + s.portions, 0)
     : input.package_size;
-  const pricing = await getExtractedOrderPricing(size);
+  // Priced on the order's own kitchen; there is no house ladder (migration
+  // 135), so an input with no subcontractor_id throws here rather than quote.
+  const pricing = await getExtractedOrderPricing(
+    size,
+    false,
+    cust.id,
+    "s",
+    input.subcontractor_id ?? null,
+  );
 
   console.log(JSON.stringify(input, null, 1));
   console.log(

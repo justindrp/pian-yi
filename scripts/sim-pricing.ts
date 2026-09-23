@@ -3,7 +3,7 @@
  * Sends real messages to the chatbot and checks the prices it quotes.
  *
  * Migration 098 keyed `pricing_tiers` by kitchen, and every read of the table
- * moved behind `tiersForKitchen()` / `.is("subcontractor_id", null)`. A read
+ * moved behind `tiersForKitchen()`. A read
  * that forgets the kitchen still returns rows — the wrong kitchen's — so a
  * broken scope does not throw, it quotes. Unit tests mock the table away, so
  * the only way to see the scope working is to ask the live bot for a price and
@@ -38,8 +38,11 @@ interface Case {
   expectOrder?: { package_size: number; price_per_portion: number };
 }
 
-// The house ladder is 5/6 → 29.000, 10/12 → 28.000, 20/24 → 27.000,
-// 40-72 → 26.000, 120/144 → 25.000. Every figure below is that ladder read
+// Dapur Suplir's ladder — the house ladder until migration 135 gave it her id
+// — is 5/6 → 29.000, 10/12 → 28.000, 20/24 → 27.000, 40-72 → 26.000,
+// 120/144 → 25.000. A case that never names a dapur is now asked which one
+// rather than quoted off it, so such a case needs a turn choosing Suplir
+// before its figures hold. Every figure below is that ladder read
 // through the rule the prompt states, so a wrongly-scoped read shows up as a
 // Santapin (29.500) or Homey (44.000) number instead.
 const CASES: Case[] = [

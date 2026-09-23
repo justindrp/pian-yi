@@ -15,22 +15,33 @@ export async function GET(): Promise<Response> {
     );
 
   const db = createAdminClient();
-  const [settingsRes, pricingRes, templatesRes, adminsRes] = await Promise.all([
-    db.from("settings").select("*").order("key"),
-    db
-      .from("pricing_tiers")
-      .select("*")
-      .is("subcontractor_id", null)
-      .order("portions"),
-    db.from("message_templates").select("*").order("key"),
-    db.from("admin_users").select("email, created_at, role"),
-  ]);
+  // Every active kitchen's own ladder. There is no house ladder (migration
+  // 135), so the pricing editor picks a kitchen first.
+  const [settingsRes, pricingRes, kitchensRes, templatesRes, adminsRes] =
+    await Promise.all([
+      db.from("settings").select("*").order("key"),
+      db
+        .from("pricing_tiers")
+        .select("subcontractor_id, portions, price_per_portion")
+        .order("portions"),
+      db
+        .from("subcontractors")
+        .select("id, customer_nickname")
+        .eq("is_active", true)
+        .order("customer_nickname"),
+      db.from("message_templates").select("*").order("key"),
+      db.from("admin_users").select("email, created_at, role"),
+    ]);
 
   return NextResponse.json({
     ok: true,
     data: {
       settings: settingsRes.data ?? [],
       pricing: pricingRes.data ?? [],
+      kitchens: (kitchensRes.data ?? []).map((k) => ({
+        id: k.id,
+        nickname: k.customer_nickname ?? k.id,
+      })),
       templates: templatesRes.data ?? [],
       admins: adminsRes.data ?? [],
     },

@@ -1491,19 +1491,19 @@ export type Database = {
         Row: {
           portions: number
           price_per_portion: number
-          subcontractor_id: string | null
+          subcontractor_id: string
           updated_at: string | null
         }
         Insert: {
           portions: number
           price_per_portion: number
-          subcontractor_id?: string | null
+          subcontractor_id: string
           updated_at?: string | null
         }
         Update: {
           portions?: number
           price_per_portion?: number
-          subcontractor_id?: string | null
+          subcontractor_id?: string
           updated_at?: string | null
         }
         Relationships: [
