@@ -2230,26 +2230,33 @@ export async function processSavedCustomerMessage(params: {
   // them, both of whom typed their address in full and were never asked for a
   // pin. Written once, when the column is empty: an admin who has corrected a
   // link by hand outranks anything found in a chat.
+  //
+  // Only a link in *this* message is saved, never one found in the history.
+  // Every message has passed through here as it arrived, so the history adds
+  // nothing but the pins an admin has since cleared: +62816979396's pin read
+  // JW Marriott Hotel, not their house, and clearing it on 2026-09-23 would
+  // have been undone by their next "ok".
+  const linkInMessage = findMapsLink(text);
   const { data: storedLinkRow } = await db
     .from("customers")
     .select("google_maps_link, subcontractor_id, area, area_2")
     .eq("id", customerId)
     .maybeSingle();
   let storedMapsLink = storedLinkRow?.google_maps_link ?? null;
-  if (!draft && detectedMapsLink && !storedMapsLink) {
+  if (!draft && linkInMessage && !storedMapsLink) {
     const { error: linkErr } = await db
       .from("customers")
-      .update({ google_maps_link: detectedMapsLink })
+      .update({ google_maps_link: linkInMessage })
       .eq("id", customerId);
     if (!linkErr) {
-      storedMapsLink = detectedMapsLink;
+      storedMapsLink = linkInMessage;
       await logEdit({
         db,
         actor: systemActor("webhook-maps-link"),
         entityType: "customer",
         entityId: customerId,
         action: "update",
-        changes: { google_maps_link: { from: null, to: detectedMapsLink } },
+        changes: { google_maps_link: { from: null, to: linkInMessage } },
       });
     }
   }
