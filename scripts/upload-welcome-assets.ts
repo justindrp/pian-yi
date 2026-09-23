@@ -1,4 +1,4 @@
-// One-time script: upload price list + Dapur 2 menu images to Supabase storage
+// One-time script: upload the house price list image to Supabase storage
 
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -49,12 +49,6 @@ async function main() {
     "/Users/justin/Downloads/Pian Yi/Pian Yi Catering - Price List V2.jpeg",
     "price-list-v2.jpeg",
     "price_list_image_url",
-  );
-
-  await uploadAndSave(
-    "/Users/justin/Downloads/Pian Yi/Pian Yi Catering - Menu Batch 38 V2.jpeg",
-    "menu-batch-38-v2.jpeg",
-    "weekly_menu_image_url_dapur2",
   );
 
   console.log("Done.");
