@@ -471,6 +471,15 @@ export function isAddressPlaceholder(address: string): boolean {
   return trimmed.length <= 80 && ADDRESS_PLACEHOLDER.test(trimmed);
 }
 
+// What the bot is told to pass when the address arrived as an image (see
+// "An address sent as a photo" in the system prompt).
+const PHOTO_ADDRESS_POINTER = /^\W*alamat\s+dikirim\s+sebagai\s+foto\b/i;
+
+/** Whether this "address" is the pointer to a photo in the inbox. */
+export function isPhotoAddressPointer(address: string): boolean {
+  return PHOTO_ADDRESS_POINTER.test(address.trim());
+}
+
 /** The address as given, or undefined when it only points at the stored one. */
 function realAddress(address?: string | null): string | undefined {
   const trimmed = address?.trim();
@@ -2437,7 +2446,7 @@ export async function createOrderFromExtraction(
   const { data: existingCustomer } = await db
     .from("customers")
     .select(
-      "name, notes, kitchen_notes, portions_remaining, avg_price_per_portion",
+      "name, address, notes, kitchen_notes, portions_remaining, avg_price_per_portion",
     )
     .eq("id", orderCustomerId)
     .single();
@@ -2465,8 +2474,19 @@ export async function createOrderFromExtraction(
     ? demoDisplayName(phone)
     : rawNameForRecord;
 
-  const addressType = input.address?.trim()
-    ? await classifyAddress(input.address)
+  // The photo pointer stands in for an address we do not have yet. Written over
+  // one we do, it is the only thing the kitchen card prints: on 2026-09-23 Julian
+  // S renewed, sent nothing but his payment slip, and the model still passed the
+  // pointer — so "Apartment Brooklyn AlamSutera Unit A17F" became "lihat inbox"
+  // on a sheet whose cook cannot open the inbox.
+  const recordedAddress = (existingCustomer?.address ?? "").trim();
+  const addressForRecord =
+    input.address?.trim() &&
+    !(isPhotoAddressPointer(input.address) && recordedAddress)
+      ? input.address
+      : null;
+  const addressType = addressForRecord
+    ? await classifyAddress(addressForRecord)
     : null;
 
   // The kitchen has no other way to learn about an accepted custom request:
@@ -2499,9 +2519,9 @@ export async function createOrderFromExtraction(
         // renewal extracted from chat alone has none, and writing it through
         // blanked the address of a customer we have been delivering to for
         // months.
-        ...(input.address?.trim()
+        ...(addressForRecord
           ? {
-              address: input.address,
+              address: addressForRecord,
               address_type: addressType,
             }
           : {}),
