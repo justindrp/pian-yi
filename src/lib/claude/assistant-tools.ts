@@ -174,7 +174,7 @@ export const assistantTools: Tool[] = [
   {
     name: "query_menu_assets",
     description:
-      "Get the current price list image and active weekly dapur menu images/text. Use this before answering or sending this week's menu.",
+      "Get each active dapur's price list image and weekly menu image/text. Use this before answering or sending this week's menu.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -780,25 +780,19 @@ export async function runTool(
     }
 
     case "query_menu_assets": {
-      const [{ data: settings }, { data: subcontractors }] = await Promise.all([
-        db
-          .from("settings")
-          .select("key, value")
-          .eq("key", "price_list_image_url"),
-        db
-          .from("subcontractors")
-          .select(
-            "customer_nickname, menu_image_url, menu_text, delivery_areas",
-          )
-          .eq("is_active", true)
-          .not("menu_image_url", "is", null)
-          .order("customer_nickname"),
-      ]);
+      const { data: subcontractors } = await db
+        .from("subcontractors")
+        .select(
+          "customer_nickname, menu_image_url, menu_text, delivery_areas, price_list_image_url",
+        )
+        .eq("is_active", true)
+        .not("menu_image_url", "is", null)
+        .order("customer_nickname");
       return {
-        price_list_image_url: settings?.[0]?.value ?? null,
         menus: (subcontractors ?? []).map((s) => ({
           dapur: s.customer_nickname,
           image_url: s.menu_image_url,
+          price_list_image_url: s.price_list_image_url,
           menu_text: s.menu_text,
           delivery_areas: s.delivery_areas,
         })),

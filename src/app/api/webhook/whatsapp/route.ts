@@ -1775,13 +1775,11 @@ export async function processWebhookAsync(
       justWelcomed = true;
       const [
         welcomeText,
-        priceListUrl,
         deadlineHour,
         { data: welcomeSubs },
         { data: tier20 },
       ] = await Promise.all([
         getSetting("welcome_message"),
-        getSetting("price_list_image_url"),
         getSetting("order_deadline_hour"),
         db
           .from("subcontractors")
@@ -1884,7 +1882,7 @@ export async function processWebhookAsync(
       }
       const welcomePriceList = askArea
         ? null
-        : (activeDapurs[0]?.price_list_image_url ?? priceListUrl);
+        : (activeDapurs[0]?.price_list_image_url ?? null);
       if (welcomePriceList) {
         try {
           const conversationId = await saveMessage({
@@ -4545,13 +4543,11 @@ async function handleToolUse(
           "Price list tidak dikirim — customer ini punya harga kontrak, jadi daftar harga umum tidak berlaku untuknya. Sebutkan harga kontraknya, jangan janjikan gambar.",
       };
     }
-    // One sheet per kitchen that would cook for this customer. Each kitchen
-    // has its own ladder since migration 098, so the single global image is
-    // only right for a kitchen with no rows of its own — it reads Rp 29.000 at
-    // the bottom tier where Dapur Monstera charges Rp 45.000. A kitchen whose
-    // own sheet has not been rendered yet still falls back to it, and the
-    // dedupe keeps two such kitchens from sending the same picture twice.
-    const houseUrl = await getSetting("price_list_image_url");
+    // One sheet per kitchen that would cook for this customer, and only that
+    // kitchen's own. Each kitchen has its own ladder since migration 098, so
+    // the house image quoted Rp 29.000 at the bottom tier where Dapur Monstera
+    // charges Rp 45.000; it is no longer a fallback (migration 134), and an
+    // active kitchen cannot be without a sheet of its own.
     const priceScope = await kitchenScopeForCustomer(db, customerId);
     // Same refusal as send_menu_image, and for the same Rp 16.000 a portion:
     // an unnarrowed list is every active kitchen, and each sheet is a different
@@ -4566,13 +4562,9 @@ async function handleToolUse(
     const kitchens = priceScope.kitchens;
     const sheets: { url: string; nickname: string | null }[] = [];
     for (const k of kitchens) {
-      const url = k.price_list_image_url ?? houseUrl;
+      const url = k.price_list_image_url;
       if (!url) continue;
-      if (sheets.some((s) => s.url === url)) continue;
-      sheets.push({
-        url,
-        nickname: k.price_list_image_url ? k.customer_nickname : null,
-      });
+      sheets.push({ url, nickname: k.customer_nickname });
     }
     if (sheets.length === 0) {
       console.error("[webhook] send_price_list: no price list image to send");

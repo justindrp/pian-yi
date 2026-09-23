@@ -1050,7 +1050,7 @@ Migration 098 ended all three. Each kitchen carries its own price ladder (the ho
 
 `askArea` is `activeDapurs.length > 1`, and it branches the whole sequence:
 
-- **One kitchen** — unchanged, except that the numbers now come from that kitchen's row rather than from constants: its own `price_list_image_url` (falling back to `settings.price_list_image_url`), its own delivery windows via `deliveryWindow()`, and its `delivery_days` written into the T&C as "Kirim Senin–Sabtu".
+- **One kitchen** — unchanged, except that the numbers now come from that kitchen's row rather than from constants: its own `price_list_image_url` (required while the kitchen is active, migration 134 — the house sheet is Thenie's ladder, so falling back to it quoted any other kitchen's customers the wrong prices), its own delivery windows via `deliveryWindow()`, and its `delivery_days` written into the T&C as "Kirim Senin–Sabtu".
 - **More than one** — greeting only, with one question appended asking which area the delivery goes to. No price list, no menu images, and the T&C's delivery line says the hours differ per kitchen and arrive with the menu, because at that point we do not know which kitchen is theirs. The greeting still goes out on the same turn: a first contact is never met with silence.
 
 `{{price_20}}` in the greeting is the **cheapest** active kitchen's 20-portion rate, not the house ladder's. The house ladder is only what a kitchen with no rows of its own is sold at, so quoting it flat advertises a price no kitchen near the customer may charge.
