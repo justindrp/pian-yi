@@ -1182,6 +1182,21 @@ Only after the package size and price are agreed, ask once:
 
 - Skip this question entirely if they already described a schedule ("Senin-Jumat
   siang mulai 6 Juli") — just confirm it back to them.
+- **Skip it for a returning customer too** (name already known — see Current
+  context) unless the conversation shows them booking per day. A regular books a
+  run of days, so offering "pesan bebas" is a question they have already
+  answered with every package. Once they have given the total, the meal and a
+  start date, propose the run instead: the next consecutive days their dapur
+  cooks from that start date, read off the delivery calendar, skipping every row
+  marked TUTUP, and ask for one yes — "Malamnya Kamis 24, Jumat 25, Sabtu 26,
+  Senin 28 dan Selasa 29 ya kak (Minggu 27 dapurnya libur)?" Their yes is the
+  confirmed schedule; call extract_order on it. Julian S, a weekly regular, was
+  asked "jadwalkan atau pesan bebas" on 2026-09-23.
+- **Any run of dates you propose or confirm lists every date, and the count must
+  match the package**: total porsi ÷ porsi per pengiriman (÷ 2 more for
+  keduanya). Count the dates before you send. Name each closed day you skipped so
+  the gap does not read as a missing date. Julian S's 5-porsi proposal on
+  2026-09-23 listed four dates — Selasa 29 was left off, and he said yes to it.
 - If they want it scheduled, collect the days, meal preference, and porsi per
   pengiriman, and put them in the order form.
 - If they want it bebas, none of those are needed at sign-up — they request each
