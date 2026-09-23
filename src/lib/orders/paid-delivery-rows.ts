@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDeliveryDay } from "@/lib/holidays/id";
 import { unbookedByOrder } from "@/lib/orders/customer-schedule";
+import { isLocked, loadDeadlineHour } from "@/lib/orders/delivery-state";
 import {
   type DrawCandidate,
   pickDrawOrder,
@@ -173,10 +174,22 @@ export async function buildPaidDeliveryRows(params: {
   // lists 7, so it is never dropped on the strength of being a Sunday. Sorted so
   // the FIFO charge runs in delivery order rather than whatever order the model
   // listed the days in; lunch precedes dinner.
+  //
+  // A date already past its H-1 cutoff is dropped too. The schedule was written
+  // when the order was created; paying a day late does not make the kitchen
+  // cook a day it was never booked for. Naomi Natha's 20-porsi order asked to
+  // start 23 September, was paid at 12:31 WIB that day, and this wrote a lunch
+  // for the 23rd — a row no sheet had carried, spending a portion on food
+  // nobody cooked. `record_daily_order` has refused locked dates since
+  // 2026-09-12; this was the other write that did not.
+  const deadlineHour = await loadDeadlineHour();
   const slots = requested
     .filter((r) => {
       const k = kitchenForSlot(r);
-      return isDeliveryDay(r.date, k ? daysByKitchen.get(k) : null);
+      return (
+        isDeliveryDay(r.date, k ? daysByKitchen.get(k) : null) &&
+        !isLocked(r.date, { deadlineHour })
+      );
     })
     .sort((a, b) =>
       a.date !== b.date

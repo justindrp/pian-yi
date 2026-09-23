@@ -36,7 +36,7 @@ export async function GET(
   const { data: order, error: orderErr } = await db
     .from("orders")
     .select(
-      "id, customer_id, package_size, start_date, created_at, status, source, grant_reason",
+      "id, customer_id, package_size, start_date, created_at, paid_at, status, source, grant_reason",
     )
     .eq("id", id)
     .maybeSingle();

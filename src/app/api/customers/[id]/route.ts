@@ -39,7 +39,7 @@ export async function GET(
     db
       .from("orders")
       .select(
-        "id, package_size, total_price, price_per_portion, start_date, created_at, status, source, grant_reason",
+        "id, package_size, total_price, price_per_portion, start_date, created_at, paid_at, status, source, grant_reason",
       )
       .eq("customer_id", id)
       .in("status", PAID_STATUSES),
