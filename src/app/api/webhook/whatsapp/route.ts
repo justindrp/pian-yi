@@ -1846,21 +1846,25 @@ export async function processWebhookAsync(
       // sequence has always done. With more than one none of that is true: the
       // kitchens do not cover the same areas and since migration 098 they do
       // not charge the same prices, so sending all of them means quoting a
-      // customer for food nobody near them will cook. Ask where they are first
-      // and send the images once the answer narrows it. The greeting itself
-      // still goes out immediately — a first contact is never met with silence.
+      // customer for food nobody near them will cook. Send the images once the
+      // area narrows it. The greeting itself still goes out immediately — a
+      // first contact is never met with silence.
+      //
+      // The greeting asks nothing. It used to end on "area mana kak?", and the
+      // model's first turn followed that question instead of the harian-atau-
+      // acara one its prompt requires, so an event lead was put on the daily
+      // track before anyone knew it was an event: on 2026-09-23 a crew event
+      // wanting a 07.00 drop was quoted the Suplir ladder and refused the hour.
+      // Area is asked on the next turn, on either track.
       const askArea = n > 1;
 
       const resolvedWelcome =
-        ((welcomeText ?? "")
+        (welcomeText ?? "")
           .replace("{{dapur_list}}", dapurListText)
           .replace("{{delivery_areas}}", areasText)
           .replace("{{price_20}}", price20Text)
           .replace("{{order_deadline}}", deadlineText)
-          .trim() || dapurListText) +
-        (askArea
-          ? "\n\nBoleh tahu alamat pengirimannya di area mana kak? Nanti aku kirimkan menu, harga, dan jam kirim dapur yang melayani area itu ya 🙏"
-          : "");
+          .trim() || dapurListText;
 
       // The incoming message is already saved above, before any branch runs, so
       // it sorts ahead of the welcome replies without a second write. This used

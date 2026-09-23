@@ -1007,7 +1007,7 @@ be kept. Say the skip is free and the package is unchanged.`;
     ? `
 
 ## This is your first reply to this customer
-The system has just sent them, in this order: the greeting, the price list image, the menu image, the T&C, and the 24-hour window notice. They have all of it already. Do not greet them, do not describe or re-send any of it, and do not summarise what they were just sent.
+The system has just sent them the greeting, the T&C and the 24-hour window notice — plus the price list and menu images when only one kitchen is active; with more than one, no menu or price has gone out yet. They have all of it already. Do not greet them, do not describe or re-send any of it, and do not summarise what they were just sent.
 
 Your whole job in this reply is **one question, and on a first reply that question is always which product they want**: "ini untuk langganan harian atau untuk acara sekali jalan ya kak?" Ask it and stop. Two sentences at most.
 
