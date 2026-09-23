@@ -69,7 +69,7 @@ The cost of the current design grows as kitchens × areas × days × options. At
 | **Public pages** | Browsing and comparison: menus, ladders, delivery days, areas. No token, no personal data on them at all. |
 | **Form** | Everything that becomes a row: new orders, top-ups, the delivery schedule, area / address / Maps link, kitchen choice, size, rice variant, per-day kitchen split, and payment. |
 | **Bot** | FAQ, menu and price questions, "besok libur ga?", day-by-day booking and skips for existing customers (`record_daily_order`, `delete_deliveries` — genuinely conversational, already guarded by `isLocked()`), delivery proof, invoices, escalation, and nudging people back to the link. |
-| **Retired** | `extract_order` and the machinery around it: the price list rendered into the system prompt, `resizePendingOrderFromMessage`, most of the validator's order-side work, and — once checkout lands — `mark_payment_proof_received`, the proof-photo handling and the `payment_proof_received` status. |
+| **Retired** | `extract_order` and the machinery around it: the price list rendered into the system prompt, `resizePendingOrderFromMessage`, and most of the validator's order-side work. Payment proof handling stays, because checkout is still a manual transfer (see Checkout). |
 
 **The price sheet images stay, for one kitchen at a time.** They are a forwardable, zero-tap artifact that renders in the thread, survives offline and is the thing someone screenshots for their spouse. What breaks at ten kitchens is the delivery mechanism, not the format — you cannot send ten images, and a composite of ten is unreadable on a phone. So `send_price_list` becomes: narrow by area, send the comparison **link**, and send an individual sheet only when one kitchen is named. `scripts/price-list.ts` also needs a second layout, because Homey's real card is a drop-size table and the generator only knows how to draw a package-size ladder.
 
@@ -142,23 +142,17 @@ Non-negotiables carried over unchanged:
 
 ## Checkout
 
-Build against an **adapter, not a provider**. Registration with any one PSP can fail or change, and the rest of the plan must not wait on it.
+**Decided 2026-09-23: checkout is a manual bank transfer, verified by an admin.** No payment provider and no QRIS for now. The page shows the transfer details, the customer uploads a slip, and a person marks it paid — the same path the chat takes today, moved onto the order page.
 
-```
-createCharge({ orderId, amountIdr, customer }) -> { kind: "qr" | "redirect", payload, expiresAt }
-verifyWebhook(rawBody, headers) -> { providerTxnId, orderId, status }
-```
-
-- Reuse the webhook discipline exactly: verify the signature, write the raw payload to `webhook_events`, return 200, process async, dedupe on the provider transaction id. Land it, then 200, then process.
-- On a paid callback: stamp `paid_at`, post the `order_payment` journal, and call `buildPaidDeliveryRows()`. No human in the critical path.
-- **Never send a QR image into WhatsApp.** Dynamic QRIS expires in minutes, and while the WABA carries the 131042 restriction a business-initiated send fails outright, so a fresh one cannot be pushed. The QR is generated on page load, on the order page.
-- Absorb the fee. Bank Indonesia forbids passing MDR to the customer.
-- Manual transfer survives as the outage fallback and as the corporate NPWP path — the only route that still needs proof upload.
+- **The bank details come from `settings`** (`bank_name`, `bank_account_number`, `bank_account_name`), composed by the server into the payment page exactly as `createOrderFromExtraction` composes them into the chat. Never typed into a page template, and still never into a prompt.
+- The page shows the account, the exact total with ongkir from `subcontractor_neighborhoods`, a copy button on each, and the deadline: 16:00 WIB the day before the first date in `requested_schedule` (`settings.order_deadline_hour`). A day-by-day order has no first date, so it gets no date on the deadline line.
+- **The slip is uploaded on the page**, with WhatsApp kept as the other way in. An upload goes through the same `readPaymentSlip()` as a chat photo: it writes what it read to `orders.payment_proof_read` and moves the order to `payment_proof_received`, and stops there.
+- **`paid_at` stays a human decision**, at `/payments`, for the reason in `docs/BOT_RULES.md`: `mark_paid` writes `daily_deliveries` rows and nothing filters the kitchen sheet by status, so a forged or misread screenshot becomes cooked food. The page says so in plain words — the schedule reaches the kitchen after an admin confirms — and the confirmation goes out on WhatsApp.
 - No stored-value wallet, no cross-kitchen saldo: general-purpose stored value edges into uang elektronik and BI licensing.
 
-What checkout retires: `mark_payment_proof_received`, proof-photo handling, the `payment_proof_received` status, and an admin eyeballing every transfer. It also turns refunds into a flow rather than a manual transfer, which is what Carolin's Rp 87.000 was.
+What this keeps, that a provider would have retired: `mark_payment_proof_received`, proof handling, the `payment_proof_received` status and an admin checking every transfer. Refunds stay a manual transfer, as Carolin's Rp 87.000 was.
 
-Provider selection is its own open question — see `pnpm tasks`, the Midtrans/QRIS task. The adapter is what lets that stay open.
+**If a provider comes back**, build against an adapter, not a provider — `createCharge({ orderId, amountIdr, customer })` and `verifyWebhook(rawBody, headers)` — with the webhook discipline unchanged (verify the signature, land the raw payload in `webhook_events`, 200, process async, dedupe on the provider transaction id), the fee absorbed (Bank Indonesia forbids passing MDR to the customer), and no QR image ever sent into WhatsApp, since dynamic QRIS expires in minutes and a business-initiated send fails on 131042. Manual transfer would then stay as the outage fallback and the corporate NPWP path. The Midtrans/QRIS task in `pnpm tasks` holds that question.
 
 ---
 
@@ -184,7 +178,7 @@ Each phase is shippable on its own and leaves the bot path working.
 4. **The public catalog** — `/menu`, `/menu/[dapur]`, `/harga`, `/area/[area]`, each ending in a click-to-chat. No token, no personal data, no writes. Verify: nothing on any page names a kitchen or reproduces its own copy; every figure traces to a row; the pages render with one kitchen active and with twenty.
 5. **`order_links` + `/pesan/[token]`** (migration 108) rendering read-only: who you are, your kitchen, your quota. No writes. Verify: an expired and a nonexistent token are indistinguishable; nothing renders for a token that is not yours.
 6. **The configurator**, steps 1–5, ending at the existing manual-transfer instructions. `send_order_link` added to the bot; `extract_order` still live behind it. Verify: an order placed through the form is byte-identical in the database to the same order placed through the bot.
-7. **Checkout** behind the adapter, one provider. Verify against the sandbox: paid callback stamps `paid_at`, posts the journal and writes the delivery rows; a replayed callback changes nothing.
+7. **Checkout**: the transfer page and slip upload, reading the bank details from `settings`. Verify: an uploaded slip lands in `payment_proof_read` and moves the order to `payment_proof_received` without stamping `paid_at` or writing a delivery row; marking it paid at `/payments` writes the rows exactly as it does for a chat order.
 8. **Retire `extract_order`** and its prompt machinery once the form has carried real orders for a fortnight. Verify: the bot cannot create an order at all — the only path is the link.
 9. **`send_price_list` rework** and the drop-size sheet layout.
 
@@ -223,7 +217,7 @@ Short list, because these are the ones a rewrite quietly breaks. The reasons are
 
 ## Open before this starts
 
-- **Payment provider.** Midtrans and Xendit registration are both stuck as of 2026-09-09. The adapter keeps this off the critical path, but phase 5 cannot land without one.
+- **Payment provider.** Not needed to launch: checkout is a manual transfer (decided 2026-09-23). Midtrans and Xendit registration were both stuck as of 2026-09-09; revisit when admin verification becomes the bottleneck.
 - **PSE registration with Kominfo** is a separate obligation from KBLI and applies to a public-facing electronic system. Confirm before checkout goes live.
 - **The rebrand.** "Pian Yi" (便宜, cheap) anchors a price band we have already left. `business_name` is a setting the prompt reads, but there are ~41 hardcoded strings in `src` and `scripts`, plus the invoice renderer, the manifest and the legal pages — and the WhatsApp Display Name change goes through Meta review, which is the slow part. Directions floated: Rantang, Bekal, Sajian.
 - **Publishing prices before renegotiating wholesale.** A public ladder makes our margin computable by our own kitchens. Sequence the wholesale conversation ahead of phase 4.
