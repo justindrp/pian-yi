@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import { Nunito, Poppins } from "next/font/google";
 import Image from "next/image";
+import {
+  chatLink,
+  toRungs,
+  WA_DISPLAY,
+  WA_NUMBER,
+} from "@/lib/catalog/kitchens";
 import { laddersForKitchens } from "@/lib/pricing/tiers";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
 import { activeDeliveryDays } from "@/lib/subcontractors/days";
@@ -23,11 +29,7 @@ const body = Nunito({
   display: "swap",
 });
 
-// The public number customers message. Not the phone_number_id — that is an
-// internal Meta handle and means nothing in a wa.me link.
-const WA_NUMBER = "6285111214390";
-const WA_DISPLAY = "+62 851-1121-4390";
-const WA_LINK = `https://wa.me/${WA_NUMBER}`;
+const WA_LINK = chatLink();
 
 const LEGAL_NAME = "Pian Yi Catering";
 const NIB = "2307250135661";
@@ -53,31 +55,6 @@ export const metadata: Metadata = {
 export const revalidate = 600;
 
 type Tier = { portions: number; price_per_portion: number };
-type Rung = { price: number; min: number; max: number };
-
-/**
- * Collapse the twelve pricing tiers into the handful of prices that actually
- * exist. Five, six, ten and twelve portions are four rows in the database but
- * only two prices, and a customer comparing caterers wants the prices — the
- * per-portion granularity is noise on a page whose whole argument is the shape
- * of the ladder. Derived, never written down, so a new tier appears by itself.
- */
-function toRungs(tiers: Tier[]): Rung[] {
-  const rungs: Rung[] = [];
-  for (const tier of [...tiers].sort((a, b) => a.portions - b.portions)) {
-    const last = rungs.at(-1);
-    if (last && last.price === tier.price_per_portion) {
-      last.max = tier.portions;
-    } else {
-      rungs.push({
-        price: tier.price_per_portion,
-        min: tier.portions,
-        max: tier.portions,
-      });
-    }
-  }
-  return rungs;
-}
 
 async function loadContent() {
   const db = createAdminClient();

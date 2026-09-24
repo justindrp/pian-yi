@@ -1,0 +1,252 @@
+/*
+ * The public catalog (/menu, /menu/[dapur], /harga, /area/[area]). Builds on
+ * landing.css and its .pl tokens; only what the landing page has no piece for
+ * lives here.
+ */
+
+.pl-topbar {
+  background: var(--pl-red);
+  color: var(--pl-white);
+  border-bottom: 1px solid var(--pl-red-dark);
+}
+
+.pl-topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding-block: 0.9rem;
+}
+
+.pl-topbar a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pl-topbar-links {
+  margin-left: auto;
+  display: flex;
+  gap: 1.25rem;
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.pl-hero--short {
+  padding-block: clamp(2rem, 6vw, 3.5rem) clamp(2.5rem, 7vw, 4rem);
+}
+
+.pl-hero .pl-eyebrow {
+  color: color-mix(in srgb, var(--pl-white) 72%, transparent);
+}
+
+.pl-claim--short {
+  font-size: clamp(2.25rem, 8vw, 4.25rem);
+}
+
+.pl-areas--hero {
+  margin: 2rem 0 0;
+}
+
+.pl-areas a {
+  text-decoration: none;
+}
+
+.pl-badge--outline {
+  border: 1px solid var(--pl-hairline);
+}
+
+/* Kitchen cards: the comparison surface. */
+.pl-kitchens {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.pl-kitchen {
+  border: 1px solid var(--pl-hairline);
+  border-top: 4px solid var(--pl-red);
+  border-radius: 12px;
+  transition:
+    translate 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.pl-kitchen:hover {
+  translate: 0 -2px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.08);
+}
+
+.pl-kitchen-link {
+  display: block;
+  padding: 1.25rem 1.25rem 1.1rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.pl-kitchen h3 {
+  font-size: 1.25rem;
+  margin-bottom: 0.6rem;
+}
+
+.pl-kitchen-price {
+  margin: 0;
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--pl-red);
+}
+
+.pl-kitchen-price small {
+  font-family: var(--pl-font-body), system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--pl-gray);
+  margin-inline: 0.35rem;
+}
+
+.pl-kitchen-sub {
+  margin: 0.15rem 0 0.9rem;
+  font-size: 0.875rem;
+  color: var(--pl-gray);
+}
+
+.pl-kitchen-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.9rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.pl-kitchen-facts dt {
+  color: var(--pl-gray);
+}
+
+.pl-kitchen-facts dd {
+  margin: 0;
+}
+
+.pl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pl-chips li {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pl-yellow) 35%, transparent);
+}
+
+/* The week on a white section: open days red, closed struck through. */
+.pl-week--light .pl-day {
+  background: var(--pl-red);
+  color: var(--pl-white);
+}
+
+.pl-week--light .pl-day--closed {
+  background: transparent;
+  color: var(--pl-gray);
+  border-color: var(--pl-hairline);
+}
+
+.pl-options {
+  display: grid;
+  gap: 1rem 2.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  margin: 0;
+}
+
+.pl-options dt {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.0625rem;
+}
+
+.pl-options dd {
+  margin: 0.15rem 0 0;
+  color: var(--pl-gray);
+}
+
+.pl-note a {
+  color: var(--pl-red);
+  text-underline-offset: 0.2em;
+}
+
+/* /harga: kitchens as columns. Scrolls sideways inside its own box on a phone,
+   never the page. */
+.pl-compare-wrap {
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--pl-hairline);
+  border-radius: 12px;
+}
+
+.pl-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+}
+
+.pl-compare th,
+.pl-compare td {
+  padding: 0.7rem 1rem;
+  text-align: right;
+  border-bottom: 1px solid var(--pl-hairline);
+}
+
+.pl-compare th:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--pl-white);
+}
+
+.pl-compare thead th {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.pl-compare thead a {
+  color: var(--pl-red);
+  text-decoration: none;
+}
+
+.pl-compare tbody th {
+  font-weight: 500;
+  color: var(--pl-gray);
+}
+
+.pl-compare tbody td {
+  font-family: var(--pl-font-display), system-ui, sans-serif;
+  font-weight: 700;
+}
+
+.pl-compare tfoot th,
+.pl-compare tfoot td {
+  font-size: 0.8125rem;
+  color: var(--pl-gray);
+  background: color-mix(in srgb, var(--pl-hairline) 30%, transparent);
+}
+
+.pl-compare tfoot tr:last-child th,
+.pl-compare tfoot tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-kitchen {
+    transition: none;
+  }
+}
