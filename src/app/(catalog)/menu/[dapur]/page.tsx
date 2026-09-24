@@ -31,7 +31,7 @@ export async function generateMetadata(props: {
   if (!kitchen) return {};
   return {
     title: `${kitchen.nickname} — Katerloka`,
-    description: `Katering harian ${kitchen.nickname}: mulai Rp ${rupiah(kitchen.from)} per porsi, antar ${kitchen.daysLabel} ke ${kitchen.areas.join(", ")}.`,
+    description: `${kitchen.blurb ? `${kitchen.blurb} ` : ""}Katering harian ${kitchen.nickname}: mulai Rp ${rupiah(kitchen.from)} per porsi, antar ${kitchen.daysLabel} ke ${kitchen.areas.join(", ")}.`,
   };
 }
 
@@ -104,7 +104,7 @@ export default async function KitchenPage(props: {
   const serves = area ? kitchen.areas.includes(area) : true;
   const areaQuery = area ? `&area=${slugify(area)}` : "";
   const color = tint(kitchen.slug, all);
-  const back = area ? `/area/${slugify(area)}` : "/menu";
+  const back = area ? `/area/${slugify(area)}` : "/";
 
   // Every size on the ladder is a package. The first size of each price step is
   // shown; the rest sit behind "Ukuran lain" as in the design.
@@ -136,7 +136,8 @@ export default async function KitchenPage(props: {
         <div>
           <h1>{kitchen.nickname}</h1>
           <p className="kl-card-sub">
-            Dapur partner {BRAND}. Antar ke {kitchen.areas.length} area.
+            {kitchen.blurb ?? `Dapur partner ${BRAND}.`} Antar ke{" "}
+            {kitchen.areas.length} area.
           </p>
         </div>
         <div className="kl-stats">

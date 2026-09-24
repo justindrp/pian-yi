@@ -24,6 +24,16 @@ export const LEGAL_NAME = "Pian Yi Catering";
 // What customers see: the storefront name on every public page.
 export const BRAND = "Katerloka";
 export const NIB = "2307250135661";
+// The registered address on the OSS record, printed with the legal name.
+export const ADDRESS = {
+  street:
+    "Jl. Palm Kuning IV Blok BE/06 Sekt.1-3, RT 002/RW 007, Kel. Rawabuntu, Kec. Serpong",
+  city: "Kota Tangerang Selatan",
+  region: "Banten",
+  postalCode: "15318",
+  country: "ID",
+};
+export const CONTACT_EMAIL = "drpramadyo@gmail.com";
 
 /**
  * A click-to-chat link that opens WhatsApp with `text` already typed.
@@ -91,6 +101,8 @@ export type CatalogKitchen = {
   sizeM: number | null;
   /** Per-portion discount for tanpa nasi; 0 when nothing comes off. */
   noRiceOff: number;
+  /** One public line on the food and delivery (`catalog_blurb`); null shows nothing. */
+  blurb: string | null;
 };
 
 /**
@@ -103,7 +115,7 @@ export async function loadCatalog(db: Db): Promise<CatalogKitchen[]> {
   const { data, error } = await db
     .from("subcontractors")
     .select(
-      "id, customer_nickname, delivery_days, delivery_areas, offers_size_m, size_m_surcharge, no_rice_discount",
+      "id, customer_nickname, catalog_blurb, delivery_days, delivery_areas, offers_size_m, size_m_surcharge, no_rice_discount",
     )
     .eq("is_active", true);
   if (error) throw new Error(`loadCatalog: ${error.message}`);
@@ -133,6 +145,7 @@ export async function loadCatalog(db: Db): Promise<CatalogKitchen[]> {
         typeof row.no_rice_discount === "number" && row.no_rice_discount > 0
           ? row.no_rice_discount
           : 0,
+      blurb: row.catalog_blurb?.trim() || null,
     });
   }
   return kitchens.sort((a, b) => a.from - b.from);

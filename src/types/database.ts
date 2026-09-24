@@ -1710,6 +1710,7 @@ export type Database = {
         Row: {
           admin_phone: string | null
           admin_phone_2: string | null
+          catalog_blurb: string | null
           cost_per_portion: number
           cost_per_portion_m: number | null
           cost_per_portion_route1: number | null
@@ -1743,6 +1744,7 @@ export type Database = {
         Insert: {
           admin_phone?: string | null
           admin_phone_2?: string | null
+          catalog_blurb?: string | null
           cost_per_portion?: number
           cost_per_portion_m?: number | null
           cost_per_portion_route1?: number | null
@@ -1776,6 +1778,7 @@ export type Database = {
         Update: {
           admin_phone?: string | null
           admin_phone_2?: string | null
+          catalog_blurb?: string | null
           cost_per_portion?: number
           cost_per_portion_m?: number | null
           cost_per_portion_route1?: number | null

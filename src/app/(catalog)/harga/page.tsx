@@ -25,7 +25,7 @@ export default async function HargaPage() {
   return (
     <>
       <header className="kl-bar">
-        <Link href="/menu" aria-label="Kembali">
+        <Link href="/" aria-label="Kembali">
           <BackIcon />
         </Link>
         <h1>Harga per porsi</h1>

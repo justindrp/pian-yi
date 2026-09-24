@@ -1,8 +1,5 @@
-import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { notFound } from "next/navigation";
 import { chatLink } from "@/lib/catalog/kitchens";
-import { getSessionWithRole } from "@/lib/supabase/get-role";
 import { BottomNav } from "./nav";
 import "./catalog.css";
 
@@ -13,28 +10,17 @@ const font = Plus_Jakarta_Sans({
   display: "swap",
 });
 
-// Not indexed while it is a preview: see the gate below.
-export const metadata: Metadata = {
-  robots: { index: false, follow: false },
-};
-
 /**
- * The public catalog (docs/ORDER_SITE.md, phase 4), built ahead of its launch
- * and laid out as a food-delivery app.
- *
- * **Signed-in admins only until launch.** What stands between these pages and
- * the public is recorded in "Open before this starts": a menu identity per
- * kitchen (a nickname alone gives a customer no basis to choose). Launching is
- * deleting this check and the
- * `robots` line above.
+ * The public catalog (docs/ORDER_SITE.md, phase 4), laid out as a
+ * food-delivery app. Public since 2026-09-24: katerloka.com itself is its home
+ * screen. Nothing here may print a kitchen's real name — `loadCatalog()` never
+ * hands one to a page.
  */
-export default async function CatalogLayout({
+export default function CatalogLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  if (!(await getSessionWithRole())) notFound();
-
   return (
     <div className={`kl ${font.variable}`}>
       <div className="kl-app">

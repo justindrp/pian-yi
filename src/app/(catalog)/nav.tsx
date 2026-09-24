@@ -6,10 +6,11 @@ import { usePathname } from "next/navigation";
 /** The app's bottom bar. Client-side only to know which tab is current. */
 export function BottomNav({ chatHref }: { chatHref: string }) {
   const path = usePathname();
-  const onHome = path.startsWith("/menu") || path.startsWith("/area");
+  const onHome =
+    path === "/" || path.startsWith("/menu") || path.startsWith("/area");
   return (
     <nav className="kl-nav" aria-label="Navigasi">
-      <Link href="/menu" aria-current={onHome ? "page" : undefined}>
+      <Link href="/" aria-current={onHome ? "page" : undefined}>
         <svg
           width="22"
           height="22"

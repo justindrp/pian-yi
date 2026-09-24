@@ -24,7 +24,7 @@ Read at the start of every session. Permanent context, conventions, and the rule
 | `docs/DESIGN_SYSTEM.md` | anything customers see as an image — the menu card, Instagram/Ads creative, the lunch-box spec |
 | `docs/OVERDRAW.md` | the 32 customers who have drawn more than they bought |
 | `docs/ON_CALL.md` | running operations while Justin is away — what the person on call may decide alone, the backup-before-you-write rule, and the outages that recur |
-| `docs/ORDER_SITE.md` | the public menu/price catalog (built at `/menu`, admin-only until launch) and the token-gated order configurator planned behind it — intake, checkout, and what they retire |
+| `docs/ORDER_SITE.md` | the public menu/price catalog (katerloka.com's home page, public since 2026-09-24) and the token-gated order configurator planned behind it — intake, checkout, and what they retire |
 
 Each of those keeps the incident that produced each rule. That is deliberate: a rule stripped of its reason gets "simplified" back into the bug.
 

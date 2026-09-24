@@ -1,11 +1,14 @@
 import Link from "next/link";
 import {
+  ADDRESS,
   BRAND,
   type CatalogKitchen,
+  CONTACT_EMAIL,
   chatLink,
   LEGAL_NAME,
   NIB,
   slugify,
+  WA_DISPLAY,
 } from "@/lib/catalog/kitchens";
 
 // Placeholder backgrounds until each kitchen has its own photography. Dealt
@@ -139,6 +142,9 @@ function KitchenRow({
         </span>
         <span className="kl-row-body">
           <span className="kl-row-name">{kitchen.nickname}</span>
+          {kitchen.blurb && (
+            <span className="kl-row-blurb">{kitchen.blurb}</span>
+          )}
           <span className="kl-row-sub">
             Antar ke {kitchen.areas.join(", ")}
           </span>
@@ -210,7 +216,7 @@ export function CatalogHome({
   const filters = FILTERS.filter((f) => here.some(f.test));
   const active = filters.find((f) => f.id === filter) ?? null;
   const list = active ? here.filter(active.test) : here;
-  const base = area ? `/area/${slugify(area)}` : "/menu";
+  const base = area ? `/area/${slugify(area)}` : "/";
 
   return (
     <>
@@ -238,7 +244,7 @@ export function CatalogHome({
           </summary>
           <ul className="kl-area-list">
             <li>
-              <Link href="/menu" aria-current={area === null}>
+              <Link href="/" aria-current={area === null}>
                 Semua area
               </Link>
             </li>
@@ -332,8 +338,14 @@ export function CatalogHome({
         <br />
         {LEGAL_NAME} · NIB {NIB} · KBLI 56290
         <br />
+        {ADDRESS.street}, {ADDRESS.city}, {ADDRESS.region} {ADDRESS.postalCode}
+        <br />
+        <a href={chatLink()}>{WA_DISPLAY}</a> ·{" "}
+        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        <br />
         <a href="/terms">Syarat &amp; ketentuan</a> ·{" "}
-        <a href="/privacy">Kebijakan privasi</a>
+        <a href="/privacy">Kebijakan privasi</a> ·{" "}
+        <a href="/data-deletion">Penghapusan data</a>
       </p>
     </>
   );

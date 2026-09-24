@@ -21,6 +21,7 @@ export async function PATCH(
   const body = (await req.json()) as {
     name?: string;
     customer_nickname?: string | null;
+    catalog_blurb?: string | null;
     admin_phone?: string;
     admin_phone_2?: string;
     delivery_areas?: string[];
@@ -36,6 +37,8 @@ export async function PATCH(
   if (body.name !== undefined) allowed.name = body.name;
   if (body.customer_nickname !== undefined)
     allowed.customer_nickname = body.customer_nickname;
+  if (body.catalog_blurb !== undefined)
+    allowed.catalog_blurb = body.catalog_blurb?.trim() || null;
   if (body.admin_phone !== undefined) allowed.admin_phone = body.admin_phone;
   if (body.admin_phone_2 !== undefined)
     allowed.admin_phone_2 = body.admin_phone_2;

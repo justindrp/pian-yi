@@ -66,6 +66,7 @@ interface Subcontractor {
   id: string;
   name: string;
   customer_nickname: string | null;
+  catalog_blurb: string | null;
   admin_phone: string | null;
   admin_phone_2: string | null;
   delivery_areas: string[] | null;
@@ -557,6 +558,25 @@ export default function SubcontractorsClient() {
                 }
               />
             </div>
+            <div>
+              <Label className="block text-xs text-gray-500 mb-1 font-normal">
+                Catalog description (public)
+              </Label>
+              <Textarea
+                rows={2}
+                className="text-sm"
+                value={editForm.catalog_blurb ?? ""}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, catalog_blurb: e.target.value }))
+                }
+                placeholder="Nasi, lauk utama, sayur dan sambal..."
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                Shown under the nickname on katerloka.com. Describe the food and
+                delivery only — never the kitchen&apos;s name, area or
+                packaging.
+              </p>
+            </div>
             <div className="flex items-start gap-3">
               <input
                 id="takes-events"
@@ -588,6 +608,7 @@ export default function SubcontractorsClient() {
                   customer_nickname: editDapurNum
                     ? `Dapur ${editDapurNum}`
                     : null,
+                  catalog_blurb: editForm.catalog_blurb ?? null,
                   admin_phone: editForm.admin_phone,
                   admin_phone_2: editForm.admin_phone_2,
                   delivery_areas: editForm.delivery_areas as string[],
