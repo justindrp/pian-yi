@@ -22,11 +22,10 @@ export const metadata: Metadata = {
  * The public catalog (docs/ORDER_SITE.md, phase 4), built ahead of its launch
  * and laid out as a food-delivery app.
  *
- * **Signed-in admins only until launch.** Two things stand between these pages
- * and the public, both recorded in "Open before this starts": the wholesale
- * renegotiation (a public ladder makes our margin one click to compute for our
- * own kitchens) and a menu identity per kitchen (a nickname alone gives a
- * customer no basis to choose). Launching is deleting this check and the
+ * **Signed-in admins only until launch.** What stands between these pages and
+ * the public is recorded in "Open before this starts": a menu identity per
+ * kitchen (a nickname alone gives a customer no basis to choose). Launching is
+ * deleting this check and the
  * `robots` line above.
  */
 export default async function CatalogLayout({
