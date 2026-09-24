@@ -1,13 +1,12 @@
 import Link from "next/link";
 import {
+  BRAND,
   type CatalogKitchen,
   chatLink,
   LEGAL_NAME,
   NIB,
   slugify,
 } from "@/lib/catalog/kitchens";
-
-export const BRAND = "Katerloka";
 
 // Placeholder backgrounds until each kitchen has its own photography. Dealt
 // out by the kitchen's place among all slugs, so each kitchen keeps its colour

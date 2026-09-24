@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Nunito, Poppins } from "next/font/google";
 import Image from "next/image";
 import {
+  BRAND,
   chatLink,
   LEGAL_NAME,
   NIB,
@@ -11,7 +12,7 @@ import {
 } from "@/lib/catalog/kitchens";
 import { laddersForKitchens } from "@/lib/pricing/tiers";
 import { activeDeliveryAreas } from "@/lib/subcontractors/areas";
-import { activeDeliveryDays } from "@/lib/subcontractors/days";
+import { activeDeliveryDays, daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 import "./landing.css";
 
@@ -42,12 +43,26 @@ const ADDRESS = {
   country: "ID",
 };
 
-export const metadata: Metadata = {
-  title: "Katering Harian Tangerang Selatan — Pian Yi Catering",
-  description:
-    "Katering makan harian untuk rumah dan kantor di Tangerang Selatan. Mulai Rp 25.000 per porsi, diantar Senin–Sabtu. Pesan lewat WhatsApp, tanpa aplikasi.",
-  alternates: { canonical: "/" },
-};
+const rupiah = (n: number) => n.toLocaleString("id-ID");
+
+// Price, days and coverage come from the rows, never written in: the days and
+// the area once read "Senin–Sabtu" and "Tangerang Selatan" while one kitchen
+// delivered seven days and another only to Jakarta.
+function describe(from: number, days: string): string {
+  return `Katering makan harian untuk rumah dan kantor, dimasak dapur partner kami. Mulai Rp ${rupiah(from)} per porsi, diantar ${days}. Pesan lewat WhatsApp, tanpa aplikasi.`;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { rungs, openDays } = await loadContent();
+  return {
+    title: `${BRAND} — Katering Harian`,
+    description: describe(
+      Math.min(...rungs.map((r) => r.price)),
+      daysLabel(openDays),
+    ),
+    alternates: { canonical: "/" },
+  };
+}
 
 // Pricing, coverage and the menu image are read live, so the page must not be
 // baked once at build time. Ten minutes is short enough that a price change
@@ -105,7 +120,17 @@ const WEEKDAY_ID = [
   "Minggu",
 ];
 
-const rupiah = (n: number) => n.toLocaleString("id-ID");
+// schema.org wants English day names; index is the ISO weekday.
+const WEEKDAY_EN = [
+  "",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 
 export default async function LandingPage() {
   const { rungs, priceListImage, instagram, areas, openDays } =
@@ -120,11 +145,13 @@ export default async function LandingPage() {
   const barWidth = (price: number) =>
     `${55 + ((price - cheapest) / spread) * 45}%`;
 
+  const days = daysLabel(openDays);
   const schema = {
     "@context": "https://schema.org",
     "@type": ["LocalBusiness", "FoodEstablishment"],
-    name: LEGAL_NAME,
-    description: metadata.description,
+    name: BRAND,
+    legalName: LEGAL_NAME,
+    description: describe(cheapest, days),
     telephone: `+${WA_NUMBER}`,
     address: {
       "@type": "PostalAddress",
@@ -140,14 +167,7 @@ export default async function LandingPage() {
     openingHoursSpecification: [
       {
         "@type": "OpeningHoursSpecification",
-        dayOfWeek: [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-        ],
+        dayOfWeek: openDays.map((iso) => WEEKDAY_EN[iso]),
       },
     ],
   };
@@ -163,11 +183,11 @@ export default async function LandingPage() {
       <header className="pl-hero">
         <div className="pl-shell">
           <div className="pl-mark">
-            <span className="pl-mark-name">Pian Yi Catering</span>
+            <span className="pl-mark-name">{BRAND}</span>
             <span className="pl-mark-tag">
-              Tangerang Selatan
+              Katering harian
               <br />
-              Senin–Sabtu
+              {days}
             </span>
           </div>
 
@@ -179,8 +199,9 @@ export default async function LandingPage() {
           <p className="pl-lede">
             Katering makan harian untuk rumah dan kantor di{" "}
             {areas.slice(0, -1).join(", ")}
-            {areas.length > 1 ? ` dan ${areas.at(-1)}` : areas[0]}. Satu harga
-            per porsi, sudah termasuk pengiriman.
+            {areas.length > 1 ? ` dan ${areas.at(-1)}` : areas[0]}, dimasak
+            dapur partner kami. Di bawah harga dapur termurah kami; ongkir, bila
+            ada untuk lokasi kakak, dikonfirmasi lewat chat.
           </p>
 
           <div className="pl-ladder">
@@ -284,7 +305,7 @@ export default async function LandingPage() {
               <p>
                 Batas pesan untuk besok, waktu WIB. Perubahan jadwal, ganti
                 alamat, dan libur sehari ikut batas yang sama. Hari yang dicoret
-                di atas dan libur nasional kami tutup.
+                di atas kami tutup; untuk libur nasional, tanya lewat chat.
               </p>
             </div>
             <ul className="pl-areas">
@@ -308,7 +329,7 @@ export default async function LandingPage() {
               <Image
                 className="pl-menu-img"
                 src={priceListImage}
-                alt="Daftar paket dan pilihan menu Pian Yi Catering"
+                alt={`Daftar paket dan pilihan menu ${BRAND}`}
                 width={1080}
                 height={1350}
                 sizes="(max-width: 68rem) 100vw, 68rem"

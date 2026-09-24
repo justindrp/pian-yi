@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  BRAND,
   type CatalogKitchen,
   catalogAreas,
   chatLink,
@@ -11,14 +12,7 @@ import {
   slugify,
 } from "@/lib/catalog/kitchens";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  BackIcon,
-  BRAND,
-  CheckIcon,
-  PlateIcon,
-  priceRange,
-  tint,
-} from "../../ui";
+import { BackIcon, CheckIcon, PlateIcon, priceRange, tint } from "../../ui";
 
 export const dynamic = "force-dynamic";
 

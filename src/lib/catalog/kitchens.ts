@@ -21,6 +21,8 @@ export const WA_DISPLAY = "+62 851-1121-4390";
 // A brand is not a legal entity: this stays the NIB holder's registered name
 // whatever the storefront is called.
 export const LEGAL_NAME = "Pian Yi Catering";
+// What customers see: the storefront name on every public page.
+export const BRAND = "Katerloka";
 export const NIB = "2307250135661";
 
 /**
