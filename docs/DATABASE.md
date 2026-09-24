@@ -78,6 +78,7 @@ Deleting a row is not a refusal and never was: it stops the bot *recognising* th
 | area | text | Delivery area. Must be one of the areas some *active* subcontractor serves — there is no fixed list, and the count changes when a kitchen is activated or deactivated. See "Delivery areas" in `OPERATIONS.md` |
 | name | text | Neighborhood name, unique per (area, name) |
 | excluded | boolean | Default false. True = we do not deliver here, whatever the area says (migration 094) |
+| lat, lng | double precision | Where the neighbourhood is (migration 139), geocoded once from its name. The public catalog's location match picks the nearest placed, non-excluded row. NULL = not placed, and the matcher skips it rather than guessing |
 | created_at | timestamp | |
 | updated_at | timestamptz | Maintained by the `set_updated_at()` trigger (migration 129). Feeds `settings_cache_watermark()` — see `settings` |
 
