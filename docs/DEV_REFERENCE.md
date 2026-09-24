@@ -156,7 +156,7 @@ pian-yi/
 │   │   ├── (auth)/
 │   │   │   ├── login/ (magic-link email login)
 │   │   │   └── callback/ (Supabase Auth callback handler)
-│   │   ├── (catalog)/ — the public catalog (`/menu`, `/menu/[dapur]`, `/harga`, `/area/[area]`; see `ORDER_SITE.md`). **Admin-only until launch**: its layout 404s a signed-out visitor, and `proxy.ts` gates nothing, so deleting that check is what makes it public. Reuses `landing.css` plus its own `catalog.css`
+│   │   ├── (catalog)/ — the public catalog (`/menu`, `/menu/[dapur]`, `/harga`, `/area/[area]`; see `ORDER_SITE.md`). **Admin-only until launch**: its layout 404s a signed-out visitor, and `proxy.ts` gates nothing, so deleting that check is what makes it public. Laid out as a food-delivery app (Plus Jakarta Sans, styles namespaced `.kl` in `catalog.css`); `ui.tsx` holds the home list shared by `/menu` and `/area/[area]`, `nav.tsx` the bottom tab bar
 │   │   ├── dapur/[id]/ — public, auth-free mobile page per subcontractor: tomorrow's delivery orders + that day's bill (see `OPERATIONS.md` "Subcontractor daily bill")
 │   │   ├── page.tsx — public landing page at `/`. Reads the price ladder, the active kitchens' delivery areas and the price-list image live from the DB, so it cannot drift from what the bot quotes. Carries the legal identity block (entity name, NIB, registered address) that Meta business verification matches against the OSS record — `/` used to redirect to `/dashboard`, which showed a reviewer nothing but a login wall. Its settings read is scoped to two keys (`price_list_image_url`, `instagram_handle`) on purpose: a `select('*')` here would put the bank account number in public HTML.
 │   │   ├── landing.css — the landing page's styles, every rule namespaced under `.pl`. Plain CSS, not Tailwind, and scoped so it cannot reach the dashboard's shadcn tokens. Palette and type are the Instagram post system verbatim (`#C0181C` red, `#F7C948` yellow, white, `#2B2B2B` charcoal; Poppins display + Nunito body) — the landing page and the feed are the same brand, so neither file invents its own colors. Red is the hero and one mid-page band only; a full-page red wrecks readability on the legal block.
@@ -222,7 +222,7 @@ pian-yi/
 │   │   │   └── compress.ts (image compression before upload, e.g. menu/proof photos)
 │   │   ├── push/
 │   │   │   └── send.ts (web-push wrapper)
-│   │   ├── catalog/ (kitchens.ts: `loadCatalog()` — the active kitchens as the catalog and landing page show them, nickname only, no id; plus the WhatsApp number and `chatLink()`)
+│   │   ├── catalog/ (kitchens.ts: `loadCatalog()` — the active kitchens as the catalog and landing page show them, nickname only, no id; plus the WhatsApp number, `chatLink()`, and `LEGAL_NAME`/`NIB` for the legal footer)
 │   │   ├── subcontractors/
 │   │   │   └── areas.ts (**the only source of delivery-area strings.** `activeDeliveryAreas(db)` = union over `is_active` kitchens; `knownDeliveryAreas(db)` = union over all of them, for the two screens that define coverage; `unionAreas(rows)` for callers that already hold the rows. Never type an area list anywhere else)
 │   │   ├── utils/ — shared formatting/timing helpers

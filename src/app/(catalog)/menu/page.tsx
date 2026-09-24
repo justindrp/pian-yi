@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   catalogAreas,
-  chatLink,
   loadCatalog,
-  slugify,
+  orderDeadlineLabel,
 } from "@/lib/catalog/kitchens";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { KitchenCard } from "../kitchen-card";
+import { CatalogHome } from "../ui";
 
 export const metadata: Metadata = {
   title: "Pilih dapur — Katerloka",
@@ -17,56 +15,25 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function MenuPage() {
-  const kitchens = await loadCatalog(createAdminClient());
-  const areas = catalogAreas(kitchens);
+export default async function MenuPage(props: {
+  searchParams: Promise<{ f?: string }>;
+}) {
+  const [kitchens, deadline, { f }] = await Promise.all([
+    loadCatalog(createAdminClient()),
+    orderDeadlineLabel(),
+    props.searchParams,
+  ]);
 
   return (
-    <>
-      <header className="pl-hero pl-hero--short">
-        <div className="pl-shell">
-          <h1 className="pl-claim pl-claim--short">
-            Satu chat,
-            <em>{kitchens.length} dapur.</em>
-          </h1>
-          <p className="pl-lede">
-            Tiap dapur punya menu, harga dan hari antarnya sendiri. Pilih area
-            kakak dulu — daftar dapurnya langsung menyempit.
-          </p>
-          <ul className="pl-areas pl-areas--hero">
-            {areas.map((area) => (
-              <li key={area}>
-                <Link className="pl-badge" href={`/area/${slugify(area)}`}>
-                  {area}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </header>
-
-      <main className="pl-section">
-        <div className="pl-shell">
-          <span className="pl-eyebrow">Semua dapur</span>
-          <ul className="pl-kitchens">
-            {kitchens.map((k) => (
-              <KitchenCard key={k.slug} kitchen={k} />
-            ))}
-          </ul>
-          <p className="pl-note">
-            Harga per porsi, makin banyak makin murah — lihat{" "}
-            <Link href="/harga">perbandingan harga</Link>. Area kakak belum ada?{" "}
-            <a
-              href={chatLink(
-                "Halo, area saya belum ada di daftar. Bisa antar ke sini?",
-              )}
-            >
-              Chat kami
-            </a>
-            .
-          </p>
-        </div>
-      </main>
-    </>
+    <CatalogHome
+      kitchens={kitchens}
+      areas={catalogAreas(kitchens)}
+      area={null}
+      filter={f ?? null}
+      deadline={deadline}
+      minPortions={Math.min(
+        ...kitchens.flatMap((k) => k.tiers.map((t) => t.portions)),
+      )}
+    />
   );
 }

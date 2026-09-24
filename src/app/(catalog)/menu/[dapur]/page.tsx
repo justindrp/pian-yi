@@ -3,26 +3,37 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   type CatalogKitchen,
+  catalogAreas,
   chatLink,
   loadCatalog,
   orderDeadlineLabel,
-  porsiRange,
   rupiah,
   slugify,
 } from "@/lib/catalog/kitchens";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  BackIcon,
+  BRAND,
+  CheckIcon,
+  PlateIcon,
+  priceRange,
+  tint,
+} from "../../ui";
 
 export const dynamic = "force-dynamic";
 
-async function findKitchen(slug: string): Promise<CatalogKitchen | null> {
-  const kitchens = await loadCatalog(createAdminClient());
-  return kitchens.find((k) => k.slug === slug) ?? null;
+async function findKitchen(
+  slug: string,
+): Promise<{ kitchen: CatalogKitchen; all: CatalogKitchen[] } | null> {
+  const all = await loadCatalog(createAdminClient());
+  const kitchen = all.find((k) => k.slug === slug);
+  return kitchen ? { kitchen, all } : null;
 }
 
 export async function generateMetadata(props: {
   params: Promise<{ dapur: string }>;
 }): Promise<Metadata> {
-  const kitchen = await findKitchen((await props.params).dapur);
+  const kitchen = (await findKitchen((await props.params).dapur))?.kitchen;
   if (!kitchen) return {};
   return {
     title: `${kitchen.nickname} — Katerloka`,
@@ -30,165 +41,247 @@ export async function generateMetadata(props: {
   };
 }
 
-const WEEK = [1, 2, 3, 4, 5, 6, 7];
-const WEEKDAY_ID = ["", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+const WEEKDAY_ID = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+const TABS = [
+  { id: "paket", label: "Paket" },
+  { id: "menu", label: "Menu" },
+  { id: "info", label: "Info" },
+];
+
+type Pkg = { portions: number; per: number; total: number; save: number };
+
+function PackageRow({
+  pkg,
+  kitchen,
+  color,
+}: {
+  pkg: Pkg;
+  kitchen: CatalogKitchen;
+  color: string;
+}) {
+  return (
+    <div className="kl-pkg">
+      <div className="kl-pkg-body">
+        <span className="kl-pkg-name">{pkg.portions} porsi</span>
+        <span className="kl-per">Rp {rupiah(pkg.per)} /porsi</span>
+        {pkg.save > 0 && (
+          <span
+            className="kl-tag kl-tag--ok"
+            style={{ alignSelf: "flex-start" }}
+          >
+            Hemat Rp {rupiah(pkg.save)}
+          </span>
+        )}
+        <span className="kl-pkg-total">Rp {rupiah(pkg.total)}</span>
+      </div>
+      <div className="kl-pkg-side">
+        <span className="kl-thumb kl-thumb--pkg" style={{ background: color }}>
+          {pkg.portions}×
+        </span>
+        <a
+          className="kl-add"
+          href={chatLink(
+            `Halo, saya mau pesan paket ${pkg.portions} porsi dari ${kitchen.nickname}`,
+          )}
+        >
+          Pesan
+        </a>
+      </div>
+    </div>
+  );
+}
 
 export default async function KitchenPage(props: {
   params: Promise<{ dapur: string }>;
+  searchParams: Promise<{ tab?: string; area?: string }>;
 }) {
-  const kitchen = await findKitchen((await props.params).dapur);
-  if (!kitchen) notFound();
-  const deadline = await orderDeadlineLabel();
+  const [found, deadline, query] = await Promise.all([
+    props.params.then((p) => findKitchen(p.dapur)),
+    orderDeadlineLabel(),
+    props.searchParams,
+  ]);
+  if (!found) notFound();
+  const { kitchen, all } = found;
 
-  const prices = kitchen.rungs.map((r) => r.price);
-  const dearest = Math.max(...prices);
-  const spread = dearest - kitchen.from || 1;
-  // Wider bar = dearer portion, as on the landing page.
-  const barWidth = (price: number) =>
-    `${55 + ((price - kitchen.from) / spread) * 45}%`;
+  const tab = TABS.some((t) => t.id === query.tab) ? query.tab : "paket";
+  // The area the customer came from, if any. Resolved against every area the
+  // catalog serves, so an unknown slug is ignored rather than echoed back.
+  const area = catalogAreas(all).find((a) => slugify(a) === query.area) ?? null;
+  const serves = area ? kitchen.areas.includes(area) : true;
+  const areaQuery = area ? `&area=${slugify(area)}` : "";
+  const color = tint(kitchen.slug, all);
+  const back = area ? `/area/${slugify(area)}` : "/menu";
+
+  // Every size on the ladder is a package. The first size of each price step is
+  // shown; the rest sit behind "Ukuran lain" as in the design.
+  const smallest = [...kitchen.tiers].sort((a, b) => a.portions - b.portions);
+  const base = smallest[0]?.price_per_portion ?? 0;
+  const pkgs: Pkg[] = smallest.map((t) => ({
+    portions: t.portions,
+    per: t.price_per_portion,
+    total: t.price_per_portion * t.portions,
+    save: (base - t.price_per_portion) * t.portions,
+  }));
+  const main = new Set(kitchen.rungs.map((r) => r.min));
+  const more = pkgs.filter((p) => !main.has(p.portions));
 
   return (
     <>
-      <header className="pl-hero pl-hero--short">
-        <div className="pl-shell">
-          <span className="pl-eyebrow">Dapur partner</span>
-          <h1 className="pl-claim pl-claim--short">
-            {kitchen.nickname}
-            <em>mulai Rp {rupiah(kitchen.from)}</em>
-          </h1>
+      <div className="kl-hero" style={{ background: color }}>
+        <PlateIcon size={48} />
+        <Link
+          href={back}
+          aria-label="Kembali"
+          className="kl-round kl-round--left"
+        >
+          <BackIcon />
+        </Link>
+      </div>
 
-          <div className="pl-ladder">
-            <div className="pl-rung pl-rung--head" aria-hidden="true">
-              <span>Porsi</span>
-              <span />
-              <span>Harga per porsi</span>
-            </div>
-            {kitchen.rungs.map((rung, i) => (
-              <div
-                key={rung.min}
-                className="pl-rung"
-                style={{ animationDelay: `${120 + i * 70}ms` }}
-              >
-                <span className="pl-rung-porsi">
-                  {porsiRange(rung.min, rung.max)}
-                </span>
-                <span
-                  className="pl-bar"
-                  aria-hidden="true"
-                  style={{
-                    width: barWidth(rung.price),
-                    animationDelay: `${180 + i * 70}ms`,
-                  }}
-                />
-                <span className="pl-price">
-                  {rupiah(rung.price)}
-                  <small>/porsi</small>
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <a
-            className="pl-cta"
-            href={chatLink(`Halo, saya mau pesan dari ${kitchen.nickname}`)}
-          >
-            Pesan dari {kitchen.nickname}
-          </a>
-          <p className="pl-cta-note">
-            Chat WhatsApp — kami hitung totalnya dan kirim rinciannya.
+      <div className="kl-card">
+        <div>
+          <h1>{kitchen.nickname}</h1>
+          <p className="kl-card-sub">
+            Dapur partner {BRAND}. Antar ke {kitchen.areas.length} area.
           </p>
         </div>
-      </header>
+        <div className="kl-stats">
+          <div>
+            <strong>{kitchen.daysLabel}</strong>
+            <span>hari kirim</span>
+          </div>
+          <div>
+            <strong>{priceRange(kitchen)}</strong>
+            <span>per porsi</span>
+          </div>
+          <div>
+            <strong>{deadline}</strong>
+            <span>tutup H-1</span>
+          </div>
+        </div>
+        {area && (
+          <div className={serves ? "kl-serves" : "kl-serves kl-serves--no"}>
+            {serves && <CheckIcon />}
+            {serves ? `Antar ke ${area}` : `Belum antar ke ${area}`}
+          </div>
+        )}
+      </div>
 
-      <main>
-        <section className="pl-section">
-          <div className="pl-shell">
-            <span className="pl-eyebrow">Hari antar</span>
-            <ul className="pl-week pl-week--light">
-              {WEEK.map((iso) => (
-                <li
-                  key={iso}
-                  className={
-                    kitchen.days.includes(iso)
-                      ? "pl-day"
-                      : "pl-day pl-day--closed"
-                  }
+      <nav className="kl-tabs" aria-label="Bagian">
+        {TABS.map((t) => (
+          <Link
+            key={t.id}
+            href={`/menu/${kitchen.slug}?tab=${t.id}${areaQuery}`}
+            aria-current={t.id === tab ? "page" : undefined}
+            scroll={false}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "paket" && (
+        <>
+          <p className="kl-lead">
+            Satu paket = sejumlah porsi yang kakak jadwalkan sendiri, siang atau
+            malam. Makin besar paketnya, makin murah per porsi.
+            {kitchen.sizeM !== null &&
+              ` Size M +Rp ${rupiah(kitchen.sizeM)}/porsi.`}
+            {kitchen.noRiceOff > 0 &&
+              ` Tanpa nasi −Rp ${rupiah(kitchen.noRiceOff)}/porsi.`}
+          </p>
+          {pkgs
+            .filter((p) => main.has(p.portions))
+            .map((p) => (
+              <PackageRow
+                key={p.portions}
+                pkg={p}
+                kitchen={kitchen}
+                color={color}
+              />
+            ))}
+          {more.length > 0 && (
+            <details className="kl-more">
+              <summary>
+                Ukuran lain: {more.map((p) => p.portions).join(", ")} porsi
+              </summary>
+              {more.map((p) => (
+                <PackageRow
+                  key={p.portions}
+                  pkg={p}
+                  kitchen={kitchen}
+                  color={color}
+                />
+              ))}
+            </details>
+          )}
+        </>
+      )}
+
+      {tab === "menu" && (
+        <div
+          className="kl-empty"
+          style={{ display: "flex", flexDirection: "column", gap: 12 }}
+        >
+          <span>
+            <strong>Menu minggu ini belum diunggah di sini.</strong> Dapurnya
+            tetap masak; tanya menunya lewat chat.
+          </span>
+          <a
+            className="kl-dark-btn"
+            href={chatLink(
+              `Halo, boleh lihat menu ${kitchen.nickname} minggu ini?`,
+            )}
+          >
+            Tanya menu
+          </a>
+        </div>
+      )}
+
+      {tab === "info" && (
+        <div className="kl-info">
+          <section>
+            <span className="kl-label">Hari kirim</span>
+            <div className="kl-week">
+              {WEEKDAY_ID.map((label, i) => (
+                <span
+                  key={label}
+                  data-off={kitchen.days.includes(i + 1) ? undefined : ""}
                 >
-                  {WEEKDAY_ID[iso]}
-                </li>
+                  {label}
+                </span>
               ))}
-            </ul>
-            <p className="pl-note">
-              Pesan, ubah jadwal atau libur sehari paling lambat pukul{" "}
-              {deadline} WIB sehari sebelumnya.
-            </p>
-          </div>
-        </section>
-
-        <section className="pl-section pl-section--ruled">
-          <div className="pl-shell">
-            <span className="pl-eyebrow">Area antar</span>
-            <ul className="pl-areas">
-              {kitchen.areas.map((area) => (
-                <li key={area}>
-                  <Link
-                    className="pl-badge pl-badge--outline"
-                    href={`/area/${slugify(area)}`}
-                  >
-                    {area}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <p className="pl-note">
-              Ongkir, bila ada untuk lokasi kakak, kami konfirmasi lewat chat.
-            </p>
-          </div>
-        </section>
-
-        {(kitchen.sizeM !== null || kitchen.noRiceOff > 0) && (
-          <section className="pl-section pl-section--ruled">
-            <div className="pl-shell">
-              <span className="pl-eyebrow">Pilihan</span>
-              <dl className="pl-options">
-                {kitchen.sizeM !== null && (
-                  <div>
-                    <dt>Size M</dt>
-                    <dd className="pl-num">
-                      + Rp {rupiah(kitchen.sizeM)} per porsi
-                    </dd>
-                  </div>
-                )}
-                {kitchen.noRiceOff > 0 && (
-                  <div>
-                    <dt>Tanpa nasi</dt>
-                    <dd className="pl-num">
-                      − Rp {rupiah(kitchen.noRiceOff)} per porsi
-                    </dd>
-                  </div>
-                )}
-              </dl>
             </div>
           </section>
-        )}
-
-        <section className="pl-section pl-section--ruled">
-          <div className="pl-shell">
-            <span className="pl-eyebrow">Menu</span>
-            <p className="pl-note">
-              Menu berganti tiap minggu. Minta menu minggu ini lewat{" "}
-              <a
-                href={chatLink(
-                  `Halo, boleh lihat menu ${kitchen.nickname} minggu ini?`,
-                )}
-              >
-                chat
-              </a>
-              .
+          <section>
+            <span className="kl-label">Area antar</span>
+            <div className="kl-pills">
+              {kitchen.areas.map((a) => (
+                <span key={a} data-on={a === area ? "" : undefined}>
+                  {a}
+                </span>
+              ))}
+            </div>
+            <p className="kl-per">
+              Ongkir, bila ada untuk lokasi kakak, dikonfirmasi lewat chat.
             </p>
-          </div>
-        </section>
-      </main>
+          </section>
+          <section>
+            <span className="kl-label">Pesan, ubah, libur</span>
+            <p>
+              Paling lambat {deadline} WIB sehari sebelum tanggal kirim. Hari
+              yang diliburkan tidak memotong porsi.
+            </p>
+          </section>
+          <section>
+            <span className="kl-label">Siapa yang memasak</span>
+            <p>
+              Dapur partner kami. Pesanan, pembayaran dan pengantaran diurus
+              oleh {BRAND}.
+            </p>
+          </section>
+        </div>
+      )}
     </>
   );
 }

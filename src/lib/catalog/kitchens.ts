@@ -17,6 +17,12 @@ type Db = SupabaseClient<Database>;
 export const WA_NUMBER = "6285111214390";
 export const WA_DISPLAY = "+62 851-1121-4390";
 
+// The legal identity Meta business verification matches against the OSS record.
+// A brand is not a legal entity: this stays the NIB holder's registered name
+// whatever the storefront is called.
+export const LEGAL_NAME = "Pian Yi Catering";
+export const NIB = "2307250135661";
+
 /**
  * A click-to-chat link that opens WhatsApp with `text` already typed.
  *

@@ -8,6 +8,7 @@ import {
   rupiah,
 } from "@/lib/catalog/kitchens";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { BackIcon } from "../ui";
 
 export const metadata: Metadata = {
   title: "Harga per porsi — Katerloka",
@@ -23,83 +24,75 @@ export default async function HargaPage() {
 
   return (
     <>
-      <header className="pl-hero pl-hero--short">
-        <div className="pl-shell">
-          <h1 className="pl-claim pl-claim--short">
-            Makin banyak,
-            <em>makin murah.</em>
-          </h1>
-          <p className="pl-lede">
-            Harga per porsi tiap dapur, berdasarkan jumlah porsi dalam satu
-            paket. Totalnya kami hitung dan kirim lewat chat.
-          </p>
-        </div>
+      <header className="kl-bar">
+        <Link href="/menu" aria-label="Kembali">
+          <BackIcon />
+        </Link>
+        <h1>Harga per porsi</h1>
       </header>
 
-      <main className="pl-section">
-        <div className="pl-shell">
-          <div className="pl-compare-wrap">
-            <table className="pl-compare">
-              <thead>
-                <tr>
-                  <th scope="col">Porsi</th>
-                  {kitchens.map((k) => (
-                    <th key={k.slug} scope="col">
-                      <Link href={`/menu/${k.slug}`}>{k.nickname}</Link>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.min}>
-                    <th scope="row" className="pl-num">
-                      {porsiRange(row.min, row.max)}
-                    </th>
-                    {row.prices.map((price, i) => (
-                      <td key={kitchens[i].slug} className="pl-num">
-                        {price === null ? "—" : rupiah(price)}
-                      </td>
-                    ))}
-                  </tr>
+      <p className="kl-lead">
+        Harga per porsi tiap dapur, berdasarkan jumlah porsi dalam satu paket.
+        Makin banyak, makin murah.
+      </p>
+
+      <div className="kl-compare-wrap">
+        <table className="kl-compare">
+          <thead>
+            <tr>
+              <th scope="col">Porsi</th>
+              {kitchens.map((k) => (
+                <th key={k.slug} scope="col">
+                  <Link href={`/menu/${k.slug}`}>{k.nickname}</Link>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.min}>
+                <th scope="row">{porsiRange(row.min, row.max)}</th>
+                {row.prices.map((price, i) => (
+                  <td key={kitchens[i].slug}>
+                    {price === null ? "—" : rupiah(price)}
+                  </td>
                 ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Size M</th>
-                  {kitchens.map((k) => (
-                    <td key={k.slug} className="pl-num">
-                      {k.sizeM === null ? "—" : `+${rupiah(k.sizeM)}`}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th scope="row">Tanpa nasi</th>
-                  {kitchens.map((k) => (
-                    <td key={k.slug} className="pl-num">
-                      {k.noRiceOff > 0 ? `−${rupiah(k.noRiceOff)}` : "—"}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th scope="row">Hari antar</th>
-                  {kitchens.map((k) => (
-                    <td key={k.slug}>{k.daysLabel}</td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          <p className="pl-note">
-            Rupiah per porsi. Jumlah porsi di antara dua baris ikut harga baris
-            di atasnya. Ongkir, bila ada untuk lokasi kakak, dikonfirmasi lewat{" "}
-            <a href={chatLink("Halo, saya mau tanya harga paket katering")}>
-              chat
-            </a>
-            .
-          </p>
-        </div>
-      </main>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">Size M</th>
+              {kitchens.map((k) => (
+                <td key={k.slug}>
+                  {k.sizeM === null ? "—" : `+${rupiah(k.sizeM)}`}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row">Tanpa nasi</th>
+              {kitchens.map((k) => (
+                <td key={k.slug}>
+                  {k.noRiceOff > 0 ? `−${rupiah(k.noRiceOff)}` : "—"}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row">Hari antar</th>
+              {kitchens.map((k) => (
+                <td key={k.slug}>{k.daysLabel}</td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <p className="kl-note">
+        Rupiah per porsi. Jumlah porsi di antara dua baris ikut harga baris di
+        atasnya. Ongkir, bila ada untuk lokasi kakak, dikonfirmasi lewat{" "}
+        <a href={chatLink("Halo, saya mau tanya harga paket katering")}>chat</a>
+        .
+      </p>
     </>
   );
 }

@@ -3,6 +3,8 @@ import { Nunito, Poppins } from "next/font/google";
 import Image from "next/image";
 import {
   chatLink,
+  LEGAL_NAME,
+  NIB,
   toRungs,
   WA_DISPLAY,
   WA_NUMBER,
@@ -31,8 +33,6 @@ const body = Nunito({
 
 const WA_LINK = chatLink();
 
-const LEGAL_NAME = "Pian Yi Catering";
-const NIB = "2307250135661";
 const ADDRESS = {
   street:
     "Jl. Palm Kuning IV Blok BE/06 Sekt.1-3, RT 002/RW 007, Kel. Rawabuntu, Kec. Serpong",
