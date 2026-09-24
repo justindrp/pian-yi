@@ -119,7 +119,8 @@
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.16);
 }
 
-.kl-area-list a {
+.kl-area-list a,
+.kl-area-locate {
   display: block;
   padding: 11px 12px;
   border-radius: 10px;
@@ -127,7 +128,32 @@
   font-weight: 600;
 }
 
-.kl-area-list a:hover {
+.kl-area-locate {
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  color: var(--kl-accent);
+  cursor: pointer;
+}
+
+.kl-locate {
+  margin: 10px 16px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--kl-fill);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.kl-locate a {
+  color: var(--kl-accent);
+  font-weight: 700;
+}
+
+.kl-area-list a:hover,
+.kl-area-locate:hover {
   background: var(--kl-fill);
 }
 

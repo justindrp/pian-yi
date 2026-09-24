@@ -156,7 +156,7 @@ pian-yi/
 │   │   ├── (auth)/
 │   │   │   ├── login/ (magic-link email login)
 │   │   │   └── callback/ (Supabase Auth callback handler)
-│   │   ├── (catalog)/ — the public catalog (`/`, `/menu/[dapur]`, `/harga`, `/area/[area]`; see `ORDER_SITE.md`). **Public since 2026-09-24**: `page.tsx` is katerloka.com's home — the kitchen list plus the JSON-LD and the legal footer (entity name, NIB, registered address, contact) Meta business verification matches against — and `/menu` permanently redirects to it. Laid out as a food-delivery app (Plus Jakarta Sans, styles namespaced `.kl` in `catalog.css`); `ui.tsx` holds the home list shared by `/` and `/area/[area]`, `nav.tsx` the bottom tab bar. There is no `(dashboard)/page.tsx`: two route groups cannot both own `/`, and sign-in goes to `/dashboard` directly
+│   │   ├── (catalog)/ — the public catalog (`/`, `/menu/[dapur]`, `/harga`, `/area/[area]`; see `ORDER_SITE.md`). **Public since 2026-09-24**: `page.tsx` is katerloka.com's home — the kitchen list plus the JSON-LD and the legal footer (entity name, NIB, registered address, contact) Meta business verification matches against — and `/menu` permanently redirects to it. Laid out as a food-delivery app (Plus Jakarta Sans, styles namespaced `.kl` in `catalog.css`); `ui.tsx` holds the home list shared by `/` and `/area/[area]`, `nav.tsx` the bottom tab bar, `locate.tsx` the location prompt on open (`POST /api/catalog/locate`). There is no `(dashboard)/page.tsx`: two route groups cannot both own `/`, and sign-in goes to `/dashboard` directly
 │   │   ├── dapur/[id]/ — public, auth-free mobile page per subcontractor: tomorrow's delivery orders + that day's bill (see `OPERATIONS.md` "Subcontractor daily bill")
 │   │   ├── privacy/ (public privacy-policy page)
 │   │   ├── terms/ (public terms of service — required URL for Meta app review)
@@ -220,7 +220,7 @@ pian-yi/
 │   │   │   └── compress.ts (image compression before upload, e.g. menu/proof photos)
 │   │   ├── push/
 │   │   │   └── send.ts (web-push wrapper)
-│   │   ├── catalog/ (kitchens.ts: `loadCatalog()` — the active kitchens as the catalog shows them, nickname and `catalog_blurb` only, no id; plus the WhatsApp number, `chatLink()`, `BRAND` for what customers see, and `LEGAL_NAME`/`NIB`/`ADDRESS`/`CONTACT_EMAIL` for the legal footer)
+│   │   ├── catalog/ (kitchens.ts: `loadCatalog()` — the active kitchens as the catalog shows them, nickname and `catalog_blurb` only, no id; plus the WhatsApp number, `chatLink()`, `BRAND` for what customers see, and `LEGAL_NAME`/`NIB`/`ADDRESS`/`CONTACT_EMAIL` for the legal footer; locate.ts: `matchArea()`, a position to an area via the nearest placed neighbourhood)
 │   │   ├── subcontractors/
 │   │   │   └── areas.ts (**the only source of delivery-area strings.** `activeDeliveryAreas(db)` = union over `is_active` kitchens; `knownDeliveryAreas(db)` = union over all of them, for the two screens that define coverage; `unionAreas(rows)` for callers that already hold the rows. Never type an area list anywhere else)
 │   │   ├── utils/ — shared formatting/timing helpers

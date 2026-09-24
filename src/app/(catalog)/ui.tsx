@@ -10,6 +10,7 @@ import {
   slugify,
   WA_DISPLAY,
 } from "@/lib/catalog/kitchens";
+import { LocateItem, Locator } from "./locate";
 
 // Placeholder backgrounds until each kitchen has its own photography. Dealt
 // out by the kitchen's place among all slugs, so each kitchen keeps its colour
@@ -244,6 +245,9 @@ export function CatalogHome({
           </summary>
           <ul className="kl-area-list">
             <li>
+              <LocateItem />
+            </li>
+            <li>
               <Link href="/" aria-current={area === null}>
                 Semua area
               </Link>
@@ -259,6 +263,12 @@ export function CatalogHome({
         </details>
         <span className="kl-brand">{BRAND}</span>
       </div>
+      <Locator
+        auto={area === null}
+        chatHref={chatLink(
+          "Halo kak, lokasi saya belum ada di daftar area. Apakah bisa diantar?",
+        )}
+      />
 
       {filters.length > 0 && (
         <nav className="kl-scroll kl-chips" aria-label="Saring dapur">

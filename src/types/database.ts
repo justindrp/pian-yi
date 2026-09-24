@@ -99,6 +99,8 @@ export type Database = {
           created_at: string
           excluded: boolean
           id: string
+          lat: number | null
+          lng: number | null
           name: string
           updated_at: string
         }
@@ -107,6 +109,8 @@ export type Database = {
           created_at?: string
           excluded?: boolean
           id?: string
+          lat?: number | null
+          lng?: number | null
           name: string
           updated_at?: string
         }
@@ -115,6 +119,8 @@ export type Database = {
           created_at?: string
           excluded?: boolean
           id?: string
+          lat?: number | null
+          lng?: number | null
           name?: string
           updated_at?: string
         }

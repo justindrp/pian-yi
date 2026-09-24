@@ -1,3 +1,4 @@
+import type { NeighborhoodPoint } from "@/lib/catalog/locate";
 import type { ExcludedNeighborhood } from "@/lib/subcontractors/coverage";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -7,6 +8,8 @@ interface CacheData {
   activeInstructions: string[];
   neighborhoods: Record<string, string[]>;
   excludedNeighborhoods: ExcludedNeighborhood[];
+  /** Placed neighbourhoods, excluded ones included, for the catalog's location match. */
+  neighborhoodPoints: NeighborhoodPoint[];
   /** The mark these contents were loaded against. Null when it could not be read. */
   watermark: string | null;
   loadedAt: number;
@@ -48,17 +51,19 @@ async function load(): Promise<CacheData> {
   // write would never be loaded at all.
   const watermark = await readWatermark(db);
 
-  const [
-    settingsRes,
-    templatesRes,
-    instructionsRes,
-    neighborhoodsRes,
-  ] = await Promise.all([
-    db.from("settings").select("key, value"),
-    db.from("message_templates").select("key, template"),
-    db.from("chatbot_instructions").select("instruction").eq("is_active", true),
-    db.from("area_neighborhoods").select("area, name, excluded").order("name"),
-  ]);
+  const [settingsRes, templatesRes, instructionsRes, neighborhoodsRes] =
+    await Promise.all([
+      db.from("settings").select("key, value"),
+      db.from("message_templates").select("key, template"),
+      db
+        .from("chatbot_instructions")
+        .select("instruction")
+        .eq("is_active", true),
+      db
+        .from("area_neighborhoods")
+        .select("area, name, excluded, lat, lng")
+        .order("name"),
+    ]);
 
   const settings: Record<string, string> = {};
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;
@@ -75,7 +80,16 @@ async function load(): Promise<CacheData> {
   // serve", and must still be a name the bot recognises — see `exclusionFor()`.
   const neighborhoods: Record<string, string[]> = {};
   const excludedNeighborhoods: ExcludedNeighborhood[] = [];
+  const neighborhoodPoints: NeighborhoodPoint[] = [];
   for (const row of neighborhoodsRes.data ?? []) {
+    if (row.lat !== null && row.lng !== null) {
+      neighborhoodPoints.push({
+        area: row.area,
+        excluded: row.excluded,
+        lat: row.lat,
+        lng: row.lng,
+      });
+    }
     if (row.excluded) {
       excludedNeighborhoods.push({ area: row.area, name: row.name });
       continue;
@@ -90,6 +104,7 @@ async function load(): Promise<CacheData> {
     activeInstructions,
     neighborhoods,
     excludedNeighborhoods,
+    neighborhoodPoints,
     watermark,
     loadedAt: Date.now(),
   };
@@ -164,6 +179,11 @@ export async function getExcludedNeighborhoods(): Promise<
 > {
   const c = await getCache();
   return c.excludedNeighborhoods;
+}
+
+export async function getNeighborhoodPoints(): Promise<NeighborhoodPoint[]> {
+  const c = await getCache();
+  return c.neighborhoodPoints;
 }
 
 export function invalidateCache(): void {
