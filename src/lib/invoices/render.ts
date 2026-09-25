@@ -27,6 +27,10 @@ export type InvoiceItem = {
 };
 
 export type InvoiceSpec = {
+  /** A quotation retitles the page and drops the balance line. Default invoice. */
+  kind?: "invoice" | "quotation";
+  /** Header brand. Default Pian Yi Catering. */
+  brand?: { name: string; lines: string[] };
   number: string;
   date: string;
   due: string;
@@ -83,24 +87,26 @@ export function renderInvoicePdf(spec: InvoiceSpec): Promise<Buffer> {
     doc.on("error", reject);
   });
 
+  const quote = spec.kind === "quotation";
+  const brand = spec.brand ?? {
+    name: "Pian Yi Catering",
+    lines: [
+      "Katering harian halal · Tangerang Selatan",
+      "Instagram @pianyicatering",
+    ],
+  };
+
   // Header — brand left, invoice meta right.
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(19)
-    .fillColor(INK)
-    .text("Pian Yi Catering", M, M);
-  doc
-    .font("Helvetica")
-    .fontSize(8)
-    .fillColor(GREY)
-    .text("Katering harian halal · Tangerang Selatan", M, M + 24)
-    .text("Instagram @pianyicatering", M, M + 35);
+  doc.font("Helvetica-Bold").fontSize(19).fillColor(INK).text(brand.name, M, M);
+  doc.font("Helvetica").fontSize(8).fillColor(GREY);
+  for (const [i, line] of brand.lines.entries())
+    doc.text(line, M, M + 24 + i * 11);
 
   doc
     .font("Helvetica-Bold")
     .fontSize(22)
     .fillColor("#bdbdbd")
-    .text("INVOICE", M + W - 200, M - 2, {
+    .text(quote ? "PENAWARAN" : "INVOICE", M + W - 200, M - 2, {
       width: 200,
       align: "right",
       characterSpacing: 3,
@@ -110,7 +116,7 @@ export function renderInvoicePdf(spec: InvoiceSpec): Promise<Buffer> {
   for (const [k, v] of [
     ["No.", spec.number],
     ["Tanggal", spec.date],
-    ["Jatuh tempo", spec.due],
+    [quote ? "Berlaku s/d" : "Jatuh tempo", spec.due],
   ] as const) {
     doc.font("Helvetica").fontSize(8.5).fillColor(GREY);
     right(doc, k, COL.amount - 140, metaY);
@@ -152,7 +158,7 @@ export function renderInvoicePdf(spec: InvoiceSpec): Promise<Buffer> {
   const half = W / 2;
   for (const [i, [head, party]] of (
     [
-      ["DITAGIHKAN KEPADA", spec.billTo],
+      [quote ? "DITAWARKAN KEPADA" : "DITAGIHKAN KEPADA", spec.billTo],
       ["DIKIRIM KEPADA", spec.shipTo],
     ] as const
   ).entries()) {
@@ -241,10 +247,12 @@ export function renderInvoicePdf(spec: InvoiceSpec): Promise<Buffer> {
     right(doc, spec.paidLine.amount, COL.amount, y, 120);
     y += 15;
   }
-  doc.font("Helvetica").fontSize(9.5).fillColor(INK);
-  doc.text("Sisa tagihan", tLabel, y, { width: 130 });
-  right(doc, spec.balance, COL.amount, y, 120);
-  y += 32;
+  if (!quote) {
+    doc.font("Helvetica").fontSize(9.5).fillColor(INK);
+    doc.text("Sisa tagihan", tLabel, y, { width: 130 });
+    right(doc, spec.balance, COL.amount, y, 120);
+  }
+  y += quote ? 17 : 32;
 
   // Payment block.
   const payH = 26 + spec.payment.length * 12;
