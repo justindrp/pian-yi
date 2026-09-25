@@ -20,8 +20,16 @@ describe("previousDeliveryDay", () => {
 
 describe("diffSheets", () => {
   it("names who started, who stopped, and who changed size", () => {
-    const before = [row("a", "lunch", 6), row("b", "lunch", 1), row("c", "dinner", 2)];
-    const after = [row("b", "lunch", 1), row("c", "dinner", 3), row("d", "lunch", 1)];
+    const before = [
+      row("a", "lunch", 6),
+      row("b", "lunch", 1),
+      row("c", "dinner", 2),
+    ];
+    const after = [
+      row("b", "lunch", 1),
+      row("c", "dinner", 3),
+      row("d", "lunch", 1),
+    ];
     const d = diffSheets(before, after);
 
     expect(d.added.map((e) => e.customerId)).toEqual(["d"]);
@@ -41,7 +49,10 @@ describe("diffSheets", () => {
   });
 
   it("sums two orders drawn on the same meal", () => {
-    const d = diffSheets([row("a", "lunch", 1)], [row("a", "lunch", 1), row("a", "lunch", 2)]);
+    const d = diffSheets(
+      [row("a", "lunch", 1)],
+      [row("a", "lunch", 1), row("a", "lunch", 2)],
+    );
     expect(d.changed).toEqual([
       expect.objectContaining({ customerId: "a", before: 1, after: 3 }),
     ]);

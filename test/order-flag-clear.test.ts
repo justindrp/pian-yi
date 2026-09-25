@@ -3,6 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin");
+// The stub databases answer every table with a row, so a real lookup would
+// find an open event lead for every customer and withhold every order.
+jest.mock("@/lib/events/leads", () => ({
+  ...jest.requireActual("@/lib/events/leads"),
+  openEventLead: jest.fn(async () => null),
+}));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/claude/classify-address", () => ({
   classifyAddress: jest.fn().mockResolvedValue("house"),
@@ -82,7 +88,8 @@ function mockDb(): Write[] {
         return { id: "0d000000-0000-4000-8000-000000000001", created_at: NOW };
       }
       // No payment message on record, so the repeat guard must not fire.
-      if (table === "conversations" && filters.role === "assistant") return null;
+      if (table === "conversations" && filters.role === "assistant")
+        return null;
       if (table === "pricing_tiers") {
         return { portions: 5, price_per_portion: 29000 };
       }
@@ -113,9 +120,7 @@ const BASE = {
   area: "BSD Baru",
   // Every order names its dapur: there is no house ladder (migration 135).
   subcontractor_id: "00000000-0000-4000-8000-00000000d0d0",
-  delivery_schedule: [
-    { date: "2026-09-01", meal_type: "lunch", portions: 5 },
-  ],
+  delivery_schedule: [{ date: "2026-09-01", meal_type: "lunch", portions: 5 }],
 };
 
 // 2026-08-29: Carolin was flagged at 05:20 with "Kemungkinan order belum

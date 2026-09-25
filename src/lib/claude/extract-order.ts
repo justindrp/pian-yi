@@ -13,7 +13,7 @@ import {
   saveMessage,
   updateMessageReceipt,
 } from "@/lib/claude/conversation";
-import { upsertEventLead } from "@/lib/events/leads";
+import { openEventLead, upsertEventLead } from "@/lib/events/leads";
 import { isDeliveryDay } from "@/lib/holidays/id";
 import { stripCompensation } from "@/lib/kitchen/compensation";
 import { findMapsLink, isSharedPinLink } from "@/lib/maps/link";
@@ -767,7 +767,8 @@ export async function eventPortionFloor(): Promise<number> {
  * The shape, not the words: **every portion on one delivery date**, at or above
  * the floor. A run of dates is a subscription however large — the 180-portion
  * order at 20 a day is a real customer — and an empty schedule is the day-by-day
- * booker, who has named no date at all and must not be caught.
+ * booker, who has named no date at all and must not be caught. A multi-day
+ * event is caught by the customer's open lead instead (`openEventLead()`).
  */
 export function looksLikeEventOrder(
   input: ExtractedOrderInput,
@@ -1608,14 +1609,25 @@ export async function createOrderFromExtraction(
   // Exempt: the payment-proof path (`sendPaymentInfo: false`), where the money
   // has already moved, and a contract customer, whose negotiated rate is the
   // price whatever shape the order arrives in.
+  //
+  // An open event lead withholds too, whatever the shape. A multi-day event
+  // passes `looksLikeEventOrder` as a subscription, and on 2026-09-25 that sent
+  // Natalie bank details for 90 portions off Dapur Suplir's ladder after a human
+  // had quoted her 135 at Rp 27.000 from a different kitchen. The lead's price
+  // was a human decision; the order carrying it is written by hand, as Fira's
+  // was, never off the ladder. No contract exemption here: a negotiated rate is
+  // for the package, not the event someone is tendering.
+  const lead = sendPaymentInfo ? await openEventLead(customerId) : null;
   if (
     sendPaymentInfo &&
-    looksLikeEventOrder(input, await eventPortionFloor())
+    (lead !== null || looksLikeEventOrder(input, await eventPortionFloor()))
   ) {
-    const contract = await contractPrice(orderCustomerId);
+    const contract = lead ? null : await contractPrice(orderCustomerId);
     if (contract === null) {
       const eventMsg =
-        "Baik kak, pesanan untuk acara seperti ini kami tanyakan dulu harganya ke dapur ya, jadi pesanannya belum kami buatkan 🙏 Kami kabari secepatnya.";
+        lead?.status === "quoted"
+          ? "Baik kak, terima kasih 🙏 Pesanan acaranya kami buatkan dan detail pembayarannya kami kirim sebentar lagi ya."
+          : "Baik kak, pesanan untuk acara seperti ini kami tanyakan dulu harganya ke dapur ya, jadi pesanannya belum kami buatkan 🙏 Kami kabari secepatnya.";
       const conversationId = await saveMessage({
         customerId,
         role: "assistant",
@@ -1633,7 +1645,10 @@ export async function createOrderFromExtraction(
         (sum, s) => sum + (Number(s.portions) || 0),
         0,
       );
-      const question = `Pesanan acara: ${portions} porsi, ${slots[0]?.date ?? "tanggal belum jelas"}, ${input.address || "alamat belum jelas"}. Perlu ditenderkan ke dapur dan diberi harga — bot tidak membuat ordernya.`;
+      const question =
+        lead?.status === "quoted"
+          ? `Acara disetujui pelanggan (harga dikutip Rp ${lead.quoted?.toLocaleString("id-ID") ?? "?"}/porsi). Buat ordernya dan kirim detail pembayaran dengan tangan — bot tidak membuat ordernya.`
+          : `Pesanan acara: ${portions} porsi, ${slots[0]?.date ?? "tanggal belum jelas"}, ${input.address || "alamat belum jelas"}. Perlu ditenderkan ke dapur dan diberi harga — bot tidak membuat ordernya.`;
       await db.from("customer_flags").upsert({
         customer_id: customerId,
         pending_bot_response: true,
@@ -1643,16 +1658,22 @@ export async function createOrderFromExtraction(
       // The lead records itself (migration 121). The flag above expires 48
       // hours after the customer stops chasing it, and a quoted event needs
       // chasing hardest once the customer has gone quiet — so what ages is a
-      // row of its own, not the escalation.
-      await upsertEventLead({
-        customerId,
-        eventDate: slots[0]?.date ?? null,
-        portions,
-        venue: input.address || null,
-        brief: question,
-      });
+      // row of its own, not the escalation. An existing lead is left alone: the
+      // extraction that tripped it is the wrong order, and its portion count
+      // (90 for Natalie's 135) must not overwrite the brief.
+      if (!lead) {
+        await upsertEventLead({
+          customerId,
+          eventDate: slots[0]?.date ?? null,
+          portions,
+          venue: input.address || null,
+          brief: question,
+        });
+      }
       await sendPushToAllAdmins(
-        "Pesanan acara — perlu ditenderkan",
+        lead?.status === "quoted"
+          ? "Acara disetujui — kirim detail pembayaran"
+          : "Pesanan acara — perlu ditenderkan",
         `${input.customer_name || phone}: ${portions} porsi, ${slots[0]?.date ?? "tanggal ?"}`,
         "/orders",
         "high",

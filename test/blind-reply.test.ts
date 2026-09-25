@@ -10,7 +10,9 @@ const toolBlock = { type: "tool_use" };
 // had landed.
 describe("a reply written alongside its own tool call", () => {
   test("text and a tool call in one response is blind", () => {
-    expect(wroteTextBlind({ content: [textBlock, toolBlock] }, "Mau saya skip?")).toBe(true);
+    expect(
+      wroteTextBlind({ content: [textBlock, toolBlock] }, "Mau saya skip?"),
+    ).toBe(true);
   });
 
   test("a tool call with no text is not — that path already asks again", () => {
@@ -18,7 +20,9 @@ describe("a reply written alongside its own tool call", () => {
   });
 
   test("whitespace is not text", () => {
-    expect(wroteTextBlind({ content: [textBlock, toolBlock] }, "  \n ")).toBe(false);
+    expect(wroteTextBlind({ content: [textBlock, toolBlock] }, "  \n ")).toBe(
+      false,
+    );
   });
 
   test("a reply that called nothing is written knowing everything it can know", () => {

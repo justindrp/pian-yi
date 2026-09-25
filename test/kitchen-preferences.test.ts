@@ -68,10 +68,14 @@ describe("safeManualNote", () => {
   });
 
   it("keeps both halves of an admin note the AI-block filters would have eaten", () => {
-    expect(safeManualNote("langganan lama, porsi besar")).toBe("langganan lama, porsi besar");
+    expect(safeManualNote("langganan lama, porsi besar")).toBe(
+      "langganan lama, porsi besar",
+    );
   });
 
   it("drops only the internal clause when a note carries both", () => {
-    expect(safeManualNote("tidak pedas; dibeli lewat kakaknya")).toBe("tidak pedas");
+    expect(safeManualNote("tidak pedas; dibeli lewat kakaknya")).toBe(
+      "tidak pedas",
+    );
   });
 });

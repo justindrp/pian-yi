@@ -10,7 +10,10 @@ type Kitchen = {
  * Enough of PostgREST for this one function: `customers` answers a
  * `maybeSingle`, `subcontractors` answers an awaited `eq`.
  */
-function db(customer: { area: string | null; area_2?: string | null } | null, kitchens: Kitchen[]) {
+function db(
+  customer: { area: string | null; area_2?: string | null } | null,
+  kitchens: Kitchen[],
+) {
   return {
     from(table: string) {
       if (table === "customers") {
@@ -30,9 +33,21 @@ function db(customer: { area: string | null; area_2?: string | null } | null, ki
   } as any;
 }
 
-const SUPLIR = { id: "suplir", customer_nickname: "Dapur Suplir", delivery_areas: ["Alam Sutera", "BSD Lama", "Karawaci"] };
-const PALEM = { id: "palem", customer_nickname: "Dapur Palem", delivery_areas: ["Bintaro"] };
-const MONSTERA = { id: "monstera", customer_nickname: "Dapur Monstera", delivery_areas: ["Alam Sutera", "Bintaro"] };
+const SUPLIR = {
+  id: "suplir",
+  customer_nickname: "Dapur Suplir",
+  delivery_areas: ["Alam Sutera", "BSD Lama", "Karawaci"],
+};
+const PALEM = {
+  id: "palem",
+  customer_nickname: "Dapur Palem",
+  delivery_areas: ["Bintaro"],
+};
+const MONSTERA = {
+  id: "monstera",
+  customer_nickname: "Dapur Monstera",
+  delivery_areas: ["Alam Sutera", "Bintaro"],
+};
 
 describe("kitchensForCustomerArea", () => {
   it("drops a kitchen that no longer carries the customer's area", async () => {

@@ -10,6 +10,36 @@ type UpsertInput = {
 };
 
 /**
+ * The customer's open event lead, if they have one.
+ *
+ * Whether a thread is an event cannot be read off the order's shape alone:
+ * Natalie's crew event on 2026-09-25 was 27 portions a day for five days, which
+ * looks exactly like a subscription, and `extract_order` priced it off Dapur
+ * Suplir's ladder and sent the bank details for Rp 2.340.000 against an agreed
+ * Rp 3.645.000. The lead is what knows.
+ */
+export async function openEventLead(
+  customerId: string,
+): Promise<{ id: string; status: string; quoted: number | null } | null> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("event_leads")
+    .select("id, status, quoted_price_per_portion")
+    .eq("customer_id", customerId)
+    .in("status", OPEN_EVENT_LEAD_STATUSES)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const lead = (data ?? [])[0];
+  return lead
+    ? {
+        id: lead.id,
+        status: lead.status,
+        quoted: lead.quoted_price_per_portion,
+      }
+    : null;
+}
+
+/**
  * Record an event enquiry, or fill in what a second message added to one.
  *
  * Matched on the customer's open lead rather than inserted blind: a customer

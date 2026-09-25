@@ -3,6 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin");
+// The stub databases answer every table with a row, so a real lookup would
+// find an open event lead for every customer and withhold every order.
+jest.mock("@/lib/events/leads", () => ({
+  ...jest.requireActual("@/lib/events/leads"),
+  openEventLead: jest.fn(async () => null),
+}));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/claude/classify-address", () => ({
   classifyAddress: jest.fn().mockResolvedValue("house"),
@@ -89,7 +95,8 @@ function mockDb() {
         return { id: "0d000000-0000-4000-8000-00000000000a", created_at: null };
       if (table === "subcontractors")
         return { id: filters.id, offers_size_m: false };
-      if (table === "conversations" && filters.role === "assistant") return null;
+      if (table === "conversations" && filters.role === "assistant")
+        return null;
       if (table === "pricing_tiers")
         return {
           portions: 5,

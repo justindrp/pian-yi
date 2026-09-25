@@ -4,11 +4,7 @@ import {
   WINDOW_NOTICE_WELCOME,
 } from "@/lib/whatsapp/window-notice";
 
-const ALL = [
-  WINDOW_NOTICE_WELCOME,
-  WINDOW_NOTICE_SHORT,
-  WINDOW_NOTICE_CLAUSE,
-];
+const ALL = [WINDOW_NOTICE_WELCOME, WINDOW_NOTICE_SHORT, WINDOW_NOTICE_CLAUSE];
 
 // "Jalurnya terkunci" on its own reads as our choice — our office hours, our
 // staffing — and customers answer it with fixes for a problem we do not have.

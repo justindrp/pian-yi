@@ -104,7 +104,8 @@ function mockDb(opts: {
       if (table === "orders" && op === "select") {
         // The open-order lookup filters on status; anything else asking about
         // orders is not what these tests are about.
-        if (filters.status !== "pending_payment" || !opts.openOrder) return null;
+        if (filters.status !== "pending_payment" || !opts.openOrder)
+          return null;
         const floor = greaterThan.created_at;
         if (typeof floor === "string" && orderCreatedAt <= floor) return null;
         return { id: ORDER_ID, created_at: orderCreatedAt };

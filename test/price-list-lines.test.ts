@@ -101,9 +101,10 @@ describe("sellableSizesLines", () => {
 
   it("sorts an unsorted ladder and handles an empty one", () => {
     expect(sellableSizesLines([HOUSE[2], HOUSE[0]])).toBe(
-      ["- 5 porsi → Rp 29.000/porsi → *Rp 145.000*", "- 10 porsi → Rp 28.000/porsi → *Rp 280.000*"].join(
-        "\n",
-      ),
+      [
+        "- 5 porsi → Rp 29.000/porsi → *Rp 145.000*",
+        "- 10 porsi → Rp 28.000/porsi → *Rp 280.000*",
+      ].join("\n"),
     );
     expect(sellableSizesLines([])).toBe("");
   });

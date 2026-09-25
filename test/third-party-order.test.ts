@@ -5,6 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin");
+// The stub databases answer every table with a row, so a real lookup would
+// find an open event lead for every customer and withhold every order.
+jest.mock("@/lib/events/leads", () => ({
+  ...jest.requireActual("@/lib/events/leads"),
+  openEventLead: jest.fn(async () => null),
+}));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/claude/classify-address", () => ({
   classifyAddress: jest.fn().mockResolvedValue("house"),
@@ -94,7 +100,9 @@ function mockDb(byPhone: Record<string, { id: string; name: string | null }>) {
         const person = key ? people[key] : undefined;
         // Everyone here already has a link on file; the maps-link gate is
         // covered in its own suite.
-        return person ? { ...person, google_maps_link: "https://maps.app.goo.gl/testlink" } : null;
+        return person
+          ? { ...person, google_maps_link: "https://maps.app.goo.gl/testlink" }
+          : null;
       }
       if (table === "customers" && op === "insert") {
         const inserted = payload as { phone_number: string; name: string };

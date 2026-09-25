@@ -89,7 +89,9 @@ function stubRecipientDb(
   const db = {
     from: (table: string) => ({
       select: () => ({
-        eq: async () => ({ data: table === "customer_contacts" ? contacts : [] }),
+        eq: async () => ({
+          data: table === "customer_contacts" ? contacts : [],
+        }),
         in: async (_col: string, phones: string[]) => ({
           data: customers.filter((c) => phones.includes(c.phone_number)),
         }),
@@ -102,7 +104,9 @@ function stubRecipientDb(
 
 describe("proofRecipientsFor", () => {
   it("returns nothing for a customer who registered nobody", async () => {
-    expect(await proofRecipientsFor(stubRecipientDb([], []), "owner")).toEqual([]);
+    expect(await proofRecipientsFor(stubRecipientDb([], []), "owner")).toEqual(
+      [],
+    );
   });
 
   it("carries the recipient's own customers row when they have written to us", async () => {

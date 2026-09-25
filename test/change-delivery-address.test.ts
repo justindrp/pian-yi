@@ -196,9 +196,9 @@ describe("changeDeliveryAddress", () => {
   it("refuses a call with no valid date, and one with no slot", async () => {
     const db = makeDb([], CUSTOMER);
 
-    expect((await call(db, { delivery_dates: ["besok"], address_slot: 1 })).ok).toBe(
-      false,
-    );
+    expect(
+      (await call(db, { delivery_dates: ["besok"], address_slot: 1 })).ok,
+    ).toBe(false);
     expect((await call(db, { delivery_dates: [OPEN] })).ok).toBe(false);
     expect(updates).toEqual([]);
   });

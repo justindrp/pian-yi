@@ -64,7 +64,10 @@ describe("matchCaption", () => {
       { customerId: "a", name: "Budi" },
       { customerId: "b", name: "Budi Hartono" },
     ];
-    expect(matchCaption("budi", two)).toMatchObject({ ok: true, customerId: "a" });
+    expect(matchCaption("budi", two)).toMatchObject({
+      ok: true,
+      customerId: "a",
+    });
   });
 
   it("stops at the first ambiguous pass instead of loosening", () => {
@@ -72,7 +75,10 @@ describe("matchCaption", () => {
       { customerId: "a", name: "Andi Pratama" },
       { customerId: "b", name: "Andi Kusuma" },
     ];
-    expect(matchCaption("andi", two)).toMatchObject({ ok: false, reason: "ambiguous" });
+    expect(matchCaption("andi", two)).toMatchObject({
+      ok: false,
+      reason: "ambiguous",
+    });
   });
 
   it("takes the exact name even when it prefixes another", () => {
@@ -91,7 +97,10 @@ describe("matchCaption", () => {
       { customerId: "c1", name: "Clairine Aurelia" },
       { customerId: "c1", name: "Clairine Aurelia" },
     ];
-    expect(matchCaption("clairine", both)).toMatchObject({ ok: true, customerId: "c1" });
+    expect(matchCaption("clairine", both)).toMatchObject({
+      ok: true,
+      customerId: "c1",
+    });
   });
 
   it("forgives a one-character typo and flags it as fuzzy", () => {
@@ -122,8 +131,14 @@ describe("matchCaption", () => {
       { customerId: "a", name: "Ani" },
       { customerId: "b", name: "Adi" },
     ];
-    expect(matchCaption("ani", short)).toMatchObject({ ok: true, customerId: "a" });
-    expect(matchCaption("andi", short)).toMatchObject({ ok: false, reason: "ambiguous" });
+    expect(matchCaption("ani", short)).toMatchObject({
+      ok: true,
+      customerId: "a",
+    });
+    expect(matchCaption("andi", short)).toMatchObject({
+      ok: false,
+      reason: "ambiguous",
+    });
   });
 
   it("takes the closer spelling when a typo is nearer one name than another", () => {
@@ -147,9 +162,18 @@ describe("matchCaption", () => {
   });
 
   it("treats an empty or emoji-only caption as empty", () => {
-    expect(matchCaption("", today)).toMatchObject({ ok: false, reason: "empty" });
-    expect(matchCaption("   ", today)).toMatchObject({ ok: false, reason: "empty" });
-    expect(matchCaption("🙏", today)).toMatchObject({ ok: false, reason: "empty" });
+    expect(matchCaption("", today)).toMatchObject({
+      ok: false,
+      reason: "empty",
+    });
+    expect(matchCaption("   ", today)).toMatchObject({
+      ok: false,
+      reason: "empty",
+    });
+    expect(matchCaption("🙏", today)).toMatchObject({
+      ok: false,
+      reason: "empty",
+    });
   });
 });
 
@@ -179,14 +203,14 @@ describe("windowWarning", () => {
   });
 
   it("handles a customer who has never messaged in", () => {
-    expect(windowWarning({ ...base, hours: Number.POSITIVE_INFINITY })).toContain(
-      "belum pernah chat",
-    );
+    expect(
+      windowWarning({ ...base, hours: Number.POSITIVE_INFINITY }),
+    ).toContain("belum pernah chat");
   });
 
   // The manual number forwards proofs too (migration 088), so the warning was
   // telling the handset in someone's hand to send from itself.
-  it("says \"nomor ini\" when the forwarder is the manual number", () => {
+  it('says "nomor ini" when the forwarder is the manual number', () => {
     const w = windowWarning({
       ...base,
       hours: 26,
@@ -332,7 +356,10 @@ describe("proofAck", () => {
       matchedName: "Ireine Roosdy",
       caption: "Ireine",
       fuzzy: false,
-      sends: [{ ...buyer, hours: 1 }, { ...abby, name: null }],
+      sends: [
+        { ...buyer, hours: 1 },
+        { ...abby, name: null },
+      ],
       ...settings,
     });
     expect(ack).toContain("Diteruskan ke penerima terdaftar (+6281526021414).");

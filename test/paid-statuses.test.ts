@@ -76,8 +76,10 @@ describe("PAID_STATUSES", () => {
     for (const site of QUOTA_SITES) {
       const source = readFileSync(join(process.cwd(), site), "utf8");
       const lists = source.match(statusList) ?? [];
-      expect({ site, lists: lists.filter((l) => l.includes("payment_proof")) })
-        .toEqual({ site, lists: [] });
+      expect({
+        site,
+        lists: lists.filter((l) => l.includes("payment_proof")),
+      }).toEqual({ site, lists: [] });
       expect({ site, imports: source.includes("PAID_STATUSES") }).toEqual({
         site,
         imports: true,
@@ -92,7 +94,11 @@ describe("remainingTodayByCustomer", () => {
       [
         { customer_id: "c1", package_size: 20, status: "active" },
         // Renewal paid for but not yet verified by an admin.
-        { customer_id: "c1", package_size: 30, status: "payment_proof_received" },
+        {
+          customer_id: "c1",
+          package_size: 30,
+          status: "payment_proof_received",
+        },
       ],
       [
         { customer_id: "c1", portions: 1, delivery_date: "2026-09-20" },

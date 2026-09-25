@@ -5,6 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin");
+// The stub databases answer every table with a row, so a real lookup would
+// find an open event lead for every customer and withhold every order.
+jest.mock("@/lib/events/leads", () => ({
+  ...jest.requireActual("@/lib/events/leads"),
+  openEventLead: jest.fn(async () => null),
+}));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/claude/classify-address", () => ({
   classifyAddress: jest.fn().mockResolvedValue("apartment"),
@@ -116,9 +122,7 @@ describe("createOrderFromExtraction — an excluded place is refused", () => {
     expect(saveMessage).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: CUSTOMER_ID, role: "assistant" }),
     );
-    expect(
-      updates.some((u) => u.needs_human_review === true),
-    ).toBe(true);
+    expect(updates.some((u) => u.needs_human_review === true)).toBe(true);
   });
 
   // The refusal is ours, not one kitchen's, so it must not read as "we will

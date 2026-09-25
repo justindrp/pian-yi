@@ -62,11 +62,9 @@ describe("validateReply", () => {
     // With only the unbooked number in context, "sisa 2 porsi" — the answer the
     // system prompt tells the model to give — was rejected as a hallucination
     // twice and she got the fallback template instead.
-    const create = jest
-      .fn()
-      .mockResolvedValue({
-        content: [{ type: "text", text: '{"valid": true}' }],
-      });
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"valid": true}' }],
+    });
     (getAnthropicClient as jest.Mock).mockReturnValue({
       messages: { create },
     });
@@ -87,11 +85,9 @@ describe("validateReply", () => {
     // hand, no order row exists for an untendered event, so with every outbound
     // line marked BOT the draft reading our own offer back was unsupported by
     // construction and the customer got the fallback template.
-    const create = jest
-      .fn()
-      .mockResolvedValue({
-        content: [{ type: "text", text: '{"valid": true}' }],
-      });
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"valid": true}' }],
+    });
     (getAnthropicClient as jest.Mock).mockReturnValue({
       messages: { create },
     });
@@ -121,11 +117,9 @@ describe("validateReply", () => {
   });
 
   test("context carries the dates already booked", async () => {
-    const create = jest
-      .fn()
-      .mockResolvedValue({
-        content: [{ type: "text", text: '{"valid": true}' }],
-      });
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"valid": true}' }],
+    });
     (getAnthropicClient as jest.Mock).mockReturnValue({ messages: { create } });
 
     await validateReply({
@@ -182,7 +176,9 @@ describe("validateReply", () => {
     });
 
     test("one of our own staff is not the customer's name", async () => {
-      blocks([{ field: "name", claim: "Jennifer memang bagian dari tim kami" }]);
+      blocks([
+        { field: "name", claim: "Jennifer memang bagian dari tim kami" },
+      ]);
       expect((await validateReply(baseParams)).valid).toBe(true);
     });
 
@@ -258,11 +254,9 @@ describe("validateReply", () => {
     // "acara" in our own qualifying question put a daily-subscription lead
     // under EVENT_RULES on 2026-09-20, where the per-kitchen no-rice discounts
     // stopped being general business info and her reply was blocked twice.
-    const create = jest
-      .fn()
-      .mockResolvedValue({
-        content: [{ type: "text", text: '{"valid": true}' }],
-      });
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"valid": true}' }],
+    });
     (getAnthropicClient as jest.Mock).mockReturnValue({ messages: { create } });
 
     await validateReply({

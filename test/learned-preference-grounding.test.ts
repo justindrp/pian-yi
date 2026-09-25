@@ -56,7 +56,9 @@ function makeDb(messages: { role: string; content: string }[]) {
 
 async function capturePrompt(): Promise<string> {
   const create = jest.fn().mockResolvedValue({
-    content: [{ type: "text", text: "- Preferensi: tidak ada permintaan khusus." }],
+    content: [
+      { type: "text", text: "- Preferensi: tidak ada permintaan khusus." },
+    ],
     usage: { input_tokens: 10, output_tokens: 10 },
     stop_reason: "end_turn",
   });

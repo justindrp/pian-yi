@@ -28,7 +28,8 @@ describe("fixWeekdayNames", () => {
   });
 
   it("never touches minggu meaning week", () => {
-    const text = "Menu minggu ini sudah tak kirim ya kak, minggu depan menyusul.";
+    const text =
+      "Menu minggu ini sudah tak kirim ya kak, minggu depan menyusul.";
     expect(fixWeekdayNames(text, TODAY)).toBe(text);
   });
 

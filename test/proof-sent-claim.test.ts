@@ -1,4 +1,7 @@
-import { claimsMenuSent, claimsProofSent } from "@/app/api/webhook/whatsapp/route";
+import {
+  claimsMenuSent,
+  claimsProofSent,
+} from "@/app/api/webhook/whatsapp/route";
 
 // The route module pulls in the whole webhook dependency graph. Nothing here
 // calls into it — `claimsProofSent` is pure — so the mocks only need to exist.
@@ -56,9 +59,9 @@ describe("claimsProofSent", () => {
   });
 
   it("does not fire on a menu claim", () => {
-    expect(claimsProofSent("menu minggu ini sudah saya kirim gambarnya ya kak")).toBe(
-      false,
-    );
+    expect(
+      claimsProofSent("menu minggu ini sudah saya kirim gambarnya ya kak"),
+    ).toBe(false);
   });
 
   it("owns a reply the menu claim would also have matched", () => {

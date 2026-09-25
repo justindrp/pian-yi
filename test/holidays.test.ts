@@ -92,8 +92,7 @@ describe("describeUpcomingHolidays", () => {
     const block = describeUpcomingHolidays("2026-08-29", 20) as string;
     const sundays = block
       .split("\n")
-      .filter((l) => l.includes("hari Minggu"))
-      .length;
+      .filter((l) => l.includes("hari Minggu")).length;
     expect(block).toContain("Minggu 6 September 2026: TUTUP, hari Minggu");
     expect(sundays).toBe(3);
     // 1-5 and 7 September are working days, so none of them may be listed.

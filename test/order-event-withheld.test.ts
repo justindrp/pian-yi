@@ -3,11 +3,18 @@ import {
   createOrderFromExtraction,
   looksLikeEventOrder,
 } from "@/lib/claude/extract-order";
+import { openEventLead } from "@/lib/events/leads";
 import { sendPushToAllAdmins } from "@/lib/push/send";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 
 jest.mock("@/lib/supabase/admin");
+// The stub databases answer every table with a row, so a real lookup would
+// find an open event lead for every customer and withhold every order.
+jest.mock("@/lib/events/leads", () => ({
+  ...jest.requireActual("@/lib/events/leads"),
+  openEventLead: jest.fn(async () => null),
+}));
 jest.mock("@/lib/whatsapp/client");
 jest.mock("@/lib/claude/classify-address", () => ({
   classifyAddress: jest.fn().mockResolvedValue("house"),
@@ -192,6 +199,41 @@ describe("createOrderFromExtraction — an event is withheld and tendered", () =
     });
 
     expect(touched).toContain("orders");
+  });
+
+  // Natalie, 2026-09-25: 27 a day for five days looks like a subscription, and
+  // was priced off a kitchen's ladder after a human had quoted it at 27.000.
+  it("withholds a multi-day order when the customer has an open lead", async () => {
+    const touched = mockDb();
+    (openEventLead as jest.Mock).mockResolvedValueOnce({
+      id: "e0000000-0000-4000-8000-000000000001",
+      status: "quoted",
+      quoted: 27000,
+    });
+
+    await createOrderFromExtraction(CUSTOMER_ID, PHONE, {
+      ...BASE,
+      package_size: 90,
+      delivery_schedule: [
+        { date: "2026-09-30", meal_type: "lunch", portions: 9 },
+        { date: "2026-09-30", meal_type: "dinner", portions: 9 },
+        { date: "2026-10-01", meal_type: "lunch", portions: 9 },
+        { date: "2026-10-01", meal_type: "dinner", portions: 9 },
+      ],
+    });
+
+    expect(touched).not.toContain("orders");
+    // The lead already holds the agreed brief; the wrong count must not reach it.
+    expect(touched).not.toContain("event_leads");
+    const [, text] = (sendTextMessage as jest.Mock).mock.calls[0];
+    expect(text).not.toMatch(/transfer|BCA|Nominal|Rp/i);
+    expect(text).toMatch(/pembayaran/i);
+    expect(sendPushToAllAdmins).toHaveBeenCalledWith(
+      expect.stringMatching(/disetujui/),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+    );
   });
 
   // The money has already moved; refusing would throw away a real payment.
