@@ -37,6 +37,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
+import { BRAND as B, FORMER_NAME, lockupSvg } from "@/lib/brand/logo";
 import { sizeMSurcharge } from "@/lib/orders/size";
 import { tiersForKitchen } from "@/lib/pricing/tiers";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
@@ -44,12 +45,6 @@ import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const DIR = process.env.MENU_PHOTO_DIR ?? ".menu-photos";
-const RED = "#C0181C"; // brand primary, flat — the menu card uses this exact red
-const GOLD = "#F7C948";
-const CREAM = "#FDF6E7";
-const INK = "#2B2B2B";
-/** The white-on-transparent master mark; it carries the wordmark, so the sheet prints no brand name of its own. */
-const LOGO = `${process.cwd()}/scripts/assets/menu-card-logo.png`;
 const WA = "0851-1121-4390";
 
 /**
@@ -94,72 +89,79 @@ function rateFor(portions: number, tiers: Record<number, number>): number {
   return tiers[listed[0]];
 }
 
-/** `540000` → `"540k"`, `1040000` → `"1.040k"` — the notation the sheet has always used. */
-function k(total: number): string {
-  return `${(total / 1000).toLocaleString("id-ID")}k`;
+/** `540000` → `"540.000"`. The sheet prints `Rp` smaller in front, so the figures line up. */
+function rp(n: number): string {
+  return n.toLocaleString("id-ID");
 }
 
 type Price = { total: string; rate: string };
 
 function price(portions: number, perPortion: number): Price {
   return {
-    total: k(portions * perPortion),
-    rate: `${perPortion / 1000}k/porsi`,
+    total: rp(portions * perPortion),
+    rate: `Rp ${rp(perPortion)}/porsi`,
   };
 }
 
+// The Katerloka sheet (docs/DESIGN_SYSTEM.md), the menu card's twin: nasi
+// ground, white price cells, the M line behind a kunyit chip, a daun footer.
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
-body{width:1080px;height:1350px;background:${RED};font-family:'Nunito',system-ui,sans-serif;color:#fff;-webkit-font-smoothing:antialiased}
-.wrap{padding:32px 40px 22px;height:100%;display:flex;flex-direction:column}
-.head{display:flex;align-items:center;gap:18px}
-.logo{width:150px;height:auto;object-fit:contain;flex:none}
+body{width:1080px;height:1350px;background:${B.nasi};font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:${B.kecap};-webkit-font-smoothing:antialiased}
+.wrap{height:100%;display:flex;flex-direction:column}
+.main{padding:34px 44px 0;display:flex;flex-direction:column;flex:1}
+.head{display:flex;align-items:flex-start;gap:24px}
+.logo{display:block;margin-bottom:12px}
 .htext{flex:1}
-.kicker{font-family:'Poppins';font-size:14px;letter-spacing:.34em;font-weight:600;color:${GOLD};text-transform:uppercase}
-.title{font-family:'Poppins';font-size:52px;font-weight:800;line-height:1.02;margin-top:2px}
-.sub{font-family:'Poppins';font-size:20px;font-weight:500;margin-top:4px;opacity:.92}
-.sizes{flex:none;text-align:right;font-family:'Poppins';font-size:14px;font-weight:500;line-height:1.65;opacity:.95}
-.sizes b{color:${GOLD};font-weight:700}
-.rule{height:2px;background:${GOLD};opacity:.55;margin:18px 0 16px}
+.kicker{font-size:15px;letter-spacing:.14em;font-weight:800;color:${B.cabai};text-transform:uppercase}
+.title{font-size:52px;font-weight:800;line-height:1.02;letter-spacing:-.02em;margin-top:4px}
+.sub{font-size:19px;font-weight:600;margin-top:6px;color:${B.muted}}
+.sizes{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:8px;padding-top:10px;font-size:15px;font-weight:600;color:${B.ink2}}
+.sz{display:flex;align-items:center;gap:10px}
+.sz b{font-size:14px;font-weight:800;border-radius:999px;padding:3px 11px;color:${B.kecap}}
+.sz .s{box-shadow:inset 0 0 0 2px ${B.kecap}}
+.sz .m{background:${B.kunyit}}
 
-table{width:100%;border-collapse:separate;border-spacing:0 7px}
-th{font-family:'Poppins';font-size:19px;font-weight:700;color:${INK};background:#fff;padding:11px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:.02em}
-th.pk{width:31%}
-.grp td{padding:8px 0 1px}
-.grp span{font-family:'Poppins';font-size:13px;font-weight:700;letter-spacing:.26em;color:${GOLD};text-transform:uppercase}
-td.paket{background:#fff;color:${INK};font-family:'Poppins';font-size:27px;font-weight:800;text-align:center;border-radius:12px;padding:11px 8px}
-td.pc{background:${GOLD};color:${INK};border-radius:12px;padding:8px 16px 7px;width:34.5%}
+table{width:100%;border-collapse:separate;border-spacing:8px 7px;margin:12px -8px 0;width:calc(100% + 16px)}
+th{font-size:15px;font-weight:800;color:${B.muted};padding:4px 10px 0;text-transform:uppercase;letter-spacing:.1em;text-align:left}
+th.pk{width:26%}
+.grp td{padding:10px 0 0}
+.grp span{font-size:13px;font-weight:800;letter-spacing:.14em;color:${B.cabai};text-transform:uppercase}
+td.paket{background:${B.surface};font-size:26px;font-weight:800;border-radius:18px;padding:17px 20px}
+td.pc{background:${B.surface};border-radius:18px;padding:15px 20px 14px;width:37%}
 .s{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.s .amt{font-family:'Poppins';font-size:38px;font-weight:800;line-height:1.05}
-.s .rate{font-family:'Poppins';font-size:14px;font-weight:700;opacity:.72}
-.m{display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:5px;border-top:1.5px solid rgba(43,43,43,.22)}
-.m .chip{font-family:'Poppins';font-size:11px;font-weight:800;letter-spacing:.06em;color:${GOLD};background:${INK};border-radius:999px;padding:2px 8px;flex:none}
-.m .amt{font-family:'Poppins';font-size:21px;font-weight:700;opacity:.86}
-.m .rate{font-family:'Poppins';font-size:13px;font-weight:700;opacity:.6;margin-left:auto}
+.cur{font-size:.5em;font-weight:700;margin-right:4px;color:${B.muted}}
+.s .amt{font-size:34px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+.s .rate{font-size:13px;font-weight:600;color:${B.muted}}
+.m{display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:6px;border-top:1px solid ${B.line}}
+.m .chip{font-size:11px;font-weight:800;letter-spacing:.06em;color:${B.kecap};background:${B.kunyit};border-radius:999px;padding:2px 9px;flex:none}
+.m .amt{font-size:20px;font-weight:700;color:${B.ink2};font-variant-numeric:tabular-nums}
+.m .rate{font-size:12px;font-weight:600;color:${B.muted};margin-left:auto}
 
-.reqhead{font-family:'Poppins';font-size:13px;letter-spacing:.26em;font-weight:700;color:${GOLD};text-transform:uppercase;text-align:center;margin-top:15px}
+.reqhead{font-size:13px;letter-spacing:.14em;font-weight:800;color:${B.cabai};text-transform:uppercase;text-align:center;margin-top:14px}
 .reqs{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px}
-.req{background:${CREAM};border-radius:14px;padding:11px 14px 12px;text-align:center}
-.req .rt{font-family:'Poppins';font-size:17px;font-weight:800;color:${INK}}
-.req .rs{font-size:11px;font-weight:700;color:${INK};opacity:.55;letter-spacing:.08em;text-transform:uppercase;margin-top:1px}
+.req{background:${B.surface};border-radius:18px;padding:12px 14px 13px;text-align:center}
+.req .rt{font-size:17px;font-weight:800}
+.req .rs{font-size:11px;font-weight:700;color:${B.muted};letter-spacing:.08em;text-transform:uppercase;margin-top:1px}
 .chips{margin-top:8px;display:flex;flex-direction:column;gap:6px}
-.chip2{background:${RED};color:#fff;border-radius:999px;font-family:'Poppins';font-size:16px;font-weight:700;padding:7px 6px}
-.req .rn{font-size:13px;font-weight:700;color:${INK};opacity:.7;margin-top:8px}
+.chip2{background:${B.cabaiSoft};color:${B.cabaiDeep};border-radius:999px;font-size:15px;font-weight:700;padding:7px 6px}
+.req .rn{font-size:13px;font-weight:600;color:${B.muted};margin-top:8px}
 
-.foot{margin-top:auto;border-top:2px solid ${GOLD}8c;padding-top:12px;display:flex;align-items:center;justify-content:space-between;gap:20px}
-.areas{font-size:15px;font-weight:700;line-height:1.45;opacity:.95;max-width:620px}
+.foot{margin-top:auto;background:${B.daun};color:#fff;padding:20px 44px 22px;display:flex;align-items:center;justify-content:space-between;gap:28px}
+.areas{font-size:15px;font-weight:700;line-height:1.45;max-width:640px}
+.note{font-size:13px;font-weight:600;opacity:.8;margin-top:6px}
 .order{text-align:right;flex:none}
-.order .lbl{font-family:'Poppins';font-size:12px;letter-spacing:.2em;font-weight:600;color:${GOLD};text-transform:uppercase}
-.order .wa{font-family:'Poppins';font-size:26px;font-weight:800;letter-spacing:.02em;line-height:1.15}
-.note{text-align:center;font-size:13px;font-weight:600;opacity:.8;margin-top:8px}
+.order .lbl{font-size:12px;letter-spacing:.14em;font-weight:800;text-transform:uppercase;opacity:.85}
+.order .wa{font-size:28px;font-weight:800;color:${B.kunyit};line-height:1.2}
+.order .was{font-size:12px;font-weight:600;opacity:.75}
 `;
 
 /** The S price is the cell; M sits under it, smaller, so it reads as an option and not a competing number. */
 function cell(s: Price, m: Price | null) {
   return `<td class="pc">
-    <div class="s"><span class="amt">${s.total}</span><span class="rate">${s.rate}</span></div>
-    ${m ? `<div class="m"><span class="chip">M</span><span class="amt">${m.total}</span><span class="rate">${m.rate}</span></div>` : ""}
+    <div class="s"><span class="amt"><span class="cur">Rp</span>${s.total}</span><span class="rate">${s.rate}</span></div>
+    ${m ? `<div class="m"><span class="chip">M</span><span class="amt"><span class="cur">Rp</span>${m.total}</span><span class="rate">${m.rate}</span></div>` : ""}
   </td>`;
 }
 
@@ -203,43 +205,45 @@ function page(
     </div>`,
   ).join("");
 
-  const rp = `Rp ${surcharge.toLocaleString("id-ID")}`;
+  const mRp = `Rp ${rp(surcharge)}`;
 
   // An M cell carries two prices and an S-only cell one, so a sheet without M
   // is a third shorter than the page and `.foot`'s `margin-top:auto` parks the
-  // footer at the bottom with a red hole above it. Every kitchen but Thenie is
+  // footer at the bottom with an empty band above it. Every kitchen but Thenie is
   // S only, so that hole is the normal case now, not the exception. The rows
   // take the slack instead of the gap.
   const fill = surcharge
     ? ""
-    : "td.paket{padding:31px 8px}td.pc{padding:28px 16px 27px}";
+    : "td.paket{padding:35px 20px}td.pc{padding:33px 20px 32px}";
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}${fill}</style></head><body>
-  <div class="wrap">
+  <div class="wrap"><div class="main">
     <div class="head">
-      <img class="logo" src="file://${LOGO}">
       <div class="htext">
+        <div class="logo">${lockupSvg("light", 52)}</div>
         <div class="kicker">Daftar Harga${nickname ? ` · ${nickname}` : ""}</div>
         <div class="title">PAKET PERSONAL</div>
         <div class="sub">${["Halal", ongkir.sub, daysText].filter(Boolean).join(" · ")}</div>
       </div>
       <div class="sizes">
-        <div><b>SIZE S</b> — nasi + lauk + sayur + sambal</div>
-        ${surcharge ? `<div><b>SIZE M</b> — size S + lauk tambahan (+${rp}/porsi)</div>` : ""}
+        <div class="sz"><b class="s">S</b>nasi + lauk + sayur + sambal</div>
+        ${surcharge ? `<div class="sz"><b class="m">M</b>size S + lauk tambahan (+${mRp}/porsi)</div>` : ""}
       </div>
     </div>
-    <div class="rule"></div>
     <table>
       <tr><th class="pk">Paket Personal</th><th>Lunch <i>atau</i> Dinner</th><th>Lunch &amp; Dinner</th></tr>
       ${rows}
     </table>
     <div class="reqhead">Request Catering — Gratis</div>
     <div class="reqs">${reqs}</div>
-    <div class="foot">
-      <div class="areas">${areas.join(" &nbsp;·&nbsp; ")}</div>
-      <div class="order"><div class="lbl">Pesan via WhatsApp</div><div class="wa">${WA}</div></div>
     </div>
-    <div class="note">${ongkir.note} · pesanan &amp; perubahan ditutup 16.00 WIB H-1</div>
+    <div class="foot">
+      <div>
+        <div class="areas">${areas.join(" &nbsp;·&nbsp; ")}</div>
+        <div class="note">${ongkir.note} · pesanan &amp; perubahan ditutup 16.00 WIB H-1</div>
+      </div>
+      <div class="order"><div class="lbl">Pesan via WhatsApp</div><div class="wa">${WA}</div><div class="was">Katerloka · ${FORMER_NAME}</div></div>
+    </div>
   </div></body></html>`;
 }
 

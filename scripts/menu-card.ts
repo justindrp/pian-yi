@@ -37,6 +37,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { logEdit } from "@/lib/audit/log-edit";
+import { BRAND as B, FORMER_NAME, lockupSvg } from "@/lib/brand/logo";
 import { compressUploadedImage } from "@/lib/images/compress";
 import { defaultMenuWeekStart, jakartaDateString } from "@/lib/menu/week";
 import { sizeMSurcharge } from "@/lib/orders/size";
@@ -45,10 +46,6 @@ import { daysLabel } from "@/lib/subcontractors/days";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const DIR = process.env.MENU_PHOTO_DIR ?? ".menu-photos";
-const RED = "#C0181C"; // brand primary, flat — no gradient, so every red pixel is exactly this
-const GOLD = "#F7C948";
-/** The white-on-transparent master mark; it carries the wordmark, so the card prints no brand name of its own. */
-const LOGO = `${process.cwd()}/scripts/assets/menu-card-logo.png`;
 
 type Day = {
   name: string;
@@ -111,49 +108,54 @@ function parseMenu(text: string): {
   return { batch: head?.[1]?.trim() ?? "", range: head?.[2] ?? "", days };
 }
 
+// The Katerloka sheet (docs/DESIGN_SYSTEM.md): nasi ground, each day a white
+// card, day names in cabai, the size M pill in kunyit and a daun footer.
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Nunito:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
-body{width:1080px;height:1350px;background:${RED};font-family:'Nunito',system-ui,sans-serif;color:#fff;-webkit-font-smoothing:antialiased}
-.wrap{padding:34px 40px 26px;height:100%;display:flex;flex-direction:column}
-.head{display:flex;align-items:center;gap:18px}
-.logo{width:150px;height:auto;object-fit:contain;flex:none}
+body{width:1080px;height:1350px;background:${B.nasi};font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:${B.kecap};-webkit-font-smoothing:antialiased}
+.wrap{height:100%;display:flex;flex-direction:column}
+.head{display:flex;align-items:flex-start;gap:24px;padding:34px 44px 0}
+.logo{display:block;margin-bottom:12px}
 .htext{flex:1}
-.kicker{font-family:'Poppins';font-size:14px;letter-spacing:.34em;font-weight:600;color:${GOLD};text-transform:uppercase}
-.batch{font-family:'Poppins';font-size:52px;font-weight:800;line-height:1.02;margin-top:2px}
-.range{font-family:'Poppins';font-size:20px;font-weight:500;margin-top:4px;opacity:.92}
-.sizes{flex:none;text-align:right;font-family:'Poppins';font-size:14px;font-weight:500;line-height:1.65;opacity:.95}
-.sizes b{color:${GOLD};font-weight:700}
-.rule{height:2px;background:${GOLD};opacity:.55;margin:18px 0 16px}
-.grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto;align-content:space-evenly;gap:18px 14px}
-.cell{display:flex;flex-direction:column;align-items:center;text-align:center}
-.photo{width:100%;height:265px;object-fit:contain;object-position:center bottom;filter:drop-shadow(0 10px 14px rgba(0,0,0,.32))}
-.day{font-family:'Poppins';font-size:26px;font-weight:800;color:${GOLD};letter-spacing:.03em;text-transform:uppercase;margin-top:6px;line-height:1.1}
-.date{font-family:'Poppins';font-size:14px;font-weight:500;opacity:.85;margin-top:1px}
-ul{margin-top:9px}
-li{list-style:none;font-size:18px;font-weight:600;line-height:1.36;margin-top:3px}
-.mblock{margin-top:13px;width:100%}
-.mtag{display:inline-block;font-family:'Poppins';font-size:11px;font-weight:700;letter-spacing:.06em;color:#2B2B2B;background:${GOLD};border-radius:999px;padding:3px 10px}
+.kicker{font-size:15px;letter-spacing:.14em;font-weight:800;color:${B.cabai};text-transform:uppercase}
+.batch{font-size:56px;font-weight:800;line-height:1.02;letter-spacing:-.02em;margin-top:4px}
+.range{font-size:20px;font-weight:600;margin-top:6px;color:${B.muted}}
+.sizes{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:8px;padding-top:10px;font-size:15px;font-weight:600;color:${B.ink2}}
+.sz{display:flex;align-items:center;gap:10px}
+.sz b{font-size:14px;font-weight:800;border-radius:999px;padding:3px 11px;color:${B.kecap}}
+.sz .s{box-shadow:inset 0 0 0 2px ${B.kecap}}
+.sz .m{background:${B.kunyit}}
+.grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto;align-content:space-evenly;gap:16px 16px;padding:18px 44px}
+.cell{display:flex;flex-direction:column;align-items:center;text-align:center;background:${B.surface};border-radius:24px;padding:14px 16px 16px}
+.photo{width:100%;height:196px;object-fit:contain;object-position:center bottom;filter:drop-shadow(0 12px 14px rgba(28,25,23,.24))}
+.day{font-size:28px;font-weight:800;color:${B.cabai};margin-top:6px;line-height:1.1}
+.date{font-size:15px;font-weight:600;color:${B.muted};margin-top:2px}
+ul{margin-top:8px}
+li{list-style:none;font-size:18px;font-weight:600;line-height:1.36;margin-top:3px;color:${B.ink2}}
+.mblock{margin-top:12px;width:100%}
+.mtag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.06em;color:${B.kecap};background:${B.kunyit};border-radius:999px;padding:3px 11px}
 .mitem{font-size:18px;font-weight:700;margin-top:5px}
-.chef{margin-top:14px;font-size:16px;line-height:1.5;font-weight:600;opacity:.92}
-.chef .big{font-family:'Poppins';display:block;font-size:19px;font-weight:700;color:${GOLD};margin-bottom:6px}
-.foot{margin-top:18px;border-top:2px solid ${GOLD}8c;padding-top:14px;display:flex;align-items:center;justify-content:space-between;gap:20px}
-.areas{font-size:15px;font-weight:700;line-height:1.45;opacity:.95;max-width:620px}
+.chef{margin-top:14px;font-size:16px;line-height:1.5;font-weight:600;color:${B.ink2}}
+.chef .big{display:block;font-size:19px;font-weight:800;color:${B.cabai};margin-bottom:6px}
+.foot{background:${B.daun};color:#fff;padding:20px 44px 22px;display:flex;align-items:center;justify-content:space-between;gap:28px}
+.areas{font-size:15px;font-weight:700;line-height:1.45;max-width:640px}
+.note{font-size:13px;font-weight:600;opacity:.8;margin-top:6px}
 .order{text-align:right;flex:none}
-.order .lbl{font-family:'Poppins';font-size:12px;letter-spacing:.2em;font-weight:600;color:${GOLD};text-transform:uppercase}
-.order .wa{font-family:'Poppins';font-size:26px;font-weight:800;letter-spacing:.02em;line-height:1.15}
-.note{text-align:center;font-size:13px;font-weight:600;opacity:.8;margin-top:9px}
+.order .lbl{font-size:12px;letter-spacing:.14em;font-weight:800;text-transform:uppercase;opacity:.85}
+.order .wa{font-size:28px;font-weight:800;color:${B.kunyit};line-height:1.2}
+.order .was{font-size:12px;font-weight:600;opacity:.75}
 /* A kitchen with no generated photos gets a written card: the dishes are the
    whole cell, so they get a panel of their own rather than floating under an
    empty photo slot. */
-.grid.text{min-height:0;--tfs:21px;--tday:30px;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;align-content:stretch;gap:20px}
-.grid.text .cell{overflow:hidden;background:rgba(255,255,255,.08);border:2px solid ${GOLD}55;border-radius:20px;padding:20px 22px;text-align:left;align-items:stretch;justify-content:flex-start}
+.grid.text{min-height:0;--tfs:21px;--tday:30px;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;align-content:stretch;gap:18px}
+.grid.text .cell{overflow:hidden;padding:20px 24px;text-align:left;align-items:stretch;justify-content:flex-start}
 .grid.text .day{margin-top:0;font-size:var(--tday)}
 .grid.text .date{font-size:16px}
 .grid.text li{font-size:var(--tfs);line-height:1.36;margin-top:3px}
 .grid.text .mealtag{font-size:12px;padding:3px 11px}
 .meal{margin-top:11px}
-.mealtag{display:inline-block;font-family:'Poppins';font-size:11px;font-weight:700;letter-spacing:.08em;color:#2B2B2B;background:${GOLD};border-radius:999px;padding:2px 9px}
+.mealtag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.08em;color:${B.daun};background:${B.daunSoft};border-radius:999px;padding:2px 9px}
 .meal ul{margin-top:5px}
 `;
 
@@ -203,8 +205,8 @@ function page(
   return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
   <div class="wrap">
     <div class="head">
-      <img class="logo" src="file://${LOGO}">
       <div class="htext">
+        <div class="logo">${lockupSvg("light", 52)}</div>
         ${
           // The nickname is the only name of a kitchen a customer may ever see,
           // and with three kitchens offered at once it has to be the biggest
@@ -230,13 +232,12 @@ function page(
       <div class="sizes">
         ${
           opts.offersM
-            ? `<div><b>SIZE S</b> — nasi + lauk + sayur + sambal</div>
-               <div><b>SIZE M</b> — size S + lauk tambahan (+${rp}/porsi)</div>`
-            : "<div><b>SATU UKURAN</b> — nasi + lauk + sayur + sambal</div>"
+            ? `<div class="sz"><b class="s">S</b>nasi + lauk + sayur + sambal</div>
+               <div class="sz"><b class="m">M</b>size S + lauk tambahan (+${rp}/porsi)</div>`
+            : '<div class="sz"><b class="s">SATU UKURAN</b>nasi + lauk + sayur + sambal</div>'
         }
       </div>
     </div>
-    <div class="rule"></div>
     <div class="grid${opts.photos ? "" : " text"}"${
       opts.photos
         ? ""
@@ -248,10 +249,12 @@ function page(
           ` style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${Math.ceil(menu.days.length / cols)},1fr)"`
     }>${menu.days.map((d) => cell(d, opts.photos)).join("")}</div>
     <div class="foot">
-      <div class="areas">${areas.join(" &nbsp;·&nbsp; ")}</div>
-      <div class="order"><div class="lbl">Pesan via WhatsApp</div><div class="wa">${wa}</div></div>
+      <div>
+        <div class="areas">${areas.join(" &nbsp;·&nbsp; ")}</div>
+        <div class="note">${opts.photos && opts.offersM ? "Foto menampilkan porsi size M · " : ""}${opts.daysLine} · pesanan ditutup 16.00 WIB H-1</div>
+      </div>
+      <div class="order"><div class="lbl">Pesan via WhatsApp</div><div class="wa">${wa}</div><div class="was">Katerloka · ${FORMER_NAME}</div></div>
     </div>
-    <div class="note">${opts.photos && opts.offersM ? "Foto menampilkan porsi size M · " : ""}${opts.daysLine} · pesanan ditutup 16.00 WIB H-1</div>
   </div></body></html>`;
 }
 

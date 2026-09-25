@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LOCKUP } from "@/lib/brand/logo";
 import {
   ADDRESS,
   BRAND,
@@ -261,7 +262,7 @@ export function CatalogHome({
             ))}
           </ul>
         </details>
-        <span className="kl-brand">{BRAND}</span>
+        <BrandLockup />
       </div>
       <Locator
         auto={area === null}
@@ -358,5 +359,22 @@ export function CatalogHome({
         <a href="/data-deletion">Penghapusan data</a>
       </p>
     </>
+  );
+}
+
+/** The outlined lockup from `@/lib/brand/logo`, never the name retyped in the page font. */
+function BrandLockup() {
+  const { cx, cy, r } = LOCKUP.rice;
+  return (
+    <svg
+      className="kl-brand"
+      viewBox={`0 0 ${LOCKUP.width} ${LOCKUP.height}`}
+      role="img"
+      aria-label={BRAND}
+    >
+      <path fillRule="evenodd" fill="var(--kl-accent)" d={LOCKUP.tray} />
+      <circle cx={cx} cy={cy} r={r} fill="var(--kl-accent)" />
+      <path fill="var(--kl-ink)" d={LOCKUP.word} />
+    </svg>
   );
 }

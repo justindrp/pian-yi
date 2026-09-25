@@ -27,10 +27,11 @@ const nextConfig: NextConfig = {
   // it inlines the code and leaves the .afm files behind, so the first invoice
   // render in production would throw ENOENT — on a path that exists on every
   // developer's laptop. Kept external, and the data directory traced into the
-  // standalone output by hand.
+  // standalone output by hand. The invoice's Plus Jakarta Sans files are read
+  // off disk the same way (src/lib/invoices/render.ts), so they are traced too.
   serverExternalPackages: ["pdfkit"],
   outputFileTracingIncludes: {
-    "/*": ["./node_modules/pdfkit/js/data/**"],
+    "/*": ["./node_modules/pdfkit/js/data/**", "./src/lib/brand/fonts/**"],
   },
   images: {
     remotePatterns: supabaseImageHost(),

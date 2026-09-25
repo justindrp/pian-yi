@@ -6,22 +6,24 @@
  */
 
 .kl {
+  /* Katerloka's palette, the same values as BRAND in src/lib/brand/logo.ts
+     (docs/DESIGN_SYSTEM.md): cabai, kecap, nasi and their greys. */
   --kl-accent: #bf3419;
-  --kl-accent-soft: #bf34191a;
-  --kl-ink: #1a1a1a;
-  --kl-ink-2: #3d3d3d;
-  --kl-muted: #6b6b6b;
-  --kl-faint: #8a8a8a;
-  --kl-line: #f0f0f0;
-  --kl-border: #e3e3e3;
-  --kl-fill: #f2f2f3;
+  --kl-accent-soft: #fbe9e4;
+  --kl-ink: #1c1917;
+  --kl-ink-2: #46403b;
+  --kl-muted: #6e6760;
+  --kl-faint: #8c847c;
+  --kl-line: #f0ece6;
+  --kl-border: #e8e3dc;
+  --kl-fill: #f7f5f1;
   --kl-ok: #1e7a46;
-  --kl-ok-soft: #eaf6ef;
+  --kl-ok-soft: #e4efe8;
   --kl-warn: #9a5b00;
   --kl-warn-soft: #fff4e0;
 
   min-height: 100dvh;
-  background: #f4f4f5;
+  background: var(--kl-fill);
   color: var(--kl-ink);
   font-family: var(--kl-font), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -163,15 +165,9 @@
 }
 
 .kl-brand {
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  background: var(--kl-accent-soft);
-  color: var(--kl-accent);
-  font-size: 13px;
-  font-weight: 800;
+  flex: none;
+  height: 26px;
+  width: auto;
 }
 
 .kl-chips {
@@ -254,7 +250,7 @@
 }
 
 .kl-row:hover {
-  background: #fafafa;
+  background: var(--kl-fill);
 }
 
 .kl-thumb {
@@ -346,10 +342,10 @@
   margin: 12px 16px;
   padding: 20px;
   border-radius: 14px;
-  background: #f6f6f7;
+  background: var(--kl-fill);
   font-size: 14px;
   line-height: 1.5;
-  color: #4a4a4a;
+  color: var(--kl-ink-2);
 }
 
 .kl-empty a {
@@ -381,7 +377,7 @@
   height: 64px;
   display: flex;
   background: #fff;
-  border-top: 1px solid #ededed;
+  border-top: 1px solid var(--kl-line);
 }
 
 .kl-nav a {
@@ -391,7 +387,7 @@
   align-items: center;
   justify-content: center;
   gap: 3px;
-  color: #7a7a7a;
+  color: var(--kl-muted);
   font-size: 11px;
   font-weight: 600;
 }
@@ -448,7 +444,7 @@
   margin-top: 4px;
   font-size: 14px;
   line-height: 1.45;
-  color: #5a5a5a;
+  color: var(--kl-ink-2);
 }
 
 .kl-stats {
@@ -504,7 +500,7 @@
   margin-top: 12px;
   padding: 0 8px;
   background: #fff;
-  border-bottom: 1px solid #ededed;
+  border-bottom: 1px solid var(--kl-line);
 }
 
 .kl-tabs a {
@@ -529,7 +525,7 @@
   padding: 14px 16px 0;
   font-size: 13px;
   line-height: 1.5;
-  color: #5a5a5a;
+  color: var(--kl-ink-2);
 }
 
 .kl-pkg {
@@ -676,8 +672,8 @@
 
 .kl-week span[data-off] {
   background: none;
-  border: 1px dashed #d0d0d0;
-  color: #a0a0a0;
+  border: 1px dashed var(--kl-border);
+  color: var(--kl-faint);
   font-weight: 600;
 }
 
@@ -714,7 +710,7 @@
   gap: 8px;
   padding: 0 8px;
   background: #fff;
-  border-bottom: 1px solid #ededed;
+  border-bottom: 1px solid var(--kl-line);
 }
 
 .kl-bar a {
@@ -781,7 +777,7 @@
 .kl-compare tfoot td {
   font-size: 12px;
   color: var(--kl-muted);
-  background: #fafafa;
+  background: var(--kl-fill);
 }
 
 .kl-compare tfoot tr:last-child > * {

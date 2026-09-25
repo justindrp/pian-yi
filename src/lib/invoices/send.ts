@@ -197,7 +197,7 @@ export async function buildInvoiceSpec(params: {
     balance: rupiah(balance),
     payment,
     footer: [
-      "Terima kasih sudah memesan di Pian Yi Catering.",
+      "Terima kasih sudah memesan di Katerloka.",
       `Pesanan & perubahan ditutup ${cutoff} H-1.`,
     ],
   };
@@ -290,7 +290,7 @@ export async function sendInvoice(params: {
   });
   const pdf = await renderInvoicePdf(spec);
 
-  const filename = `Invoice-PianYi-${number.replace(/\//g, "-")}.pdf`;
+  const filename = `Invoice-Katerloka-${number.replace(/\//g, "-")}.pdf`;
   const storagePath = `invoices/${customerId}/${number.replace(/\//g, "-")}-${Date.now()}.pdf`;
   const { error: uploadErr } = await db.storage
     .from("menu-images")
@@ -303,7 +303,7 @@ export async function sendInvoice(params: {
     data: { publicUrl },
   } = db.storage.from("menu-images").getPublicUrl(storagePath);
 
-  const caption = `Invoice ${number} — Pian Yi Catering`;
+  const caption = `Invoice ${number} — Katerloka`;
   const conversationId = await saveMessage({
     customerId,
     role: "assistant",
