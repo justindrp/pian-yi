@@ -681,6 +681,16 @@ gate ask again. That only sticks because the webhook now saves a link from the
 arriving message alone; it used to re-scan the thread and would have written
 the hotel back on the customer's next message.
 
+**The area after the dash is the catalog's match, not a line on the map**
+(2026-09-26). "[Lokasi dibagikan: … — Karawaci]" is `matchArea()`, the same
+nearest-neighbourhood match katerloka.com uses (`locationArea()` in the
+webhook): a served area when the pin is within 4 km of a placed, non-excluded
+neighbourhood, and nothing at all otherwise. It used to be a hardcoded split at
+lng 106.667361 that only ever said BSD Baru or BSD Lama, put six BSD Lama
+clusters on the Baru side, and said nothing for any other area. It is a hint to
+the model and never a gate: a failed lookup drops it and the message goes
+through unchanged.
+
 **A link the pattern cannot see is a link that is not on file** (2026-09-21).
 `extract_order` reads the stored column back through `findMapsLink()` rather
 than testing it for emptiness, so `MAPS_LINK_RE` is not only what detects an

@@ -3,10 +3,12 @@ import type { NextRequest } from "next/server";
 import { logEdit, systemActor } from "@/lib/audit/log-edit";
 import {
   getExcludedNeighborhoods,
+  getNeighborhoodPoints,
   getNeighborhoods,
   getSetting,
   getTemplate,
 } from "@/lib/cache/settings";
+import { matchArea } from "@/lib/catalog/locate";
 import { analyzeCustomerMessage } from "@/lib/claude/analyze-customer-message";
 import {
   extractText,
@@ -896,20 +898,42 @@ function toStatusTimestamp(timestamp?: string): string {
   return new Date(unixSeconds * 1000).toISOString();
 }
 
-function formatLocationMessage(message: {
+/**
+ * The served area a shared pin falls in, by the same nearest-neighbourhood
+ * match katerloka.com uses (`matchArea()`), or null. It replaced a hardcoded
+ * BSD Baru/BSD Lama line at lng 106.667361 that put six BSD Lama clusters in
+ * BSD Baru and said nothing about any other area. A failure only drops the
+ * hint; it never holds up the message.
+ */
+async function locationArea(lat: number, lng: number): Promise<string | null> {
+  try {
+    const [points, served] = await Promise.all([
+      getNeighborhoodPoints(),
+      activeDeliveryAreas(createAdminClient()),
+    ]);
+    return matchArea(points, served, lat, lng);
+  } catch (err) {
+    console.error(
+      "[webhook] locationArea failed:",
+      err instanceof Error ? err.message : "unknown",
+    );
+    return null;
+  }
+}
+
+async function formatLocationMessage(message: {
   locationName?: string;
   locationAddress?: string;
   locationLat?: number;
   locationLng?: number;
-}): string {
+}): Promise<string> {
   const parts = [message.locationName, message.locationAddress].filter(Boolean);
   const { locationLat: lat, locationLng: lng } = message;
   let zoneNote = "";
   let mapsLink = "";
   if (lat !== undefined && lng !== undefined) {
-    const inBsd =
-      lat >= -6.35 && lat <= -6.22 && lng >= 106.62 && lng <= 106.72;
-    if (inBsd) zoneNote = lng < 106.667361 ? " — BSD Baru" : " — BSD Lama";
+    const area = await locationArea(lat, lng);
+    if (area) zoneNote = ` — ${area}`;
     mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
   }
   const label = parts.length > 0 ? parts.join(", ") : "Lokasi dibagikan";
@@ -937,7 +961,7 @@ function mediaMessageType(type: string): string {
  * carry no text of their own, so they get a placeholder; the media itself is
  * saved alongside via `mediaId` / `mediaUrl`.
  */
-function inboundText(message: WhatsAppMessage): string {
+async function inboundText(message: WhatsAppMessage): Promise<string> {
   switch (message.type) {
     case "text":
       return message.text ?? "";
@@ -946,7 +970,7 @@ function inboundText(message: WhatsAppMessage): string {
     case "document":
       return formatDocumentMessage(message);
     case "location":
-      return formatLocationMessage(message);
+      return await formatLocationMessage(message);
     default:
       return `[${message.type}]`;
   }
@@ -1295,7 +1319,7 @@ export async function processWebhookAsync(
   // every message received while the bot was off was destroyed, not delayed.
   const chatbotEnabled = await getSetting("chatbot_enabled");
   if (chatbotEnabled !== "true") {
-    const offText = inboundText(message);
+    const offText = await inboundText(message);
     await saveMessage({
       customerId,
       role: "user",
@@ -1396,7 +1420,7 @@ export async function processWebhookAsync(
           : message.type === "document"
             ? formatDocumentMessage(message)
             : message.type === "location"
-              ? formatLocationMessage(message)
+              ? await formatLocationMessage(message)
               : `[${message.type}]`;
     const escalatedIntent = await classifyIntent(escalatedText).catch(
       () => "other",
@@ -1626,7 +1650,7 @@ export async function processWebhookAsync(
   // Non-text messages
   let text: string;
   if (message.type === "location") {
-    text = formatLocationMessage(message);
+    text = await formatLocationMessage(message);
   } else if (
     message.type === "image" &&
     (message.imageCaption || visionCaption)
@@ -3893,7 +3917,7 @@ async function handleProofContactMessage(params: {
     await saveMessage({
       customerId: contactCustomerId,
       role: "user",
-      content: inboundText(message),
+      content: await inboundText(message),
       messageId: message.messageId,
       intent: "other",
       messageType: mediaMessageType(message.type),
