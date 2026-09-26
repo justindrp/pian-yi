@@ -442,7 +442,7 @@ with no `--week` on either, since both default to the same `defaultMenuWeekStart
 
 **`menu-week.ts` does not touch `menu_week_start`.** That column says which week the *image* covers, and between the promote and the upload the image on file is still last week's; moving it early has the bot introduce an old card as next week's menu. The upload is what moves it, and the two steps are deliberately not one command for that reason. A dry run (no `--apply`) prints the kitchen's stored weeks, marks the one currently live, and shows the text it would write.
 
-The logo is `lockupSvg("light", 52)` from `src/lib/brand/logo.ts` — outlined paths inlined into the HTML, so it carries the wordmark and the card prints no brand name of its own. The old white PNG mark (`scripts/assets/menu-card-logo.png`) was Pian Yi's and is deleted. `public/icon-512.png` is still a green "PY" placeholder, not the brand mark — replace it when the PWA icon next matters.
+The logo is `lockupSvg("light", 52)` from `src/lib/brand/logo.ts` — outlined paths inlined into the HTML, so it carries the wordmark and the card prints no brand name of its own. The old white PNG mark (`scripts/assets/menu-card-logo.png`) was Pian Yi's and is deleted. The app icons are the same tray; see "Logo" in `docs/DESIGN_SYSTEM.md`.
 
 ## The price list
 

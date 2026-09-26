@@ -70,7 +70,7 @@ The **tray lockup**: the real four-compartment lunch tray seen from above, with 
 - **The wordmark is outlined, never retyped.** The paths are `LOCKUP` in `src/lib/brand/logo.ts`. The HTML sheets inline `lockupSvg(ground, height)`, the invoice draws the paths with pdfkit, and katerloka.com draws them as JSX (`BrandLockup` in `src/app/(catalog)/ui.tsx`). None of them sets "katerloka" in a font.
 - Colour version (cabai tray, kecap word) on nasi or white; all-white on cabai or daun. No other recolouring, outlines, shadows or stretching.
 - Clear space around it equals the height of the `k`.
-- The avatar (Instagram, WhatsApp, app icon) is the tray alone on a cabai disc — the wordmark is unreadable at 110px. `public/icon-512.png` is still a green "PY" placeholder and has not been replaced.
+- The avatar (Instagram, WhatsApp, app icon) is the tray alone on a cabai disc — the wordmark is unreadable at 110px. That is also every icon the app ships: `src/app/icon.tsx` (the favicon, drawn from `LOCKUP` at request time), `public/icon-512.png` (manifest `any`, the disc), and `public/icon-192.png` (manifest `maskable`) plus `src/app/apple-icon.png`, which are full-bleed cabai squares with the tray inside the maskable safe circle, because Android crops to its own shape and iOS fills transparency black. The three PNGs are exported from the same paths; redraw them from `LOCKUP` rather than editing the pixels.
 
 ### The name bridge
 

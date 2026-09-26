@@ -1,9 +1,13 @@
 import { ImageResponse } from "next/og";
+import { BRAND, LOCKUP } from "@/lib/brand/logo";
 
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
+// The avatar: the tray alone, white on a cabai disc (docs/DESIGN_SYSTEM.md).
+// The tray occupies x 0–67, y 20–108 of the lockup's box.
 export default function Icon() {
+  const { cx, cy, r } = LOCKUP.rice;
   return new ImageResponse(
     <div
       style={{
@@ -12,67 +16,14 @@ export default function Icon() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#ea580c",
-        borderRadius: 7,
+        background: BRAND.cabai,
+        borderRadius: "50%",
       }}
     >
-      {/* Bowl shape */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 1,
-        }}
-      >
-        {/* Steam lines */}
-        <div style={{ display: "flex", gap: 3, marginBottom: 1 }}>
-          <div
-            style={{
-              width: 2,
-              height: 4,
-              background: "rgba(255,255,255,0.7)",
-              borderRadius: 1,
-            }}
-          />
-          <div
-            style={{
-              width: 2,
-              height: 5,
-              background: "rgba(255,255,255,0.7)",
-              borderRadius: 1,
-              marginTop: -1,
-            }}
-          />
-          <div
-            style={{
-              width: 2,
-              height: 4,
-              background: "rgba(255,255,255,0.7)",
-              borderRadius: 1,
-            }}
-          />
-        </div>
-        {/* Bowl body */}
-        <div
-          style={{
-            width: 18,
-            height: 10,
-            background: "white",
-            borderRadius: "0 0 10px 10px",
-            position: "relative",
-          }}
-        />
-        {/* Bowl base */}
-        <div
-          style={{
-            width: 12,
-            height: 2,
-            background: "white",
-            borderRadius: 1,
-          }}
-        />
-      </div>
+      <svg width={17} height={22} viewBox="0 20 67 88" aria-hidden="true">
+        <path fillRule="evenodd" fill="#FFFFFF" d={LOCKUP.tray} />
+        <circle cx={cx} cy={cy} r={r} fill="#FFFFFF" />
+      </svg>
     </div>,
     { ...size },
   );
