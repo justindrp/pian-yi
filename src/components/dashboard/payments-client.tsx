@@ -50,7 +50,7 @@ interface SlipReadShape {
  *  person, because "Mark as paid" writes the kitchen sheet and a misread or
  *  forged screenshot would become cooked food. A blank read renders nothing —
  *  an absent pre-read must not look like a failed one. */
-function SlipRead({ read }: { read: unknown }) {
+function SlipRead({ read, hasDp }: { read: unknown; hasDp: boolean }) {
   if (!read || typeof read !== "object") return null;
   const r = read as SlipReadShape;
   if (r.amount_idr == null && !r.recipient_name) return null;
@@ -64,17 +64,37 @@ function SlipRead({ read }: { read: unknown }) {
 
   // One transfer often covers two orders, so the writer counts the sum as a
   // match too — "beda" here means worth opening the image, not worth refusing.
+  // Once a DP is recorded the slip was never meant to equal the total, so the
+  // comparison says nothing and is left off; the DP line carries the figures.
+  const verdict = hasDp ? null : r.matches_total;
   const tone =
-    r.matches_total === true
+    verdict === true
       ? "text-gray-500"
-      : r.matches_total === false
+      : verdict === false
         ? "text-amber-700"
         : "text-gray-400";
 
   return (
     <p className={`text-xs mt-1 ${tone}`}>
       Terbaca: {parts.join(" · ")}
-      {r.matches_total === false && " · beda dari total order"}
+      {verdict === false && " · beda dari total order"}
+    </p>
+  );
+}
+
+/** A DP is `amount_paid` on an order not yet marked paid. Once `paid_at` is
+ *  set the order is settled in full, whatever `amount_paid` still holds. */
+function dpOf(order: OrderWithCustomer): number {
+  return order.paid_at ? 0 : (order.amount_paid ?? 0);
+}
+
+function DpLine({ order }: { order: OrderWithCustomer }) {
+  const dp = dpOf(order);
+  if (dp <= 0) return null;
+  return (
+    <p className="text-xs text-emerald-700 mt-0.5">
+      DP {formatIDR(dp)} diterima · sisa{" "}
+      {formatIDR(Math.max(order.total_price - dp, 0))}
     </p>
   );
 }
@@ -84,6 +104,9 @@ export default function PaymentsClient() {
   const [paidDate, setPaidDate] = useState(localToday());
   const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [dpOrderId, setDpOrderId] = useState<string | null>(null);
+  const [dpAmount, setDpAmount] = useState("");
+  const [dpError, setDpError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const supabase = createClient();
 
@@ -190,6 +213,62 @@ export default function PaymentsClient() {
     },
   });
 
+  // Records the part that has landed and nothing else: the order stays in
+  // this queue, no delivery rows are written and the invoice prints the
+  // balance. Only "Mark as paid" settles it.
+  const recordDpMutation = useMutation({
+    mutationFn: async ({
+      orderId,
+      amount,
+    }: {
+      orderId: string;
+      amount: number;
+    }) => {
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: orderId,
+          action: "update_fields",
+          fields: { amount_paid: amount },
+        }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "Failed");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      setDpOrderId(null);
+      setDpAmount("");
+      setDpError(null);
+    },
+    onError: (err) => setDpError((err as Error).message),
+  });
+
+  function openDpForm(order: OrderWithCustomer) {
+    const read = order.payment_proof_read as SlipReadShape | null;
+    const prefill = dpOf(order) || read?.amount_idr || 0;
+    setDpOrderId(order.id);
+    setDpAmount(prefill ? String(prefill) : "");
+    setDpError(null);
+    setRejectOrderId(null);
+  }
+
+  function saveDp(order: OrderWithCustomer) {
+    const amount = Number(dpAmount);
+    if (!Number.isInteger(amount) || amount <= 0) {
+      setDpError("Isi nominal DP.");
+      return;
+    }
+    // A full payment recorded here would print "lunas" on the invoice while
+    // the kitchen sheet stays empty — that is what "Mark as paid" is for.
+    if (amount >= order.total_price) {
+      setDpError("Sudah lunas? Pakai Mark as paid.");
+      return;
+    }
+    recordDpMutation.mutate({ orderId: order.id, amount });
+  }
+
   const rejectMutation = useMutation({
     mutationFn: async ({
       orderId,
@@ -292,6 +371,7 @@ export default function PaymentsClient() {
                         {order.package_size} porsi ·{" "}
                         {formatIDR(order.total_price)}
                       </p>
+                      <DpLine order={order} />
                       {order.payer && (
                         <p className="text-xs text-gray-500 mt-0.5">
                           Dibayar oleh{" "}
@@ -318,7 +398,10 @@ export default function PaymentsClient() {
                           </p>
                         )
                       )}
-                      <SlipRead read={order.payment_proof_read} />
+                      <SlipRead
+                        read={order.payment_proof_read}
+                        hasDp={dpOf(order) > 0}
+                      />
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -334,12 +417,66 @@ export default function PaymentsClient() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() => setRejectOrderId(order.id)}
+                        onClick={() => openDpForm(order)}
+                      >
+                        {dpOf(order) > 0 ? "Ubah DP" : "Catat DP"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setRejectOrderId(order.id);
+                          setDpOrderId(null);
+                        }}
                       >
                         Reject
                       </Button>
                     </div>
                   </div>
+
+                  {/* DP form */}
+                  {dpOrderId === order.id && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <Label
+                        htmlFor={`dp-${order.id}`}
+                        className="text-xs text-gray-500 block mb-1"
+                      >
+                        DP diterima (Rp) — cek dulu di mutasi bank
+                      </Label>
+                      <Input
+                        id={`dp-${order.id}`}
+                        type="number"
+                        value={dpAmount}
+                        onChange={(e) => setDpAmount(e.target.value)}
+                        className="mb-2 w-48"
+                      />
+                      {dpError && (
+                        <p className="text-xs text-red-600 mb-2">{dpError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => saveDp(order)}
+                          disabled={recordDpMutation.isPending}
+                        >
+                          Simpan DP
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setDpOrderId(null);
+                            setDpError(null);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Reject form */}
                   {rejectOrderId === order.id && (
@@ -424,6 +561,7 @@ export default function PaymentsClient() {
                           {order.package_size} porsi ·{" "}
                           {formatIDR(order.total_price)}
                         </p>
+                        <DpLine order={order} />
                         {order.payer && (
                           <p className="text-xs text-gray-500 mt-0.5">
                             Dibayar oleh{" "}
